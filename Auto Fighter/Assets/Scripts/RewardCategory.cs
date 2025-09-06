@@ -1,0 +1,10 @@
+public enum RewardCategory
+{
+    ScoreMultiplier,
+    XPMultiplier,
+    PhysicsFX,
+    BallFX,
+    PaddleFX,
+    BumperFX,
+    Abilities
+}
