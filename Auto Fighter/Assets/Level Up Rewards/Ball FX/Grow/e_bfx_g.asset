@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 581b5d6ad2ceb7b469250c6a7b5a3b32, type: 3}
+  m_Name: e_bfx_g
+  m_EditorClassIdentifier: 
+  rewardID: e_bfx_g
+  displayName: Growth Beacon (Epic)
+  description: 'Ball Size +10%
+
+    Ball Speed -20%
+
+    XP Mult +35%
+
+    Bounciness
+    -4%'
+  category: 3
+  rarity: 3
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 11400000, guid: 4a3647ece836bb64bbb559e6b1cc9e5f, type: 2}
+  exclusivityKey: grow_e
+  blockedKeys:
+  - shrink_com
+  size: 10
+  speed: -20
+  multiplier: 35
+  bonusHits: 0
+  bounciness: -4
+  bouncesForBonusHits: 0
+  bonus: 0
+  cursed: 0

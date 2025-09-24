@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 581b5d6ad2ceb7b469250c6a7b5a3b32, type: 3}
+  m_Name: l_bfx_g
+  m_EditorClassIdentifier: 
+  rewardID: l_bfx_g
+  displayName: Telescopic (Legendary)
+  description: 'Ball Size +10%
+
+    Bounciness -4%
+
+    Bumper Hits 1.5x XP every
+    10 bounces'
+  category: 3
+  rarity: 4
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 11400000, guid: fdc29fcdbbceb5547a223d3945d23851, type: 2}
+  exclusivityKey: grow_l
+  blockedKeys:
+  - shrink_com
+  size: 10
+  speed: -20
+  multiplier: 35
+  bonusHits: 1.5
+  bounciness: -4
+  bouncesForBonusHits: 10
+  bonus: 1
+  cursed: 0

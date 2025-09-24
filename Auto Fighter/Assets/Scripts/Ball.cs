@@ -33,7 +33,11 @@ public class Ball : MonoBehaviour
 
     bool isStuck;
 
+    public bool isTouchingPaddles;
+
     public bool hasBounced;
+
+    public float maxSpeed = 50f;
 
     Collider col;
 
@@ -63,6 +67,11 @@ public class Ball : MonoBehaviour
         debugTimer = 0;
     }
 
+    void FixedUpdate()
+    {
+        rb.velocity = Vector3.ClampMagnitude(rb.velocity, maxSpeed);
+    }
+
     // Update is called once per frame
     void Update()
     {
@@ -82,7 +91,6 @@ public class Ball : MonoBehaviour
             count++;
             debugTimerStart = true;
             hasBounced = false;
-
         }
 
         Debug.Log(debugTimer + " " + count);
@@ -169,6 +177,7 @@ public class Ball : MonoBehaviour
             return;
         }
 
+
         rb.AddForce(dir * power, ForceMode.Impulse);
 
         if(bumper == 0)
@@ -197,6 +206,10 @@ public class Ball : MonoBehaviour
     {
         if (col.gameObject.tag == "BallThreshold")
             isInZone = true;
+
+        if (col.gameObject.tag == "Paddle")
+            isTouchingPaddles = true;
+
     }
 
     
@@ -205,6 +218,10 @@ public class Ball : MonoBehaviour
     {
         if (col.gameObject.tag == "BallThreshold")
             isInZone = false;
+
+
+        if (col.gameObject.tag == "Paddle")
+            isTouchingPaddles = false;
     }
 
     public void ResetRb()

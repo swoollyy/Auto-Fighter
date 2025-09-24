@@ -16,7 +16,7 @@ public class ScoreMultiplierRewardSO : RewardSO
         ctx.SetExclusive(ExclusivityKey, true);
 
         ctx.ApplyScoreMultiplier(multiplier, cursed);
-        ctx.ApplyBonusTime(bonusTime, cursed);
+        ctx.ApplyScoreBonusTime(bonusTime, cursed);
 
     }
 }

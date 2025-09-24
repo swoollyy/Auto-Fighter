@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5960dfbee3d08f84c8870f53336ef305, type: 3}
+  m_Name: crs_bfx_s
+  m_EditorClassIdentifier: 
+  rewardID: crs_bfx_s
+  displayName: Planck'd (Cursed)
+  description: 'Ball Size -25%
+
+    Ball Speed +35%
+
+    Bounciness +4%
+
+    Ball
+    Hits 5x every 20 bounces'
+  category: 3
+  rarity: 6
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 11400000, guid: 7868d225cc391fd43b63d288bb12bb0a, type: 2}
+  exclusivityKey: shrink_crs
+  blockedKeys:
+  - grow_com
+  size: -25
+  speed: 35
+  multiplier: 0
+  bonusHits: 5
+  bounciness: 4
+  bouncesForBonusHits: 20
+  bonus: 1
+  cursed: 0

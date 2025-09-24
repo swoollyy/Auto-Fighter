@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Score Multiplier")]
+[CreateAssetMenu(menuName = "Rewards/XP Multiplier")]
 public class XPMultiplierRewardSO : RewardSO
 {
     [SerializeField] private float multiplier = 1f;
@@ -16,7 +16,7 @@ public class XPMultiplierRewardSO : RewardSO
         ctx.SetExclusive(ExclusivityKey, true);
 
         ctx.ApplyXPMultiplier(multiplier, cursed);
-        ctx.ApplyBonusTime(bonusTime, cursed);
+        ctx.ApplyXPBonusTime(bonusTime, cursed);
 
     }
 }

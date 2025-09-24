@@ -15,7 +15,7 @@ public class PinballUIM : MonoBehaviour
         public TMP_Text descText;
     }
 
-    [Header("UI Slots(3 buttons)")]
+    [Header("UI Slots(6 buttons)")]
     [SerializeField] private List<RewardSlot> slots = new();
 
 
@@ -28,6 +28,7 @@ public class PinballUIM : MonoBehaviour
     public TMP_Text gameScore;
     public TMP_Text bc;
     public TMP_Text bcc;
+    public TMP_Text xpText;
 
     private Pinball pm;
     private List<RewardSO> currentRewards = new();
@@ -44,10 +45,14 @@ public class PinballUIM : MonoBehaviour
     void Update()
     {
         if(pm != null)
-        ChargingSlider.fillAmount = pm.chargePercentage;
+        {
+            ChargingSlider.fillAmount = pm.chargePercentage;
+            bc.text = $"Score Mult: {pm.ScoreMultiplier.ToString()} | Timer: {pm.ScoreBonusTimeRemaining}";
+            bcc.text = $"XP Mult: {pm.XPMultiplier.ToString()} | Timer: {pm.XPBonusTimeRemaining}";
+            xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
+        }
 
-        if (pm != null)
-            bc.text = pm.ScoreMultiplier.ToString();
+
     }
 
     public void Init(Pinball manager)

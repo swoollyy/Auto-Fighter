@@ -82,7 +82,7 @@ public class CollectXP : MonoBehaviour
         }
 
         // Self-destroy once this system (and children) are done
-        if (!ps.IsAlive(true))
+        if (ps.particleCount == 0)
             Destroy(gameObject);
     }
 

@@ -12,6 +12,7 @@ TagManager:
   - Powerup
   - XPCollider
   - BallXPHolder
+  - Paddle
   layers:
   - Default
   - TransparentFX

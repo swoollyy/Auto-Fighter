@@ -21,6 +21,9 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public static Pinball Instance { get; private set; }
 
+    public static event System.Action OnLeftPaddleHit;
+    public static event System.Action OnRightPaddleHit;
+
     //
     private readonly HashSet<string> owned = new();
     private readonly HashSet<string> active = new();
@@ -33,6 +36,9 @@ public class Pinball : MonoBehaviour, IRunContext
     public bool IsAvailable(string rewardId) => available.Contains(rewardId);
     public bool HasExclusiveKeyActive(string key) =>
         !string.IsNullOrEmpty(key) && exclusiveKeysActive.Contains(key);
+
+    public IEnumerable<string> ActiveKeys => exclusiveKeysActive;
+
 
     //Helpers the rewards will call
     public void MarkOwned(string rewardId) => owned.Add(rewardId);
@@ -67,8 +73,8 @@ public class Pinball : MonoBehaviour, IRunContext
         {RewardRarity.Rare, 40f},
         {RewardRarity.Epic, 24f},
         {RewardRarity.Legendary, 9.5f},
-        {RewardRarity.Artifact, 1f},
-        {RewardRarity.Cursed, 1f},
+        {RewardRarity.Artifact, 9f},
+        {RewardRarity.Cursed, 9f},
     };
 
     private PinballState currentState;
@@ -78,14 +84,16 @@ public class Pinball : MonoBehaviour, IRunContext
     public KeyCode leftPaddleBind = KeyCode.A;
     public KeyCode rightPaddleBind = KeyCode.D;
 
-    public int curXP  = 0;
-    public int maxXP;
+    public float curXP  = 0;
+    public float maxXP;
     public int level { get; private set; } = 1;
 
     private int pendingLevelUps = 0;
 
 
     public Ball ball;
+
+    private Collider ballCol;
 
     public PinballUIM uim;
 
@@ -104,23 +112,67 @@ public class Pinball : MonoBehaviour, IRunContext
     float chargeMax;
 
     private int score;
+    private int mult;
     public int Score => score;
+    public int Mult => mult;
     private int ballBumpCount;
     private int ballBumpCountC;
 
     private float scoreMultiplier = 1f;
+    private float xpMultiplier = 1f;
+    private float baseScoreMult = 1f;
+    private float baseXPMult = 1f;
 
-    private float bonusTimer;
+    private float scoreBonusTimer;
+    private float xpBonusTimer;
     private bool hasMult;
+
+    private int bumperBouncesS;
+    private int bumperBouncesG;
+
+    private bool extraHitsS;
+    private bool extraHitsG;
+    private float bonusHitsS;
+    private float bonusHitsG;
+    private int bouncesForBonusS;
+    private int bouncesForBonusG;
+
+    private bool canHitL;
+    private bool canHitR;
+    private bool hasBeenHitL;
+    private bool hasBeenHitR;
+
+    public bool ExtraHitsG => extraHitsG;
+    public bool ExtraHitsS => extraHitsS;
+    public float BonusHitsG => bonusHitsG;
+    public float BonusHitsS => bonusHitsS;
+    public int BouncesForBonusG => bouncesForBonusG;
+    public int BouncesForBonusS => bouncesForBonusS;
+
+
+    private float baseDamage = 5f;
+    private float tempDamage = 1f;
+    public float Damage => baseDamage;
 
     private const float x2MULT = 100f;
     private const float x4MULT = 200f;
 
     public float ScoreMultiplier => scoreMultiplier;
     public bool IsScoreMultiplierActive => scoreMultiplier > 1f;
-    public float BonusTimeRemaining => bonusTimer;
+    public float ScoreBonusTimeRemaining => scoreBonusTimer;
+
+    public float XPMultiplier => xpMultiplier;
+    public bool IsXPMultiplierActive => xpMultiplier > 1f;
+    public float XPBonusTimeRemaining => xpBonusTimer;
+
+
+
 
     private readonly List<RewardSO> rewardPool = new();
+
+    public bool destroyedBumper;
+    private float destroyedMult = 2f;
+
 
     [SerializeField]
     ParticleSystem xpFXPrefab;
@@ -128,7 +180,11 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField]
     BallXPBar ballXPScript;
 
-    int xpCount = 3;
+    private int xpCount = 3;
+    public int DroppedXP => xpCount;
+
+    public float explosionForce = 50f;
+    public float explosionRadius = 3f;
 
 
     float wallTimer;
@@ -180,6 +236,8 @@ public class Pinball : MonoBehaviour, IRunContext
         if(Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         maxXP = XPFormula.XpReq(level);
+
+        ballCol = ball.gameObject.GetComponent<Collider>();
     }
 
     // Start is called before the first frame update
@@ -199,10 +257,42 @@ public class Pinball : MonoBehaviour, IRunContext
     void Update()
     {
 
-        if(leftPaddle != null)
+
+
+
+        if (leftPaddle != null)
+        {
             leftPaddle.PaddleMovement(Input.GetKey(leftPaddleBind));
+
+            if (Input.GetKeyDown(leftPaddleBind))
+                HitCheck(leftPaddleBind);
+
+            if (ball.isTouchingPaddles && (Input.GetKey(leftPaddleBind) || canHitL) && !hasBeenHitL)
+            {
+                Debug.Log("left hit!");
+                hasBeenHitL = true;
+                StartCoroutine(ResetLBumper(.4f));
+            }
+        }
         if(rightPaddle != null)
+        {
             rightPaddle.PaddleMovement(Input.GetKey(rightPaddleBind));
+
+            if (Input.GetKeyDown(rightPaddleBind))
+                HitCheck(rightPaddleBind);
+
+            if (ball.isTouchingPaddles && (Input.GetKey(rightPaddleBind) || canHitR) && !hasBeenHitR)
+            {
+                Debug.Log("right hit!");
+                hasBeenHitR = true;
+                StartCoroutine(ResetRBumper(.4f));
+            }
+        }
+
+        if (xpMultiplier < baseXPMult)
+            xpMultiplier = baseXPMult;
+        if(scoreMultiplier < baseScoreMult)
+            scoreMultiplier = baseScoreMult;
 
         if(wallTimerStart)
         {
@@ -218,26 +308,30 @@ public class Pinball : MonoBehaviour, IRunContext
             SceneManager.LoadScene(0);
         }
 
-        if (curXP >= maxXP)
-        {
-            curXP -= maxXP;
-            level++;
-            LevelUp();
-        }
-
-        if(Input.GetKeyDown(KeyCode.P))
+        if (Input.GetKeyDown(KeyCode.P))
         {
             AddXP(150);
         }
 
         //score mult
-        if(IsScoreMultiplierActive && bonusTimer > 0f)
+        if(IsScoreMultiplierActive && scoreBonusTimer > 0f)
         {
-            bonusTimer -= Time.unscaledDeltaTime;
-            if(bonusTimer <= 0f)
+            scoreBonusTimer -= Time.unscaledDeltaTime;
+            if(scoreBonusTimer <= 0f)
             {
-                bonusTimer = 0f;
-                scoreMultiplier = 1f;
+                scoreBonusTimer = 0f;
+                scoreMultiplier = baseScoreMult;
+            }
+        }
+
+        //xp mult
+        if(IsXPMultiplierActive && xpBonusTimer > 0f)
+        {
+            xpBonusTimer -= Time.unscaledDeltaTime;
+            if(xpBonusTimer <= 0f)
+            {
+                xpBonusTimer = 0f;
+                xpMultiplier = baseXPMult;
             }
         }
 
@@ -330,19 +424,57 @@ public class Pinball : MonoBehaviour, IRunContext
     public void AddScore(int gameScore, int bumpCount, int bumpCountConsec)
     {
         int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier);
-        score += finalPoints;
+
+        if(extraHitsS)
+        {
+            bumperBouncesS++;
+            if (bumperBouncesS > bouncesForBonusS)
+            {
+                Debug.Log($"Before Bonus! {finalPoints}");
+                finalPoints = Mathf.RoundToInt(finalPoints * bonusHitsS);
+                Debug.Log($"Bonus! {finalPoints}");
+                bumperBouncesS = 0;
+            }
+        }
+        if (extraHitsG)
+        {
+            bumperBouncesG++;
+
+            if (bumperBouncesG > bouncesForBonusG)
+            {
+                xpCount = Mathf.RoundToInt(xpCount * bonusHitsG);
+                Debug.Log($"hello {xpCount}");
+                bumperBouncesG = -1;
+            }
+            if (bumperBouncesG == 0)
+            {
+                xpCount = Mathf.RoundToInt(xpCount / bonusHitsG);
+                Debug.Log($"hello bye {xpCount}");
+            }
+
+        }
+
+
+        if(destroyedBumper)
+        {
+            score += Mathf.RoundToInt(finalPoints * destroyedMult);
+            destroyedBumper = false;
+        }
+        else
+            score += finalPoints;
         ballBumpCount = bumpCount;
         ballBumpCountC = bumpCountConsec;
         uim.UpdateScore(score, bumpCount, bumpCountConsec);
     }
 
-    public void AddXP(int xp)
+    public void AddXP(float xp)
     {
-        curXP += xp;
-        while(curXP >= maxXP)
+        float finalXP = xp * xpMultiplier;
+        curXP += finalXP;
+        if (curXP >= maxXP)
         {
-            curXP -= maxXP;
             pendingLevelUps++;
+            curXP -= maxXP;
         }
 
         ballXPScript.UpdateXP((float)curXP, (float)maxXP, level);
@@ -354,12 +486,15 @@ public class Pinball : MonoBehaviour, IRunContext
 
     }
 
-    public void SpawnXP(Vector3 pos)
+    public void SpawnXP(Vector3 pos, bool dub)
     {
         var emitParams = new ParticleSystem.EmitParams();
         //AdjustXP(emitParams);
         ParticleSystem xpFX = Instantiate(xpFXPrefab, pos, xpFXPrefab.transform.rotation);
-        xpFX.Emit(xpCount);
+        if(dub)
+            xpFX.Emit(xpCount * 2);
+        else
+            xpFX.Emit(xpCount);
     }
 
     private void StartNextLevelUp()
@@ -373,22 +508,141 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         level++;
         maxXP = XPFormula.XpReq(level);
+        ApplyLevelBonuses();
     }
 
-    public void OnRewardChosen(RewardSO reward)
+
+    public void ApplyLevelBonuses()
     {
-        reward.Apply(this);
-        pendingLevelUps--;
-
-        if (pendingLevelUps > 0)
-            ChangeState(PinballState.LevelUp);
+        if(level % 5 == 0)
+        {
+            baseScoreMult += .5f;
+            baseXPMult += .5f;
+        }
         else
-            ChangeState(PinballState.Play);
+        {
+            baseScoreMult += .15f;
+            baseXPMult += .15f;
+        }
     }
 
+    public void DamageBumper(Bumper bumper)
+    {
+        bumper.curHealth -= baseDamage;
+        if(bumper.curHealth <= 0)
+        {
+            StartCoroutine(RespawnRoutine(bumper));
+        }
+    }
+
+    private void HitCheck(KeyCode paddles)
+    {
+        if (paddles == leftPaddleBind)
+            StartCoroutine(RegCheck(leftPaddleBind));
+        else StartCoroutine(RegCheck(rightPaddleBind));
+    }
+
+    private IEnumerator RespawnRoutine(Bumper bumper)
+    {
+        if(bumper.type == BumperType.Small)
+        {
+            explosionForce *= .5f;
+            explosionRadius *= .5f;
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+                bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+        else if(bumper.type == BumperType.Default)
+        {
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+    bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+        else if(bumper.type == BumperType.Large)
+        {
+            explosionForce *= 1.5f;
+            explosionRadius *= 1.5f;
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+    bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+
+            Collider col = bumper.GetComponent<Collider>();
+        MeshRenderer mr = bumper.GetComponent<MeshRenderer>();
+        if (col) col.enabled = false;
+        if (mr) mr.enabled = false;
+
+        yield return new WaitForSeconds(bumper.cooldown);
+
+        bumper.curHealth = bumper.maxHealth;
+        bumper.gameObject.SetActive(true);
+        if (col) col.enabled = true;
+        if (mr) mr.enabled = true;
+
+    }
+
+    private IEnumerator RegCheck(KeyCode paddle)
+    {
+        if (paddle == leftPaddleBind)
+            canHitL = true;
+        else canHitR = true;
+
+            yield return new WaitForSeconds(.6f);
+
+        if(paddle == leftPaddleBind)
+        canHitL = false;
+        else canHitR = false;
+    }
+
+    private IEnumerator ResetLBumper(float cd)
+    {
+        yield return new WaitForSeconds(cd);
+
+        hasBeenHitL = false;
+    }
+    private IEnumerator ResetRBumper(float cd)
+    {
+        yield return new WaitForSeconds(cd);
+
+        hasBeenHitR = false;
+    }
+
+
+
+
+    #region Ability Application
+
+    public void ApplyXPMultiplier(float multiplier, bool cursed)
+    {
+        if (cursed)
+        {
+            xpCount += 1;
+            if (xpBonusTimer > 5)
+                xpBonusTimer = 5;
+            xpMultiplier *= 2;
+        }
+        else
+            xpMultiplier += multiplier;
+    }
+
+    public void ApplyXPBonusTime(float time, bool cursed)
+    {
+        if (!IsXPMultiplierActive) return;
+
+        if (cursed)
+        {
+            if (xpBonusTimer > 3)
+                xpBonusTimer = 3;
+        }
+        else
+        {
+            xpBonusTimer += time;
+            if (xpBonusTimer > 30)
+                xpBonusTimer = 30f;
+        }
+    }
 
     public void ApplyScoreMultiplier(float multiplier, bool cursed)
     {
+
+
         if (multiplier == x2MULT)
             scoreMultiplier *= 2;
         else if (cursed)
@@ -397,17 +651,127 @@ public class Pinball : MonoBehaviour, IRunContext
             scoreMultiplier += multiplier;
     }
 
-    public void ApplyBonusTime(float time, bool cursed)
+    public void ApplyScoreBonusTime(float time, bool cursed)
     {
 
         if (!IsScoreMultiplierActive) return;
 
             if(cursed)
             {
-                bonusTimer *= .1f;
+                scoreBonusTimer *= .1f;
             }
             else
-                bonusTimer += time;
+            scoreBonusTimer += time;
+    }
+
+    public void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusBounces, int bounces, bool bonus, bool cursed)
+    {
+        float Size = (100f + size) / 100f;
+        float Speed = (100f + speed) / 1000f;
+        float Mult = (100f + scoreMult) / 100f;
+        float Bounciness = ((100f * bounciness) / 10000f);
+
+        if(scoreMult != 0)
+        baseScoreMult *= Mult;
+
+        if(bounciness != 0)
+        {
+            ballCol.material.bounciness *= 1 + Bounciness;
+        }
+
+        if (bonus)
+        {
+            extraHitsS = true;
+            bouncesForBonusS = bounces;
+            bonusHitsS = bonusBounces;
+        }
+
+        if(size != 0)
+        {
+            ball.gameObject.transform.localScale *= Size;
+        }
+        if (speed != 0)
+        ball.maxSpeed *= 1 + Speed;
+
+    }
+    public void ApplyGrowFX(float size, float speed, float bounciness, float xpMult, float bonusBounces, int bounces, bool bonus, bool cursed)
+    {
+        float Size = (100f + size) / 100f;
+        float Speed = (100f + speed) / 1000f;
+        float Mult = (100f + xpMult) / 100f;
+        float Bounciness = ((100f * bounciness) / 10000f);
+
+        if (xpMult != 0)
+            baseXPMult *= Mult;
+
+        if (bounciness != 0)
+        {
+            ballCol.material.bounciness *= 1 + Bounciness;
+        }
+
+        if (bonus)
+        {
+            extraHitsG = true;
+            bouncesForBonusG = bounces;
+            bonusHitsG = bonusBounces;
+        }
+
+        if (size != 0)
+        {
+            ball.gameObject.transform.localScale *= Size;
+        }
+        if (speed != 0)
+        {
+            ball.maxSpeed *= 1 - Speed;
+        }
+
+    }
+
+    public void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuraton, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    {
+        ball.ChangeElement(Elemental.Fire);
+        tempDamage += bonusDamage;
+        _burnDamage = burnDamage;
+        _burnDuration = burnDuraton;
+        elementalBounceDuration = bounceDuration;
+        fireExplode = canExplode;
+        fireExplosionSize = explosionSize;
+        fireExplosionDamage = explosionDamageFlat;
+    }
+
+
+    #endregion
+
+
+    #region Reward Scriptable Object Methods
+
+    public void OnRewardChosen(RewardSO reward)
+    {
+        if(reward.Scalable && reward.ReplacesReward != null)
+        {
+            var old = reward.ReplacesReward;
+
+            if(Owns(old.Id))
+            {
+                //remove old ownership
+                active.Remove(old.Id);
+                owned.Remove(old.Id);
+
+                //mark the new tier as owned
+                reward.Apply(this);
+
+                pendingLevelUps--;
+                ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
+                return;
+            }
+        }
+
+
+        reward.Apply(this);
+        pendingLevelUps--;
+
+        ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
+
     }
 
     private RewardSO PickOneWeighted(List<RewardSO> pool, RewardRarity rarity)
@@ -441,10 +805,10 @@ public class Pinball : MonoBehaviour, IRunContext
     private List<RewardSO> GetRewardChoices()
     {
         var eligible = rewardPool.Where(r => r.IsEligible(this)).ToList();
-        if (eligible.Count < 3) eligible = rewardPool.ToList();
+        if (eligible.Count < 6) eligible = rewardPool.ToList();
 
         var picks = new List<RewardSO>();
-        for(int i = 0; i < 3; i++)
+        for(int i = 0; i < 6; i++)
             {
             RewardSO choice = null;
             for(int j = 0; j < 10 && choice == null; j++)
@@ -459,6 +823,7 @@ public class Pinball : MonoBehaviour, IRunContext
         return picks;
 
     }
+    #endregion
 
 }
 

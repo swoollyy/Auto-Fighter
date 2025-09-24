@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 581b5d6ad2ceb7b469250c6a7b5a3b32, type: 3}
+  m_Name: crs_bfx_g
+  m_EditorClassIdentifier: 
+  rewardID: crs_bfx_g
+  displayName: Omniversal (Cursed)
+  description: 'Ball Size +25%
+
+    Ball Speed -35%
+
+    Bounciness +12%
+
+    Ball
+    Hits 5x XP every 20 bounces'
+  category: 3
+  rarity: 6
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 11400000, guid: 0f145bd2894c14a4baeaa41908683c72, type: 2}
+  exclusivityKey: grow_crs
+  blockedKeys:
+  - shrink_com
+  size: 25
+  speed: -35
+  multiplier: 0
+  bonusHits: 5
+  bounciness: 12
+  bouncesForBonusHits: 20
+  bonus: 1
+  cursed: 0
