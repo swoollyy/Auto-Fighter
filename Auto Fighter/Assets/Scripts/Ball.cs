@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
+
 public class Ball : MonoBehaviour
 {
 
@@ -81,9 +83,9 @@ public class Ball : MonoBehaviour
         //if false, set signal to true, start timer, has bounced is false
         //if true, player is stuck, start timer if it isnt started
         //false scenario----
-            //debugtimer starts, if timer is > .01f and theres no signal from hasBounced, not stuck, reset debugtimer
+        //debugtimer starts, if timer is > .01f and theres no signal from hasBounced, not stuck, reset debugtimer
         //true scenario----
-           //if timer is greater than 4 seconds and signal is true, reset the ball
+        //if timer is greater than 4 seconds and signal is true, reset the ball
 
 
         if(hasBounced)
@@ -184,6 +186,10 @@ public class Ball : MonoBehaviour
             PM.AddScore(100, bumpCount, bumpCountConsecutive);
         else
             PM.AddScore(50, bumpCount, bumpCountConsecutive);
+
+
+        GetComponent<BallElementalState>()?.OnBounce();
+
     }
 
 

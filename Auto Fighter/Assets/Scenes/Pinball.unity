@@ -324,8 +324,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!54 &60705060
@@ -477,8 +477,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!54 &69831082
@@ -630,8 +630,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &96592039
@@ -917,8 +917,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!136 &108501901
@@ -2141,8 +2141,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!136 &302230678
@@ -2520,8 +2520,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &328262369
@@ -3636,8 +3636,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!136 &510641856
@@ -4308,6 +4308,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 601681491}
   m_CullTransparentMesh: 1
+--- !u!1 &603917426 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 9000603096195884635, guid: f2319656136478243baaf8bb86267644, type: 3}
+  m_PrefabInstance: {fileID: 983610134186628974}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &607265924
 GameObject:
   m_ObjectHideFlags: 0
@@ -5763,7 +5768,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 14.96}
+  m_AnchoredPosition: {x: 0, y: 14.959961}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 1, y: 1}
 --- !u!1 &832111587
@@ -6230,12 +6235,25 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 1997940948258933112, guid: f2319656136478243baaf8bb86267644, type: 3}
   m_PrefabInstance: {fileID: 983610134186628974}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
+  m_GameObject: {fileID: 603917426}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6145c56e09ca1bd4ba24cbbcb7f8de68, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &889133592
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 603917426}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9081d0e79a2025a45935e27febb0f51c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  initialState: 1
 --- !u!1 &891737954
 GameObject:
   m_ObjectHideFlags: 0
@@ -6560,8 +6578,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!136 &936775128
@@ -7019,8 +7037,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &989127267
@@ -7172,8 +7190,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!54 &1019981289
@@ -7596,8 +7614,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &1072246772
@@ -9170,8 +9188,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &1265674143
@@ -9457,8 +9475,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!54 &1299000354
@@ -10656,8 +10674,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!136 &1457014547
@@ -10809,8 +10827,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!136 &1466728383
@@ -11952,8 +11970,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &1538382920
@@ -14783,8 +14801,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!136 &1915419480
@@ -14936,8 +14954,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 15
+  maxHealth: 15
   cooldown: 20
   type: 1
 --- !u!54 &1917429879
@@ -15815,8 +15833,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCooldown: 0.08
-  curHealth: 5
-  maxHealth: 5
+  curHealth: 100
+  maxHealth: 100
   cooldown: 20
   type: 1
 --- !u!54 &2132287227
@@ -16015,7 +16033,10 @@ PrefabInstance:
     - {fileID: 4275478146807089410, guid: f2319656136478243baaf8bb86267644, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 9000603096195884635, guid: f2319656136478243baaf8bb86267644, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 889133592}
   m_SourcePrefab: {fileID: 100100000, guid: f2319656136478243baaf8bb86267644, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

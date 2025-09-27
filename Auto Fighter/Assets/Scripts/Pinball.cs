@@ -77,6 +77,7 @@ public class Pinball : MonoBehaviour, IRunContext
         {RewardRarity.Cursed, 9f},
     };
 
+
     private PinballState currentState;
     public PinballState CurrentState => currentState;
 
@@ -92,6 +93,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
 
     public Ball ball;
+    BallElementalState elementalState;
 
     private Collider ballCol;
 
@@ -151,7 +153,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
 
     private float baseDamage = 5f;
-    private float tempDamage = 1f;
     public float Damage => baseDamage;
 
     private const float x2MULT = 100f;
@@ -236,6 +237,7 @@ public class Pinball : MonoBehaviour, IRunContext
         if(Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         maxXP = XPFormula.XpReq(level);
+        elementalState = ball.GetComponent<BallElementalState>();
 
         ballCol = ball.gameObject.GetComponent<Collider>();
     }
@@ -258,6 +260,7 @@ public class Pinball : MonoBehaviour, IRunContext
     {
 
 
+        Debug.Log($"Current State - {elementalState.CurrentState}");
 
 
         if (leftPaddle != null)
@@ -526,15 +529,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    public void DamageBumper(Bumper bumper)
-    {
-        bumper.curHealth -= baseDamage;
-        if(bumper.curHealth <= 0)
-        {
-            StartCoroutine(RespawnRoutine(bumper));
-        }
-    }
-
     private void HitCheck(KeyCode paddles)
     {
         if (paddles == leftPaddleBind)
@@ -542,7 +536,7 @@ public class Pinball : MonoBehaviour, IRunContext
         else StartCoroutine(RegCheck(rightPaddleBind));
     }
 
-    private IEnumerator RespawnRoutine(Bumper bumper)
+    public IEnumerator RespawnRoutine(Bumper bumper)
     {
         if(bumper.type == BumperType.Small)
         {
@@ -729,14 +723,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuraton, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
-        ball.ChangeElement(Elemental.Fire);
-        tempDamage += bonusDamage;
-        _burnDamage = burnDamage;
-        _burnDuration = burnDuraton;
-        elementalBounceDuration = bounceDuration;
-        fireExplode = canExplode;
-        fireExplosionSize = explosionSize;
-        fireExplosionDamage = explosionDamageFlat;
+        elementalState.SetFireState(bonusDamage, burnDamage, burnDuraton, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
     }
 
 
