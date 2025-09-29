@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9aa77d2e9338b2640ad28f87bcdb02b5, type: 3}
+  m_Name: paddle_fire_c
+  m_EditorClassIdentifier: 
+  rewardID: paddle_fire_c
+  displayName: Fire Paddle
+  description: 'Adds Burn to hit bumpers, burning 1 DPS for 3 seconds.
+
+    +2 Bonus
+    Damage
+
+    +1 Bounce Duration'
+  category: 4
+  rarity: 0
+  isPaddleReward: 0
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 0}
+  exclusivityKey: fire_c
+  blockedKeys: []
+  bonusDamageFlat: 2
+  burnDamage: 1
+  burnDuration: 3
+  explosionDamageFlat: 0
+  bounceDuration: 1
+  explosionSize: 0
+  canExplode: 0
+  cursed: 0
