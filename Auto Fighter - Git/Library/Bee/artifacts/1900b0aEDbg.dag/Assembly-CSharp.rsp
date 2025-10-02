@@ -369,6 +369,7 @@
 "Assets/Scripts/BaseCharacter.cs"
 "Assets/Scripts/Brawler.cs"
 "Assets/Scripts/Bumper.cs"
+"Assets/Scripts/BumperElementalState.cs"
 "Assets/Scripts/BumperElements.cs"
 "Assets/Scripts/CharacterStat.cs"
 "Assets/Scripts/CharacterUI.cs"

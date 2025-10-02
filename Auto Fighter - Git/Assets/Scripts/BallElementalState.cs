@@ -125,7 +125,7 @@ public class BallElementalState : MonoBehaviour
         //TODO Remove VFX/SFX
     }
 
-    public void OnBounce()
+    public void OnBounce(Bumper bumper)
     {
         if (!effectActive) return;
         bouncesRemaining--;
@@ -134,6 +134,15 @@ public class BallElementalState : MonoBehaviour
             ClearState();
             effectActive = false;
         }
+
+        if(burnDamage > 0 && bumper != null)
+        {
+            var elem = bumper.gameObject.GetComponent<BumperElementalState>();
+            elem.ApplyBurn(burnDamage, burnDuration);
+        }
+
+
+
     }
 
     #region Elemental State Methods
@@ -146,6 +155,8 @@ public class BallElementalState : MonoBehaviour
         this.burnDamage = burnDamage;
         this.burnDuration = burnDuration;
         bouncesRemaining += bounceDuration;
+        if(bouncesRemaining > bounceDuration)
+            bouncesRemaining = bounceDuration;
         fireExplode = canExplode;
         fireExplosionSize = explosionSize;
         fireExplosionDamage = explosionDamageFlat;

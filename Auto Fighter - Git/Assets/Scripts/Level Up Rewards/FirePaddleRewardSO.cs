@@ -15,10 +15,6 @@ public class FirePaddleRewardSO : RewardSO
     [SerializeField] private bool cursed = false;
 
 
-    void OnEnable()
-    {
-        isPaddleReward = true;
-    }
 
     public override void Apply(IRunContext ctx)
     {
@@ -26,7 +22,7 @@ public class FirePaddleRewardSO : RewardSO
         ctx.SetActive(Id, true);
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
-
+        isPaddleReward = true;
 
 
     }

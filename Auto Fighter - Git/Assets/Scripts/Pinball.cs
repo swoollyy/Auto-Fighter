@@ -512,15 +512,22 @@ public class Pinball : MonoBehaviour, IRunContext
 
     }
 
-    public void SpawnXP(Vector3 pos, bool dub)
+    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage)
     {
         var emitParams = new ParticleSystem.EmitParams();
         //AdjustXP(emitParams);
         ParticleSystem xpFX = Instantiate(xpFXPrefab, pos, xpFXPrefab.transform.rotation);
-        if(dub)
+        if(isDead)
+        {
             xpFX.Emit(xpCount * 2);
+        }
         else
             xpFX.Emit(xpCount);
+        if (isTakingElemDamage)
+        {
+            xpFX.Emit(Mathf.RoundToInt(xpCount / 3));
+        }
+
     }
 
     private void StartNextLevelUp()
@@ -778,6 +785,8 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void OnRewardChosen(RewardSO reward)
     {
+        reward.Apply(this);
+        pendingLevelUps--;
         if (reward.isPaddleReward)
         {
             Debug.Log("succ");
@@ -787,6 +796,7 @@ public class Pinball : MonoBehaviour, IRunContext
         if (reward.Scalable && reward.ReplacesReward != null)
         {
             var old = reward.ReplacesReward;
+            Debug.Log("succer");
 
             if (Owns(old.Id))
             {
@@ -803,9 +813,6 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
-
-        reward.Apply(this);
-        pendingLevelUps--;
 
         ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
 

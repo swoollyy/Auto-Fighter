@@ -145,7 +145,7 @@ public class Ball : MonoBehaviour
         rb.AddForce((-Vector3.right * (35f * power)) + (Vector3.forward * (5f * power)), ForceMode.Impulse);
     }
 
-    public void Bump(Vector3 dir, float power, int bumper)
+    public void Bump(Vector3 dir, float power, int bumper, Bumper bumperInstance)
     {
 
         bumpCount++;
@@ -188,7 +188,7 @@ public class Ball : MonoBehaviour
             PM.AddScore(50, bumpCount, bumpCountConsecutive);
 
 
-        GetComponent<BallElementalState>()?.OnBounce();
+        GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
 
     }
 

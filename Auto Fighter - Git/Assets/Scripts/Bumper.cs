@@ -18,11 +18,6 @@ public class Bumper : MonoBehaviour
 
     Vector3 savedNormal;
 
-
-
-
-
-
     Vector3 normal;
 
     bool hasStoppedColliding = false;
@@ -40,26 +35,19 @@ public class Bumper : MonoBehaviour
 
     public BumperType type;
 
+    private BumperElementalState bumperElemental;
+
     Pinball pm;
     Collider ball;
 
-    public BumperState CurrentState { get; private set; } = BumperState.None;
 
-    private float burnTimer;
-    private float burnDuration;
-    private float burnDamagePerTick;
-    private float burnTickInterval = .5f;
-    private float burnTickTimer;
 
-    public float BurnTimer => burnTimer;
-    public float BurnDuration => burnDuration;
-    public float BurnDmgPerTick => burnDamagePerTick;
-    public float BurnTickInterval => burnTickInterval;
-    public float BurnTickTimer => burnTickTimer;
+
 
     void Awake()
     {
         pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        bumperElemental = GetComponent<BumperElementalState>();
         curHealth = maxHealth;
     }
 
@@ -71,20 +59,7 @@ public class Bumper : MonoBehaviour
 
     void Update()
     {
-        if(CurrentState == BumperState.Burning)
-        {
-            burnTimer += Time.deltaTime;
-            burnTickTimer += Time.deltaTime;
-            if(burnTickTimer >= burnTickInterval)
-            {
-                burnTickTimer = 0f;
-                TakeDamage(burnDamagePerTick);
-            }
-            if(burnTimer >= burnDuration)
-            {
-                ClearBurn();
-            }
-        }
+
     }
 
     void OnCollisionEnter(Collision col)
@@ -130,7 +105,7 @@ public class Bumper : MonoBehaviour
                 {
                     pm.destroyedBumper = false;
                 }
-                rb.gameObject.GetComponent<Ball>().Bump(normal, 150f, 0);
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 150f, 0, this);
             }
             else if (this.CompareTag("SmallBumper"))
             {
@@ -142,7 +117,7 @@ public class Bumper : MonoBehaviour
                 {
                     pm.destroyedBumper = false;
                 }
-                rb.gameObject.GetComponent<Ball>().Bump(normal, 50f, 1);
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 50f, 1, this);
             }
 
             Debug.DrawRay(contact.point, normal * 2f, Color.red);
@@ -156,40 +131,27 @@ public class Bumper : MonoBehaviour
     public void TakeDamage(float amount)
     {
         curHealth -= amount;
-        if(curHealth <= 0)
+        bool isElementalActive = bumperElemental.CurrentState != BumperState.None;
+
+        if (curHealth <= 0)
         {
             curHealth = 0;
-            if(pm != null)
+            if (pm != null)
             {
-                pm.SpawnXP(transform.position, true);
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: isElementalActive);
                 pm.destroyedBumper = true;
             }
             StartCoroutine(pm.RespawnRoutine(this));
-            
+            return;
+
         }
-        else pm.SpawnXP(transform.position, false);
+        if (isElementalActive)
+        {
+            pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: true);
+        }
+        else
+        {
+            pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);
+        }
     }
-
-
-    #region Elemental Applications
-    public void ApplyBurn(float dps, float duration)
-    {
-        CurrentState = BumperState.Burning;
-        burnDuration = duration;
-        burnTimer = 0f;
-        burnTickTimer = 0f;
-        burnDamagePerTick = dps * burnTickInterval;
-    }
-
-    public void ClearBurn()
-    {
-        burnDuration = 0f;
-        burnTimer = 0f;
-        burnTickTimer = 0f;
-        burnDamagePerTick = 0f;
-        CurrentState = BumperState.None;
-    }
-
-    #endregion
-
 }

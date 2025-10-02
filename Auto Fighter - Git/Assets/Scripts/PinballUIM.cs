@@ -123,6 +123,8 @@ public class PinballUIM : MonoBehaviour
     {
         gamePanel.SetActive(false);
 
+        Debug.Log("Succc");
+
         paddleSelectPanel.SetActive(true);
     }
 
@@ -130,8 +132,15 @@ public class PinballUIM : MonoBehaviour
     {
         paddleSelectPanel.SetActive(false);
 
-        if(hasMoreLevels)
+        Debug.Log("Succc!!");
+
+
+        if (hasMoreLevels)
+        {
+            Debug.Log("1Succc!!");
             levelUpPanel.SetActive(true);
+
+        }
     }
 
 
