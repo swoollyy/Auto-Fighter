@@ -26,6 +26,7 @@ public interface IRunContext
 
     void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed);
 
+    void ApplyWaterFX(float bonusXP, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed);
 
 
 }

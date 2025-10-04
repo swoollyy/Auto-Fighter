@@ -47,11 +47,24 @@ public class PaddleElementalState : MonoBehaviour
         IsCursed = cursed;
     }
 
+    public void StoreWaterData(float bonusXP, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
+    {
+        // Implement water data storage if needed
+        BounceDuration = bounceDuration;
+        IsCursed = cursed;
+    }
+
     public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDur, int bounceDur, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
         SetPaddleState(PaddleState.Fire);
         StoreFireData(bonusDamageFlat, burnDamage, burnDur, bounceDur, canExplode, explosionSize, explosionDamageFlat, cursed);
         // TODO: spawn paddle fire VFX/SFX here
+    }
+
+    public void ApplyWater(float bonuxXP, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
+    {
+        SetPaddleState(PaddleState.Water);
+        StoreWaterData(bonuxXP, bounceDuration, canBurst, burstSize, burstDamageFlat, cursed);
     }
 
     public PaddleEffectData GetEffectData()

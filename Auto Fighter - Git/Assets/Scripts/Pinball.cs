@@ -211,6 +211,7 @@ public class Pinball : MonoBehaviour, IRunContext
                 chargeMax = 1f;
                 break;
             case PinballState.Play:
+                Debug.Log("mother succwer");    
                 uim.DefaultUI();
                 chargePercentage = 0;
                 chargeTimer = 0;
@@ -225,6 +226,7 @@ public class Pinball : MonoBehaviour, IRunContext
                 break;
             case PinballState.PaddleSelect:
                 uim.PaddleSelect();
+                Debug.Log("succeereeff");
                 Time.timeScale = 0f;
                 break;
 
@@ -515,18 +517,19 @@ public class Pinball : MonoBehaviour, IRunContext
     public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage)
     {
         var emitParams = new ParticleSystem.EmitParams();
+        Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         //AdjustXP(emitParams);
-        ParticleSystem xpFX = Instantiate(xpFXPrefab, pos, xpFXPrefab.transform.rotation);
-        if(isDead)
+        ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
+        if (isDead)
         {
             xpFX.Emit(xpCount * 2);
         }
-        else
-            xpFX.Emit(xpCount);
-        if (isTakingElemDamage)
+        else if (isTakingElemDamage)
         {
+            Debug.Log($"succ {Mathf.RoundToInt(xpCount / 3)}");
             xpFX.Emit(Mathf.RoundToInt(xpCount / 3));
         }
+        else xpFX.Emit(xpCount);
 
     }
 
@@ -763,11 +766,13 @@ public class Pinball : MonoBehaviour, IRunContext
         Debug.Log($"Successfully applied paddle state  {paddle.gameObject.name}");
         if(pendingLevelUps > 0)
         {
+            Debug.Log("succccc");
             uim.ClosePaddleSelect(true);
         }
         else
         {
             uim.ClosePaddleSelect(false);
+            Debug.Log("succccerrec");
             ChangeState(PinballState.Play);
         }
     }
@@ -775,6 +780,11 @@ public class Pinball : MonoBehaviour, IRunContext
     public void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuraton, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
         elementalState.SetFireState(bonusDamage, burnDamage, burnDuraton, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+    }
+
+    public void ApplyWaterFX(float bonusXP, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
+    {
+        elementalState.SetWaterState(bonusXP, bounceDuration, canBurst, burstRadius, burstDamageFlat, cursed);
     }
 
 
@@ -814,7 +824,7 @@ public class Pinball : MonoBehaviour, IRunContext
         }
 
 
-        ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
+        ChangeState(pendingLevelUps > 0 || currentState == PinballState.PaddleSelect ? PinballState.LevelUp : PinballState.Play);
 
     }
 

@@ -111,6 +111,9 @@ public class PinballUIM : MonoBehaviour
         levelUpPanel.SetActive(false);
         paddleSelectPanel.SetActive(false);
 
+        Debug.Log("Succcfion");
+
+
         gamePanel.SetActive(true);
     }
 

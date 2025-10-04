@@ -36,6 +36,11 @@ public class BallElementalState : MonoBehaviour
     private float fireExplosionSize;
     private int fireExplosionDamage;
 
+    private float extraXP;
+    private bool waterExplode;
+    private float waterBurstSize;
+    private int waterExplosionDamage;
+
     private int bouncesRemaining;
     private bool effectActive;
 
@@ -147,7 +152,7 @@ public class BallElementalState : MonoBehaviour
 
     #region Elemental State Methods
 
-    public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
         effectActive = true;
 
@@ -158,11 +163,27 @@ public class BallElementalState : MonoBehaviour
         if(bouncesRemaining > bounceDuration)
             bouncesRemaining = bounceDuration;
         fireExplode = canExplode;
-        fireExplosionSize = explosionSize;
+        fireExplosionSize = explosionRadius;
         fireExplosionDamage = explosionDamageFlat;
         // Optionally handle 'cursed'
 
         SetState(ElementalState.Fire);
+
+    }
+
+    public void SetWaterState(float bonusXP, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
+    {
+        effectActive = true;
+
+        extraXP = bonusXP;
+        bouncesRemaining += bounceDuration;
+        if (bouncesRemaining > bounceDuration)
+            bouncesRemaining = bounceDuration;
+        waterExplode = canBurst;
+        waterBurstSize = burstRadius;
+        waterExplosionDamage = burstDamageFlat;
+
+        SetState(ElementalState.Water);
 
     }
 

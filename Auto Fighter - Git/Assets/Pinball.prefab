@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 5393819159797966579}
   - component: {fileID: 7080574603100468292}
   - component: {fileID: 6394768946215923235}
-  - component: {fileID: 4275478146807089410}
   m_Layer: 0
   m_Name: XP Collider
   m_TagString: XPCollider
@@ -106,25 +105,6 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.5
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &4275478146807089410
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2859918779068584090}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d84dd64b058277744bef27dde6c0b9e5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  lightUp: 0
-  xpBar: {fileID: 0}
-  currentXP: 0
-  maxXP: 5
-  isHoldingXP: 0
-  allyXPBar: {fileID: 0}
-  pm: {fileID: 0}
 --- !u!1 &9000603096195884635
 GameObject:
   m_ObjectHideFlags: 0
@@ -274,7 +254,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   isInZone: 0
+  isTouchingPaddles: 0
   hasBounced: 0
+  maxSpeed: 50
 --- !u!1 &9054357730517954332
 GameObject:
   m_ObjectHideFlags: 0
@@ -317,7 +299,7 @@ ParticleSystemForceField:
   m_Enabled: 1
   m_Parameters:
     m_Shape: 0
-    m_StartRange: 0.5
+    m_StartRange: 0.75
     m_EndRange: 2
     m_Length: 1
     m_GravityFocus: 0

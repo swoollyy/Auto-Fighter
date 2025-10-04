@@ -92,7 +92,7 @@ public class Bumper : MonoBehaviour
 
             var ballElem = rb.gameObject.GetComponent<BallElementalState>();
             float tempDamage = ballElem != null ? ballElem.ActiveTempDamage : 0f;
-            TakeDamage(pm.Damage + tempDamage);
+            TakeDamage(pm.Damage + tempDamage, elemDmg: false);
 
             rb.velocity = Vector3.zero;
             if (this.CompareTag("Bumper"))
@@ -128,26 +128,26 @@ public class Bumper : MonoBehaviour
 
     }
 
-    public void TakeDamage(float amount)
+    public void TakeDamage(float amount, bool elemDmg)
     {
         curHealth -= amount;
-        bool isElementalActive = bumperElemental.CurrentState != BumperState.None;
 
         if (curHealth <= 0)
         {
             curHealth = 0;
             if (pm != null)
             {
-                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: isElementalActive);
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg);
                 pm.destroyedBumper = true;
             }
             StartCoroutine(pm.RespawnRoutine(this));
             return;
 
         }
-        if (isElementalActive)
+        if (elemDmg)
         {
-            pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: true);
+            if(curHealth > 0)
+                pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true);
         }
         else
         {
