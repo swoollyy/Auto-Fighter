@@ -8,33 +8,61 @@ public class PaddleEffectData
 
     // Fire fields (extend later for other elements)
     public readonly int FireBonusDamage;
-    public readonly float BurnDamage;
-    public readonly float BurnDuration;
-    public readonly int BounceDuration;
-    public readonly bool CanExplode;
-    public readonly float ExplosionSize;
-    public readonly int ExplosionDamageFlat;
-    public readonly bool IsCursed;
+    public readonly float FireBurnDamage;
+    public readonly float FireBurnDuration;
+    public readonly int FireBounceDuration;
+    public readonly bool FireCanExplode;
+    public readonly float FireExplosionSize;
+    public readonly int FireExplosionDamageFlat;
+    public readonly bool FireIsCursed;
+
+    // Water fields (extend later for other elements)
+    public readonly float WaterBonusXP;
+    public readonly int WaterDamageFlat;
+    public readonly float WaterDrenchDuration;
+    public readonly int WaterBounceDuration;
+    public readonly bool WaterCanBurst;
+    public readonly float WaterBurstSize;
+    public readonly int WaterBurstDamageFlat;
+    public readonly bool WaterIsCursed;
 
     public PaddleEffectData(
         PaddleState element,
         int fireBonusDamage = 0,
-        float burnDamage = 0f,
-        float burnDuration = 0f,
-        int bounceDuration = 0,
-        bool canExplode = false,
-        float explosionSize = 0f,
-        int explosionDamageFlat = 0,
-        bool isCursed = false)
+        float fireBurnDamage = 0f,
+        float fireBurnDuration = 0f,
+        int fireBounceDuration = 0,
+        bool fireCanExplode = false,
+        float fireExplosionSize = 0f,
+        int fireExplosionDamageFlat = 0,
+        bool fireIsCursed = false,
+
+        float waterBonusXP = 0,
+        int waterDamageFlat = 0,
+        float waterDrenchDuration = 0f,
+        int waterBounceDuration = 0,
+        bool waterCanBurst = false,
+        float waterBurstSize = 0f,
+        int waterBurstDamageFlat = 0,
+        bool waterIsCursed = false)
     {
         Element = element;
         FireBonusDamage = fireBonusDamage;
-        BurnDamage = burnDamage;
-        BurnDuration = burnDuration;
-        BounceDuration = bounceDuration;
-        CanExplode = canExplode;
-        ExplosionSize = explosionSize;
-        ExplosionDamageFlat = explosionDamageFlat;
-        IsCursed = isCursed;
+        FireBurnDamage = fireBurnDamage;
+        FireBurnDuration = fireBurnDuration;
+        FireBounceDuration = fireBounceDuration;
+        FireCanExplode = fireCanExplode;
+        FireExplosionSize = fireExplosionSize;
+        FireExplosionDamageFlat = fireExplosionDamageFlat;
+        FireIsCursed = fireIsCursed;
+
+        WaterBonusXP = waterBonusXP;
+        WaterDamageFlat = waterDamageFlat;
+        WaterDrenchDuration = waterDrenchDuration;
+        WaterBounceDuration = waterBounceDuration;
+        WaterCanBurst = waterCanBurst;
+        WaterBurstSize = waterBurstSize;
+        WaterBurstDamageFlat = waterBurstDamageFlat;
+        WaterIsCursed = waterIsCursed;
     }
 }

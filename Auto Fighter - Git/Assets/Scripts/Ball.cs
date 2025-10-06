@@ -266,16 +266,27 @@ public class Ball : MonoBehaviour
                 // forward the stored paddle parameters to the ball elemental state
                 elem.SetFireState(
                     effect.FireBonusDamage,
-                    effect.BurnDamage,
-                    effect.BurnDuration,
-                    effect.BounceDuration,
-                    effect.CanExplode,
-                    effect.ExplosionSize,
-                    effect.ExplosionDamageFlat,
-                    effect.IsCursed
+                    effect.FireBurnDamage,
+                    effect.FireBurnDuration,
+                    effect.FireBounceDuration,
+                    effect.FireCanExplode,
+                    effect.FireExplosionSize,
+                    effect.FireExplosionDamageFlat,
+                    effect.FireIsCursed
                 );
                 break;
-
+            case PaddleState.Water:
+                elem.SetWaterState(
+                    effect.WaterBonusXP,
+                    effect.WaterDamageFlat,
+                    effect.WaterDrenchDuration,
+                    effect.WaterBounceDuration,
+                    effect.WaterCanBurst,
+                    effect.WaterBurstSize,
+                    effect.WaterBurstDamageFlat,
+                    effect.WaterIsCursed
+                );
+                break;
             // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:
                 break;

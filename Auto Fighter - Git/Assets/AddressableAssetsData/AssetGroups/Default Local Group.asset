@@ -29,6 +29,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 20de8fc767d963b469f71ff4b7c55fff
+    m_Address: Assets/Level Up Rewards/Paddle FX/paddle_water_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 446f9b08bcba53644b295152b49c37b1
     m_Address: Assets/Level Up Rewards/XP Multiplier/r_xpm.asset
     m_ReadOnly: 0

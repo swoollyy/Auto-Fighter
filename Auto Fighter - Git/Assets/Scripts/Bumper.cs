@@ -90,9 +90,6 @@ public class Bumper : MonoBehaviour
 
                 ball = col.collider;
 
-            var ballElem = rb.gameObject.GetComponent<BallElementalState>();
-            float tempDamage = ballElem != null ? ballElem.ActiveTempDamage : 0f;
-            TakeDamage(pm.Damage + tempDamage, elemDmg: false);
 
             rb.velocity = Vector3.zero;
             if (this.CompareTag("Bumper"))
@@ -123,6 +120,8 @@ public class Bumper : MonoBehaviour
             Debug.DrawRay(contact.point, normal * 2f, Color.red);
             rb.gameObject.GetComponent<Ball>().hasBounced = true;
 
+            TakeDamage(pm.Damage + pm.ExtraDamage, elemDmg: false);
+
         }
 
 
@@ -130,8 +129,7 @@ public class Bumper : MonoBehaviour
 
     public void TakeDamage(float amount, bool elemDmg)
     {
-        curHealth -= amount;
-
+            curHealth -= amount;
         if (curHealth <= 0)
         {
             curHealth = 0;
@@ -144,14 +142,22 @@ public class Bumper : MonoBehaviour
             return;
 
         }
+
         if (elemDmg)
         {
-            if(curHealth > 0)
+            if (curHealth > 0)
                 pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true);
         }
         else
         {
-            pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);
+            if (bumperElemental.CurrentState == BumperState.Drenched)
+            {
+                pm.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP);
+            }
+            else
+            {
+                pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);
+            }
         }
     }
 }

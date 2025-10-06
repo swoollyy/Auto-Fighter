@@ -5,7 +5,9 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Rewards/Water Paddle FX")]
 public class WaterPaddleRewardSO : RewardSO
 {
-    [SerializeField] private float bonusXPperc = 1;
+    [SerializeField] private float bonusXPPerc = 1f;
+    [SerializeField] private int bonusDamageFlat = 1;
+    [SerializeField] private float drenchDuration = 1f;
     [SerializeField] private int explosionDamageFlat = 1;
     [SerializeField] private int bounceDuration = 1;
     [SerializeField] private float explosionSize = 1f;
@@ -27,8 +29,8 @@ public class WaterPaddleRewardSO : RewardSO
 
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
-        Debug.Log("nice!");
-        paddle.ApplyWater(bonusXPperc, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+        Debug.Log("niceu!");
+        paddle.ApplyWater(bonusXPPerc, bonusDamageFlat, drenchDuration, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
 
     }
 

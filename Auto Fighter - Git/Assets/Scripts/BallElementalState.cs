@@ -29,30 +29,49 @@ public class BallElementalState : MonoBehaviour
             // Add more combinations as needed
         };
 
-    private float tempDamage;
-    private float burnDamage;
-    private float burnDuration;
+    private float fireTempDamage;
+    private float fireBurnDamage;
+    private float fireBurnDuration;
     private bool fireExplode;
     private float fireExplosionSize;
     private int fireExplosionDamage;
+    private bool fireEffectActive;
+    private bool fireIsCursed;
 
-    private float extraXP;
+    private float waterBonusXP;
+    private int waterBonusDamage;
+    private float waterDrenchDuration;
     private bool waterExplode;
     private float waterBurstSize;
     private int waterExplosionDamage;
+    private bool waterEffectActive;
+    private bool waterIsCursed;
 
-    private int bouncesRemaining;
-    private bool effectActive;
+    private bool areEffectsActive => fireEffectActive || waterEffectActive;
+
+    private int fireBouncesRemaining;
+    private int waterBouncesRemaining;
 
     // Public getters if needed
-    public float ActiveTempDamage => effectActive ? tempDamage : 0f;
-    public float BurnDamage => burnDamage;
-    public float BurnDuration => burnDuration;
+    public float FireActiveTempDamage => fireEffectActive ? fireTempDamage : 0f;
+    public float FireBurnDamage => fireBurnDamage;
+    public float FireBurnDuration => fireBurnDuration;
     public bool FireExplode => fireExplode;
     public float FireExplosionSize => fireExplosionSize;
     public int FireExplosionDamage => fireExplosionDamage;
-    public int BouncesRemaining => bouncesRemaining;
-    public bool EffectActive => effectActive;
+    public int FireBouncesRemaining => fireBouncesRemaining;
+    public bool FireEffectActive => fireEffectActive;
+    public bool FireIsCursed => fireIsCursed;
+
+    public float WaterBonusXP => waterEffectActive ? waterBonusXP : 0f;
+    public int WaterBonusDamage => waterEffectActive ? waterBonusDamage : 0;
+    public float WaterDrenchDuration => waterDrenchDuration;
+    public bool WaterExplode => waterExplode;
+    public float WaterBurstSize => waterBurstSize;
+    public int WaterExplosionDamage => waterExplosionDamage;
+    public int WaterBouncesRemaining => waterBouncesRemaining;
+    public bool WaterEffectActive => waterEffectActive;
+    public bool WaterIsCursed => waterIsCursed;
 
 
     private void Awake()
@@ -76,7 +95,6 @@ public class BallElementalState : MonoBehaviour
     public void SetState(ElementalState newState)
     {
         if (CurrentState == newState) return;
-        ClearStateEffects();
         CurrentState = newState;
         ApplyStateEffects();
         //TODO VFX/SFX
@@ -117,34 +135,55 @@ public class BallElementalState : MonoBehaviour
         }
     }
 
-    private void ClearStateEffects()
-    {
-        if(ball == null) return;
-        ball.maxSpeed = originalMaxSpeed;
-    }
 
     public void ClearState()
     {
-        ClearStateEffects();
         CurrentState = ElementalState.None;
         //TODO Remove VFX/SFX
     }
 
     public void OnBounce(Bumper bumper)
     {
-        if (!effectActive) return;
-        bouncesRemaining--;
-        if (bouncesRemaining <= 0)
-        {
-            ClearState();
-            effectActive = false;
-        }
+        if (!areEffectsActive) return;
 
-        if(burnDamage > 0 && bumper != null)
+
+
+        if (fireEffectActive && bumper != null)
         {
             var elem = bumper.gameObject.GetComponent<BumperElementalState>();
-            elem.ApplyBurn(burnDamage, burnDuration);
+            elem.ClearElement();
+            elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
         }
+        if (waterEffectActive && bumper != null)
+        {
+            var elem = bumper.gameObject.GetComponent<BumperElementalState>();
+            elem.ClearElement();
+            elem.ApplyDrenched(waterBonusXP, waterDrenchDuration);
+        }
+
+        switch (CurrentState)
+        {
+            case ElementalState.Fire:
+                fireBouncesRemaining--;
+                if (fireBouncesRemaining <= 0)
+                {
+                    fireEffectActive = false;
+                    ClearState();
+                }
+                break;
+            case ElementalState.Water:
+                waterBouncesRemaining--;
+                if (waterBouncesRemaining <= 0)
+                {
+                    waterEffectActive = false;
+                    ClearState();
+                }
+                break;
+            // Handle other elemental states with bounce effects as needed
+            default:
+                break;
+        }
+
 
 
 
@@ -154,31 +193,38 @@ public class BallElementalState : MonoBehaviour
 
     public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
-        effectActive = true;
+        fireEffectActive = true;
+        waterEffectActive = false;
+        Debug.Log("Fire effect applied to ball");
 
-        tempDamage = bonusDamage;
-        this.burnDamage = burnDamage;
-        this.burnDuration = burnDuration;
-        bouncesRemaining += bounceDuration;
-        if(bouncesRemaining > bounceDuration)
-            bouncesRemaining = bounceDuration;
+        fireTempDamage = bonusDamage;
+        fireBurnDamage = burnDamage;
+        fireBurnDuration = burnDuration;
+        fireBouncesRemaining += bounceDuration;
+        if(fireBouncesRemaining > bounceDuration)
+            fireBouncesRemaining = bounceDuration;
         fireExplode = canExplode;
         fireExplosionSize = explosionRadius;
         fireExplosionDamage = explosionDamageFlat;
-        // Optionally handle 'cursed'
+        fireIsCursed = cursed;
 
         SetState(ElementalState.Fire);
 
     }
 
-    public void SetWaterState(float bonusXP, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
+    public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
-        effectActive = true;
+        waterEffectActive = true;
+        fireEffectActive = false;
+        Debug.Log("Water effect applied to ball");
 
-        extraXP = bonusXP;
-        bouncesRemaining += bounceDuration;
-        if (bouncesRemaining > bounceDuration)
-            bouncesRemaining = bounceDuration;
+
+        waterBonusXP = bonusXP;
+        waterBonusDamage = bonusDamage;
+        waterDrenchDuration = drenchDuration;
+        waterBouncesRemaining += bounceDuration;
+        if (waterBouncesRemaining > bounceDuration)
+            waterBouncesRemaining = bounceDuration;
         waterExplode = canBurst;
         waterBurstSize = burstRadius;
         waterExplosionDamage = burstDamageFlat;

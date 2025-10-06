@@ -8,13 +8,16 @@ public class BumperElementalState : MonoBehaviour
     private Bumper bumper;
     public BumperState CurrentState  = BumperState.None;
 
-    private float burnTimer;
-    private float burnDuration;
-    private float burnDamagePerTick;
-    private float burnTickInterval = .5f;
-    private float burnTickTimer;
+    private float fireBurnTimer;
+    private float fireBurnDuration;
+    private float fireBurnDamagePerTick;
+    private float fireBurnTickInterval = .5f;
+    private float fireBurnTickTimer;
 
-    private float drenchDuration;
+    private float waterBonusXP;
+    private float waterDrenchDuration;
+
+    public float WaterBonusXP => waterBonusXP;
 
 
     void Awake()
@@ -52,22 +55,25 @@ public class BumperElementalState : MonoBehaviour
     public void ApplyBurn(float dps, float duration)
     {
         CurrentState = BumperState.Burning;
-        burnDuration = duration;
-        burnTimer = 0f;
-        burnTickTimer = 0f;
-        burnDamagePerTick = dps * burnTickInterval;
+        Debug.Log("Bumper Burn Applied");
+        fireBurnDuration = duration;
+        fireBurnTimer = 0f;
+        fireBurnTickTimer = 0f;
+        fireBurnDamagePerTick = dps * fireBurnTickInterval;
     }
 
     private void HandleBurning()
     {
-        burnTimer += Time.deltaTime;
-        burnTickTimer += Time.deltaTime;
-        if (burnTickTimer >= burnTickInterval)
+
+
+        fireBurnTimer += Time.deltaTime;
+        fireBurnTickTimer += Time.deltaTime;
+        if (fireBurnTickTimer >= fireBurnTickInterval)
         {
-            burnTickTimer = 0f;
-            bumper.TakeDamage(burnDamagePerTick, elemDmg: true);
+            fireBurnTickTimer = 0f;
+            bumper.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
         }
-        if (burnTimer >= burnDuration)
+        if (fireBurnTimer >= fireBurnDuration)
         {
             ClearBurn();
         }
@@ -75,23 +81,25 @@ public class BumperElementalState : MonoBehaviour
 
     public void ClearBurn()
     {
-        burnDuration = 0f;
-        burnTimer = 0f;
-        burnTickTimer = 0f;
-        burnDamagePerTick = 0f;
+        fireBurnDuration = 0f;
+        fireBurnTimer = 0f;
+        fireBurnTickTimer = 0f;
+        fireBurnDamagePerTick = 0f;
         CurrentState = BumperState.None;
     }
 
-    public void ApplyDrenched(float duration)
+    public void ApplyDrenched(float duration, float bonusXP)
     {
         CurrentState = BumperState.Drenched;
-        drenchDuration = duration;
+        Debug.Log("Bumper Drenched Applied");
+        waterDrenchDuration = duration;
+        waterBonusXP = bonusXP;
     }
 
     private void HandleDrenched()
     {
-        drenchDuration -= Time.deltaTime;
-        if(drenchDuration <= 0f)
+        waterDrenchDuration -= Time.deltaTime;
+        if(waterDrenchDuration <= 0f)
         {
             ClearDrenched();
         }
@@ -99,8 +107,15 @@ public class BumperElementalState : MonoBehaviour
     
     public void ClearDrenched()
     {
-        drenchDuration = 0f;
+        waterDrenchDuration = 0f;
+        waterBonusXP = 0f;
         CurrentState = BumperState.None;
+    }
+
+    public void ClearElement()
+    {
+        ClearBurn();
+        ClearDrenched();
     }
 
 }

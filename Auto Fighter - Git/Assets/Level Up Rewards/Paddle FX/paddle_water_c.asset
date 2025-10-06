@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 200ea0d1a8a6025478dd9474b6b87e22, type: 3}
+  m_Name: paddle_water_c
+  m_EditorClassIdentifier: 
+  rewardID: paddle_water_c
+  displayName: Water Paddle
+  description: 'Adds Drenched to hit bumpers, providing an additional 25% XP for
+    5 seconds.
+
+    -2 Bonus Damage
+
+    +1 Bounce Duration'
+  category: 4
+  rarity: 0
+  isPaddleReward: 1
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 0}
+  exclusivityKey: water_c
+  blockedKeys: []
+  bonusXPPerc: 25
+  bonusDamageFlat: -2
+  drenchDuration: 5
+  explosionDamageFlat: 0
+  bounceDuration: 1
+  explosionSize: 0
+  canExplode: 0
+  cursed: 0

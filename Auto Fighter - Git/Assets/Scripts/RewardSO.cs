@@ -56,9 +56,12 @@ public abstract class RewardSO : ScriptableObject
         if (Scalable && ReplacesReward != null && !ctx.Owns(ReplacesReward.Id))
             return false;
 
+        if(Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
+            return false;
+
 
         //if rewards can be blocked, 
-        if(blockedKeys != null && blockedKeys.Count > 0)
+        if (blockedKeys != null && blockedKeys.Count > 0)
         {
             foreach(var activeKey in ctx.ActiveKeys)
             {

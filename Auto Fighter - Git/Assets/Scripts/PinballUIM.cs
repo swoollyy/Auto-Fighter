@@ -126,15 +126,23 @@ public class PinballUIM : MonoBehaviour
     {
         gamePanel.SetActive(false);
 
-        Debug.Log("Succc");
-
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            slot.button.interactable = false;
+        }
         paddleSelectPanel.SetActive(true);
+
     }
 
     public void ClosePaddleSelect(bool hasMoreLevels)
     {
         paddleSelectPanel.SetActive(false);
-
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            slot.button.interactable = true;
+        }
         Debug.Log("Succc!!");
 
 
