@@ -383,6 +383,7 @@
 "Assets/Scripts/Item.cs"
 "Assets/Scripts/Level Up Rewards/BallGrowRewardSO.cs"
 "Assets/Scripts/Level Up Rewards/BallShrinkRewardSO.cs"
+"Assets/Scripts/Level Up Rewards/EarthPaddleRewardSO.cs"
 "Assets/Scripts/Level Up Rewards/FirePaddleRewardSO.cs"
 "Assets/Scripts/Level Up Rewards/ScoreMultiplierRewardSO.cs"
 "Assets/Scripts/Level Up Rewards/WaterPaddleRewardSO.cs"
@@ -439,6 +440,7 @@
 "Assets/TextMesh Pro/Examples & Extras/Scripts/VertexShakeB.cs"
 "Assets/TextMesh Pro/Examples & Extras/Scripts/VertexZoom.cs"
 "Assets/TextMesh Pro/Examples & Extras/Scripts/WarpTextExample.cs"
+"Assets/UIRaycastInspector.cs"
 -langversion:9.0
 /deterministic
 /optimize+

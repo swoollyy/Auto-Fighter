@@ -84,6 +84,7 @@
     <Compile Include="Assets\Scripts\Druid.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_A.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\WaterPaddleRewardSO.cs" />
+    <Compile Include="Assets\UIRaycastInspector.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01_UGUI.cs" />
     <Compile Include="Assets\Scripts\PinballUIM.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SimpleScript.cs" />
@@ -133,6 +134,7 @@
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark03.cs" />
     <Compile Include="Assets\Scripts\Pinball.cs" />
     <Compile Include="Assets\Scripts\Warrior.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\EarthPaddleRewardSO.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs" />
     <Compile Include="Assets\Scripts\XPCollectorRegistry.cs" />
     <Compile Include="Assets\Scripts\Test.cs" />

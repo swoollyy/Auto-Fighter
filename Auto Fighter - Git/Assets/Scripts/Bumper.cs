@@ -154,6 +154,10 @@ public class Bumper : MonoBehaviour
             {
                 pm.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP);
             }
+            else if(bumperElemental.CurrentState == BumperState.Crusted)
+            {
+                pm.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP);
+            }
             else
             {
                 pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);

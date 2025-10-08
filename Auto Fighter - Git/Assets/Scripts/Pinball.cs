@@ -153,8 +153,11 @@ public class Pinball : MonoBehaviour, IRunContext
 
     private int baseDamage = 5;
     private int extraBaseDamage = 0;
+    private int fissureDamage = 0;
     public int Damage => baseDamage;
     public int ExtraDamage => extraBaseDamage;
+    public int FissureDamage => fissureDamage;
+
 
     private const float x2MULT = 100f;
     private const float x4MULT = 200f;
@@ -547,6 +550,16 @@ public class Pinball : MonoBehaviour, IRunContext
         xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + bonusXP)));
     }
 
+    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP)
+    {
+        float bonusXP = earthBonusXP / 100f;
+        var emitParams = new ParticleSystem.EmitParams();
+        Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
+        //AdjustXP(emitParams);
+        ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
+        xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + bonusXP)));
+    }
+
     private void StartNextLevelUp()
     {
         if (pendingLevelUps <= 0) return;
@@ -803,6 +816,12 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         extraBaseDamage = bonusDamage;
         elementalState.SetWaterState(bonusXP, bonusDamage, drenchDuration, bounceDuration, canBurst, burstRadius, burstDamageFlat, cursed);
+    }
+
+    public void ApplyEarthFX(int bonusDamage, float crustedDuration, float fissureHitScoreMultiplier, float fissureHitXPMultiplier, int bounceDuration, bool cursed)
+    {
+        fissureDamage = bonusDamage;
+        elementalState.SetEarthState(bonusDamage, crustedDuration, fissureHitScoreMultiplier, fissureHitXPMultiplier, bounceDuration, cursed);
     }
 
 
