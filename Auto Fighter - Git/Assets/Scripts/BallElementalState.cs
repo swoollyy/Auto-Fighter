@@ -158,7 +158,7 @@ public class BallElementalState : MonoBehaviour
         {
             var elem = bumper.gameObject.GetComponent<BumperElementalState>();
             elem.ClearElement();
-            elem.ApplyDrenched(waterBonusXP, waterDrenchDuration);
+            elem.ApplyDrenched(waterDrenchDuration, waterBonusXP);
         }
 
         switch (CurrentState)

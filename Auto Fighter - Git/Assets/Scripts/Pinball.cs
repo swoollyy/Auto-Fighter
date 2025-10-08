@@ -544,7 +544,7 @@ public class Pinball : MonoBehaviour, IRunContext
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         //AdjustXP(emitParams);
         ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + waterBonusXP)));
+        xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + bonusXP)));
     }
 
     private void StartNextLevelUp()
