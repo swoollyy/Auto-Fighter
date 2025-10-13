@@ -71,6 +71,7 @@ public class BumperElementalState : MonoBehaviour
         if (fireBurnTickTimer >= fireBurnTickInterval)
         {
             fireBurnTickTimer = 0f;
+            Debug.Log($"Burn Tick for {fireBurnDamagePerTick} damage");
             bumper.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
         }
         if (fireBurnTimer >= fireBurnDuration)

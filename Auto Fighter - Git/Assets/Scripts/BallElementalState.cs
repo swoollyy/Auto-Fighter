@@ -7,6 +7,8 @@ public class BallElementalState : MonoBehaviour
     [SerializeField]
     private ElementalState initialState = ElementalState.None;
 
+    Pinball PM;
+
     public ElementalState CurrentState = ElementalState.None;
     private Ball ball;
     private float originalMaxSpeed;
@@ -53,7 +55,7 @@ public class BallElementalState : MonoBehaviour
     private int waterBouncesRemaining;
 
     // Public getters if needed
-    public float FireActiveTempDamage => fireEffectActive ? fireTempDamage : 0f;
+    public float FireActiveTempDamage => fireTempDamage;
     public float FireBurnDamage => fireBurnDamage;
     public float FireBurnDuration => fireBurnDuration;
     public bool FireExplode => fireExplode;
@@ -63,8 +65,8 @@ public class BallElementalState : MonoBehaviour
     public bool FireEffectActive => fireEffectActive;
     public bool FireIsCursed => fireIsCursed;
 
-    public float WaterBonusXP => waterEffectActive ? waterBonusXP : 0f;
-    public int WaterBonusDamage => waterEffectActive ? waterBonusDamage : 0;
+    public float WaterBonusXP => waterBonusXP;  
+    public int WaterBonusDamage => waterBonusDamage;
     public float WaterDrenchDuration => waterDrenchDuration;
     public bool WaterExplode => waterExplode;
     public float WaterBurstSize => waterBurstSize;
@@ -81,6 +83,9 @@ public class BallElementalState : MonoBehaviour
         {
             Debug.LogWarning("BallElementalState requires a Ball component on the same GameObject.");
         }
+
+        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+
     }
 
     // Start is called before the first frame update
@@ -139,6 +144,8 @@ public class BallElementalState : MonoBehaviour
     public void ClearState()
     {
         CurrentState = ElementalState.None;
+        PM.extraElemDamage = 0;
+        Debug.Log($"Cleared! {PM.extraElemDamage}");
         //TODO Remove VFX/SFX
     }
 

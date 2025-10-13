@@ -189,7 +189,7 @@ public class Ball : MonoBehaviour
 
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
-
+        PM.ScreenShake();
     }
 
 
@@ -274,6 +274,7 @@ public class Ball : MonoBehaviour
                     effect.FireExplosionDamageFlat,
                     effect.FireIsCursed
                 );
+                PM.extraElemDamage = effect.FireBonusDamage;
                 break;
             case PaddleState.Water:
                 elem.SetWaterState(
@@ -286,6 +287,7 @@ public class Ball : MonoBehaviour
                     effect.WaterBurstDamageFlat,
                     effect.WaterIsCursed
                 );
+                PM.extraElemDamage = effect.WaterDamageFlat;
                 break;
             // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:

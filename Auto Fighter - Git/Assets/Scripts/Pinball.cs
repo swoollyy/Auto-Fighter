@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.AddressableAssets;
+using DG.Tweening;
 
 
 public enum PinballState
@@ -151,10 +152,9 @@ public class Pinball : MonoBehaviour, IRunContext
     public int BouncesForBonusS => bouncesForBonusS;
 
 
-    private int baseDamage = 5;
-    private int extraBaseDamage = 0;
-    public int Damage => baseDamage;
-    public int ExtraDamage => extraBaseDamage;
+    private float baseDamage = 5;
+    public float extraElemDamage = 0;
+    public float Damage => baseDamage;
 
     private const float x2MULT = 100f;
     private const float x4MULT = 200f;
@@ -192,6 +192,17 @@ public class Pinball : MonoBehaviour, IRunContext
     float wallTimer;
     bool wallTimerStart;
 
+    [SerializeField] private Camera mainCam;
+    [SerializeField] private float shakeDuration = 0.15f;
+    [SerializeField] private float shakeStrength = 0.3f;
+    [SerializeField] private int shakeVibrato = 12;
+    [SerializeField, Range(0f, 1f)] private float shakeRandomness = 90f;
+
+
+
+
+
+
     public void ChangeState(PinballState state)
     {
         currentState = state;
@@ -213,7 +224,6 @@ public class Pinball : MonoBehaviour, IRunContext
                 chargeMax = 1f;
                 break;
             case PinballState.Play:
-                Debug.Log("mother succwer");    
                 uim.DefaultUI();
                 chargePercentage = 0;
                 chargeTimer = 0;
@@ -228,7 +238,6 @@ public class Pinball : MonoBehaviour, IRunContext
                 break;
             case PinballState.PaddleSelect:
                 uim.PaddleSelect();
-                Debug.Log("succeereeff");
                 Time.timeScale = 0f;
                 break;
 
@@ -244,6 +253,7 @@ public class Pinball : MonoBehaviour, IRunContext
         if(Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         maxXP = XPFormula.XpReq(level);
+        Debug.Log($"Initial max XP {maxXP}");
         elementalState = ball.GetComponent<BallElementalState>();
 
         ballCol = ball.gameObject.GetComponent<Collider>();
@@ -265,14 +275,10 @@ public class Pinball : MonoBehaviour, IRunContext
     // Update is called once per frame
     void Update()
     {
+        Debug.Log($"Current XP: {curXP} / {maxXP} | Level: {level} | Pending Level Ups: {pendingLevelUps}");
 
-        if (curXP >= maxXP)
-        {
-            pendingLevelUps++;
-            curXP -= maxXP;
-        }
 
-        Debug.Log($"Current State - {elementalState.CurrentState}");
+
 
 
         if (leftPaddle != null)
@@ -290,7 +296,6 @@ public class Pinball : MonoBehaviour, IRunContext
                 }
                 if (ball.isTouchingPaddles && (Input.GetKey(leftPaddleBind) || canHitL) && !hasBeenHitL)
                 {
-                    Debug.Log("left hit down!");
                     hasBeenHitL = true;
                     StartCoroutine(ResetLBumper(.4f));
                     if(leftElem != null && ball != null)
@@ -312,7 +317,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
                 if (ball.isTouchingPaddles && (Input.GetKey(rightPaddleBind) || canHitR) && !hasBeenHitR)
                 {
-                    Debug.Log("right hit!");
                     hasBeenHitR = true;
                     StartCoroutine(ResetRBumper(.4f));
                     if (rightElem != null && ball != null)
@@ -344,7 +348,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
         if (Input.GetKeyDown(KeyCode.P))
         {
-            AddXP(150);
+            AddXP(13);
         }
 
         //score mult
@@ -464,9 +468,7 @@ public class Pinball : MonoBehaviour, IRunContext
             bumperBouncesS++;
             if (bumperBouncesS > bouncesForBonusS)
             {
-                Debug.Log($"Before Bonus! {finalPoints}");
                 finalPoints = Mathf.RoundToInt(finalPoints * bonusHitsS);
-                Debug.Log($"Bonus! {finalPoints}");
                 bumperBouncesS = 0;
             }
         }
@@ -477,13 +479,11 @@ public class Pinball : MonoBehaviour, IRunContext
             if (bumperBouncesG > bouncesForBonusG)
             {
                 xpCount = Mathf.RoundToInt(xpCount * bonusHitsG);
-                Debug.Log($"hello {xpCount}");
                 bumperBouncesG = -1;
             }
             if (bumperBouncesG == 0)
             {
                 xpCount = Mathf.RoundToInt(xpCount / bonusHitsG);
-                Debug.Log($"hello bye {xpCount}");
             }
 
         }
@@ -505,12 +505,19 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         float finalXP = xp * xpMultiplier;
         curXP += finalXP;
+        curXP = Mathf.RoundToInt(curXP);
 
+        ballXPScript.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(maxXP), level);
 
-        ballXPScript.UpdateXP((float)curXP, (float)maxXP, level);
-
-        if(pendingLevelUps > 0 && CurrentState != PinballState.LevelUp)
+        if (curXP >= maxXP)
         {
+            pendingLevelUps++;
+            curXP -= maxXP;
+        }
+
+        if (pendingLevelUps > 0 && CurrentState != PinballState.LevelUp)
+        {
+            Debug.Log($"Doing this");
             StartNextLevelUp();
         }
 
@@ -528,7 +535,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
         else if (isTakingElemDamage)
         {
-            Debug.Log($"succ {Mathf.RoundToInt(xpCount / 3)}");
             xpFX.Emit(Mathf.RoundToInt(xpCount / 3));
         }
         else xpFX.Emit(xpCount);
@@ -646,6 +652,24 @@ public class Pinball : MonoBehaviour, IRunContext
 
         hasBeenHitR = false;
     }
+
+
+    public void ScreenShake()
+    {
+        DOTween.Kill(mainCam.transform);
+
+        // simple DOShakePosition call
+        mainCam.transform.DOShakePosition(
+            shakeDuration,
+            shakeStrength,
+            shakeVibrato,
+            shakeRandomness,
+            false,   // snapping
+            true     // fade out at end
+        ).SetEase(Ease.OutQuad)
+         .SetUpdate(false); // works even if Time.timeScale = 0
+    }
+
 
 
 
@@ -774,15 +798,12 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         var paddle = isLeft ? leftPaddle : rightPaddle;
         var paddleElem = paddle.gameObject.GetComponent<PaddleElementalState>();
-        Debug.Log($"nice! {paddleElem.gameObject}");
         pendingPaddleReward.ApplyToPaddle(paddleElem);
         pendingPaddleReward = null;
-        Debug.Log($"Successfully applied paddle state  {paddle.gameObject.name}");
         if(pendingLevelUps > 0)
         {
             var choices = GetRewardChoices();
             uim.ShowRewardPopup(choices);
-            Debug.Log("suction cup");
             uim.ClosePaddleSelect(true);
         }
         else
@@ -794,15 +815,13 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuraton, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
-        elementalState.SetFireState(bonusDamage, burnDamage, burnDuraton, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
-        extraBaseDamage = bonusDamage;
+        extraElemDamage = bonusDamage;
 
     }
 
     public void ApplyWaterFX(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
-        extraBaseDamage = bonusDamage;
-        elementalState.SetWaterState(bonusXP, bonusDamage, drenchDuration, bounceDuration, canBurst, burstRadius, burstDamageFlat, cursed);
+        extraElemDamage = bonusDamage;
     }
 
 
@@ -841,7 +860,6 @@ public class Pinball : MonoBehaviour, IRunContext
         if (reward.Scalable && reward.ReplacesReward != null)
         {
             var old = reward.ReplacesReward;
-            Debug.Log("succer");
 
             if (Owns(old.Id))
             {

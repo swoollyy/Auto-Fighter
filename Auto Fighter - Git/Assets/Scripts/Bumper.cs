@@ -40,7 +40,11 @@ public class Bumper : MonoBehaviour
     Pinball pm;
     Collider ball;
 
-
+    // Track the most recent collision contact so we can spawn numbers there,
+    // with a short validity window to cover chained damage (e.g., on-hit effects).
+    private Vector3 lastContactPoint;
+    private float lastContactTime;
+    [SerializeField] private float contactPointTimeout = 0.25f; // seconds
 
 
 
@@ -78,6 +82,9 @@ public class Bumper : MonoBehaviour
             ContactPoint contact = col.contacts[0];
             normal = new Vector3(contact.normal.x, 0f, contact.normal.z).normalized;
 
+            lastContactPoint = contact.point;
+            lastContactTime = Time.time;
+
             Debug.Log($"baba {rb.velocity.normalized}");
 
             if(normal == Vector3.zero)
@@ -90,6 +97,10 @@ public class Bumper : MonoBehaviour
 
                 ball = col.collider;
 
+
+            float baseDamage = pm.Damage;
+            float elemBonus = pm.extraElemDamage;
+            bool didElemHit = elemBonus > 0;
 
             rb.velocity = Vector3.zero;
             if (this.CompareTag("Bumper"))
@@ -120,8 +131,10 @@ public class Bumper : MonoBehaviour
             Debug.DrawRay(contact.point, normal * 2f, Color.red);
             rb.gameObject.GetComponent<Ball>().hasBounced = true;
 
-            TakeDamage(pm.Damage + pm.ExtraDamage, elemDmg: false);
 
+            float totalDamage = baseDamage + elemBonus;
+
+            TakeDamage(totalDamage, elemDmg: didElemHit);
         }
 
 
@@ -130,6 +143,20 @@ public class Bumper : MonoBehaviour
     public void TakeDamage(float amount, bool elemDmg)
     {
             curHealth -= amount;
+
+        GetComponent<BumperAnimScript>().BumperHit();
+
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+
+            Vector3 offset = basePos + new Vector3(0, 4, 0);
+
+            DamageNumbers.Spawn(amount, offset);
+        }
+
+
         if (curHealth <= 0)
         {
             curHealth = 0;
@@ -152,6 +179,7 @@ public class Bumper : MonoBehaviour
         {
             if (bumperElemental.CurrentState == BumperState.Drenched)
             {
+                Debug.Log("Water Bonus XP Spawned");
                 pm.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP);
             }
             else

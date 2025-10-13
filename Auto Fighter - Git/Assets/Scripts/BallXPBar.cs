@@ -29,6 +29,7 @@ public class BallXPBar : MonoBehaviour
 
     public void UpdateXP(float currentXP, float maxXP, int level)
     {
+        Debug.Log($"Start max XP {maxXP}");
         target = currentXP / maxXP;
         levelText.text = $"Level: {level}";
     }
