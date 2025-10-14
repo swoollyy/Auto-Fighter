@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9bd99fec0274648917bb6314f84338, type: 3}
+  m_Name: paddle_earth_c
+  m_EditorClassIdentifier: 
+  rewardID: paddle_earth_c
+  displayName: Earth Paddle (Common)
+  description: 'Adds Crusted to hit bumpers, causing a fissure of damage to erupt
+    after 3 seconds.
+
+    +3 Fissure Damage
+
+    +1 Bounce Duration'
+  category: 4
+  rarity: 0
+  isPaddleReward: 1
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 1
+  replacesReward: {fileID: 0}
+  exclusivityKey: earth_c
+  blockedKeys: []
+  fissureDamage: 3
+  crustedDuration: 3
+  fissureHitScoreMultiplier: 10
+  fissureHitXPMultiplier: 10
+  bounceDuration: 1
+  cursed: 0

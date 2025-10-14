@@ -26,6 +26,13 @@ public class PaddleEffectData
     public readonly int WaterBurstDamageFlat;
     public readonly bool WaterIsCursed;
 
+    public readonly int EarthBonusDamage;
+    public readonly float EarthFissureDuration;
+    public readonly float EarthXPBonus;
+    public readonly float EarthScoreBonus;
+    public readonly int EarthBounceDuration;
+    public readonly bool EarthIsCursed;
+
     public PaddleEffectData(
         PaddleState element,
         int fireBonusDamage = 0,
@@ -44,7 +51,14 @@ public class PaddleEffectData
         bool waterCanBurst = false,
         float waterBurstSize = 0f,
         int waterBurstDamageFlat = 0,
-        bool waterIsCursed = false)
+        bool waterIsCursed = false,
+
+                int earthBonusDamage = 0,
+        float earthFissureDuration = 0f,
+        float earthXPBonus = 0f,
+        float earthScoreBonus = 0f,
+        int earthBounceDuration = 0,
+        bool earthIsCursed = false)
     {
         Element = element;
         FireBonusDamage = fireBonusDamage;
@@ -64,5 +78,12 @@ public class PaddleEffectData
         WaterBurstSize = waterBurstSize;
         WaterBurstDamageFlat = waterBurstDamageFlat;
         WaterIsCursed = waterIsCursed;
+
+        EarthBonusDamage = earthBonusDamage;
+        EarthFissureDuration = earthFissureDuration;
+        EarthXPBonus = earthXPBonus;
+        EarthScoreBonus = earthScoreBonus;
+        EarthBounceDuration = earthBounceDuration;
+        EarthIsCursed = earthIsCursed;
     }
 }

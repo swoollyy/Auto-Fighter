@@ -29,6 +29,12 @@ public class PaddleElementalState : MonoBehaviour
     public int WaterBurstDamageFlat { get; private set; }
     public bool WaterIsCursed { get; private set; }
 
+    public int EarthFissureDamage { get; private set; }
+    public float EarthCrustDuration { get; private set; }
+    public float EarthXPBonus { get; private set; }
+    public float EarthScoreBonus { get; private set; }
+    public int EarthBounceDuration { get; private set; }
+    public bool EarthIsCursed { get; private set; }
 
     void Start()
     {
@@ -37,8 +43,9 @@ public class PaddleElementalState : MonoBehaviour
 
     public void SetPaddleState(PaddleState newState)
     {
-        if(newState != null)
-        switch(newState)
+        if (newState == PaddleState.None || CurrentState == newState)
+            return;
+        switch (newState)
             {
                 case PaddleState.Fire:
                     CurrentState = PaddleState.Fire;
@@ -46,7 +53,10 @@ public class PaddleElementalState : MonoBehaviour
                 case PaddleState.Water:
                     CurrentState = PaddleState.Water;
                     break;
-            }
+                case PaddleState.Earth:
+                    CurrentState = PaddleState.Earth;
+                    break;
+        }
     }
 
     public void StoreFireData(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
@@ -75,6 +85,16 @@ public class PaddleElementalState : MonoBehaviour
         WaterIsCursed = cursed;
     }
 
+    public void StoreEarthData(int bonusDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        EarthFissureDamage = bonusDamage;
+        EarthCrustDuration = crustDuration;
+        EarthXPBonus = xpBonus;
+        EarthScoreBonus = scoreBonus;
+        EarthBounceDuration = bounceDuration;
+        EarthIsCursed = cursed;
+    }
+
     public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDur, int bounceDur, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
         SetPaddleState(PaddleState.Fire);
@@ -86,6 +106,12 @@ public class PaddleElementalState : MonoBehaviour
     {
         SetPaddleState(PaddleState.Water);
         StoreWaterData(bonusXP, bonusDamage, drenchDuration, bounceDuration, canBurst, burstSize, burstDamageFlat, cursed);
+    }
+
+    public void ApplyEarth(int fissureDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Earth);
+        StoreEarthData(fissureDamage, crustDuration, xpBonus, scoreBonus, bounceDuration, cursed);
     }
 
     public PaddleEffectData GetEffectData()
@@ -108,7 +134,14 @@ public class PaddleElementalState : MonoBehaviour
             WaterCanBurst,
             WaterBurstSize,
             WaterBurstDamageFlat,
-            WaterIsCursed);
+            WaterIsCursed,
+
+            EarthFissureDamage,
+            EarthCrustDuration,
+            EarthXPBonus,
+            EarthScoreBonus,
+            EarthBounceDuration,
+            EarthIsCursed);
     }
 
 }

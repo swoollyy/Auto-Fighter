@@ -145,6 +145,7 @@ public class Bumper : MonoBehaviour
             curHealth -= amount;
 
         GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
 
         if (DamageNumbers.IsReady)
         {
@@ -156,19 +157,6 @@ public class Bumper : MonoBehaviour
             DamageNumbers.Spawn(amount, offset);
         }
 
-
-        if (curHealth <= 0)
-        {
-            curHealth = 0;
-            if (pm != null)
-            {
-                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg);
-                pm.destroyedBumper = true;
-            }
-            StartCoroutine(pm.RespawnRoutine(this));
-            return;
-
-        }
 
         if (elemDmg)
         {
@@ -187,5 +175,53 @@ public class Bumper : MonoBehaviour
                 pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);
             }
         }
+
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+
+        }
+    }
+
+    public void TakeFissureDamage()
+    {
+        curHealth -= pm.fissureDamage;
+
+        GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
+
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+
+            Vector3 offset = basePos + new Vector3(0, 4, 0);
+
+            DamageNumbers.Spawn(pm.fissureDamage, offset);
+        }
+
+        pm.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP);
+
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+
+        }
+
+
     }
 }

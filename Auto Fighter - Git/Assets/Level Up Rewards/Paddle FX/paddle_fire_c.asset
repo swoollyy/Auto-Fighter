@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: paddle_fire_c
   m_EditorClassIdentifier: 
   rewardID: paddle_fire_c
-  displayName: Fire Paddle
+  displayName: Fire Paddle (Common)
   description: 'Adds Burn to hit bumpers, burning 1 DPS for 3 seconds.
 
     +2 Bonus
@@ -22,7 +22,7 @@ MonoBehaviour:
     +1 Bounce Duration'
   category: 4
   rarity: 0
-  isPaddleReward: 0
+  isPaddleReward: 1
   blockWhenActive: 1
   canStack: 0
   scalable: 1

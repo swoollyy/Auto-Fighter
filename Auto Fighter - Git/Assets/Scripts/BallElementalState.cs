@@ -49,10 +49,18 @@ public class BallElementalState : MonoBehaviour
     private bool waterEffectActive;
     private bool waterIsCursed;
 
-    private bool areEffectsActive => fireEffectActive || waterEffectActive;
+    private int earthFissureDamage;
+    private float earthCrustDuration;
+    private float earthBonusXP;
+    private float earthBonusScore;
+    private bool earthEffectActive;
+    private bool earthIsCursed;
+
+    private bool areEffectsActive => fireEffectActive || waterEffectActive || earthEffectActive;
 
     private int fireBouncesRemaining;
     private int waterBouncesRemaining;
+    private int earthBouncesRemaining;
 
     // Public getters if needed
     public float FireActiveTempDamage => fireTempDamage;
@@ -74,6 +82,15 @@ public class BallElementalState : MonoBehaviour
     public int WaterBouncesRemaining => waterBouncesRemaining;
     public bool WaterEffectActive => waterEffectActive;
     public bool WaterIsCursed => waterIsCursed;
+
+    public int EarthFissureDamage => earthFissureDamage;
+    public float EarthCrustDuration => earthCrustDuration;
+    public float EarthBonusXP => earthBonusXP;
+    public float EarthBonusScore => earthBonusScore;
+    public bool EarthEffectActive => earthEffectActive;
+    public bool EarthIsCursed => earthIsCursed;
+
+    public int EarthBouncesRemaining => earthBouncesRemaining;
 
 
     private void Awake()
@@ -152,20 +169,22 @@ public class BallElementalState : MonoBehaviour
     public void OnBounce(Bumper bumper)
     {
         if (!areEffectsActive) return;
-
-
+        var elem = bumper.gameObject.GetComponent<BumperElementalState>();
 
         if (fireEffectActive && bumper != null)
         {
-            var elem = bumper.gameObject.GetComponent<BumperElementalState>();
             elem.ClearElement();
             elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
         }
         if (waterEffectActive && bumper != null)
         {
-            var elem = bumper.gameObject.GetComponent<BumperElementalState>();
             elem.ClearElement();
             elem.ApplyDrenched(waterDrenchDuration, waterBonusXP);
+        }
+        if (earthEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyCrusted(earthCrustDuration, earthBonusXP, earthBonusScore);
         }
 
         switch (CurrentState)
@@ -183,6 +202,14 @@ public class BallElementalState : MonoBehaviour
                 if (waterBouncesRemaining <= 0)
                 {
                     waterEffectActive = false;
+                    ClearState();
+                }
+                break;
+            case ElementalState.Earth:
+                earthBouncesRemaining--;
+                if (earthBouncesRemaining <= 0)
+                {
+                    earthEffectActive = false;
                     ClearState();
                 }
                 break;
@@ -240,7 +267,24 @@ public class BallElementalState : MonoBehaviour
 
     }
 
+    public void SetEarthState(int fissureDamage, float crustDuration, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
+    {
+        fireEffectActive = false;
+        waterEffectActive = false;
 
+        earthEffectActive = true;
+        Debug.Log("Earth effect applied to ball");
+
+        earthFissureDamage = fissureDamage;
+        earthCrustDuration = crustDuration;
+        earthBonusXP = bonusXP;
+        earthBonusScore = bonusScore;
+        earthBouncesRemaining += bounceDuration;
+        if (earthBouncesRemaining > bounceDuration)
+            earthBouncesRemaining = bounceDuration;
+        earthIsCursed = cursed;
+        SetState(ElementalState.Earth);
+    }
 
 
     #endregion

@@ -28,5 +28,7 @@ public interface IRunContext
 
     void ApplyWaterFX(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed);
 
+    void ApplyEarthFX(int fissureDamage, float crustedDuration, float fissureHitScoreMultiplier, float fissureHitXPMultiplier, int bounceDuration, bool cursed);
 
+    void ApplyXPForcefield(float radiusIncrease);
 }

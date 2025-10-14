@@ -16650,6 +16650,11 @@ MonoBehaviour:
   hpPunchElasticity: 0.12
   genScale: 0.04
   hpGroup: {fileID: 0}
+--- !u!330 &1994062338 stripped
+ParticleSystemForceField:
+  m_CorrespondingSourceObject: {fileID: 5410184603993390346, guid: f2319656136478243baaf8bb86267644, type: 3}
+  m_PrefabInstance: {fileID: 983610134186628974}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2001775006
 GameObject:
   m_ObjectHideFlags: 0
@@ -17086,6 +17091,7 @@ MonoBehaviour:
   rightPaddle: {fileID: 1835668970}
   chargePercentage: 0
   extraElemDamage: 0
+  fissureDamage: 0
   destroyedBumper: 0
   xpFXPrefab: {fileID: 8695386679933243561, guid: 8991fd01efd18ca48b45e69fe0641baf, type: 3}
   ballXPScript: {fileID: 1739156359}
@@ -17192,6 +17198,10 @@ PrefabInstance:
       propertyPath: m_ConstrainProportionsScale
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 1997940948258933112, guid: f2319656136478243baaf8bb86267644, type: 3}
+      propertyPath: forceField
+      value: 
+      objectReference: {fileID: 1994062338}
     - target: {fileID: 2067950616281758123, guid: f2319656136478243baaf8bb86267644, type: 3}
       propertyPath: m_Constraints
       value: 4
@@ -17215,6 +17225,10 @@ PrefabInstance:
     - target: {fileID: 5410184603993390346, guid: f2319656136478243baaf8bb86267644, type: 3}
       propertyPath: m_Parameters.m_EndRange
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5410184603993390346, guid: f2319656136478243baaf8bb86267644, type: 3}
+      propertyPath: m_Parameters.m_GravityCurve.scalar
+      value: 5.87
       objectReference: {fileID: 0}
     - target: {fileID: 9000603096195884635, guid: f2319656136478243baaf8bb86267644, type: 3}
       propertyPath: m_Name

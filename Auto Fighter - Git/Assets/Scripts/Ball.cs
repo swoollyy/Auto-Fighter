@@ -41,6 +41,9 @@ public class Ball : MonoBehaviour
 
     public float maxSpeed = 50f;
 
+    [SerializeField] private ParticleSystemForceField forceField;
+    public float forceFieldRadius = 0f;
+
     Collider col;
 
     int count;
@@ -67,6 +70,8 @@ public class Ball : MonoBehaviour
     {
         count = 0;
         debugTimer = 0;
+
+        forceFieldRadius = forceField.endRange;
     }
 
     void FixedUpdate()
@@ -189,7 +194,6 @@ public class Ball : MonoBehaviour
 
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
-        PM.ScreenShake();
     }
 
 
@@ -289,10 +293,27 @@ public class Ball : MonoBehaviour
                 );
                 PM.extraElemDamage = effect.WaterDamageFlat;
                 break;
+                case PaddleState.Earth:
+                    elem.SetEarthState(
+                    effect.EarthBonusDamage,
+                    effect.EarthFissureDuration,
+                    effect.EarthXPBonus,
+                    effect.EarthScoreBonus,
+                    effect.EarthBounceDuration,
+                    effect.EarthIsCursed
+                );
+                PM.fissureDamage = effect.EarthBonusDamage;
+                break;
             // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:
                 break;
         }
+    }
+
+    public void UpdateForcefield(float amount)
+    {
+        forceFieldRadius *= amount;
+        forceField.endRange = forceFieldRadius;
     }
 
 }

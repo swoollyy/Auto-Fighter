@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: paddle_water_c
   m_EditorClassIdentifier: 
   rewardID: paddle_water_c
-  displayName: Water Paddle
+  displayName: Water Paddle (Common)
   description: 'Adds Drenched to hit bumpers, providing an additional 25% XP for
     5 seconds.
 

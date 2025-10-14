@@ -35,6 +35,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3d8222cb8d5517c4ea1386804514407e
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 446f9b08bcba53644b295152b49c37b1
     m_Address: Assets/Level Up Rewards/XP Multiplier/r_xpm.asset
     m_ReadOnly: 0
@@ -65,6 +71,18 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 78cdcdbe977ffe641b3572bcbefb9fc0
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_a.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 806d621063de893438cf4cab68f1eb10
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 8f2909cf9c04f204d9b042554aedc2cd
     m_Address: Assets/Level Up Rewards/Ball FX/Grow/crs_bfx_g.asset
     m_ReadOnly: 0
@@ -77,14 +95,38 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ac6930e69631c2b4db9433ce13d54942
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_r.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: b50250a412c36f546ae4948a0679c8b2
     m_Address: Assets/Level Up Rewards/XP Multiplier/a_xpm.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: be79222cfdbb19644a0ccb5458b73812
+    m_Address: Assets/Level Up Rewards/Paddle FX/paddle_earth_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c442e4ba5e1112045bf4b0fcfd718673
     m_Address: Assets/Level Up Rewards/XP Multiplier/com_xpm.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c6518bd1ec82e3b47b093d976792227c
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_l.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: cc75a0f64c8442c489c34081b559106d
+    m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_u.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
