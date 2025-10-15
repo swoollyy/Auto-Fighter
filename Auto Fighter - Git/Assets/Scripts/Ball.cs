@@ -304,6 +304,17 @@ public class Ball : MonoBehaviour
                 );
                 PM.fissureDamage = effect.EarthBonusDamage;
                 break;
+            case PaddleState.Electric:
+                elem.SetElectricState(
+                    effect.ElectricShockDamage,
+                    effect.ElectricChainCount,
+                    effect.ElectricXPBonus,
+                    effect.ElectricScoreBonus,
+                    effect.ElectricBounceDuration,
+                    effect.ElectricIsCursed
+                );
+                PM.shockDamage = effect.ElectricShockDamage;
+                break;
             // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:
                 break;

@@ -33,6 +33,13 @@ public class PaddleEffectData
     public readonly int EarthBounceDuration;
     public readonly bool EarthIsCursed;
 
+    public readonly int ElectricShockDamage;
+    public readonly int ElectricChainCount;
+    public readonly float ElectricXPBonus;
+    public readonly float ElectricScoreBonus;
+    public readonly int ElectricBounceDuration;
+    public readonly bool ElectricIsCursed;
+
     public PaddleEffectData(
         PaddleState element,
         int fireBonusDamage = 0,
@@ -58,7 +65,15 @@ public class PaddleEffectData
         float earthXPBonus = 0f,
         float earthScoreBonus = 0f,
         int earthBounceDuration = 0,
-        bool earthIsCursed = false)
+        bool earthIsCursed = false,
+        
+        int electricShockDamage = 0,
+        int electricChainCount = 0,
+        float electricXPBonus = 0f,
+        float electricScoreBonus = 0f,
+        int electricBounceDuration = 0,
+        bool electricIsCursed = false
+        )
     {
         Element = element;
         FireBonusDamage = fireBonusDamage;
@@ -85,5 +100,12 @@ public class PaddleEffectData
         EarthScoreBonus = earthScoreBonus;
         EarthBounceDuration = earthBounceDuration;
         EarthIsCursed = earthIsCursed;
+
+        ElectricShockDamage = electricShockDamage;
+        ElectricChainCount = electricChainCount;
+        ElectricXPBonus = electricXPBonus;
+        ElectricScoreBonus = electricScoreBonus;
+        ElectricBounceDuration = electricBounceDuration;
+        ElectricIsCursed = electricIsCursed;
     }
 }

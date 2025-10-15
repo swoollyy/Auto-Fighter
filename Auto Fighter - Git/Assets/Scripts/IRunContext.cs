@@ -30,5 +30,9 @@ public interface IRunContext
 
     void ApplyEarthFX(int fissureDamage, float crustedDuration, float fissureHitScoreMultiplier, float fissureHitXPMultiplier, int bounceDuration, bool cursed);
 
+    void ApplyElectricFX(int shockDamage, int chainCount, float scoreMultiplier, float xpMultiplier, int bounceDuration, bool cursed);
     void ApplyXPForcefield(float radiusIncrease);
+
+    void ApplyAdditionalBalls(int additionalBalls);
+
 }

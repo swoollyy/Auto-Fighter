@@ -113,6 +113,8 @@ public class Pinball : MonoBehaviour, IRunContext
     public float chargePercentage;
     float chargeMax;
 
+    public int ballCount;
+
     private int score;
     private int mult;
     public int Score => score;
@@ -155,6 +157,7 @@ public class Pinball : MonoBehaviour, IRunContext
     private float baseDamage = 5;
     public float extraElemDamage = 0;
     public float fissureDamage = 0;
+    public float shockDamage = 0;
     public float Damage => baseDamage;
 
     private const float x2MULT = 100f;
@@ -272,6 +275,8 @@ public class Pinball : MonoBehaviour, IRunContext
         ChangeState(PinballState.Charging);
         uim.Init(this);
         invisWalls.SetActive(false);
+
+        ballCount = 1;
     }
 
     // Update is called once per frame
@@ -468,7 +473,6 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         GameObject dupedBall = Instantiate(ballClone, ball.gameObject.transform.position, Quaternion.identity);
         dupedBall.GetComponent<Ball>().ResetRb();
-
     }
 
     public void AddScore(int gameScore, int bumpCount, int bumpCountConsec)
@@ -815,6 +819,15 @@ public class Pinball : MonoBehaviour, IRunContext
 
     }
 
+    public void ApplyAdditionalBalls(int additionalBalls)
+    {
+        for (int i = 0; i < additionalBalls; i++)
+        {
+            DupeBall();
+            ballCount++;
+        }
+    }
+
     public void SetPaddleState(bool isLeft)
     {
         var paddle = isLeft ? leftPaddle : rightPaddle;
@@ -848,6 +861,11 @@ public class Pinball : MonoBehaviour, IRunContext
     public void ApplyEarthFX(int bonusDamage, float crustedDuration, float fissureHitScoreMultiplier, float fissureHitXPMultiplier, int bounceDuration, bool cursed)
     {
         fissureDamage = bonusDamage;
+    }
+
+    public void ApplyElectricFX(int ShockDamage, int chainCount, float scoreMultiplier, float xpMultiplier, int bounceDuration, bool cursed)
+    {
+        shockDamage = ShockDamage;
     }
 
 

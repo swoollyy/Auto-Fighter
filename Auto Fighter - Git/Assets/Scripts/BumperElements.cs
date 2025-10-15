@@ -7,6 +7,7 @@ public enum BumperState
     Drenched,
     Crusted,
     Windswept,
+    Shocked,
 
     Steaming,
     Molten,

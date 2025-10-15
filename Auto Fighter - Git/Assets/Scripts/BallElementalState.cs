@@ -56,11 +56,19 @@ public class BallElementalState : MonoBehaviour
     private bool earthEffectActive;
     private bool earthIsCursed;
 
-    private bool areEffectsActive => fireEffectActive || waterEffectActive || earthEffectActive;
+    private int electricShockDamage;
+    private int electricChainCount;
+    private float electricBonusXP;
+    private float electricBonusScore;
+    private bool electricEffectActive;
+    private bool electricIsCursed;
+
+    private bool areEffectsActive => fireEffectActive || waterEffectActive || earthEffectActive || electricEffectActive;
 
     private int fireBouncesRemaining;
     private int waterBouncesRemaining;
     private int earthBouncesRemaining;
+    private int electricBouncesRemaining;
 
     // Public getters if needed
     public float FireActiveTempDamage => fireTempDamage;
@@ -89,8 +97,17 @@ public class BallElementalState : MonoBehaviour
     public float EarthBonusScore => earthBonusScore;
     public bool EarthEffectActive => earthEffectActive;
     public bool EarthIsCursed => earthIsCursed;
-
     public int EarthBouncesRemaining => earthBouncesRemaining;
+
+    public int ElectricShockDamage => electricShockDamage;
+    public int ElectricChainCount => electricChainCount;
+    public float ElectricBonusXP => electricBonusXP;
+    public float ElectricBonusScore => electricBonusScore;
+    public bool ElectricEffectActive => electricEffectActive;
+    public bool ElectricIsCursed => electricIsCursed;
+    public int ElectricBouncesRemaining => electricBouncesRemaining;
+
+
 
 
     private void Awake()
@@ -186,6 +203,11 @@ public class BallElementalState : MonoBehaviour
             elem.ClearElement();
             elem.ApplyCrusted(earthCrustDuration, earthBonusXP, earthBonusScore);
         }
+        if(electricEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyShocked(electricBonusXP, electricBonusScore);
+        }
 
         switch (CurrentState)
         {
@@ -213,6 +235,15 @@ public class BallElementalState : MonoBehaviour
                     ClearState();
                 }
                 break;
+
+            case ElementalState.Electric:
+                electricBouncesRemaining--;
+                if (electricBouncesRemaining <= 0)
+                {
+                    electricEffectActive = false;
+                    ClearState();
+                }
+                break;
             // Handle other elemental states with bounce effects as needed
             default:
                 break;
@@ -227,8 +258,12 @@ public class BallElementalState : MonoBehaviour
 
     public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
-        fireEffectActive = true;
         waterEffectActive = false;
+        earthEffectActive = false;
+        electricEffectActive = false;
+
+        fireEffectActive = true;
+
         Debug.Log("Fire effect applied to ball");
 
         fireTempDamage = bonusDamage;
@@ -248,8 +283,11 @@ public class BallElementalState : MonoBehaviour
 
     public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
-        waterEffectActive = true;
+        electricEffectActive = false;
         fireEffectActive = false;
+        earthEffectActive = false;
+
+        waterEffectActive = true;
         Debug.Log("Water effect applied to ball");
 
 
@@ -271,6 +309,7 @@ public class BallElementalState : MonoBehaviour
     {
         fireEffectActive = false;
         waterEffectActive = false;
+        electricEffectActive = false;
 
         earthEffectActive = true;
         Debug.Log("Earth effect applied to ball");
@@ -284,6 +323,25 @@ public class BallElementalState : MonoBehaviour
             earthBouncesRemaining = bounceDuration;
         earthIsCursed = cursed;
         SetState(ElementalState.Earth);
+    }
+
+    public void SetElectricState(int shockDamage, int chainCount, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
+    {
+        fireEffectActive = false;
+        waterEffectActive = false;
+        earthEffectActive = false;
+
+        electricEffectActive = true;
+        Debug.Log("Electric effect applied to ball");
+        electricShockDamage = shockDamage;
+        electricChainCount = chainCount;
+        electricBonusXP = bonusXP;
+        electricBonusScore = bonusScore;
+        electricBouncesRemaining += bounceDuration;
+        if (electricBouncesRemaining > bounceDuration)
+            electricBouncesRemaining = bounceDuration;
+        electricIsCursed = cursed;
+        SetState(ElementalState.Electric);
     }
 
 

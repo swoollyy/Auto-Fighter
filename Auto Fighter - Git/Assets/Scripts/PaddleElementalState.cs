@@ -36,6 +36,14 @@ public class PaddleElementalState : MonoBehaviour
     public int EarthBounceDuration { get; private set; }
     public bool EarthIsCursed { get; private set; }
 
+    public int ElectricShockDamage { get; private set; }
+    public int ElectricChainCount { get; private set; }
+    public float ElectricXPBonus { get; private set; }
+    public float ElectricScoreBonus { get; private set; }
+    public int ElectricBounceDuration { get; private set; }
+    public bool ElectricIsCursed { get; private set; }
+
+
     void Start()
     {
         CurrentState = initialState;
@@ -55,6 +63,12 @@ public class PaddleElementalState : MonoBehaviour
                     break;
                 case PaddleState.Earth:
                     CurrentState = PaddleState.Earth;
+                    break;
+            case PaddleState.Electric:
+                    CurrentState = PaddleState.Electric;
+                    break;
+                default:
+                    CurrentState = PaddleState.None;
                     break;
         }
     }
@@ -95,6 +109,15 @@ public class PaddleElementalState : MonoBehaviour
         EarthIsCursed = cursed;
     }
 
+    public void StoreElectricData(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        ElectricShockDamage = shockDamage;
+        ElectricChainCount = chainCount;
+        ElectricXPBonus = xpBonus;
+        ElectricScoreBonus = scoreBonus;
+        ElectricBounceDuration = bounceDuration;
+        ElectricIsCursed = cursed;
+    }
     public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDur, int bounceDur, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
         SetPaddleState(PaddleState.Fire);
@@ -112,6 +135,12 @@ public class PaddleElementalState : MonoBehaviour
     {
         SetPaddleState(PaddleState.Earth);
         StoreEarthData(fissureDamage, crustDuration, xpBonus, scoreBonus, bounceDuration, cursed);
+    }
+
+    public void ApplyElectric(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Electric);
+        StoreElectricData(shockDamage, chainCount, xpBonus, scoreBonus, bounceDuration, cursed);
     }
 
     public PaddleEffectData GetEffectData()
@@ -141,7 +170,14 @@ public class PaddleElementalState : MonoBehaviour
             EarthXPBonus,
             EarthScoreBonus,
             EarthBounceDuration,
-            EarthIsCursed);
+            EarthIsCursed,
+            
+            ElectricShockDamage,
+            ElectricChainCount,
+            ElectricXPBonus,
+            ElectricScoreBonus,
+            ElectricBounceDuration,
+            ElectricIsCursed);
     }
 
 }

@@ -20,9 +20,16 @@ public class BumperElementalState : MonoBehaviour
     private float earthBonusScore;
     private float earthCrustExpireAt;
 
+    private float electricBonusXP;
+    private float electricBonusScore;
+
     public float WaterBonusXP => waterBonusXP;
     public float EarthBonusXP => earthBonusXP;
     public float EarthBonusScore => earthBonusScore;
+
+    public float ElectricBonusXP => electricBonusXP;
+    public float ElectricBonusScore => electricBonusScore;
+
 
 
     void Awake()
@@ -53,6 +60,9 @@ public class BumperElementalState : MonoBehaviour
                 break;
             case BumperState.Crusted:
                 HandleCrusted();
+                break;
+            case BumperState.Shocked:
+                HandleShocked();
                 break;
             default:
                 break;
@@ -142,11 +152,32 @@ public class BumperElementalState : MonoBehaviour
         CurrentState = BumperState.None;
     }
 
+    public void ApplyShocked(float bonusXP, float bonusScore)
+    {
+        CurrentState = BumperState.Shocked;
+        electricBonusXP = bonusXP;
+        electricBonusScore = bonusScore;
+    }
+
+    public void HandleShocked()
+    {
+        bumper.TakeShockDamage(true);
+        ClearShocked();
+    }
+
+    public void ClearShocked()
+    {
+        electricBonusXP = 0f;
+        electricBonusScore = 0f;
+        CurrentState = BumperState.None;
+    }
+
     public void ClearElement()
     {
         ClearBurn();
         ClearDrenched();
         ClearCrusted();
+        ClearShocked();
     }
 
 }

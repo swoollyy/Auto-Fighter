@@ -25,11 +25,17 @@ public class EndGame : MonoBehaviour
     {
         if(pm.CurrentState == PinballState.Play)
         {
-            Rigidbody rb;
-            rb = col.collider.GetComponent<Rigidbody>();
+            pm.ballCount--;
 
-        pm.ChangeState(PinballState.GameOver);
+
+            if(pm.ballCount <= 0)
+                pm.ChangeState(PinballState.GameOver);
         }
+
+        Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();
+
+        rb.velocity = Vector3.zero;
+
 
 
     }

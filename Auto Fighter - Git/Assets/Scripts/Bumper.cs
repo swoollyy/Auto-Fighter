@@ -47,6 +47,10 @@ public class Bumper : MonoBehaviour
     [SerializeField] private float contactPointTimeout = 0.25f; // seconds
 
 
+    private static readonly List<Bumper> AllBumpers = new();
+
+    private void OnEnable() => AllBumpers.Add(this);
+    private void OnDisable() => AllBumpers.Remove(this);
 
     void Awake()
     {
@@ -140,6 +144,28 @@ public class Bumper : MonoBehaviour
 
     }
 
+
+    private Bumper FindNearestOther(float maxDistance = Mathf.Infinity)
+    {
+        Vector3 p = transform.position;
+        Bumper nearest = null;
+        float bestSqr = maxDistance * maxDistance;
+
+        for(int i = 0; i < AllBumpers.Count; i++)
+        {
+            var b = AllBumpers[i];
+            if(b == null || b == this)
+                continue;
+            float d = (b.transform.position - p).sqrMagnitude;
+            if(d < bestSqr)
+            {
+                bestSqr = d;
+                nearest = b;
+            }
+        }
+        return nearest;
+    }
+
     public void TakeDamage(float amount, bool elemDmg)
     {
             curHealth -= amount;
@@ -194,6 +220,7 @@ public class Bumper : MonoBehaviour
     {
         curHealth -= pm.fissureDamage;
 
+
         GetComponent<BumperAnimScript>().BumperHit();
         pm.ScreenShake();
 
@@ -223,5 +250,43 @@ public class Bumper : MonoBehaviour
         }
 
 
+    }
+
+    public void TakeShockDamage(bool propogate = false)
+    {
+
+
+        if (propogate)
+        {
+            var nearest = FindNearestOther();
+            if (nearest)
+                nearest.TakeShockDamage(false);
+
+        }
+        curHealth -= pm.shockDamage;
+
+
+
+        GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+            Vector3 offset = basePos + new Vector3(1, 4, -1);
+            DamageNumbers.Spawn(pm.shockDamage, offset);
+        }
+        pm.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP);
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+        }
     }
 }

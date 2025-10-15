@@ -7,4 +7,5 @@ public enum PaddleState
     Water,
     Earth,
     Air,
+    Electric
 }
