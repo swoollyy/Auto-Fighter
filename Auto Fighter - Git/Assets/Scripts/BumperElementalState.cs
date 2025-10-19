@@ -16,17 +16,22 @@ public class BumperElementalState : MonoBehaviour
     private float waterBonusXP;
     private float waterDrenchExpireAt;
 
+    private float earthFissureDamage;
     private float earthBonusXP;
     private float earthBonusScore;
     private float earthCrustExpireAt;
 
+    private float electricShockDamage;
     private float electricBonusXP;
     private float electricBonusScore;
 
     public float WaterBonusXP => waterBonusXP;
+
+    public float EarthFissureDamage => earthFissureDamage;
     public float EarthBonusXP => earthBonusXP;
     public float EarthBonusScore => earthBonusScore;
 
+    public float ElectricShockDamage => electricShockDamage;
     public float ElectricBonusXP => electricBonusXP;
     public float ElectricBonusScore => electricBonusScore;
 
@@ -81,7 +86,7 @@ public class BumperElementalState : MonoBehaviour
 
     private void HandleBurning()
     {
-        if (Time.time >= fireBurnExpireAt)
+        if (Time.time >= fireBurnNextTickAt)
         {
             fireBurnNextTickAt += fireBurnTickInterval;
             bumper.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
@@ -124,11 +129,12 @@ public class BumperElementalState : MonoBehaviour
         CurrentState = BumperState.None;
     }
 
-    public void ApplyCrusted(float duration, float bonusXP, float bonusScore)
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
     {
         CurrentState = BumperState.Crusted;
         Debug.Log("Bumper Crusted Applied");
         float newExpire = Time.time + duration;
+        earthFissureDamage = damage;
         earthBonusXP = bonusXP;
         earthBonusScore = bonusScore;
         if (newExpire > earthCrustExpireAt)
@@ -139,34 +145,37 @@ public class BumperElementalState : MonoBehaviour
     {
         if (Time.time >= earthCrustExpireAt)
         {
-            bumper.TakeFissureDamage();
+            bumper.TakeFissureDamage(earthFissureDamage);
             ClearCrusted();
         }
     }
 
     public void ClearCrusted()
     {
+        earthFissureDamage = 0f;
         earthCrustExpireAt = 0f;
         earthBonusXP = 0f;
         earthBonusScore = 0f;
         CurrentState = BumperState.None;
     }
 
-    public void ApplyShocked(float bonusXP, float bonusScore)
+    public void ApplyShocked(float damage, float bonusXP, float bonusScore)
     {
         CurrentState = BumperState.Shocked;
+        electricShockDamage = damage;
         electricBonusXP = bonusXP;
         electricBonusScore = bonusScore;
     }
 
     public void HandleShocked()
     {
-        bumper.TakeShockDamage(true);
+        bumper.TakeShockDamage(electricShockDamage, true);
         ClearShocked();
     }
 
     public void ClearShocked()
     {
+        electricShockDamage = 0f;
         electricBonusXP = 0f;
         electricBonusScore = 0f;
         CurrentState = BumperState.None;

@@ -52,6 +52,8 @@ public class Bumper : MonoBehaviour
     private void OnEnable() => AllBumpers.Add(this);
     private void OnDisable() => AllBumpers.Remove(this);
 
+
+
     void Awake()
     {
         pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
@@ -73,7 +75,11 @@ public class Bumper : MonoBehaviour
     void OnCollisionEnter(Collision col)
     {
         var rb = col.rigidbody;
-        if(rb != null )
+
+        var ballComp = rb.GetComponent<Ball>();
+        var elemState = rb.GetComponent<BallElementalState>();
+
+        if (rb != null )
         {
             int id = rb.GetInstanceID();
 
@@ -102,9 +108,9 @@ public class Bumper : MonoBehaviour
                 ball = col.collider;
 
 
-            float baseDamage = pm.Damage;
-            float elemBonus = pm.extraElemDamage;
-            bool didElemHit = elemBonus > 0;
+            float totalDamage = ballComp != null ? ballComp.CurrentDamage : pm.Damage;
+            bool didElemHit = elemState != null && elemState.CurrentState != ElementalState.None;
+
 
             rb.velocity = Vector3.zero;
             if (this.CompareTag("Bumper"))
@@ -136,7 +142,6 @@ public class Bumper : MonoBehaviour
             rb.gameObject.GetComponent<Ball>().hasBounced = true;
 
 
-            float totalDamage = baseDamage + elemBonus;
 
             TakeDamage(totalDamage, elemDmg: didElemHit);
         }
@@ -216,9 +221,9 @@ public class Bumper : MonoBehaviour
         }
     }
 
-    public void TakeFissureDamage()
+    public void TakeFissureDamage(float amount)
     {
-        curHealth -= pm.fissureDamage;
+        curHealth -= amount;
 
 
         GetComponent<BumperAnimScript>().BumperHit();
@@ -231,7 +236,7 @@ public class Bumper : MonoBehaviour
 
             Vector3 offset = basePos + new Vector3(0, 4, 0);
 
-            DamageNumbers.Spawn(pm.fissureDamage, offset);
+            DamageNumbers.Spawn(amount, offset);
         }
 
         pm.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP);
@@ -252,7 +257,7 @@ public class Bumper : MonoBehaviour
 
     }
 
-    public void TakeShockDamage(bool propogate = false)
+    public void TakeShockDamage(float amount, bool propogate = false)
     {
 
 
@@ -260,10 +265,10 @@ public class Bumper : MonoBehaviour
         {
             var nearest = FindNearestOther();
             if (nearest)
-                nearest.TakeShockDamage(false);
+                nearest.TakeShockDamage(amount, false);
 
         }
-        curHealth -= pm.shockDamage;
+        curHealth -= amount;
 
 
 
@@ -274,7 +279,7 @@ public class Bumper : MonoBehaviour
             bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
             Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
             Vector3 offset = basePos + new Vector3(1, 4, -1);
-            DamageNumbers.Spawn(pm.shockDamage, offset);
+            DamageNumbers.Spawn(amount, offset);
         }
         pm.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP);
         if (curHealth <= 0)

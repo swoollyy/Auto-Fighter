@@ -1,10 +1,11 @@
+using DG.Tweening;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.AddressableAssets;
-using DG.Tweening;
+using UnityEngine.SceneManagement;
+using static UnityEngine.ProBuilder.AutoUnwrapSettings;
 
 
 public enum PinballState
@@ -72,9 +73,9 @@ public class Pinball : MonoBehaviour, IRunContext
         {RewardRarity.Uncommon, 66f},
         {RewardRarity.Rare, 40f},
         {RewardRarity.Epic, 24f},
-        {RewardRarity.Legendary, 9.5f},
-        {RewardRarity.Artifact, 1f},
-        {RewardRarity.Cursed, 1f},
+        {RewardRarity.Legendary, 5f},
+        {RewardRarity.Artifact, .5f},
+        {RewardRarity.Cursed, .5f},
     };
 
 
@@ -154,11 +155,10 @@ public class Pinball : MonoBehaviour, IRunContext
     public int BouncesForBonusS => bouncesForBonusS;
 
 
-    private float baseDamage = 5;
-    public float extraElemDamage = 0;
-    public float fissureDamage = 0;
-    public float shockDamage = 0;
-    public float Damage => baseDamage;
+    [SerializeField] private float defaultBaseDamage = 5f;
+
+    public float Damage => TryGetAnchorBall(out var b) ? b.CurrentDamage : defaultBaseDamage;
+
 
     private const float x2MULT = 100f;
     private const float x4MULT = 200f;
@@ -202,7 +202,7 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private int shakeVibrato = 12;
     [SerializeField, Range(0f, 1f)] private float shakeRandomness = 90f;
 
-
+    private readonly List<Ball> liveBalls = new();
 
 
 
@@ -258,6 +258,8 @@ public class Pinball : MonoBehaviour, IRunContext
         Instance = this;
         maxXP = XPFormula.XpReq(level);
         Debug.Log($"Initial max XP {maxXP}");
+
+
         elementalState = ball.GetComponent<BallElementalState>();
 
         ballCol = ball.gameObject.GetComponent<Collider>();
@@ -311,12 +313,15 @@ public class Pinball : MonoBehaviour, IRunContext
                 {
                     HitCheck(leftPaddleBind);
                 }
-                if (ball.isTouchingPaddles && (Input.GetKey(leftPaddleBind) || canHitL) && !hasBeenHitL)
+
+                var leftPaddleBall = GetPaddleTarget();
+
+                if(leftPaddleBall != null && leftPaddleBall.isTouchingPaddles && (Input.GetKey(leftPaddleBind) || canHitL) && !hasBeenHitL)
                 {
                     hasBeenHitL = true;
                     StartCoroutine(ResetLBumper(.4f));
-                    if (leftElem != null && ball != null)
-                        ball.OnPaddleHit(leftElem.GetEffectData());
+                    if (leftElem != null)
+                        leftPaddleBall.OnPaddleHit(leftElem.GetEffectData());
                 }
             }
         }
@@ -332,12 +337,14 @@ public class Pinball : MonoBehaviour, IRunContext
                 if (Input.GetKeyDown(rightPaddleBind))
                     HitCheck(rightPaddleBind);
 
-                if (ball.isTouchingPaddles && (Input.GetKey(rightPaddleBind) || canHitR) && !hasBeenHitR)
+                var rightPaddleBall = GetPaddleTarget();
+
+                if (rightPaddleBall != null && rightPaddleBall.isTouchingPaddles && (Input.GetKey(rightPaddleBind) || canHitR) && !hasBeenHitR)
                 {
                     hasBeenHitR = true;
                     StartCoroutine(ResetRBumper(.4f));
-                    if (rightElem != null && ball != null)
-                        ball.OnPaddleHit(rightElem.GetEffectData());
+                    if (rightElem != null)
+                        rightPaddleBall.OnPaddleHit(rightElem.GetEffectData());
                 }
 
             }
@@ -464,6 +471,82 @@ public class Pinball : MonoBehaviour, IRunContext
     }
 
 
+    public void RegisterBall(Ball b)
+    {
+        if(b != null && !liveBalls.Contains(b))
+            liveBalls.Add(b);
+    }
+
+    public void UnregisterBall(Ball b)
+    {
+        if(b != null)
+            liveBalls.Remove(b);
+    }
+    private static bool IsBallUsable(Ball b)
+    {
+        return b != null
+            && b.isActiveAndEnabled
+            && b.gameObject.activeInHierarchy
+            && b.isActive; 
+    }
+
+    private IEnumerable<Ball> GetUsableBalls()
+    {
+        for(int i = liveBalls.Count -1; i >= 0; i--)
+        {
+            var b = liveBalls[i];
+            if(b == null) { liveBalls.RemoveAt(i);
+                continue;
+            }
+            if (IsBallUsable(b)) yield return b;
+        }
+    }
+
+    private void ForEachUsableBall(System.Action<Ball> action)
+    {
+        foreach(var b in GetUsableBalls())
+            action(b);
+    }
+
+    private bool TryGetAnchorBall(out Ball anchor)
+    {
+        for (int i = 0; i < liveBalls.Count; i++)
+        {
+            var candidate = liveBalls[i];
+
+            // prune dead/missing entries
+            if (candidate == null)
+            {
+                liveBalls.RemoveAt(i);
+                i--;
+                continue;
+            }
+
+            if (IsBallUsable(candidate))
+            {
+                anchor = candidate; // earliest active in insertion order
+                return true;
+            }
+        }
+
+        anchor = null;
+        return false;
+    }
+
+
+
+    private Ball GetPaddleTarget()
+    {
+        for (int i = 0; i < liveBalls.Count; i++)
+        {
+            var b = liveBalls[i];
+            if (b == null) { liveBalls.RemoveAt(i); i--; continue; }
+            if (IsBallUsable(b) && b.isTouchingPaddles)
+                return b;
+        }
+
+        return TryGetAnchorBall(out var anchor) ? anchor : null;
+    }
     public void EnableInvisibleWalls()
     {
         invisWalls.SetActive(true);
@@ -471,8 +554,43 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void DupeBall()
     {
-        GameObject dupedBall = Instantiate(ballClone, ball.gameObject.transform.position, Quaternion.identity);
-        dupedBall.GetComponent<Ball>().ResetRb();
+        if (!TryGetAnchorBall(out var anchor))
+        {
+            if (IsBallUsable(ball))
+                anchor = ball;
+        }
+
+        if (anchor == null)
+        {
+            Debug.Log("No valid ball to duplicate!");
+            return;
+        }
+
+
+        var dupedBallGO = Instantiate(ballClone, anchor.transform.position, Quaternion.identity);
+        var dupedBall = dupedBallGO.GetComponent<Ball>();
+
+        if(dupedBall != null && anchor != null)
+        {
+            dupedBall.BaseDamage = anchor.BaseDamage;
+            dupedBall.maxSpeed = anchor.maxSpeed;
+            dupedBall.transform.localScale = anchor.transform.localScale;
+
+
+            var anchorCol = anchor.GetComponent<Collider>();
+            var dupedCol = dupedBall.GetComponent<Collider>();
+
+
+
+            if (anchorCol != null && dupedCol != null && anchorCol.material != null)
+            {
+                var src = anchorCol.material;
+                dupedCol.material = Instantiate(src);
+            }
+
+            dupedBall.ResetRb();
+
+        }
     }
 
     public void AddScore(int gameScore, int bumpCount, int bumpCountConsec)
@@ -757,11 +875,6 @@ public class Pinball : MonoBehaviour, IRunContext
         if (scoreMult != 0)
             baseScoreMult *= Mult;
 
-        if (bounciness != 0)
-        {
-            ballCol.material.bounciness *= 1 + Bounciness;
-        }
-
         if (bonus)
         {
             extraHitsS = true;
@@ -769,13 +882,17 @@ public class Pinball : MonoBehaviour, IRunContext
             bonusHitsS = bonusBounces;
         }
 
-        if (size != 0)
+        ForEachUsableBall(b =>
         {
-            ball.gameObject.transform.localScale *= Size;
-        }
-        if (speed != 0)
-            ball.maxSpeed *= 1 + Speed;
+            if (bounciness != 0)
+                b.AdjustBounciness(1f + Bounciness);
 
+            if (size != 0)
+                b.transform.localScale *= Size;
+
+            if (speed != 0)
+                b.maxSpeed *= 1f + Speed;
+        });
     }
     public void ApplyGrowFX(float size, float speed, float bounciness, float xpMult, float bonusBounces, int bounces, bool bonus, bool cursed)
     {
@@ -787,11 +904,6 @@ public class Pinball : MonoBehaviour, IRunContext
         if (xpMult != 0)
             baseXPMult *= Mult;
 
-        if (bounciness != 0)
-        {
-            ballCol.material.bounciness *= 1 + Bounciness;
-        }
-
         if (bonus)
         {
             extraHitsG = true;
@@ -799,33 +911,49 @@ public class Pinball : MonoBehaviour, IRunContext
             bonusHitsG = bonusBounces;
         }
 
-        if (size != 0)
+        ForEachUsableBall(b =>
         {
-            ball.gameObject.transform.localScale *= Size;
-        }
-        if (speed != 0)
-        {
-            ball.maxSpeed *= 1 - Speed;
-        }
+            if (bounciness != 0)
+                b.AdjustBounciness(1f + Bounciness);
+
+            if (size != 0)
+                b.transform.localScale *= Size;
+
+            if (speed != 0)
+                b.maxSpeed *= 1f - Speed;
+        });
 
     }
 
     public void ApplyXPForcefield(float amount)
     {
         float Amount = (100f + amount) / 100f;
-
-        ball.UpdateForcefield(Amount);
-        Debug.Log($"Increasing XP Forcefield by {Amount} - {ball.forceFieldRadius}");
-
+        ForEachUsableBall(b =>
+        {
+            b.UpdateForcefield(Amount);
+        });
     }
 
     public void ApplyAdditionalBalls(int additionalBalls)
     {
+        if(additionalBalls != 100)
         for (int i = 0; i < additionalBalls; i++)
         {
             DupeBall();
             ballCount++;
         }
+        else
+        {
+            int curBallCount = ballCount;
+            for (int i = 0; i < curBallCount; i++)
+            {
+                DupeBall();
+                ballCount++;
+            }
+        }
+
+
+
     }
 
     public void SetPaddleState(bool isLeft)
@@ -846,28 +974,6 @@ public class Pinball : MonoBehaviour, IRunContext
             ChangeState(PinballState.Play);
         }
     }
-
-    public void ApplyFireFX(int bonusDamage, float burnDamage, float burnDuraton, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
-    {
-        extraElemDamage = bonusDamage;
-
-    }
-
-    public void ApplyWaterFX(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
-    {
-        extraElemDamage = bonusDamage;
-    }
-
-    public void ApplyEarthFX(int bonusDamage, float crustedDuration, float fissureHitScoreMultiplier, float fissureHitXPMultiplier, int bounceDuration, bool cursed)
-    {
-        fissureDamage = bonusDamage;
-    }
-
-    public void ApplyElectricFX(int ShockDamage, int chainCount, float scoreMultiplier, float xpMultiplier, int bounceDuration, bool cursed)
-    {
-        shockDamage = ShockDamage;
-    }
-
 
     #endregion
 

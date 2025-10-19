@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 748b7e8016e803d488c36817ce200d4f, type: 3}
   m_Name: ball_dup_r
   m_EditorClassIdentifier: 
-  rewardID: dall_bup_r
+  rewardID: ball_dup_r
   displayName: Another One (Rare)
   description: +1 Ball Count
   category: 3

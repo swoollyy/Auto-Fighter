@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 748b7e8016e803d488c36817ce200d4f, type: 3}
+  m_Name: ball_dup_l
+  m_EditorClassIdentifier: 
+  rewardID: ball_dup_l
+  displayName: Four! Balls (Legendary)
+  description: +4 Ball Count
+  category: 3
+  rarity: 3
+  isPaddleReward: 0
+  blockWhenActive: 0
+  canStack: 1
+  scalable: 0
+  replacesReward: {fileID: 0}
+  exclusivityKey: 
+  blockedKeys: []
+  additionalBalls: 4

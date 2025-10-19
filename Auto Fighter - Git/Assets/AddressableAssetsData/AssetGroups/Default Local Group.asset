@@ -41,6 +41,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2aad2add5930b804582a558dcdeafd84
+    m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3d8222cb8d5517c4ea1386804514407e
     m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_c.asset
     m_ReadOnly: 0
@@ -109,6 +115,12 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: ac6930e69631c2b4db9433ce13d54942
     m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_r.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b108ebd830f8581408cceb5f85020914
+    m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_a.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -199,6 +211,12 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: f80c04231e6a94440be8ca65fc7d71ea
     m_Address: Assets/Level Up Rewards/Ball FX/crs_bfx_s.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fb70bb9847879af4ab1a75bb1980a3c1
+    m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_l.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards

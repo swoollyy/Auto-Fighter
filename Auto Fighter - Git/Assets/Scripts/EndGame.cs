@@ -23,12 +23,14 @@ public class EndGame : MonoBehaviour
 
     void OnCollisionEnter(Collision col)
     {
-        if(pm.CurrentState == PinballState.Play)
+        var ball = col.gameObject.GetComponent<Ball>();
+
+        if (pm.CurrentState == PinballState.Play && ball.isActive)
         {
             pm.ballCount--;
+            ball.isActive = false;
 
-
-            if(pm.ballCount <= 0)
+            if (pm.ballCount <= 0)
                 pm.ChangeState(PinballState.GameOver);
         }
 

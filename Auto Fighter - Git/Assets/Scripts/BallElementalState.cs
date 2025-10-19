@@ -178,8 +178,6 @@ public class BallElementalState : MonoBehaviour
     public void ClearState()
     {
         CurrentState = ElementalState.None;
-        PM.extraElemDamage = 0;
-        Debug.Log($"Cleared! {PM.extraElemDamage}");
         //TODO Remove VFX/SFX
     }
 
@@ -201,12 +199,12 @@ public class BallElementalState : MonoBehaviour
         if (earthEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyCrusted(earthCrustDuration, earthBonusXP, earthBonusScore);
+            elem.ApplyCrusted(earthFissureDamage, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
         if(electricEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyShocked(electricBonusXP, electricBonusScore);
+            elem.ApplyShocked(electricShockDamage, electricBonusXP, electricBonusScore);
         }
 
         switch (CurrentState)

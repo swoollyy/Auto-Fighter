@@ -7,6 +7,84 @@ using UnityEngine;
 public class Ball : MonoBehaviour
 {
 
+    [Header("Damage")]
+    [SerializeField] private float baseDamage = 5f;
+
+    private int flatBonusDamage;
+    private float damageMultiplier = 1f;
+    private int bonusBouncesRemaining;
+
+    public float BaseDamage
+    {
+        get => baseDamage;
+        set => baseDamage = Mathf.Max(0f, value);
+    }
+
+    public float CurrentDamage => Mathf.Max(0f, (baseDamage + flatBonusDamage) * damageMultiplier);
+
+    public void AddFlatDamage(int amount, int bounces = 0)
+    {
+        if (amount == 0) return;
+        flatBonusDamage += amount;
+        bonusBouncesRemaining = Mathf.Max(bonusBouncesRemaining, bounces);
+    }
+
+    public void AddDamageMultiplier(float multiplier, int bounces = 0)
+    {
+        if (Mathf.Approximately(multiplier, 1f)) return;
+        damageMultiplier *= multiplier;
+        bonusBouncesRemaining = Mathf.Max(bonusBouncesRemaining, bounces);
+    }
+
+    public void ConsumeBounceForDamageMods()
+    {
+        if (bonusBouncesRemaining <= 0) return;
+        bonusBouncesRemaining--;
+        if (bonusBouncesRemaining == 0)
+        {
+            flatBonusDamage = 0;
+            damageMultiplier = 1f;
+        }
+    }
+
+    private void ResetDamageMods()
+    {
+        flatBonusDamage = 0;
+        damageMultiplier = 1f;
+        bonusBouncesRemaining = 0;
+    }
+
+    private PhysicMaterial runtimePhysMat;
+
+    public void EnsureUniquePhysicMaterial()
+    {
+        if(col == null) col = GetComponent<Collider>();
+        if(col == null) return;
+        if (runtimePhysMat != null) return;
+        var src = col.material;
+
+        if(src != null)
+        {
+            runtimePhysMat = Instantiate(src);
+            runtimePhysMat.name = src.name + " (Runtime)";
+        }
+        else
+        {
+            runtimePhysMat = new PhysicMaterial("RuntimePhysMat");
+        }
+
+        col.material = runtimePhysMat;
+    }
+
+    public void AdjustBounciness(float factor)
+    {
+        EnsureUniquePhysicMaterial();
+        if(col != null && col.material != null)
+        {
+            col.material.bounciness *= factor;
+        }
+    }
+
     public bool isInZone;
 
     Rigidbody rb;
@@ -39,6 +117,9 @@ public class Ball : MonoBehaviour
 
     public bool hasBounced;
 
+    public bool isActive;
+
+
     public float maxSpeed = 50f;
 
     [SerializeField] private ParticleSystemForceField forceField;
@@ -57,12 +138,18 @@ public class Ball : MonoBehaviour
 
     void OnEnable()
     {
+        isActive = true;
+        if (Pinball.Instance != null)
+            Pinball.Instance.RegisterBall(this);
         col = GetComponent<Collider>();
         XPCollectorRegistry.I?.Register(col);
     }
 
     void OnDisable()
     {
+        isActive = false;
+        if (Pinball.Instance != null)
+            Pinball.Instance.UnregisterBall(this);
         XPCollectorRegistry.I?.Unregister(col);
     }
 
@@ -70,6 +157,8 @@ public class Ball : MonoBehaviour
     {
         count = 0;
         debugTimer = 0;
+
+        isActive = true;
 
         forceFieldRadius = forceField.endRange;
     }
@@ -138,6 +227,39 @@ public class Ball : MonoBehaviour
 
     }
 
+
+    public void ApplyPaddleDamageEffect(PaddleEffectData effect)
+    {
+        ResetDamageMods();
+        int flat = 0;
+        int bounces = 0;
+
+        switch(effect.Element)
+        {
+            case PaddleState.Fire:
+                flat = effect.FireBonusDamage;
+                bounces = effect.FireBounceDuration;
+                break;
+            case PaddleState.Water:
+                flat = effect.WaterDamageFlat;
+                bounces = effect.WaterBounceDuration;
+                break;
+                case PaddleState.Earth:
+                flat = 0;
+                    bounces = effect.EarthBounceDuration;
+                break;
+                case PaddleState.Electric:
+                flat = 0;
+                    bounces = effect.ElectricBounceDuration;
+                break;
+            default:
+                break;
+        }
+
+        AddFlatDamage(flat, bounces);
+
+    }
+
     public void Launch(float power)
     {
         Debug.Log($"{30f * power}");
@@ -194,6 +316,8 @@ public class Ball : MonoBehaviour
 
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
+
+        ConsumeBounceForDamageMods();
     }
 
 
@@ -278,7 +402,6 @@ public class Ball : MonoBehaviour
                     effect.FireExplosionDamageFlat,
                     effect.FireIsCursed
                 );
-                PM.extraElemDamage = effect.FireBonusDamage;
                 break;
             case PaddleState.Water:
                 elem.SetWaterState(
@@ -291,7 +414,6 @@ public class Ball : MonoBehaviour
                     effect.WaterBurstDamageFlat,
                     effect.WaterIsCursed
                 );
-                PM.extraElemDamage = effect.WaterDamageFlat;
                 break;
                 case PaddleState.Earth:
                     elem.SetEarthState(
@@ -302,7 +424,6 @@ public class Ball : MonoBehaviour
                     effect.EarthBounceDuration,
                     effect.EarthIsCursed
                 );
-                PM.fissureDamage = effect.EarthBonusDamage;
                 break;
             case PaddleState.Electric:
                 elem.SetElectricState(
@@ -313,12 +434,14 @@ public class Ball : MonoBehaviour
                     effect.ElectricBounceDuration,
                     effect.ElectricIsCursed
                 );
-                PM.shockDamage = effect.ElectricShockDamage;
                 break;
             // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:
                 break;
         }
+
+        ApplyPaddleDamageEffect(effect);
+
     }
 
     public void UpdateForcefield(float amount)
