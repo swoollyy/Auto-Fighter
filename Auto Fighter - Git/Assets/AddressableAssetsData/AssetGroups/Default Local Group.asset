@@ -29,8 +29,26 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1a2433d4bfa2b414390a9ed3cca7dd83
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1acb0be8639426840b30d35ba11620a7
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_a.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 20de8fc767d963b469f71ff4b7c55fff
     m_Address: Assets/Level Up Rewards/Paddle FX/paddle_water_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 22d9166dc6754aa4c8fd2cf23f633255
+    m_Address: Assets/Level Up Rewards/Life Rewards/life_l.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -43,6 +61,18 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 2aad2add5930b804582a558dcdeafd84
     m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2c04118569193de4188b968384ad0df9
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_l.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3a850d726cfbc0443a2605ed0fc5e020
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_r.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -65,6 +95,18 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 589fc3384c0a6ac4fa5168820b4b1f91
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 5db267a6314c3964a9da4a4ef06579c7
+    m_Address: Assets/Level Up Rewards/Life Rewards/life_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 601b0bf9a6507a9489d1e4c50d87939e
     m_Address: Assets/Level Up Rewards/Ball FX/Grow/com_bfx_g.asset
     m_ReadOnly: 0
@@ -73,6 +115,12 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 63ceaa912c746ea45aed126a0da6f9ef
     m_Address: Assets/Level Up Rewards/Paddle FX/paddle_fire_c.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 662ae3f4c4367b949a8e58dbb404479c
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_a.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -101,6 +149,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 894e67808dcf83d458a525335ce210fa
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_r.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 8f2909cf9c04f204d9b042554aedc2cd
     m_Address: Assets/Level Up Rewards/Ball FX/Grow/crs_bfx_g.asset
     m_ReadOnly: 0
@@ -109,6 +163,12 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 9b49cfe9510b8604583c2f49a9ea4434
     m_Address: Assets/Level Up Rewards/Ball FX/e_bfx_s.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9baa15f32a850944fbec172d97f82289
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_c.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -155,6 +215,18 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d192fc882d339764a97d904a3f760d88
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_u.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d232d6d868c3037488960087bfc791fb
+    m_Address: Assets/Level Up Rewards/Life Rewards/life_r.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d319a9fc15f77f14f89203d971e08a5d
     m_Address: Assets/Level Up Rewards/Ball FX/com_bfx_s.asset
     m_ReadOnly: 0
@@ -163,6 +235,24 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d94f9869a2b1f3443ba75153e9e9e7d9
     m_Address: Assets/Level Up Rewards/Ball FX/r_bfx_s.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: daaaf41481286ea4199d4c5f5a239de4
+    m_Address: Assets/Level Up Rewards/Life Rewards/life_a.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: dc0bfa579c9e73347998cc8162df50ff
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_e.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ddcff4881f94f9743a8a3f64663d5335
+    m_Address: Assets/Level Up Rewards/Ball FX/Damage/damage_u.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards
@@ -217,6 +307,12 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: fb70bb9847879af4ab1a75bb1980a3c1
     m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_l.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fd502e1865aab674f89b9e74767a4438
+    m_Address: Assets/Level Up Rewards/Ball FX/DmgPerBounce/dmg_bounce_l.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards

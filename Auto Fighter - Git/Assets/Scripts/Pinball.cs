@@ -16,6 +16,7 @@ public enum PinballState
     Play,
     LevelUp,
     PaddleSelect,
+    ResetBall,
     GameOver
 }
 
@@ -70,10 +71,10 @@ public class Pinball : MonoBehaviour, IRunContext
     private static readonly Dictionary<RewardRarity, float> rarityWeights = new()
     {
         {RewardRarity.Common, 88f},
-        {RewardRarity.Uncommon, 66f},
-        {RewardRarity.Rare, 40f},
-        {RewardRarity.Epic, 24f},
-        {RewardRarity.Legendary, 5f},
+        {RewardRarity.Uncommon, 52f},
+        {RewardRarity.Rare, 25f},
+        {RewardRarity.Epic, 12f},
+        {RewardRarity.Legendary, 3f},
         {RewardRarity.Artifact, .5f},
         {RewardRarity.Cursed, .5f},
     };
@@ -95,6 +96,9 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public Ball ball;
     BallElementalState elementalState;
+
+    // Track the intended "primary" ball so resets always target the same object
+    private int _primaryBallId; // set once, reconciled if the 'ball' ref changes
 
     private Collider ballCol;
 
@@ -153,6 +157,31 @@ public class Pinball : MonoBehaviour, IRunContext
     public float BonusHitsS => bonusHitsS;
     public int BouncesForBonusG => bouncesForBonusG;
     public int BouncesForBonusS => bouncesForBonusS;
+
+
+    [SerializeField] private int startingLives = 3; // tweak in Inspector
+    private int lives;
+    public int Lives => lives;
+
+    [SerializeField] private int maxLives = 5;    // total slots shown in UI
+    public int MaxLives => maxLives;
+
+    // Optional helper to centralize UI updates for lives
+    private void OnLivesChanged()
+    {
+        if (uim != null)
+            uim.UpdateLives(lives, maxLives);
+    }
+
+    // cache the ball's spawn transform so we can reset it precisely
+    private Vector3 _ballStartPos;
+    private Quaternion _ballStartRot;
+    [SerializeField] private float noBallResetGrace = 0.20f; 
+    private float _noBallTimer;
+
+
+    private Vector3 _camDefaultLocalPos;   // cached starting local position for camera
+    private Quaternion _camDefaultLocalRot; // cached starting local rotation for camera
 
 
     [SerializeField] private float defaultBaseDamage = 5f;
@@ -244,6 +273,11 @@ public class Pinball : MonoBehaviour, IRunContext
                 uim.PaddleSelect();
                 Time.timeScale = 0f;
                 break;
+            case PinballState.ResetBall:
+                lives = Mathf.Max(0, lives - 1);
+                OnLivesChanged();
+                ResetBallAndFlow(); // will route to Charging or GameOver
+                break;
 
             case PinballState.GameOver:
                 leftPaddle = null;
@@ -256,13 +290,32 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        maxXP = XPFormula.XpReq(level);
-        Debug.Log($"Initial max XP {maxXP}");
 
+        if (ball != null)
+        {
+            RegisterBall(ball);
+            _ballStartPos = ball.transform.position;
+            _ballStartRot = ball.transform.rotation;
+            _primaryBallId = ball.GetInstanceID();
+        }
+
+        maxXP = XPFormula.XpReq(level);
+        maxLives = Mathf.Max(1, maxLives);
+        startingLives = Mathf.Clamp(startingLives, 0, maxLives);
+        lives = startingLives;
 
         elementalState = ball.GetComponent<BallElementalState>();
 
         ballCol = ball.gameObject.GetComponent<Collider>();
+
+
+        if (mainCam != null)
+        {
+            // Cache defaults so we can always restore before a new shake starts
+            _camDefaultLocalPos = mainCam.transform.localPosition;
+            _camDefaultLocalRot = mainCam.transform.localRotation;
+        }
+
     }
 
     // Start is called before the first frame update
@@ -272,8 +325,9 @@ public class Pinball : MonoBehaviour, IRunContext
         var loader = Addressables.LoadAssetsAsync<RewardSO>("Rewards", rewardPool.Add);
         await loader.Task;
 
-        
 
+        uim.InitLives(maxLives);
+        OnLivesChanged();
         ChangeState(PinballState.Charging);
         uim.Init(this);
         invisWalls.SetActive(false);
@@ -298,6 +352,8 @@ public class Pinball : MonoBehaviour, IRunContext
             Debug.Log($"Doing this");
             StartNextLevelUp();
         }
+
+
 
 
         if (leftPaddle != null)
@@ -397,8 +453,28 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
+        // Replace the Play-state drain check in Update() with a debounced version
+        if (currentState == PinballState.Play)
+        {
+            // Consider both the tracked list AND the main ball as a fallback
+            bool any = HasAnyUsableBalls() || IsBallUsable(ball);
 
-
+            if (!any)
+            {
+                _noBallTimer += Time.unscaledDeltaTime; // use unscaled to resist pausing spikes
+                if (_noBallTimer >= noBallResetGrace)
+                {
+                    // Optional: helpful debug to trace intermittent teleports
+                    Debug.LogWarning($"[Pinball] No balls detected for {noBallResetGrace}s. " +
+                                     $"liveBalls.Count={liveBalls.Count}, mainUsable={IsBallUsable(ball)}. Resetting.");
+                    ChangeState(PinballState.ResetBall);
+                }
+            }
+            else
+            {
+                _noBallTimer = 0f;
+            }
+        }
         //if in correct states
         if (currentState == PinballState.Charging || currentState == PinballState.Push)
         {
@@ -547,9 +623,67 @@ public class Pinball : MonoBehaviour, IRunContext
 
         return TryGetAnchorBall(out var anchor) ? anchor : null;
     }
+
+    private void EnsurePrimaryBallRef()
+    {
+        if (ball != null && ball.GetInstanceID() == _primaryBallId)
+            return;
+
+        for(int i = 0; i < liveBalls.Count; i++)
+        {
+            var b = liveBalls[i];
+            if(b != null && b.GetInstanceID() == _primaryBallId)
+            {
+                ball = b;
+                return;
+            }
+        }
+
+
+        if(ball == null && liveBalls.Count > 0 && liveBalls[0] != null)
+        {
+            ball = liveBalls[0];
+            _primaryBallId = ball.GetInstanceID();
+        }
+
+    }
+
+    private void FreezeAndTeleportToStart(Ball target)
+    {
+        if(target == null)
+            return;
+        var t = target.transform;
+        var rb = target.GetComponent<Rigidbody>();
+
+        DOTween.Kill(t, complete: false);
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.velocity = Vector3.zero;
+            rb.position = _ballStartPos;
+            rb.rotation = _ballStartRot;
+            rb.Sleep();
+            rb.isKinematic = false;
+        }
+        else
+        {
+            t.position = _ballStartPos;
+            t.rotation = _ballStartRot;
+        }
+        target.ResetRb();
+    }
+
     public void EnableInvisibleWalls()
     {
         invisWalls.SetActive(true);
+    }
+
+    public void DisableInvisibleWalls()
+    {
+        invisWalls.SetActive(false);
+        wallTimer = 0f;
+        wallTimerStart = false;
     }
 
     public void DupeBall()
@@ -635,11 +769,85 @@ public class Pinball : MonoBehaviour, IRunContext
         uim.UpdateScore(score, bumpCount, bumpCountConsec);
     }
 
+    private bool HasAnyUsableBalls()
+    {
+        // Fast check without allocating an intermediate list
+        foreach (var b in GetUsableBalls())
+            return true;
+
+        if(IsBallUsable(ball))
+        {
+            if(!liveBalls.Contains(ball))
+                RegisterBall(ball);
+            return true;
+        }
+
+        return false;
+    }
+
+    // 7) Core reset flow. This preserves score, level, rewards, and scene objects.
+    private void ResetBallAndFlow()
+    {
+        EnsurePrimaryBallRef();
+        _noBallTimer = 0f;
+
+        DisableInvisibleWalls();
+        ResetCameraShakeState();
+
+        // Remove lingering duplicated balls (if any), keep the main 'ball' reference
+        for (int i = liveBalls.Count - 1; i >= 0; i--)
+        {
+            var b = liveBalls[i];
+            if (b == null) { liveBalls.RemoveAt(i); continue; }
+            if (b != ball) // only destroy clones; keep main ball instance
+            {
+                liveBalls.RemoveAt(i);
+                Destroy(b.gameObject);
+            }
+        }
+
+        // Ensure main ball is alive and reset to launcher spawn
+        if (ball != null)
+        {
+            ball.isActive = true;
+            ball.gameObject.SetActive(true);
+            var rb = ball.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+
+            FreezeAndTeleportToStart(ball);
+            // re-register the main ball if the list is empty or missing it
+            if (!liveBalls.Contains(ball))
+                RegisterBall(ball);
+        }
+
+        // Reset local charge state so the player can launch again
+        isHoldingCharge = false;
+        hasPressedCharge = false;
+        chargeTimer = 0f;
+        chargePercentage = 0f;
+
+        // Set counters back to a single-ball scenario
+        ballCount = 1;
+
+        // Important: DO NOT touch score, XP, level, reward sets, or any scene FX (XP orbs, bumper states)
+        // Route to Charging if lives remain; otherwise end the game
+        if (lives > 0)
+            ChangeState(PinballState.Charging);
+        else
+            ChangeState(PinballState.GameOver);
+    }
+
     public void AddXP(float xp)
     {
         float finalXP = xp * xpMultiplier;
+        Debug.Log($"blob - XP Being Added: {finalXP}");
         curXP += finalXP;
-        curXP = Mathf.RoundToInt(curXP);
+        Debug.Log($"blob - CurXP : {curXP}");
+
 
         ballXPScript.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(maxXP), level);
 
@@ -787,10 +995,25 @@ public class Pinball : MonoBehaviour, IRunContext
         hasBeenHitR = false;
     }
 
+    public void ResetCameraShakeState()
+    {
+        if (mainCam == null) return;
+
+        var t = mainCam.transform;
+
+        // Stop any in-flight tweens without completing them (prevents inheriting partial offsets)
+        t.DOKill(false);
+
+        // Restore baseline transform so each new shake starts clean
+        t.localPosition = _camDefaultLocalPos;
+        t.localRotation = _camDefaultLocalRot;
+    }
+
 
     public void ScreenShake()
     {
-        DOTween.Kill(mainCam.transform);
+        ResetCameraShakeState();
+
 
         // simple DOShakePosition call
         mainCam.transform.DOShakePosition(
@@ -954,6 +1177,30 @@ public class Pinball : MonoBehaviour, IRunContext
 
 
 
+    }
+
+    public void ApplyGrantedLives(int amount)
+    {
+        lives = Mathf.Clamp(lives + amount, 0, maxLives);
+        OnLivesChanged();
+    }
+
+    public void ApplyDamageFX(float amount)
+    {
+        float Amount = (100f + amount) / 100f;
+        ForEachUsableBall(b =>
+        {
+            b.AddDamageMultiplier(Amount);
+        });
+    }
+
+    public void ApplyDmgPerBounceFX(float amount, int bounces)
+    {
+        float Amount = (100f + amount) / 100f;
+        ForEachUsableBall(b =>
+        {
+            b.AddTempDamageMultiplier(Amount, bounces);
+        });
     }
 
     public void SetPaddleState(bool isLeft)

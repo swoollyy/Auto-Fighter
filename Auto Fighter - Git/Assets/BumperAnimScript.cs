@@ -12,7 +12,7 @@ public class BumperAnimScript : MonoBehaviour
 
     private Bumper bumper;
 
-    // …inside class:
+    [SerializeField] private bool resetHPBarAlphaToZero = true; // hide HP bar before each flash
     [SerializeField] private Image HPBar;              // assign your HP bar image here
     [SerializeField] private Color hpFlashColor = Color.white;
     [SerializeField, Range(0f, 1f)] private float hpFlashAlpha = 0.9f;
@@ -21,6 +21,10 @@ public class BumperAnimScript : MonoBehaviour
     [SerializeField] private int hpPunchVibrato = 9;        // how “wobbly” the punch is
     [SerializeField, Range(0f, 1f)] private float hpPunchElasticity = 0.12f;
     [SerializeField, Range(0f, .1f)] private float genScale = 0.04f; // general scale reduction to keep things in check
+
+    private Vector3 _defLocalScale;        // default bumper scale
+    private Vector3 _hpRTDefaultScale;     // default HP bar rect scale
+    private float _hpGroupDefaultAlpha;    // default canvas group alpha
 
     private Color _hpDefaultColor;
     private RectTransform _hpRT;
@@ -53,7 +57,13 @@ public class BumperAnimScript : MonoBehaviour
             hpGroup.blocksRaycasts = false;
         }
 
+        _defLocalScale = transform.localScale;
 
+        if (_hpRT != null)
+            _hpRTDefaultScale = _hpRT.localScale;
+
+        if (hpGroup != null)
+            _hpGroupDefaultAlpha = hpGroup.alpha;
     }
 
     // Update is called once per frame
@@ -62,9 +72,33 @@ public class BumperAnimScript : MonoBehaviour
         HPBar.fillAmount = Mathf.MoveTowards(HPBar.fillAmount, bumper.curHealth / bumper.maxHealth, Time.deltaTime);
     }
 
+    public void ResetTweenState()
+    {
+        transform.DOKill(false);
+        if (defMaterial != null) defMaterial.DOKill(false);
+        if (HPBar != null) HPBar.DOKill(false);
+        if (_hpRT != null) _hpRT.DOKill(false);
+        if (hpGroup != null) hpGroup.DOKill(false);
+
+        transform.localScale = _defLocalScale;
+        if(_hpRT != null) _hpRT.localScale = _hpRTDefaultScale;
+
+        if (defMaterial != null) defMaterial.color = defMatColor;
+        if(HPBar != null) HPBar.color = _hpDefaultColor;
+
+
+        if(hpGroup != null)
+        {
+            hpGroup.alpha = resetHPBarAlphaToZero ? 0f : _hpGroupDefaultAlpha;
+            hpGroup.interactable = false;
+            hpGroup.blocksRaycasts = false;
+        }
+
+    }
+
     public void BumperHit()
     {
-
+        ResetTweenState();
         DOTween.Kill(transform);
         transform.DOPunchScale(new Vector3(.3f, .3f, .3f), 0.2f, 2, .1f);
         defMaterial.DOColor(Color.white, 0.1f).OnComplete(() => {

@@ -18,6 +18,11 @@ public class PinballUIM : MonoBehaviour
     [Header("UI Slots(6 buttons)")]
     [SerializeField] private List<RewardSlot> slots = new();
 
+    // Add these fields near the top
+    [Header("Lives UI")]
+    [SerializeField] private List<Image> lifeIcons = new(); // assign 5 placeholder Images in order (left->right)
+    [SerializeField] private Color32 lifeOnColor = new Color32(75, 202, 107, 255);
+    [SerializeField] private Color32 lifeOffColor = new Color32(75, 202, 107, 11);
 
 
     public Image ChargingSlider;
@@ -41,6 +46,7 @@ public class PinballUIM : MonoBehaviour
         paddleSelectPanel.SetActive(false);
 
         gamePanel.SetActive(true);
+
     }
 
     // Update is called once per frame
@@ -51,7 +57,12 @@ public class PinballUIM : MonoBehaviour
             ChargingSlider.fillAmount = pm.chargePercentage;
             bc.text = $"Score Mult: {pm.ScoreMultiplier.ToString()} | Timer: {pm.ScoreBonusTimeRemaining}";
             bcc.text = $"XP Mult: {pm.XPMultiplier.ToString()} | Timer: {pm.XPBonusTimeRemaining}";
-            xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
+            if (Mathf.RoundToInt(pm.curXP) >= Mathf.RoundToInt(pm.maxXP))
+            {
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP - 1)} / {pm.maxXP}";
+            }
+            else
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
         }
 
 
@@ -60,6 +71,23 @@ public class PinballUIM : MonoBehaviour
     public void Init(Pinball manager)
     {
         pm = manager;
+    }
+
+    public void InitLives(int maxLives)
+    {
+        // Activate only the first `maxLives` icons; hide the rest if more were assigned
+        for (int i = 0; i < lifeIcons.Count; i++)
+            lifeIcons[i].gameObject.SetActive(i < maxLives);
+    }
+
+    public void UpdateLives(int lives, int maxLives)
+    {
+        // Ensure slot visibility matches maxLives
+        InitLives(maxLives);
+
+        // Fill first `lives` icons, dim the rest
+        for (int i = 0; i < lifeIcons.Count && i < maxLives; i++)
+            lifeIcons[i].color = i < lives ? lifeOnColor : lifeOffColor;
     }
 
 

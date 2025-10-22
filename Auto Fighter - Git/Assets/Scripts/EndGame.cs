@@ -29,9 +29,7 @@ public class EndGame : MonoBehaviour
         {
             pm.ballCount--;
             ball.isActive = false;
-
-            if (pm.ballCount <= 0)
-                pm.ChangeState(PinballState.GameOver);
+            Debug.Log("blob");
         }
 
         Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();

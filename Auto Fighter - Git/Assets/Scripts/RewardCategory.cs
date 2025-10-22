@@ -6,5 +6,6 @@ public enum RewardCategory
     BallFX,
     PaddleFX,
     BumperFX,
+    LifeFX,
     Abilities
 }

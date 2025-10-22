@@ -8,6 +8,11 @@ public interface IRunContext
     bool Owns(string rewardId);
     bool HasExclusiveKeyActive(string key);
 
+    int Lives { get; }
+    int MaxLives { get; }
+
+    void ApplyGrantedLives(int amount);
+
     void MarkOwned(string rewardId);
     void SetActive(string rewardId, bool on);
     void SetAvailable(string rewardId, bool on);
@@ -24,6 +29,8 @@ public interface IRunContext
     void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
     void ApplyGrowFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
 
+    void ApplyDamageFX(float amount);
+    void ApplyDmgPerBounceFX(float damageMult, int bouncesNeeded);
 
 
 

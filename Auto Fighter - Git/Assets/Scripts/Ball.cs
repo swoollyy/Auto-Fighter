@@ -12,7 +12,12 @@ public class Ball : MonoBehaviour
 
     private int flatBonusDamage;
     private float damageMultiplier = 1f;
+    private float tempDamageMultiplier = 1f;
+    private float tempDamageMultiplierStore = 1f;
+    private int bonusBouncesNeeded;
     private int bonusBouncesRemaining;
+    private int tmpBonusBouncesNeeded;
+    private int tmpBonusBouncesRemaining;
 
     public float BaseDamage
     {
@@ -20,38 +25,67 @@ public class Ball : MonoBehaviour
         set => baseDamage = Mathf.Max(0f, value);
     }
 
-    public float CurrentDamage => Mathf.Max(0f, (baseDamage + flatBonusDamage) * damageMultiplier);
+    public float CurrentDamage => Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
 
-    public void AddFlatDamage(int amount, int bounces = 0)
-    {
-        if (amount == 0) return;
-        flatBonusDamage += amount;
-        bonusBouncesRemaining = Mathf.Max(bonusBouncesRemaining, bounces);
-    }
 
-    public void AddDamageMultiplier(float multiplier, int bounces = 0)
+    public void AddDamageMultiplier(float multiplier)
     {
         if (Mathf.Approximately(multiplier, 1f)) return;
+        damageMultiplier = 1f;
         damageMultiplier *= multiplier;
-        bonusBouncesRemaining = Mathf.Max(bonusBouncesRemaining, bounces);
+    }
+
+    public void AddFlatDamage(int flatDamage, int bounces)
+    {
+        if (flatDamage == 0) return;
+        flatBonusDamage += flatDamage;
+        bonusBouncesNeeded = bounces;
+        bonusBouncesRemaining = bonusBouncesNeeded;
+    }
+
+    public void AddTempDamageMultiplier(float multiplier, int bounces)
+    {
+        tempDamageMultiplierStore = 1f;
+        tempDamageMultiplierStore *= multiplier;
+        tmpBonusBouncesNeeded = bounces;
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
     }
 
     public void ConsumeBounceForDamageMods()
     {
-        if (bonusBouncesRemaining <= 0) return;
         bonusBouncesRemaining--;
+        tmpBonusBouncesRemaining--;
+        if(bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
+            return;
+
+
+        
         if (bonusBouncesRemaining == 0)
         {
             flatBonusDamage = 0;
-            damageMultiplier = 1f;
+        }
+        if(tmpBonusBouncesRemaining > 0)
+        {
+            tempDamageMultiplier = 1f;
+        }
+        else if (tmpBonusBouncesRemaining == 0)
+        {
+            tempDamageMultiplier = tempDamageMultiplierStore;
+            ResetTempBounceMods();
         }
     }
+
 
     private void ResetDamageMods()
     {
         flatBonusDamage = 0;
         damageMultiplier = 1f;
         bonusBouncesRemaining = 0;
+    }
+
+    private void ResetTempBounceMods()
+    {
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
     }
 
     private PhysicMaterial runtimePhysMat;
@@ -316,8 +350,8 @@ public class Ball : MonoBehaviour
 
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
-
         ConsumeBounceForDamageMods();
+
     }
 
 
