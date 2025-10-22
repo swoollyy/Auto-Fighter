@@ -291,6 +291,8 @@ public class Pinball : MonoBehaviour, IRunContext
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
+        Physics.gravity = new Vector3(0f, 0f, -19.62f); // stronger gravity for pinball feel
+
         if (ball != null)
         {
             RegisterBall(ball);

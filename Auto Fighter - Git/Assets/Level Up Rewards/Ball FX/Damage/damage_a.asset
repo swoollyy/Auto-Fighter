@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: damage_a
   m_EditorClassIdentifier: 
   rewardID: damage_a
-  displayName: Uber Strong
+  displayName: Uber Strong (Artifact)
   description: +35% Damage Multiplier
   category: 3
   rarity: 5

@@ -149,10 +149,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6145c56e09ca1bd4ba24cbbcb7f8de68, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  baseDamage: 5
   isInZone: 0
   isTouchingPaddles: 0
   hasBounced: 0
-  maxSpeed: 50
+  isActive: 0
+  maxSpeed: 60
   forceField: {fileID: 7301997074838616247}
   forceFieldRadius: 0
 --- !u!114 &6354145308610006291

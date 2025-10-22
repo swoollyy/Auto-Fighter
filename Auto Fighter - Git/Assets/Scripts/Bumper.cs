@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -109,7 +110,7 @@ public class Bumper : MonoBehaviour
 
 
             float totalDamage = ballComp != null ? ballComp.CurrentDamage : pm.Damage;
-            bool didElemHit = elemState != null && elemState.CurrentState != ElementalState.None;
+            bool fireTick = elemState != null && elemState.CurrentState == ElementalState.Fire;
 
 
             rb.velocity = Vector3.zero;
@@ -123,7 +124,7 @@ public class Bumper : MonoBehaviour
                 {
                     pm.destroyedBumper = false;
                 }
-                rb.gameObject.GetComponent<Ball>().Bump(normal, 150f, 0, this);
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 225f, 0, this);
             }
             else if (this.CompareTag("SmallBumper"))
             {
@@ -135,7 +136,7 @@ public class Bumper : MonoBehaviour
                 {
                     pm.destroyedBumper = false;
                 }
-                rb.gameObject.GetComponent<Ball>().Bump(normal, 50f, 1, this);
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 100f, 1, this);
             }
 
             Debug.DrawRay(contact.point, normal * 2f, Color.red);
@@ -143,7 +144,7 @@ public class Bumper : MonoBehaviour
 
 
 
-            TakeDamage(totalDamage, elemDmg: didElemHit);
+            TakeDamage(totalDamage, elemDmg: fireTick);
         }
 
 
@@ -185,7 +186,7 @@ public class Bumper : MonoBehaviour
 
             Vector3 offset = basePos + new Vector3(0, 4, 0);
 
-            DamageNumbers.Spawn(amount, offset);
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
         }
 
 
@@ -236,7 +237,7 @@ public class Bumper : MonoBehaviour
 
             Vector3 offset = basePos + new Vector3(0, 4, 0);
 
-            DamageNumbers.Spawn(amount, offset);
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
         }
 
         pm.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP);
@@ -279,7 +280,7 @@ public class Bumper : MonoBehaviour
             bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
             Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
             Vector3 offset = basePos + new Vector3(1, 4, -1);
-            DamageNumbers.Spawn(amount, offset);
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
         }
         pm.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP);
         if (curHealth <= 0)

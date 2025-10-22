@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: damage_e
   m_EditorClassIdentifier: 
   rewardID: damage_e
-  displayName: Innate Strength
+  displayName: Brute Strength (Epic)
   description: +20% Damage Multiplier
   category: 3
   rarity: 3

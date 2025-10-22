@@ -67,6 +67,7 @@
     <Compile Include="Assets\Scripts\Level Up Rewards\BallDuplicateRewardSO.cs" />
     <Compile Include="Assets\Scripts\BumperElementalState.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventHandler.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\DamagePerBounceRewardSO.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexShakeA.cs" />
     <Compile Include="Assets\Scripts\RewardSO.cs" />
     <Compile Include="Assets\Scripts\PinballFlipper.cs" />
@@ -100,6 +101,7 @@
     <Compile Include="Assets\Scripts\CollectXP.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_PhoneNumberValidator.cs" />
     <Compile Include="Assets\Scripts\XPFormula.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\DamageRewardSO.cs" />
     <Compile Include="Assets\Scripts\BaseCharacter.cs" />
     <Compile Include="Assets\Scripts\RewardRarity.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexJitter.cs" />
@@ -129,6 +131,7 @@
     <Compile Include="Assets\Scripts\Mage.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\WarpTextExample.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshProFloatingText.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\LifeRewardSO.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ShaderPropAnimator.cs" />
     <Compile Include="Assets\Scripts\Brawler.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />

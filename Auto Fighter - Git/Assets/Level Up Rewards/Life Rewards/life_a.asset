@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: life_a
   m_EditorClassIdentifier: 
   rewardID: life_a
-  displayName: Restoration+++
+  displayName: Restoration+++ (Artifact)
   description: +4 Life
   category: 6
   rarity: 5

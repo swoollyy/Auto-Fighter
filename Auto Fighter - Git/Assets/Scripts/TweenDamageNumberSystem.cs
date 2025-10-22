@@ -27,12 +27,38 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
     [SerializeField] private string sortingLayerName = "Default";
     [SerializeField] private int sortingOrder = 500;
 
+    [Header("Damage -> Size Mapping")]
+    [SerializeField] private float minDamageForScale = 1f;
+    [SerializeField] private float maxDamageForScale = 100f;
+    [SerializeField] private float minScale = 0.75f;
+    [SerializeField] private float maxScale = 1.75f;
+    [SerializeField] private bool useLogScale = true;
+    [SerializeField] private float logBase = 10f;
+    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
 
     [SerializeField] private int defaultCapacity = 32;
     [SerializeField] private int maxSize = 256;
 
     private IObjectPool<GameObject> pool;
 
+
+    private float ComputeScale(float damage)
+    {
+        float d = Mathf.Max(damage, 0f);
+
+
+        if(useLogScale)
+        {
+            float minL = Mathf.Log(minDamageForScale + 1f, logBase);
+            float maxL = Mathf.Log(maxDamageForScale + 1f, logBase);
+            float valL = Mathf.Log(d + 1f, logBase);
+            float tL = Mathf.InverseLerp(minL, maxL, valL);
+            return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(tL));
+        }
+        float t = Mathf.InverseLerp(minDamageForScale, maxDamageForScale, d);
+        return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(t));
+    }
 
     void Awake()
     {
@@ -88,10 +114,7 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
 
     private void OnRelease(GameObject go)
     {
-        var tmp = go.GetComponent<TextMeshPro>();
-        tmp.text = string.Empty;
-        var c = tmp.color; c.a = 0f; tmp.color = c;
-        go.transform.localScale = Vector3.one;
+        ResetVisual(go);
         go.SetActive(false);
     }
 
@@ -100,7 +123,18 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
         if(go != null) Destroy(go);
     }
 
+    private void ResetVisual(GameObject go)
+    {
+        var tmp = go.GetComponent<TextMeshPro>();
 
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        tmp.fontSize = baseSize;
+
+        tmp.text = string.Empty;
+        var c = tmp.color; c.a = 0f; tmp.color = c;
+
+        go.transform.localScale = Vector3.one;
+    }
 
 
     public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
@@ -110,17 +144,25 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
         var tmp = go.GetComponent<TextMeshPro>();
         DOTween.Kill(tmp, complete: false);
 
+        tmp.text = amount.ToString("0.#");
+        var fallbackColor = style != null ? style.defaultColor : defaultColor;
+        var col = overrideColor ?? fallbackColor;
+        tmp.color = new Color(col.r, col.g, col.b, 0f);
+
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        float sizeScale = ComputeScale(amount);
+        tmp.fontSize = baseSize * sizeScale;
+
+
+
+
         var cam = targetCamera;
 
 
 
-        tmp.text = amount.ToString();
-        var col = overrideColor ?? defaultColor;
-        tmp.color = new Color(col.r, col.g, col.b, 0f);
 
         var basePos = position;
         if(cam != null) basePos -= cam.transform.forward * cameraForwardOffset;
-
         go.transform.position = position;
         if(cam != null) go.transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
 

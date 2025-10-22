@@ -5,7 +5,7 @@ using UnityEngine;
 public class PinballFlipper : MonoBehaviour
 {
     public HingeJoint hinge;
-    public float flipSpeed = 1000f;      // how fast the motor tries to move
+    public float flipSpeed = 1500f;      // how fast the motor tries to move
     public float returnSpeed = -200f;    // how fast it returns down
     public float maxForce = 10000f;      // motor strength
 

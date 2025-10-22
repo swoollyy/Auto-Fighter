@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: damage_u
   m_EditorClassIdentifier: 
   rewardID: damage_u
-  displayName: Growing Even Stronger
+  displayName: Growing Even Stronger (Uncommon)
   description: +10% Damage Multiplier
   category: 3
   rarity: 1

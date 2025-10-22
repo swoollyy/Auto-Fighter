@@ -79,7 +79,6 @@ public class Ball : MonoBehaviour
     private void ResetDamageMods()
     {
         flatBonusDamage = 0;
-        damageMultiplier = 1f;
         bonusBouncesRemaining = 0;
     }
 
@@ -264,7 +263,6 @@ public class Ball : MonoBehaviour
 
     public void ApplyPaddleDamageEffect(PaddleEffectData effect)
     {
-        ResetDamageMods();
         int flat = 0;
         int bounces = 0;
 
@@ -298,12 +296,12 @@ public class Ball : MonoBehaviour
     {
         Debug.Log($"{30f * power}");
         rb.velocity = Vector3.zero;
-        rb.AddForce(Vector3.forward * (40f * power), ForceMode.Impulse);
+        rb.AddForce(Vector3.forward * (45f * power), ForceMode.Impulse);
     }
 
     public void Push(float power)
     {
-        rb.AddForce((-Vector3.right * (35f * power)) + (Vector3.forward * (5f * power)), ForceMode.Impulse);
+        rb.AddForce((-Vector3.right * (40f * power)) + (Vector3.forward * (5.5f * power)), ForceMode.Impulse);
     }
 
     public void Bump(Vector3 dir, float power, int bumper, Bumper bumperInstance)

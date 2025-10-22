@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: damage_l
   m_EditorClassIdentifier: 
   rewardID: damage_l
-  displayName: Mega Strong
+  displayName: Mega Strong (Legendary)
   description: +25% Damage Multiplier
   category: 3
   rarity: 4

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: damage_r
   m_EditorClassIdentifier: 
   rewardID: damage_r
-  displayName: Innate Strength
+  displayName: Innate Strength (Rare)
   description: +15% Damage Multiplier
   category: 3
   rarity: 2

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: life_e
   m_EditorClassIdentifier: 
   rewardID: life_e
-  displayName: Restoration+
+  displayName: Restoration+ (Epic)
   description: +2 Life
   category: 6
   rarity: 3
