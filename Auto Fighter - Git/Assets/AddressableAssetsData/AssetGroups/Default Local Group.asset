@@ -125,8 +125,8 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: 6c2f3533656eb5245b6430dc9802a2de
-    m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_e.asset
+  - m_GUID: 70646ba8c9cd03442b6fb236ec9b42d7
+    m_Address: Assets/Level Up Rewards/Ball FX/Duplicate/ball_dup_crs.asset
     m_ReadOnly: 0
     m_SerializedLabels:
     - Rewards

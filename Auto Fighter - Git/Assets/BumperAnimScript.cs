@@ -69,7 +69,7 @@ public class BumperAnimScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        HPBar.fillAmount = Mathf.MoveTowards(HPBar.fillAmount, bumper.curHealth / bumper.maxHealth, Time.deltaTime);
+        HPBar.fillAmount = Mathf.MoveTowards(HPBar.fillAmount, bumper.curHealth / bumper.maxHealth, Time.deltaTime * 2);
     }
 
     public void ResetTweenState()

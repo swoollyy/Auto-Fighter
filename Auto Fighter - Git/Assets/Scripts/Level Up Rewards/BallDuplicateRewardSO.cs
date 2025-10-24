@@ -7,6 +7,7 @@ public class BallDuplicateRewardSO : RewardSO
 {
 
     [SerializeField] private int additionalBalls = 1;
+    [SerializeField] private bool cursed = false;
 
     public override void Apply(IRunContext ctx)
     {
@@ -17,5 +18,18 @@ public class BallDuplicateRewardSO : RewardSO
 
         ctx.ApplyAdditionalBalls(additionalBalls);
 
+    }
+
+    public override bool IsEligible(IRunContext ctx)
+    {
+        // keep all global rules (ownership, stacking, exclusivity, etc.)
+        if (!base.IsEligible(ctx))
+            return false;
+
+
+        if (cursed && ctx.Lives <= 1)
+            return false;
+
+        return true;
     }
 }

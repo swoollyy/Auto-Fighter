@@ -20,7 +20,7 @@ MonoBehaviour:
   isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
-  scalable: 0
+  scalable: 1
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []

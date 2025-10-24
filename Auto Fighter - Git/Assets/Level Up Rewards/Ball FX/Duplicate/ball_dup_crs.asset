@@ -10,13 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 748b7e8016e803d488c36817ce200d4f, type: 3}
-  m_Name: ball_dup_r
+  m_Name: ball_dup_crs
   m_EditorClassIdentifier: 
-  rewardID: ball_dup_r
-  displayName: Another One (Rare)
-  description: +1 Ball Count
+  rewardID: ball_dup_a
+  displayName: Double It Up! (Artifact)
+  description: 'x2 Ball Count
+
+    -1 Life'
   category: 3
-  rarity: 2
+  rarity: 6
   isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
@@ -24,4 +26,5 @@ MonoBehaviour:
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  additionalBalls: 1
+  additionalBalls: 100
+  cursed: 1

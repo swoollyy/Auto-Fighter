@@ -20,8 +20,8 @@ MonoBehaviour:
   isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
-  scalable: 0
-  replacesReward: {fileID: 0}
+  scalable: 1
+  replacesReward: {fileID: 11400000, guid: 894e67808dcf83d458a525335ce210fa, type: 2}
   exclusivityKey: 
   blockedKeys: []
   damageMult: 25

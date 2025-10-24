@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: ball_dup_a
   displayName: Double It Up! (Artifact)
-  description: x2 Ball Count
+  description: +3 Ball Count
   category: 3
   rarity: 5
   isPaddleReward: 0
@@ -24,4 +24,4 @@ MonoBehaviour:
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  additionalBalls: 100
+  additionalBalls: 3

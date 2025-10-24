@@ -1189,7 +1189,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyDamageFX(float amount)
     {
-        float Amount = (100f + amount) / 100f;
+        float Amount = .01f * amount;
         ForEachUsableBall(b =>
         {
             b.AddDamageMultiplier(Amount);

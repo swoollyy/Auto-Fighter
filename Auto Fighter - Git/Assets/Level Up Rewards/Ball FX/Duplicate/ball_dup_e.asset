@@ -14,7 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: ball_dup_e
   displayName: Dos Balls (Epic)
-  description: +2 Ball Count
+  description: '+1 Ball Count
+
+'
   category: 3
   rarity: 3
   isPaddleReward: 0
@@ -24,4 +26,4 @@ MonoBehaviour:
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  additionalBalls: 2
+  additionalBalls: 1

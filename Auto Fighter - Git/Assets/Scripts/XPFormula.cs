@@ -5,10 +5,10 @@ public static class XPFormula
 {
     // Tunables
     public static double A = 10.0;   // base; sets Lv1->2 XP
-    public static double p = 1.9;    // base growth
+    public static double p = 1.3;    // base growth
     public static double bumpEvery = 5.0;
     public static double bumpWidth = 0.8;    // narrow = "brick wall"
-    public static double bumpHeight = 0.40;  // 0.40 => +40% at the wall center
+    public static double bumpHeight = 0.20;  // 0.40 => +40% at the wall center
 
     // Logistic hump centered at `center`
     static double Bump(double n, double center, double width, double height)

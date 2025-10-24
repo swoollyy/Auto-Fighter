@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: ball_dup_l
   displayName: Four! Balls (Legendary)
-  description: +4 Ball Count
+  description: +2 Ball Count
   category: 3
-  rarity: 3
+  rarity: 4
   isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
@@ -24,4 +24,4 @@ MonoBehaviour:
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  additionalBalls: 4
+  additionalBalls: 2

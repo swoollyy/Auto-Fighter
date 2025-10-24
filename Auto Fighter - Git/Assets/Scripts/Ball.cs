@@ -31,13 +31,13 @@ public class Ball : MonoBehaviour
     public void AddDamageMultiplier(float multiplier)
     {
         if (Mathf.Approximately(multiplier, 1f)) return;
-        damageMultiplier = 1f;
-        damageMultiplier *= multiplier;
+        damageMultiplier += multiplier;
     }
 
     public void AddFlatDamage(int flatDamage, int bounces)
     {
         if (flatDamage == 0) return;
+        flatBonusDamage = 0;
         flatBonusDamage += flatDamage;
         bonusBouncesNeeded = bounces;
         bonusBouncesRemaining = bonusBouncesNeeded;
@@ -46,7 +46,7 @@ public class Ball : MonoBehaviour
     public void AddTempDamageMultiplier(float multiplier, int bounces)
     {
         tempDamageMultiplierStore = 1f;
-        tempDamageMultiplierStore *= multiplier;
+        tempDamageMultiplierStore += multiplier;
         tmpBonusBouncesNeeded = bounces;
         tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
     }
