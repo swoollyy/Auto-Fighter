@@ -50,6 +50,11 @@ public class Bumper : MonoBehaviour
 
     private static readonly List<Bumper> AllBumpers = new();
 
+    public static IEnumerable<Bumper> EnumerateAll()
+    {
+        return AllBumpers;
+    }
+
     private void OnEnable() => AllBumpers.Add(this);
     private void OnDisable() => AllBumpers.Remove(this);
 
@@ -145,11 +150,26 @@ public class Bumper : MonoBehaviour
 
 
             TakeDamage(totalDamage, elemDmg: fireTick);
+            DropPowerup();
         }
 
 
     }
 
+    private void DropPowerup()
+    {
+        if (!PowerupSystem.TryRoll(pm))
+            return;
+
+        bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+        Vector3 spawnPos;
+        if(hasRecentContact)
+            spawnPos = new Vector3(lastContactPoint.x, lastContactPoint.y + 1f, lastContactPoint.z);
+        else
+            spawnPos = transform.position + Vector3.up * 1f;
+
+        PowerupSystem.TryTriggerRandom(pm, spawnPos);
+    }
 
     private Bumper FindNearestOther(float maxDistance = Mathf.Infinity)
     {

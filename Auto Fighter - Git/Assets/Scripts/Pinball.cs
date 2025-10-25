@@ -151,6 +151,9 @@ public class Pinball : MonoBehaviour, IRunContext
     private bool hasBeenHitL;
     private bool hasBeenHitR;
 
+    [SerializeField, Range(0f, 1f)]
+    public float PowerupDropChance = .03f; //3% base chance
+
     public bool ExtraHitsG => extraHitsG;
     public bool ExtraHitsS => extraHitsS;
     public float BonusHitsG => bonusHitsG;
@@ -546,6 +549,11 @@ public class Pinball : MonoBehaviour, IRunContext
             if (chargeTimer > chargeMax)
                 chargeTimer = chargeMax;
         }
+    }
+
+    public void AddPowerupDropChance(float additive)
+    {
+        PowerupDropChance = Mathf.Clamp01(PowerupDropChance + additive);
     }
 
 

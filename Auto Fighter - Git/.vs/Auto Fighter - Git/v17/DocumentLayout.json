@@ -3,6 +3,22 @@
   "WorkspaceRootPath": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\scripts\\powerupsystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\powerupsystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\scripts\\ipowerup.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\ipowerup.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\bumper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\bumper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\tweendamagenumbersystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\tweendamagenumbersystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -15,23 +31,15 @@
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\ball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\ballelementalstate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\ballelementalstate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\scripts\\bumper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\bumper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\bumperelementalstate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\bumperelementalstate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\scripts\\pinballflipper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\pinballflipper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pinballflipper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
@@ -98,8 +106,34 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 4,
+          "SelectedChildIndex": 0,
           "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PowerupSystem.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PowerupSystem.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\PowerupSystem.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PowerupSystem.cs",
+              "RelativeToolTip": "Assets\\Scripts\\PowerupSystem.cs",
+              "ViewState": "AgIAACMAAAAAAAAAAAAwwDAAAAAJAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-24T21:37:11.943Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "IPowerup.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IPowerup.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\IPowerup.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IPowerup.cs",
+              "RelativeToolTip": "Assets\\Scripts\\IPowerup.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAoAAAAxAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-24T21:35:24.574Z",
+              "EditorCaption": ""
+            },
             {
               "$type": "Document",
               "DocumentIndex": 3,
@@ -108,14 +142,13 @@
               "RelativeDocumentMoniker": "Assets\\Scripts\\Pinball.cs",
               "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Pinball.cs",
               "RelativeToolTip": "Assets\\Scripts\\Pinball.cs",
-              "ViewState": "AgIAAJIEAAAAAAAAAAAqwKUEAAAYAAAAAAAAAA==",
+              "ViewState": "AgIAAAcCAAAAAAAAAAAmwB4CAAAgAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-09-30T20:23:59.49Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-30T20:23:59.49Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 6,
               "Title": "Ball.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Ball.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Ball.cs",
@@ -123,12 +156,11 @@
               "RelativeToolTip": "Assets\\Scripts\\Ball.cs",
               "ViewState": "AgIAADAAAAAAAAAAAAAgwE4AAAAiAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-09-30T20:25:22.205Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-30T20:25:22.205Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 7,
               "Title": "BallElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallElementalState.cs",
@@ -136,12 +168,11 @@
               "RelativeToolTip": "Assets\\Scripts\\BallElementalState.cs",
               "ViewState": "AgIAAJ0AAAAAAAAAAADgv8wAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-09-30T20:25:48.849Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-30T20:25:48.849Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 5,
               "Title": "IDamageNumberSystem.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IDamageNumberSystem.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\IDamageNumberSystem.cs",
@@ -149,12 +180,11 @@
               "RelativeToolTip": "Assets\\Scripts\\IDamageNumberSystem.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAsAAAAVAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-15T20:56:24.428Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-15T20:56:24.428Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 4,
               "Title": "TweenDamageNumberSystem.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\TweenDamageNumberSystem.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\TweenDamageNumberSystem.cs",
@@ -162,25 +192,23 @@
               "RelativeToolTip": "Assets\\Scripts\\TweenDamageNumberSystem.cs",
               "ViewState": "AgIAAAgAAAAAAAAAAAAQwA4AAAA5AAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-15T20:56:45.433Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-15T20:56:45.433Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 2,
               "Title": "Bumper.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Bumper.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Bumper.cs",
               "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Bumper.cs",
               "RelativeToolTip": "Assets\\Scripts\\Bumper.cs",
-              "ViewState": "AgIAAFwAAAAAAAAAAAAAAG8AAAASAAAAAAAAAA==",
+              "ViewState": "AgIAAJEAAAAAAAAAAAAQwKYAAABTAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-03T22:58:35.116Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-03T22:58:35.116Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 9,
               "Title": "PinballFlipper.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PinballFlipper.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PinballFlipper.cs",
@@ -188,12 +216,11 @@
               "RelativeToolTip": "Assets\\Scripts\\PinballFlipper.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAiAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-22T20:42:28.903Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-22T20:42:28.903Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 8,
               "Title": "BumperElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BumperElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BumperElementalState.cs",
@@ -201,12 +228,11 @@
               "RelativeToolTip": "Assets\\Scripts\\BumperElementalState.cs",
               "ViewState": "AgIAAFkAAAAAAAAAAADwv3AAAAAzAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-03T22:58:18.941Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-03T22:58:18.941Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 10,
               "Title": "IRunContext.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IRunContext.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\IRunContext.cs",
@@ -214,12 +240,11 @@
               "RelativeToolTip": "Assets\\Scripts\\IRunContext.cs",
               "ViewState": "AgIAABUAAAAAAAAAAAAkwB0AAAAxAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-10-03T23:15:13.984Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-10-03T23:15:13.984Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 11,
               "Title": "FirePaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\FirePaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\FirePaddleRewardSO.cs",
@@ -231,7 +256,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 12,
               "Title": "RewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\RewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\RewardSO.cs",
@@ -243,7 +268,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 13,
               "Title": "EndGame.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\EndGame.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\EndGame.cs",
@@ -255,7 +280,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 15,
               "Title": "ElectricPaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\ElectricPaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\ElectricPaddleRewardSO.cs",
@@ -267,7 +292,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 12,
+              "DocumentIndex": 14,
               "Title": "BallDuplicateRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\BallDuplicateRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\BallDuplicateRewardSO.cs",
@@ -279,7 +304,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 14,
+              "DocumentIndex": 16,
               "Title": "PaddleElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleElementalState.cs",
@@ -291,7 +316,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 15,
+              "DocumentIndex": 17,
               "Title": "BumperElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BumperElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BumperElements.cs",
@@ -303,7 +328,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 16,
+              "DocumentIndex": 18,
               "Title": "PaddleElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleElements.cs",
@@ -315,7 +340,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 17,
+              "DocumentIndex": 19,
               "Title": "PaddleEffectData.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleEffectData.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleEffectData.cs",
@@ -327,7 +352,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 18,
+              "DocumentIndex": 20,
               "Title": "BallElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallElements.cs",
@@ -339,7 +364,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 20,
+              "DocumentIndex": 22,
               "Title": "PinballUIM.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PinballUIM.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PinballUIM.cs",
@@ -351,7 +376,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 19,
+              "DocumentIndex": 21,
               "Title": "WaterPaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\WaterPaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\WaterPaddleRewardSO.cs",
@@ -363,7 +388,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 21,
+              "DocumentIndex": 23,
               "Title": "BallXPBar.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallXPBar.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallXPBar.cs",
