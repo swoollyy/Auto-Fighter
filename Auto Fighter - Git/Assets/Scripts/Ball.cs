@@ -2,11 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-
-
 public class Ball : MonoBehaviour
 {
-
     [Header("Damage")]
     [SerializeField] private float baseDamage = 5f;
 
@@ -19,6 +16,8 @@ public class Ball : MonoBehaviour
     private int tmpBonusBouncesNeeded;
     private int tmpBonusBouncesRemaining;
 
+    private const float DAMAGE_BASELINE = 5f; // level-1 baseline: 5 base dmg @ 1x multipliers
+
     public float BaseDamage
     {
         get => baseDamage;
@@ -27,6 +26,9 @@ public class Ball : MonoBehaviour
 
     public float CurrentDamage => Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
 
+    // Scale score/XP by actual dealt damage vs. baseline (includes flat and multipliers).
+    // e.g., 3 dmg vs 5 baseline => 0.6x score/XP; 6 dmg vs 5 => 1.2x.
+    public float ScoreXpDamageFactor => Mathf.Max(0f, DAMAGE_BASELINE > 0f ? (CurrentDamage / DAMAGE_BASELINE) : 1f);
 
     public void AddDamageMultiplier(float multiplier)
     {
@@ -55,16 +57,14 @@ public class Ball : MonoBehaviour
     {
         bonusBouncesRemaining--;
         tmpBonusBouncesRemaining--;
-        if(bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
+        if (bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
             return;
 
-
-        
         if (bonusBouncesRemaining == 0)
         {
             flatBonusDamage = 0;
         }
-        if(tmpBonusBouncesRemaining > 0)
+        if (tmpBonusBouncesRemaining > 0)
         {
             tempDamageMultiplier = 1f;
         }
@@ -74,7 +74,6 @@ public class Ball : MonoBehaviour
             ResetTempBounceMods();
         }
     }
-
 
     private void ResetDamageMods()
     {
@@ -91,12 +90,12 @@ public class Ball : MonoBehaviour
 
     public void EnsureUniquePhysicMaterial()
     {
-        if(col == null) col = GetComponent<Collider>();
-        if(col == null) return;
+        if (col == null) col = GetComponent<Collider>();
+        if (col == null) return;
         if (runtimePhysMat != null) return;
         var src = col.material;
 
-        if(src != null)
+        if (src != null)
         {
             runtimePhysMat = Instantiate(src);
             runtimePhysMat.name = src.name + " (Runtime)";
@@ -112,18 +111,21 @@ public class Ball : MonoBehaviour
     public void AdjustBounciness(float factor)
     {
         EnsureUniquePhysicMaterial();
-        if(col != null && col.material != null)
+        if (col != null && col.material != null)
         {
             col.material.bounciness *= factor;
         }
     }
 
-    public bool isInZone;
+    // Launch tube and paddle contact flags (read-only outside)
+    public bool IsInLaunchTube { get; private set; }
+    public bool IsTouchingPaddles { get; private set; }
+    public bool IsActive { get; private set; }
 
     Rigidbody rb;
     float debugTimer;
 
-    Pinball PM;
+    Pinball pinball;
 
     public int bounceCount { private set; get; }
     public int bumpCount { private set; get; }
@@ -143,15 +145,7 @@ public class Ball : MonoBehaviour
 
     bool resetBall = false;
 
-
     bool isStuck;
-
-    public bool isTouchingPaddles;
-
-    public bool hasBounced;
-
-    public bool isActive;
-
 
     public float maxSpeed = 50f;
 
@@ -162,16 +156,16 @@ public class Ball : MonoBehaviour
 
     int count;
     int dirBumpCount;
-    // Start is called before the first frame update
+
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        pinball = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
     }
 
     void OnEnable()
     {
-        isActive = true;
+        IsActive = true;
         if (Pinball.Instance != null)
             Pinball.Instance.RegisterBall(this);
         col = GetComponent<Collider>();
@@ -180,7 +174,7 @@ public class Ball : MonoBehaviour
 
     void OnDisable()
     {
-        isActive = false;
+        IsActive = false;
         if (Pinball.Instance != null)
             Pinball.Instance.UnregisterBall(this);
         XPCollectorRegistry.I?.Unregister(col);
@@ -191,7 +185,7 @@ public class Ball : MonoBehaviour
         count = 0;
         debugTimer = 0;
 
-        isActive = true;
+        IsActive = true;
 
         forceFieldRadius = forceField.endRange;
     }
@@ -201,72 +195,16 @@ public class Ball : MonoBehaviour
         rb.velocity = Vector3.ClampMagnitude(rb.velocity, maxSpeed);
     }
 
-    // Update is called once per frame
     void Update()
     {
-
-
-        //if ball has bounced, check signal
-        //if false, set signal to true, start timer, has bounced is false
-        //if true, player is stuck, start timer if it isnt started
-        //false scenario----
-        //debugtimer starts, if timer is > .01f and theres no signal from hasBounced, not stuck, reset debugtimer
-        //true scenario----
-        //if timer is greater than 4 seconds and signal is true, reset the ball
-
-
-        if(hasBounced)
-        {
-            count++;
-            debugTimerStart = true;
-            hasBounced = false;
-        }
-
-        Debug.Log(debugTimer + " " + count);
-
-        if (debugTimerStart)
-        {
-            debugTimer += Time.deltaTime;
-        }
-        else
-            debugTimer = 0;
-
-        if (debugTimer > 1f && count > 1)
-        {
-            Debug.Log("wowww");
-        }
-        else
-        {
-            debugTimerStart = false;
-            count = 0;
-        }
-
-
-
-
-        /*if (debugTimer >= 4f)
-        {
-            resetBall = true;
-            Debug.Log($"Reset!");
-            signal = false;
-            isStuck = false;
-        }
-
-        if (resetBall)
-        {
-            ResetRb();
-            resetBall = false;
-        }*/
-
     }
-
 
     public void ApplyPaddleDamageEffect(PaddleEffectData effect)
     {
         int flat = 0;
         int bounces = 0;
 
-        switch(effect.Element)
+        switch (effect.Element)
         {
             case PaddleState.Fire:
                 flat = effect.FireBonusDamage;
@@ -276,20 +214,19 @@ public class Ball : MonoBehaviour
                 flat = effect.WaterDamageFlat;
                 bounces = effect.WaterBounceDuration;
                 break;
-                case PaddleState.Earth:
+            case PaddleState.Earth:
                 flat = 0;
-                    bounces = effect.EarthBounceDuration;
+                bounces = effect.EarthBounceDuration;
                 break;
-                case PaddleState.Electric:
+            case PaddleState.Electric:
                 flat = 0;
-                    bounces = effect.ElectricBounceDuration;
+                bounces = effect.ElectricBounceDuration;
                 break;
             default:
                 break;
         }
 
         AddFlatDamage(flat, bounces);
-
     }
 
     public void Launch(float power)
@@ -304,21 +241,18 @@ public class Ball : MonoBehaviour
         rb.AddForce((-Vector3.right * (40f * power)) + (Vector3.forward * (5.5f * power)), ForceMode.Impulse);
     }
 
-    public void Bump(Vector3 dir, float power, int bumper, Bumper bumperInstance)
+    public void Bump(Vector3 direction, float deltaV, int bumperKind, Bumper bumperInstance)
     {
-
         bumpCount++;
 
+        Vector3 currentDir = direction.sqrMagnitude > .0001f ? direction.normalized : Vector3.forward;
 
-
-        Vector3 currentDir = dir.sqrMagnitude > .0001f ? dir.normalized : Vector3.forward;
-
-        if(Time.time - lastBumpTime > sameDirWindow)
+        if (Time.time - lastBumpTime > sameDirWindow)
         {
             sameDirHits = 0;
         }
 
-        if(prevBumpDirection != Vector3.zero)
+        if (prevBumpDirection != Vector3.zero)
         {
             float cos = Vector3.Dot(currentDir, prevBumpDirection.normalized);
             print(cos + "chat");
@@ -331,71 +265,61 @@ public class Ball : MonoBehaviour
         lastBumpTime = Time.time;
         prevBumpDirection = currentDir;
 
-        if(sameDirHits > sameDirHitLimit)
+        if (sameDirHits > sameDirHitLimit)
         {
             ResetRb();
             Debug.Log("thanks chatgpt");
             return;
         }
 
+        rb.AddForce(currentDir * deltaV, ForceMode.Impulse);
 
-        rb.AddForce(dir * power, ForceMode.Impulse);
-
-        if(bumper == 0)
-            PM.AddScore(100, bumpCount, bumpCountConsecutive);
+        if (bumperKind == 0)
+            pinball?.AddScore(100, bumpCount, bumpCountConsecutive, ScoreXpDamageFactor);
         else
-            PM.AddScore(50, bumpCount, bumpCountConsecutive);
-
+            pinball?.AddScore(50, bumpCount, bumpCountConsecutive, ScoreXpDamageFactor);
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
         ConsumeBounceForDamageMods();
-
     }
 
-
-    void OnTriggerEnter(Collider col)
+    void OnTriggerEnter(Collider other)
     {
-        if (PM.CurrentState == PinballState.Play)
+        if (pinball != null && pinball.CurrentState == PinballState.Play)
         {
-            lastBouncedTag = col.gameObject.tag;
+            lastBouncedTag = other.gameObject.tag;
             bounceCount++;
 
-                if (lastBouncedTag == "Bumper" || lastBouncedTag == "SmallBumper")
-                {
-                    bumpCountConsecutive++;
-                }
-                else bumpCountConsecutive = 0;
+            if (lastBouncedTag == "Bumper" || lastBouncedTag == "SmallBumper")
+            {
+                bumpCountConsecutive++;
+            }
+            else bumpCountConsecutive = 0;
         }
     }
 
-    void OnTriggerStay(Collider col)
+    void OnTriggerStay(Collider other)
     {
-        if (col.gameObject.tag == "BallThreshold")
-            isInZone = true;
-
-
+        if (other.gameObject.tag == "BallThreshold")
+            IsInLaunchTube = true;
     }
 
-    void OnCollisionStay(Collision col)
+    void OnCollisionStay(Collision collision)
     {
-        if (col.gameObject.tag == "Paddle")
-            isTouchingPaddles = true;
+        if (collision.gameObject.tag == "Paddle")
+            IsTouchingPaddles = true;
     }
 
-    void OnCollisionExit(Collision col)
+    void OnCollisionExit(Collision collision)
     {
-        if (col.gameObject.tag == "Paddle")
-            isTouchingPaddles = false;
+        if (collision.gameObject.tag == "Paddle")
+            IsTouchingPaddles = false;
     }
 
-
-
-    void OnTriggerExit(Collider col)
+    void OnTriggerExit(Collider other)
     {
-        if (col.gameObject.tag == "BallThreshold")
-            isInZone = false;
-
-
+        if (other.gameObject.tag == "BallThreshold")
+            IsInLaunchTube = false;
     }
 
     public void ResetRb()
@@ -423,7 +347,6 @@ public class Ball : MonoBehaviour
         switch (effect.Element)
         {
             case PaddleState.Fire:
-                // forward the stored paddle parameters to the ball elemental state
                 elem.SetFireState(
                     effect.FireBonusDamage,
                     effect.FireBurnDamage,
@@ -447,8 +370,8 @@ public class Ball : MonoBehaviour
                     effect.WaterIsCursed
                 );
                 break;
-                case PaddleState.Earth:
-                    elem.SetEarthState(
+            case PaddleState.Earth:
+                elem.SetEarthState(
                     effect.EarthBonusDamage,
                     effect.EarthFissureDuration,
                     effect.EarthXPBonus,
@@ -467,13 +390,11 @@ public class Ball : MonoBehaviour
                     effect.ElectricIsCursed
                 );
                 break;
-            // add other paddle-to-ball mappings here (Water, Earth, etc.)
             default:
                 break;
         }
 
         ApplyPaddleDamageEffect(effect);
-
     }
 
     public void UpdateForcefield(float amount)
@@ -481,5 +402,4 @@ public class Ball : MonoBehaviour
         forceFieldRadius *= amount;
         forceField.endRange = forceFieldRadius;
     }
-
 }

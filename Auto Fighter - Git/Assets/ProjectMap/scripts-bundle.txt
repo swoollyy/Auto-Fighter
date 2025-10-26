@@ -1,0 +1,6709 @@
+﻿=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Assassin.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Assassin : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 5.78f;
+    protected float minAtkLvlIncrease = 2.4f;
+    protected float maxAtkLvlIncrease = 2.7f;
+
+    protected float endLVLinc = 2.04f;
+    protected float strLVLinc = 3.44f;
+    protected float agiLVLinc = 4.88f;
+    protected float witLVLinc = 1.54f;
+    protected float chaLVLinc = 3.67f;
+
+    public Assassin(string name, int level)
+        : base(name, "Assassin", level, 463.6f, 100f, 46.2f, 53.8f, 105f)
+    {
+        traits[TraitType.Endurance] = 5;
+        traits[TraitType.Strength] = 6;
+        traits[TraitType.Agility] = 10;
+        traits[TraitType.Wit] = 4;
+        traits[TraitType.Charm] = 7;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+
+    public Assassin()
+        : base("", "Assassin", 5, 463.6f, 100f, 46.2f, 53.8f, 105f)
+    {
+        traits[TraitType.Endurance] = 5;
+        traits[TraitType.Strength] = 6;
+        traits[TraitType.Agility] = 10;
+        traits[TraitType.Wit] = 4;
+        traits[TraitType.Charm] = 7;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Ball.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+
+public class Ball : MonoBehaviour
+{
+
+    [Header("Damage")]
+    [SerializeField] private float baseDamage = 5f;
+
+    private int flatBonusDamage;
+    private float damageMultiplier = 1f;
+    private float tempDamageMultiplier = 1f;
+    private float tempDamageMultiplierStore = 1f;
+    private int bonusBouncesNeeded;
+    private int bonusBouncesRemaining;
+    private int tmpBonusBouncesNeeded;
+    private int tmpBonusBouncesRemaining;
+
+    public float BaseDamage
+    {
+        get => baseDamage;
+        set => baseDamage = Mathf.Max(0f, value);
+    }
+
+    public float CurrentDamage => Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
+
+
+    public void AddDamageMultiplier(float multiplier)
+    {
+        if (Mathf.Approximately(multiplier, 1f)) return;
+        damageMultiplier += multiplier;
+    }
+
+    public void AddFlatDamage(int flatDamage, int bounces)
+    {
+        if (flatDamage == 0) return;
+        flatBonusDamage = 0;
+        flatBonusDamage += flatDamage;
+        bonusBouncesNeeded = bounces;
+        bonusBouncesRemaining = bonusBouncesNeeded;
+    }
+
+    public void AddTempDamageMultiplier(float multiplier, int bounces)
+    {
+        tempDamageMultiplierStore = 1f;
+        tempDamageMultiplierStore += multiplier;
+        tmpBonusBouncesNeeded = bounces;
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
+    }
+
+    public void ConsumeBounceForDamageMods()
+    {
+        bonusBouncesRemaining--;
+        tmpBonusBouncesRemaining--;
+        if(bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
+            return;
+
+
+        
+        if (bonusBouncesRemaining == 0)
+        {
+            flatBonusDamage = 0;
+        }
+        if(tmpBonusBouncesRemaining > 0)
+        {
+            tempDamageMultiplier = 1f;
+        }
+        else if (tmpBonusBouncesRemaining == 0)
+        {
+            tempDamageMultiplier = tempDamageMultiplierStore;
+            ResetTempBounceMods();
+        }
+    }
+
+
+    private void ResetDamageMods()
+    {
+        flatBonusDamage = 0;
+        bonusBouncesRemaining = 0;
+    }
+
+    private void ResetTempBounceMods()
+    {
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
+    }
+
+    private PhysicMaterial runtimePhysMat;
+
+    public void EnsureUniquePhysicMaterial()
+    {
+        if(col == null) col = GetComponent<Collider>();
+        if(col == null) return;
+        if (runtimePhysMat != null) return;
+        var src = col.material;
+
+        if(src != null)
+        {
+            runtimePhysMat = Instantiate(src);
+            runtimePhysMat.name = src.name + " (Runtime)";
+        }
+        else
+        {
+            runtimePhysMat = new PhysicMaterial("RuntimePhysMat");
+        }
+
+        col.material = runtimePhysMat;
+    }
+
+    public void AdjustBounciness(float factor)
+    {
+        EnsureUniquePhysicMaterial();
+        if(col != null && col.material != null)
+        {
+            col.material.bounciness *= factor;
+        }
+    }
+
+    public bool isInZone;
+
+    Rigidbody rb;
+    float debugTimer;
+
+    Pinball PM;
+
+    public int bounceCount { private set; get; }
+    public int bumpCount { private set; get; }
+    public int bumpCountConsecutive { private set; get; }
+
+    private string lastBouncedTag;
+
+    Vector3 prevBumpDirection = Vector3.zero;
+    int sameDirHits = 0;
+    float lastBumpTime = -999f;
+
+    float sameDirDotThreshold = .98f;
+    int sameDirHitLimit = 25;
+    float sameDirWindow = .25f;
+
+    bool debugTimerStart;
+
+    bool resetBall = false;
+
+
+    bool isStuck;
+
+    public bool isTouchingPaddles;
+
+    public bool hasBounced;
+
+    public bool isActive;
+
+
+    public float maxSpeed = 50f;
+
+    [SerializeField] private ParticleSystemForceField forceField;
+    public float forceFieldRadius = 0f;
+
+    Collider col;
+
+    int count;
+    int dirBumpCount;
+    // Start is called before the first frame update
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+    }
+
+    void OnEnable()
+    {
+        isActive = true;
+        if (Pinball.Instance != null)
+            Pinball.Instance.RegisterBall(this);
+        col = GetComponent<Collider>();
+        XPCollectorRegistry.I?.Register(col);
+    }
+
+    void OnDisable()
+    {
+        isActive = false;
+        if (Pinball.Instance != null)
+            Pinball.Instance.UnregisterBall(this);
+        XPCollectorRegistry.I?.Unregister(col);
+    }
+
+    void Start()
+    {
+        count = 0;
+        debugTimer = 0;
+
+        isActive = true;
+
+        forceFieldRadius = forceField.endRange;
+    }
+
+    void FixedUpdate()
+    {
+        rb.velocity = Vector3.ClampMagnitude(rb.velocity, maxSpeed);
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+
+
+        //if ball has bounced, check signal
+        //if false, set signal to true, start timer, has bounced is false
+        //if true, player is stuck, start timer if it isnt started
+        //false scenario----
+        //debugtimer starts, if timer is > .01f and theres no signal from hasBounced, not stuck, reset debugtimer
+        //true scenario----
+        //if timer is greater than 4 seconds and signal is true, reset the ball
+
+
+        if(hasBounced)
+        {
+            count++;
+            debugTimerStart = true;
+            hasBounced = false;
+        }
+
+        Debug.Log(debugTimer + " " + count);
+
+        if (debugTimerStart)
+        {
+            debugTimer += Time.deltaTime;
+        }
+        else
+            debugTimer = 0;
+
+        if (debugTimer > 1f && count > 1)
+        {
+            Debug.Log("wowww");
+        }
+        else
+        {
+            debugTimerStart = false;
+            count = 0;
+        }
+
+
+
+
+        /*if (debugTimer >= 4f)
+        {
+            resetBall = true;
+            Debug.Log($"Reset!");
+            signal = false;
+            isStuck = false;
+        }
+
+        if (resetBall)
+        {
+            ResetRb();
+            resetBall = false;
+        }*/
+
+    }
+
+
+    public void ApplyPaddleDamageEffect(PaddleEffectData effect)
+    {
+        int flat = 0;
+        int bounces = 0;
+
+        switch(effect.Element)
+        {
+            case PaddleState.Fire:
+                flat = effect.FireBonusDamage;
+                bounces = effect.FireBounceDuration;
+                break;
+            case PaddleState.Water:
+                flat = effect.WaterDamageFlat;
+                bounces = effect.WaterBounceDuration;
+                break;
+                case PaddleState.Earth:
+                flat = 0;
+                    bounces = effect.EarthBounceDuration;
+                break;
+                case PaddleState.Electric:
+                flat = 0;
+                    bounces = effect.ElectricBounceDuration;
+                break;
+            default:
+                break;
+        }
+
+        AddFlatDamage(flat, bounces);
+
+    }
+
+    public void Launch(float power)
+    {
+        Debug.Log($"{30f * power}");
+        rb.velocity = Vector3.zero;
+        rb.AddForce(Vector3.forward * (45f * power), ForceMode.Impulse);
+    }
+
+    public void Push(float power)
+    {
+        rb.AddForce((-Vector3.right * (40f * power)) + (Vector3.forward * (5.5f * power)), ForceMode.Impulse);
+    }
+
+    public void Bump(Vector3 dir, float power, int bumper, Bumper bumperInstance)
+    {
+
+        bumpCount++;
+
+
+
+        Vector3 currentDir = dir.sqrMagnitude > .0001f ? dir.normalized : Vector3.forward;
+
+        if(Time.time - lastBumpTime > sameDirWindow)
+        {
+            sameDirHits = 0;
+        }
+
+        if(prevBumpDirection != Vector3.zero)
+        {
+            float cos = Vector3.Dot(currentDir, prevBumpDirection.normalized);
+            print(cos + "chat");
+            if (Mathf.Abs(cos) >= sameDirDotThreshold)
+                sameDirHits++;
+            else
+                sameDirHits = 0;
+        }
+
+        lastBumpTime = Time.time;
+        prevBumpDirection = currentDir;
+
+        if(sameDirHits > sameDirHitLimit)
+        {
+            ResetRb();
+            Debug.Log("thanks chatgpt");
+            return;
+        }
+
+
+        rb.AddForce(dir * power, ForceMode.Impulse);
+
+        if(bumper == 0)
+            PM.AddScore(100, bumpCount, bumpCountConsecutive);
+        else
+            PM.AddScore(50, bumpCount, bumpCountConsecutive);
+
+
+        GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
+        ConsumeBounceForDamageMods();
+
+    }
+
+
+    void OnTriggerEnter(Collider col)
+    {
+        if (PM.CurrentState == PinballState.Play)
+        {
+            lastBouncedTag = col.gameObject.tag;
+            bounceCount++;
+
+                if (lastBouncedTag == "Bumper" || lastBouncedTag == "SmallBumper")
+                {
+                    bumpCountConsecutive++;
+                }
+                else bumpCountConsecutive = 0;
+        }
+    }
+
+    void OnTriggerStay(Collider col)
+    {
+        if (col.gameObject.tag == "BallThreshold")
+            isInZone = true;
+
+
+    }
+
+    void OnCollisionStay(Collision col)
+    {
+        if (col.gameObject.tag == "Paddle")
+            isTouchingPaddles = true;
+    }
+
+    void OnCollisionExit(Collision col)
+    {
+        if (col.gameObject.tag == "Paddle")
+            isTouchingPaddles = false;
+    }
+
+
+
+    void OnTriggerExit(Collider col)
+    {
+        if (col.gameObject.tag == "BallThreshold")
+            isInZone = false;
+
+
+    }
+
+    public void ResetRb()
+    {
+        sameDirHits = 0;
+        prevBumpDirection = Vector3.zero;
+
+        float speed = rb.velocity.magnitude;
+        if (speed < 1f) speed = 8f;
+
+        Vector3 baseDir = rb.velocity.sqrMagnitude > .01f ? rb.velocity.normalized : Vector3.forward;
+        baseDir.y = 0f;
+
+        float bigDeflect = Random.Range(120f, 160f);
+        Vector3 newDir = (Quaternion.AngleAxis(bigDeflect, Vector3.up) * baseDir).normalized;
+
+        rb.velocity = newDir * speed;
+    }
+
+    public void OnPaddleHit(PaddleEffectData effect)
+    {
+        var elem = GetComponent<BallElementalState>();
+        if (elem == null) return;
+
+        switch (effect.Element)
+        {
+            case PaddleState.Fire:
+                // forward the stored paddle parameters to the ball elemental state
+                elem.SetFireState(
+                    effect.FireBonusDamage,
+                    effect.FireBurnDamage,
+                    effect.FireBurnDuration,
+                    effect.FireBounceDuration,
+                    effect.FireCanExplode,
+                    effect.FireExplosionSize,
+                    effect.FireExplosionDamageFlat,
+                    effect.FireIsCursed
+                );
+                break;
+            case PaddleState.Water:
+                elem.SetWaterState(
+                    effect.WaterBonusXP,
+                    effect.WaterDamageFlat,
+                    effect.WaterDrenchDuration,
+                    effect.WaterBounceDuration,
+                    effect.WaterCanBurst,
+                    effect.WaterBurstSize,
+                    effect.WaterBurstDamageFlat,
+                    effect.WaterIsCursed
+                );
+                break;
+                case PaddleState.Earth:
+                    elem.SetEarthState(
+                    effect.EarthBonusDamage,
+                    effect.EarthFissureDuration,
+                    effect.EarthXPBonus,
+                    effect.EarthScoreBonus,
+                    effect.EarthBounceDuration,
+                    effect.EarthIsCursed
+                );
+                break;
+            case PaddleState.Electric:
+                elem.SetElectricState(
+                    effect.ElectricShockDamage,
+                    effect.ElectricChainCount,
+                    effect.ElectricXPBonus,
+                    effect.ElectricScoreBonus,
+                    effect.ElectricBounceDuration,
+                    effect.ElectricIsCursed
+                );
+                break;
+            // add other paddle-to-ball mappings here (Water, Earth, etc.)
+            default:
+                break;
+        }
+
+        ApplyPaddleDamageEffect(effect);
+
+    }
+
+    public void UpdateForcefield(float amount)
+    {
+        forceFieldRadius *= amount;
+        forceField.endRange = forceFieldRadius;
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BallElementalState.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class BallElementalState : MonoBehaviour
+{
+    [SerializeField]
+    private ElementalState initialState = ElementalState.None;
+
+    Pinball PM;
+
+    public ElementalState CurrentState = ElementalState.None;
+    private Ball ball;
+    private float originalMaxSpeed;
+    // Combination dictionary for easy expansion
+    private static readonly Dictionary<(ElementalState, ElementalState), ElementalState> combinations =
+        new()
+        {
+            {(ElementalState.Fire, ElementalState.Water), ElementalState.Steam},
+            {(ElementalState.Water, ElementalState.Fire), ElementalState.Steam},
+            {(ElementalState.Fire, ElementalState.Earth), ElementalState.Magma},
+            {(ElementalState.Earth, ElementalState.Fire), ElementalState.Magma},
+            {(ElementalState.Fire, ElementalState.Air), ElementalState.Wildfire},
+            {(ElementalState.Air, ElementalState.Fire), ElementalState.Wildfire},
+            {(ElementalState.Water, ElementalState.Earth), ElementalState.Sludge},
+            {(ElementalState.Earth, ElementalState.Water), ElementalState.Sludge},
+            {(ElementalState.Water, ElementalState.Air), ElementalState.Vapor},
+            {(ElementalState.Air, ElementalState.Water), ElementalState.Vapor},
+            {(ElementalState.Air, ElementalState.Earth), ElementalState.Whirlwind},
+            {(ElementalState.Earth, ElementalState.Air), ElementalState.Whirlwind},
+            // Add more combinations as needed
+        };
+
+    private float fireTempDamage;
+    private float fireBurnDamage;
+    private float fireBurnDuration;
+    private bool fireExplode;
+    private float fireExplosionSize;
+    private int fireExplosionDamage;
+    private bool fireEffectActive;
+    private bool fireIsCursed;
+
+    private float waterBonusXP;
+    private int waterBonusDamage;
+    private float waterDrenchDuration;
+    private bool waterExplode;
+    private float waterBurstSize;
+    private int waterExplosionDamage;
+    private bool waterEffectActive;
+    private bool waterIsCursed;
+
+    private int earthFissureDamage;
+    private float earthCrustDuration;
+    private float earthBonusXP;
+    private float earthBonusScore;
+    private bool earthEffectActive;
+    private bool earthIsCursed;
+
+    private int electricShockDamage;
+    private int electricChainCount;
+    private float electricBonusXP;
+    private float electricBonusScore;
+    private bool electricEffectActive;
+    private bool electricIsCursed;
+
+    private bool areEffectsActive => fireEffectActive || waterEffectActive || earthEffectActive || electricEffectActive;
+
+    private int fireBouncesRemaining;
+    private int waterBouncesRemaining;
+    private int earthBouncesRemaining;
+    private int electricBouncesRemaining;
+
+    // Public getters if needed
+    public float FireActiveTempDamage => fireTempDamage;
+    public float FireBurnDamage => fireBurnDamage;
+    public float FireBurnDuration => fireBurnDuration;
+    public bool FireExplode => fireExplode;
+    public float FireExplosionSize => fireExplosionSize;
+    public int FireExplosionDamage => fireExplosionDamage;
+    public int FireBouncesRemaining => fireBouncesRemaining;
+    public bool FireEffectActive => fireEffectActive;
+    public bool FireIsCursed => fireIsCursed;
+
+    public float WaterBonusXP => waterBonusXP;  
+    public int WaterBonusDamage => waterBonusDamage;
+    public float WaterDrenchDuration => waterDrenchDuration;
+    public bool WaterExplode => waterExplode;
+    public float WaterBurstSize => waterBurstSize;
+    public int WaterExplosionDamage => waterExplosionDamage;
+    public int WaterBouncesRemaining => waterBouncesRemaining;
+    public bool WaterEffectActive => waterEffectActive;
+    public bool WaterIsCursed => waterIsCursed;
+
+    public int EarthFissureDamage => earthFissureDamage;
+    public float EarthCrustDuration => earthCrustDuration;
+    public float EarthBonusXP => earthBonusXP;
+    public float EarthBonusScore => earthBonusScore;
+    public bool EarthEffectActive => earthEffectActive;
+    public bool EarthIsCursed => earthIsCursed;
+    public int EarthBouncesRemaining => earthBouncesRemaining;
+
+    public int ElectricShockDamage => electricShockDamage;
+    public int ElectricChainCount => electricChainCount;
+    public float ElectricBonusXP => electricBonusXP;
+    public float ElectricBonusScore => electricBonusScore;
+    public bool ElectricEffectActive => electricEffectActive;
+    public bool ElectricIsCursed => electricIsCursed;
+    public int ElectricBouncesRemaining => electricBouncesRemaining;
+
+
+
+
+    private void Awake()
+    {
+        ball = GetComponent<Ball>();
+        if(ball == null)
+        {
+            Debug.LogWarning("BallElementalState requires a Ball component on the same GameObject.");
+        }
+
+        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+
+    }
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        CurrentState = initialState;
+        if(ball != null)
+            originalMaxSpeed = ball.maxSpeed;
+
+    }
+
+    public void SetState(ElementalState newState)
+    {
+        if (CurrentState == newState) return;
+        CurrentState = newState;
+        ApplyStateEffects();
+        //TODO VFX/SFX
+    }
+
+    public void CombineWith(ElementalState newElement)
+    {
+        var combined = CombineElements(CurrentState, newElement);
+        SetState(combined);
+    }
+
+    public ElementalState CombineElements(ElementalState existing, ElementalState incoming)
+    {
+        if(combinations.TryGetValue((existing, incoming), out var result))
+        {
+            return result;
+        }
+        return incoming; // Default to the incoming element if no combination exists)
+    }
+
+    private void ApplyStateEffects()
+    {
+        if(ball == null) return;
+        switch (CurrentState)
+        {
+            case ElementalState.Fire:
+                break;
+            case ElementalState.Water:
+                break;
+            case ElementalState.Earth:
+                break;
+            case ElementalState.Air:
+                break;
+            // Add more cases for other elemental states as needed
+            default:
+                ball.maxSpeed = originalMaxSpeed;
+                break;
+        }
+    }
+
+
+    public void ClearState()
+    {
+        CurrentState = ElementalState.None;
+        //TODO Remove VFX/SFX
+    }
+
+    public void OnBounce(Bumper bumper)
+    {
+        if (!areEffectsActive) return;
+        var elem = bumper.gameObject.GetComponent<BumperElementalState>();
+
+        if (fireEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
+        }
+        if (waterEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyDrenched(waterDrenchDuration, waterBonusXP);
+        }
+        if (earthEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyCrusted(earthFissureDamage, earthCrustDuration, earthBonusXP, earthBonusScore);
+        }
+        if(electricEffectActive && bumper != null)
+        {
+            elem.ClearElement();
+            elem.ApplyShocked(electricShockDamage, electricBonusXP, electricBonusScore);
+        }
+
+        switch (CurrentState)
+        {
+            case ElementalState.Fire:
+                fireBouncesRemaining--;
+                if (fireBouncesRemaining <= 0)
+                {
+                    fireEffectActive = false;
+                    ClearState();
+                }
+                break;
+            case ElementalState.Water:
+                waterBouncesRemaining--;
+                if (waterBouncesRemaining <= 0)
+                {
+                    waterEffectActive = false;
+                    ClearState();
+                }
+                break;
+            case ElementalState.Earth:
+                earthBouncesRemaining--;
+                if (earthBouncesRemaining <= 0)
+                {
+                    earthEffectActive = false;
+                    ClearState();
+                }
+                break;
+
+            case ElementalState.Electric:
+                electricBouncesRemaining--;
+                if (electricBouncesRemaining <= 0)
+                {
+                    electricEffectActive = false;
+                    ClearState();
+                }
+                break;
+            // Handle other elemental states with bounce effects as needed
+            default:
+                break;
+        }
+
+
+
+
+    }
+
+    #region Elemental State Methods
+
+    public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
+    {
+        waterEffectActive = false;
+        earthEffectActive = false;
+        electricEffectActive = false;
+
+        fireEffectActive = true;
+
+        Debug.Log("Fire effect applied to ball");
+
+        fireTempDamage = bonusDamage;
+        fireBurnDamage = burnDamage;
+        fireBurnDuration = burnDuration;
+        fireBouncesRemaining += bounceDuration;
+        if(fireBouncesRemaining > bounceDuration)
+            fireBouncesRemaining = bounceDuration;
+        fireExplode = canExplode;
+        fireExplosionSize = explosionRadius;
+        fireExplosionDamage = explosionDamageFlat;
+        fireIsCursed = cursed;
+
+        SetState(ElementalState.Fire);
+
+    }
+
+    public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
+    {
+        electricEffectActive = false;
+        fireEffectActive = false;
+        earthEffectActive = false;
+
+        waterEffectActive = true;
+        Debug.Log("Water effect applied to ball");
+
+
+        waterBonusXP = bonusXP;
+        waterBonusDamage = bonusDamage;
+        waterDrenchDuration = drenchDuration;
+        waterBouncesRemaining += bounceDuration;
+        if (waterBouncesRemaining > bounceDuration)
+            waterBouncesRemaining = bounceDuration;
+        waterExplode = canBurst;
+        waterBurstSize = burstRadius;
+        waterExplosionDamage = burstDamageFlat;
+
+        SetState(ElementalState.Water);
+
+    }
+
+    public void SetEarthState(int fissureDamage, float crustDuration, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
+    {
+        fireEffectActive = false;
+        waterEffectActive = false;
+        electricEffectActive = false;
+
+        earthEffectActive = true;
+        Debug.Log("Earth effect applied to ball");
+
+        earthFissureDamage = fissureDamage;
+        earthCrustDuration = crustDuration;
+        earthBonusXP = bonusXP;
+        earthBonusScore = bonusScore;
+        earthBouncesRemaining += bounceDuration;
+        if (earthBouncesRemaining > bounceDuration)
+            earthBouncesRemaining = bounceDuration;
+        earthIsCursed = cursed;
+        SetState(ElementalState.Earth);
+    }
+
+    public void SetElectricState(int shockDamage, int chainCount, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
+    {
+        fireEffectActive = false;
+        waterEffectActive = false;
+        earthEffectActive = false;
+
+        electricEffectActive = true;
+        Debug.Log("Electric effect applied to ball");
+        electricShockDamage = shockDamage;
+        electricChainCount = chainCount;
+        electricBonusXP = bonusXP;
+        electricBonusScore = bonusScore;
+        electricBouncesRemaining += bounceDuration;
+        if (electricBouncesRemaining > bounceDuration)
+            electricBouncesRemaining = bounceDuration;
+        electricIsCursed = cursed;
+        SetState(ElementalState.Electric);
+    }
+
+
+    #endregion
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BallElements.cs
+=====
+using UnityEngine;
+
+public enum ElementalState
+{
+    None,
+    Fire,
+    Water,
+    Earth,
+    Air,
+    Electric,
+
+    Steam,
+    Magma,
+    Wildfire,
+
+    Sludge,
+    Vapor,
+
+    Whirlwind,
+
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BallXPBar.cs
+=====
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+public class BallXPBar : MonoBehaviour
+{
+
+    public Image xpBar;
+    public Image xpBarHolder;
+
+
+    public TMP_Text levelText;
+
+    float target;
+    public float reduceSpeed;
+
+
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        xpBar.fillAmount = Mathf.MoveTowards(xpBar.fillAmount, target, reduceSpeed * Time.deltaTime);
+
+    }
+
+    public void UpdateXP(float currentXP, float maxXP, int level)
+    {
+        Debug.Log($"Start max XP {maxXP}");
+        target = currentXP / maxXP;
+        levelText.text = $"Level: {level}";
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BaseCharacter.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+public enum TraitType
+{
+    Endurance, //HP, Def, Res
+    Strength, //MinAtk, MaxAtk, Break
+    Agility, //Speed, Evasion, Crit
+    Wit, //Intelligence, Mana, Luck
+    Charm, // Luck, Lifesteal
+}
+public enum StatType
+{
+    Health, //E
+    Mana, //W
+    MinAtk, //S
+    MaxAtk, //S
+    Accuracy,
+    Speed, // A
+    Defense, //E
+    Resistance, //E
+    Evasion, //A
+    Critical, // A
+    Break, // S
+    Intelligence, // W
+    Luck, // C
+    Lifesteal // C
+}
+
+public class BaseCharacter
+{
+
+
+
+    public string name;
+    public string charClass { get; private set; }
+    public int level { get; private set; }
+
+    public float TurnMeter { get; private set; } = 0f;
+    public void ConsumeTurnMeter() => TurnMeter = 0;
+    public bool IsTurnReady => TurnMeter >= 100f * (((previousHits + 1) * 1.35f) * 2f);
+    public int previousHits = 0;
+    public void FillTurnMeter() => TurnMeter += Speed.Value;
+
+    public  Dictionary<StatType, CharacterStat> stats = new();
+    public  Dictionary<TraitType, float> traits = new();
+
+    public CharacterStat Health => stats[StatType.Health];
+    public CharacterStat Mana => stats[StatType.Mana];
+    public CharacterStat MinAtk => stats[StatType.MinAtk];
+    public CharacterStat MaxAtk => stats[StatType.MaxAtk];
+    public CharacterStat Speed=> stats[StatType.Speed];
+    public CharacterStat Defense => stats[StatType.Defense];
+    public CharacterStat Accuracy => stats[StatType.Accuracy];
+    public CharacterStat Critical => stats[StatType.Critical];
+    public CharacterStat Break => stats[StatType.Break];
+    public CharacterStat Evasion => stats[StatType.Evasion];
+    public CharacterStat Resistance => stats[StatType.Resistance];
+    public CharacterStat Luck => stats[StatType.Luck];
+
+    public float Endurance;
+    public float Strength;
+    public float Agility;
+    public float Wit;
+    public float Charm;
+
+
+
+    public BaseCharacter()
+    {
+        name = string.Empty;
+        charClass = string.Empty;
+        level = 0;
+        InitializeStats();
+        InitializeTraits();
+    }
+
+    public BaseCharacter(string characterName, string characterClass, int characterLevel, float hp, float minAtk, float maxAtk)
+    {
+        name = characterName;
+        charClass = characterClass;
+        level = characterLevel;
+
+        InitializeStats();
+        InitializeTraits();
+
+        stats[StatType.Health].baseValue = hp;
+        stats[StatType.MinAtk].baseValue = minAtk;
+        stats[StatType.MaxAtk].baseValue = maxAtk;
+    }
+
+    public BaseCharacter(string characterName, string characterClass, int characterLevel, float hp, float mp, float minAtk, float maxAtk)
+    {
+        name = characterName;
+        charClass = characterClass;
+        level = characterLevel;
+
+        InitializeStats();
+        InitializeTraits();
+
+        stats[StatType.Health].baseValue = hp;
+        stats[StatType.Mana].baseValue = mp;
+        stats[StatType.MinAtk].baseValue = minAtk;
+        stats[StatType.MaxAtk].baseValue = maxAtk;
+    }
+
+    public BaseCharacter(string characterName, string characterClass, int characterLevel, float hp, float mp, float minAtk, float maxAtk, float spd)
+    {
+        name = characterName;
+        charClass = characterClass;
+        level = characterLevel;
+
+        InitializeStats();
+        InitializeTraits();
+        stats[StatType.Health].baseValue = hp;
+        stats[StatType.Mana].baseValue = mp;
+        stats[StatType.MinAtk].baseValue = minAtk;
+        stats[StatType.MaxAtk].baseValue = maxAtk;
+        stats[StatType.Speed].baseValue = spd;
+    }
+
+    public static BaseCharacter CreateCharacterFromClass(string className)
+    {
+        switch (className)
+        {
+            case "Warrior": return new Warrior();
+            case "Mage": return new Mage();
+            case "Druid": return new Druid();
+            case "Assassin": return new Assassin();
+            case "Tank": return new Tank();
+            default: return new BaseCharacter();
+        }
+    }
+
+
+    public virtual void InitializeStats()
+    {
+
+        foreach(StatType type in System.Enum.GetValues(typeof(StatType)))
+        {
+            stats[type] = new CharacterStat(0f);
+        }
+
+        stats[StatType.Health].baseValue = 100f;
+        stats[StatType.Mana].baseValue = 100f;
+        stats[StatType.MinAtk].baseValue = 50f;
+        stats[StatType.MaxAtk].baseValue = 50f;
+        stats[StatType.Speed].baseValue = 100f;
+        stats[StatType.Defense].baseValue = 0f;
+    }
+
+    public virtual void InitializeRandomStats(Dictionary<StatType, CharacterStat> p1Stats)
+    {
+
+        foreach (StatType type in System.Enum.GetValues(typeof(StatType)))
+        {
+            float offset1 = Random.Range(-.05f, .05f);
+            float offset2 = Random.Range(-.05f, .05f);
+            float min = Mathf.Min(offset1, offset2);
+            float max = Mathf.Max(offset1, offset2);
+            float randomizedValue = p1Stats[type].Value * Random.Range(min, max);
+            float finalValue = Mathf.Round((p1Stats[type].Value + randomizedValue) * 10f) / 10f;
+            this.stats[type] = new CharacterStat(Mathf.Max(0.1f, finalValue));
+            Debug.Log($"Random Value Generated - {randomizedValue} : New Stat Value {this.stats[type].Value}\nMin # - {min} : Max # - {max}");
+
+        }
+        this.RefillAllVitals(); 
+    }
+
+    public virtual void InitializeTraits()
+    {
+        foreach (TraitType trait in System.Enum.GetValues(typeof(TraitType)))
+        {
+            traits[trait] = 0;
+        }
+    }
+
+    public virtual void InitializeRandomTraits(Dictionary<TraitType, float> p1Traits)
+    {
+
+        foreach (TraitType trait in System.Enum.GetValues(typeof(TraitType)))
+        {
+            float offset1 = Random.Range(-.05f, .05f);
+            float offset2 = Random.Range(-.05f, .05f);
+
+            float min = Mathf.Min(offset1, offset2);
+            float max = Mathf.Max(offset1, offset2);
+
+            float randomizedValue = p1Traits[trait] * Random.Range(min, max);
+            float finalValue = Mathf.Round(p1Traits[trait] + randomizedValue);
+            this.traits[trait] = Mathf.Max(0, finalValue);
+        }
+    }
+
+    public virtual void ApplyTraitBonuses()
+    {
+        stats[StatType.Health].baseValue += traits[TraitType.Endurance] * .01f; //1% endurance value
+        stats[StatType.Defense].baseValue += traits[TraitType.Endurance] * 0.5f; //half endurance value
+        stats[StatType.Resistance].baseValue += traits[TraitType.Endurance] * 0.3f; //30% endurance value... etc.
+
+        stats[StatType.MinAtk].baseValue += traits[TraitType.Strength] * 1f;
+        stats[StatType.MaxAtk].baseValue += traits[TraitType.Strength] * 2f;
+        stats[StatType.Break].baseValue += traits[TraitType.Strength] * 0.4f;
+
+        stats[StatType.Speed].baseValue += traits[TraitType.Agility] * 1.2f;
+        stats[StatType.Evasion].baseValue += traits[TraitType.Agility] * 0.5f;
+        stats[StatType.Critical].baseValue += traits[TraitType.Agility] * 0.25f;
+
+        stats[StatType.Intelligence].baseValue += traits[TraitType.Wit] * 1.5f;
+        stats[StatType.Luck].baseValue += traits[TraitType.Wit] * 0.5f;
+        stats[StatType.Accuracy].baseValue += traits[TraitType.Wit] * 2f;
+
+
+        stats[StatType.Luck].baseValue += traits[TraitType.Charm] * 0.05f;
+        stats[StatType.Lifesteal].baseValue += traits[TraitType.Charm] * 0.4f;
+        stats[StatType.Accuracy].baseValue += traits[TraitType.Charm] * .8f;
+
+        stats[StatType.Critical].baseValue += stats[StatType.Luck].baseValue * 0.25f;
+
+    }
+
+    public virtual void ApplyLevelScaling() { }
+
+    public Dictionary<StatType, CharacterStat> GetStats()
+    {
+        return stats;
+    }
+
+    public Dictionary<TraitType, float> GetTraits()
+    {
+        return traits;
+    }
+
+    public virtual void PrintStats()
+    {
+        Debug.Log($"Name: {name}");
+        Debug.Log($"Class: {charClass}");
+        Debug.Log($"Level: {level}");
+        Debug.Log($"base health: {stats[StatType.Health].baseValue}");
+
+        foreach( var stat in stats)
+        {
+            Debug.Log($"{stat.Key} Value: {stat.Value.Value}");
+        }
+    }
+
+    public void RefillAllVitals()
+    {
+        this.stats[StatType.Health].RefillToMax();
+        this.stats[StatType.Mana].RefillToMax();
+    }
+
+    public void RandomizeCharacter(int playerLevel, Dictionary<StatType, CharacterStat> playerStats, Dictionary<TraitType, float> playerTraits)
+    {
+        this.name = "Generated";
+        this.level = Random.Range(playerLevel - 2, playerLevel + 3);
+        InitializeRandomStats(playerStats);
+        Debug.Log($"Base Value - {this.Health.baseValue}");
+        InitializeRandomTraits(playerTraits);
+        Debug.Log($"Base Value - {this.Health.baseValue}");
+        this.ApplyLevelScaling();
+        Debug.Log($"Base Value - {this.Health.baseValue}");
+        this.ApplyTraitBonuses();
+        Debug.Log($"Base Value - {this.Health.baseValue}");
+    }
+
+
+
+
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Brawler.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Brawler : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 6.7f;
+    protected float minAtkLvlIncrease = 2.4f;
+    protected float maxAtkLvlIncrease = 2.9f;
+
+    protected float endLVLinc = 2.48f;
+    protected float strLVLinc = 4.37f;
+    protected float agiLVLinc = 2.26f;
+    protected float witLVLinc = .74f;
+    protected float chaLVLinc = 1.82f;
+
+
+    public Brawler(string name, int level)
+        : base(name, "Brawler", level, 514.9f, 95f, 56.2f, 62.8f, 100f)
+    {
+        traits[TraitType.Endurance] = 7;
+        traits[TraitType.Strength] = 10;
+        traits[TraitType.Agility] = 6;
+        traits[TraitType.Wit] = 2;
+        traits[TraitType.Charm] = 4;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public Brawler()
+    : base("", "Brawler", 5, 514.9f, 95f, 56.2f, 62.8f, 100f)
+    {
+        traits[TraitType.Endurance] = 7;
+        traits[TraitType.Strength] = 10;
+        traits[TraitType.Agility] = 6;
+        traits[TraitType.Wit] = 2;
+        traits[TraitType.Charm] = 4;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Bumper.cs
+=====
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+public enum BumperType
+{
+    Small,
+    Default,
+    Large
+}
+
+
+public class Bumper : MonoBehaviour
+{
+
+    bool drawLine;
+
+    Vector3 savedNormal;
+
+    Vector3 normal;
+
+    bool hasStoppedColliding = false;
+
+    private readonly Dictionary<int, float> lastHitTimeByBall = new();
+    [SerializeField] private float hitCooldown = 0.02f;
+
+
+    [SerializeField]
+    public float curHealth;
+    [SerializeField]
+    public float maxHealth;
+    [SerializeField]
+    public float cooldown;
+
+    public BumperType type;
+
+    private BumperElementalState bumperElemental;
+
+    Pinball pm;
+    Collider ball;
+
+    // Track the most recent collision contact so we can spawn numbers there,
+    // with a short validity window to cover chained damage (e.g., on-hit effects).
+    private Vector3 lastContactPoint;
+    private float lastContactTime;
+    [SerializeField] private float contactPointTimeout = 0.25f; // seconds
+
+
+    private static readonly List<Bumper> AllBumpers = new();
+
+    public static IEnumerable<Bumper> EnumerateAll()
+    {
+        return AllBumpers;
+    }
+
+    private void OnEnable() => AllBumpers.Add(this);
+    private void OnDisable() => AllBumpers.Remove(this);
+
+
+
+    void Awake()
+    {
+        pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        bumperElemental = GetComponent<BumperElementalState>();
+        curHealth = maxHealth;
+    }
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        
+    }
+
+    void Update()
+    {
+
+    }
+
+    void OnCollisionEnter(Collision col)
+    {
+        var rb = col.rigidbody;
+
+        var ballComp = rb.GetComponent<Ball>();
+        var elemState = rb.GetComponent<BallElementalState>();
+
+        if (rb != null )
+        {
+            int id = rb.GetInstanceID();
+
+            //if same ball has bumped too soon, avoid double collision causing multiple points
+            if(lastHitTimeByBall.TryGetValue(id, out float last) && Time.time - last < hitCooldown)
+                    return;
+            lastHitTimeByBall[id] = Time.time;
+
+
+            ContactPoint contact = col.contacts[0];
+            normal = new Vector3(contact.normal.x, 0f, contact.normal.z).normalized;
+
+            lastContactPoint = contact.point;
+            lastContactTime = Time.time;
+
+            Debug.Log($"baba {rb.velocity.normalized}");
+
+            if(normal == Vector3.zero)
+            {
+                normal = (col.transform.position - transform.position);
+                normal.y = 0f;
+                normal.Normalize();
+            }
+
+
+                ball = col.collider;
+
+
+            float totalDamage = ballComp != null ? ballComp.CurrentDamage : pm.Damage;
+            bool fireTick = elemState != null && elemState.CurrentState == ElementalState.Fire;
+
+
+            rb.velocity = Vector3.zero;
+            if (this.CompareTag("Bumper"))
+            {
+                if (curHealth <= 0)
+                {
+                    pm.destroyedBumper = true;
+                }
+                else
+                {
+                    pm.destroyedBumper = false;
+                }
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 225f, 0, this);
+            }
+            else if (this.CompareTag("SmallBumper"))
+            {
+                if (curHealth <= 0)
+                {
+                    pm.destroyedBumper = true;
+                }
+                else
+                {
+                    pm.destroyedBumper = false;
+                }
+                rb.gameObject.GetComponent<Ball>().Bump(normal, 100f, 1, this);
+            }
+
+            Debug.DrawRay(contact.point, normal * 2f, Color.red);
+            rb.gameObject.GetComponent<Ball>().hasBounced = true;
+
+
+
+            TakeDamage(totalDamage, elemDmg: fireTick);
+            DropPowerup();
+        }
+
+
+    }
+
+    private void DropPowerup()
+    {
+        if (!PowerupSystem.TryRoll(pm))
+            return;
+
+        bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+        Vector3 spawnPos;
+        if(hasRecentContact)
+            spawnPos = new Vector3(lastContactPoint.x, lastContactPoint.y + 1f, lastContactPoint.z);
+        else
+            spawnPos = transform.position + Vector3.up * 1f;
+
+        PowerupSystem.TryTriggerRandom(pm, spawnPos);
+    }
+
+    private Bumper FindNearestOther(float maxDistance = Mathf.Infinity)
+    {
+        Vector3 p = transform.position;
+        Bumper nearest = null;
+        float bestSqr = maxDistance * maxDistance;
+
+        for(int i = 0; i < AllBumpers.Count; i++)
+        {
+            var b = AllBumpers[i];
+            if(b == null || b == this)
+                continue;
+            float d = (b.transform.position - p).sqrMagnitude;
+            if(d < bestSqr)
+            {
+                bestSqr = d;
+                nearest = b;
+            }
+        }
+        return nearest;
+    }
+
+    public void TakeDamage(float amount, bool elemDmg)
+    {
+            curHealth -= amount;
+
+        GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
+
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+
+            Vector3 offset = basePos + new Vector3(0, 4, 0);
+
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
+        }
+
+
+        if (elemDmg)
+        {
+            if (curHealth > 0)
+                pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true);
+        }
+        else
+        {
+            if (bumperElemental.CurrentState == BumperState.Drenched)
+            {
+                Debug.Log("Water Bonus XP Spawned");
+                pm.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP);
+            }
+            else
+            {
+                pm.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false);
+            }
+        }
+
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+
+        }
+    }
+
+    public void TakeFissureDamage(float amount)
+    {
+        curHealth -= amount;
+
+
+        GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
+
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+
+            Vector3 offset = basePos + new Vector3(0, 4, 0);
+
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
+        }
+
+        pm.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP);
+
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+
+        }
+
+
+    }
+
+    public void TakeShockDamage(float amount, bool propogate = false)
+    {
+
+
+        if (propogate)
+        {
+            var nearest = FindNearestOther();
+            if (nearest)
+                nearest.TakeShockDamage(amount, false);
+
+        }
+        curHealth -= amount;
+
+
+
+        GetComponent<BumperAnimScript>().BumperHit();
+        pm.ScreenShake();
+        if (DamageNumbers.IsReady)
+        {
+            bool hasRecentContact = (Time.time - lastContactTime) <= contactPointTimeout;
+            Vector3 basePos = hasRecentContact ? lastContactPoint : transform.position;
+            Vector3 offset = basePos + new Vector3(1, 4, -1);
+            DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
+        }
+        pm.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP);
+        if (curHealth <= 0)
+        {
+            curHealth = 0;
+            if (pm != null)
+            {
+                pm.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false);
+                pm.destroyedBumper = true;
+            }
+            StartCoroutine(pm.RespawnRoutine(this));
+            return;
+        }
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BumperElementalState.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class BumperElementalState : MonoBehaviour
+{
+
+    private Bumper bumper;
+    public BumperState CurrentState  = BumperState.None;
+
+    private float fireBurnExpireAt;
+    private float fireBurnNextTickAt;
+    private float fireBurnDamagePerTick;
+    private float fireBurnTickInterval = .5f;
+
+    private float waterBonusXP;
+    private float waterDrenchExpireAt;
+
+    private float earthFissureDamage;
+    private float earthBonusXP;
+    private float earthBonusScore;
+    private float earthCrustExpireAt;
+
+    private float electricShockDamage;
+    private float electricBonusXP;
+    private float electricBonusScore;
+
+    public float WaterBonusXP => waterBonusXP;
+
+    public float EarthFissureDamage => earthFissureDamage;
+    public float EarthBonusXP => earthBonusXP;
+    public float EarthBonusScore => earthBonusScore;
+
+    public float ElectricShockDamage => electricShockDamage;
+    public float ElectricBonusXP => electricBonusXP;
+    public float ElectricBonusScore => electricBonusScore;
+
+
+
+    void Awake()
+    {
+        bumper = GetComponent<Bumper>();
+    }
+
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+
+        switch(CurrentState)
+{
+            case BumperState.None:
+                break;
+            case BumperState.Burning:
+                HandleBurning();
+                break;
+            case BumperState.Drenched:
+                HandleDrenched();
+                break;
+            case BumperState.Crusted:
+                HandleCrusted();
+                break;
+            case BumperState.Shocked:
+                HandleShocked();
+                break;
+            default:
+                break;
+        }
+
+    }
+
+    public void ApplyBurn(float dps, float duration)
+    {
+        CurrentState = BumperState.Burning;
+        Debug.Log("Bumper Burn Applied");
+        fireBurnExpireAt = Time.time + duration;
+        fireBurnNextTickAt = Time.time + fireBurnTickInterval;
+        fireBurnDamagePerTick = dps * fireBurnTickInterval;
+    }
+
+    private void HandleBurning()
+    {
+        if (Time.time >= fireBurnNextTickAt)
+        {
+            fireBurnNextTickAt += fireBurnTickInterval;
+            bumper.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
+        }
+
+        if (Time.time >= fireBurnExpireAt)
+        {
+            ClearBurn();
+        }
+    }
+
+    public void ClearBurn()
+    {
+        fireBurnExpireAt = 0f;
+        fireBurnNextTickAt = 0f;
+        fireBurnDamagePerTick = 0f;
+        CurrentState = BumperState.None;
+    }
+
+    public void ApplyDrenched(float duration, float bonusXP)
+    {
+        CurrentState = BumperState.Drenched;
+        Debug.Log("Bumper Drenched Applied");
+        waterDrenchExpireAt = Time.time + duration;
+        waterBonusXP = bonusXP;
+    }
+
+    private void HandleDrenched()
+    {
+        if (Time.time >= waterDrenchExpireAt)
+        {
+            ClearDrenched();
+        }
+    }
+
+    public void ClearDrenched()
+    {
+        waterDrenchExpireAt = 0f;
+        waterBonusXP = 0f;
+        CurrentState = BumperState.None;
+    }
+
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
+    {
+        CurrentState = BumperState.Crusted;
+        Debug.Log("Bumper Crusted Applied");
+        float newExpire = Time.time + duration;
+        earthFissureDamage = damage;
+        earthBonusXP = bonusXP;
+        earthBonusScore = bonusScore;
+        if (newExpire > earthCrustExpireAt)
+            earthCrustExpireAt = newExpire;
+    }
+
+    public void HandleCrusted()
+    {
+        if (Time.time >= earthCrustExpireAt)
+        {
+            bumper.TakeFissureDamage(earthFissureDamage);
+            ClearCrusted();
+        }
+    }
+
+    public void ClearCrusted()
+    {
+        earthFissureDamage = 0f;
+        earthCrustExpireAt = 0f;
+        earthBonusXP = 0f;
+        earthBonusScore = 0f;
+        CurrentState = BumperState.None;
+    }
+
+    public void ApplyShocked(float damage, float bonusXP, float bonusScore)
+    {
+        CurrentState = BumperState.Shocked;
+        electricShockDamage = damage;
+        electricBonusXP = bonusXP;
+        electricBonusScore = bonusScore;
+    }
+
+    public void HandleShocked()
+    {
+        bumper.TakeShockDamage(electricShockDamage, true);
+        ClearShocked();
+    }
+
+    public void ClearShocked()
+    {
+        electricShockDamage = 0f;
+        electricBonusXP = 0f;
+        electricBonusScore = 0f;
+        CurrentState = BumperState.None;
+    }
+
+    public void ClearElement()
+    {
+        ClearBurn();
+        ClearDrenched();
+        ClearCrusted();
+        ClearShocked();
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\BumperElements.cs
+=====
+using UnityEngine;
+
+public enum BumperState
+{
+    None,
+    Burning,
+    Drenched,
+    Crusted,
+    Windswept,
+    Shocked,
+
+    Steaming,
+    Molten,
+    Blazing,
+
+    Sludged,
+    Misted,
+
+    Whirling,
+
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\CharacterStat.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System;
+using System.Collections.ObjectModel;
+
+[Serializable]
+public class CharacterStat
+{
+    public float baseValue;
+    public float BaseValue => (float)Math.Round(baseValue, 1);
+
+    public float currentValue;
+
+    public virtual float Value
+    {
+        get
+        {
+            if (isDirty)
+            {
+                _value = CalculateFinalValue();
+                isDirty = false;
+            }
+            return _value;
+        }
+    }
+
+    protected bool isDirty = true;
+    protected float _value;
+
+    protected readonly List<StatModifier> statModifiers;
+    public readonly ReadOnlyCollection<StatModifier> StatModifiers;
+
+    public CharacterStat()
+    {
+        statModifiers = new List<StatModifier>();
+        StatModifiers = statModifiers.AsReadOnly();
+    }
+
+    public CharacterStat(float value) : this()
+    {
+        baseValue = value;
+    }
+
+    public virtual void AddModifier(StatModifier mod)
+    {
+        isDirty = true;
+        statModifiers.Add(mod);
+        statModifiers.Sort(CompareModifierOrder);
+    }
+
+
+
+    protected virtual int CompareModifierOrder(StatModifier a, StatModifier b)
+    {
+        if (a.Order < b.Order)
+            return -1;
+        else if(a.Order > b.Order)
+            return 1;
+        return 0; // a.Order == b.Order
+    }
+
+    public virtual bool RemoveModifier(StatModifier mod)
+    {
+        if(statModifiers.Remove(mod))
+        {
+            isDirty = true;
+            return true;
+        }
+        return false;
+    }
+
+    public virtual bool RemoveAllModifiersFromSource(object source)
+    {
+        bool didRemove = false;
+
+        for(int i = statModifiers.Count - 1; i >= 0; i--)
+        {
+            if(statModifiers[i].Source == source)
+            {
+                isDirty = true;
+                didRemove = true;
+                statModifiers.RemoveAt(i);
+            }
+        }
+
+        return didRemove;
+    }
+
+    protected virtual float CalculateFinalValue()
+    {
+        float finalValue = baseValue;
+        float sumPercentAdd = 0;
+
+        for(int i = 0; i < statModifiers.Count; i++)
+        {
+            StatModifier mod = statModifiers[i];
+
+            if(mod.Type == StatModType.Flat)
+            {
+                finalValue += mod.Value;
+            }
+            else if(mod.Type == StatModType.PercentAdd)
+            {
+                sumPercentAdd += mod.Value;
+
+                if(i + 1 >= statModifiers.Count || statModifiers[i + 1].Type != StatModType.PercentAdd)
+                {
+                    finalValue *= 1 + sumPercentAdd;
+                    sumPercentAdd = 0;
+                }
+            }
+            else if (mod.Type == StatModType.PercentMult)
+            {
+                finalValue *= 1 + mod.Value;
+            }
+        }
+
+        return (float)Math.Round(finalValue, 1);
+    }
+
+    public void RefillToMax()
+    {
+        isDirty = true;
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\CharacterUI.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using TMPro;
+
+public class CharacterUI : MonoBehaviour
+{
+
+    [Header("UI Canvases")]
+    public GameObject homeHUD;
+    public GameObject mainMenuHUD;
+    public GameObject pinballHUD;
+    public GameObject mainStoryHUD;
+    public GameObject battleHUD;
+    public GameObject preBattleHUD;
+    public GameObject winHUD;
+    public GameObject loseHUD;
+    public GameObject initGameHUD;
+    public GameObject initNameHUD;
+
+    [Header("Player 1 UI")]
+    public TMP_Text player1Name;
+    public TMP_Text player1Class;
+    public TMP_Text player1Level;
+    public TMP_Text player1Stats;
+    public TMP_Text player1Traits;
+    [Header("Player 1 Init UI")]
+    public TMP_Text player1StatsInit;
+    public TMP_Text player1TraitsInit;
+    public TMP_Text playerNameInput;
+
+    [Header("Player 2 UI")]
+    public TMP_Text player2Name;
+    public TMP_Text player2Class;
+    public TMP_Text player2Level;
+    public TMP_Text player2Stats;
+    public TMP_Text player2Traits;
+
+    [Header("Combat System Information")]
+    public bool winner = false;
+
+    public void SetCharacterUI(BaseCharacter character, bool isPlayer1)
+    {
+        string stats = "";
+        string traits = "";
+        foreach (var stat in character.GetStats())
+        {
+            if (stat.Value == character.Health || stat.Value == character.Mana)
+            {
+                stats += $"{stat.Key}: {Mathf.Max(0f, stat.Value.BaseValue)} / {stat.Value.Value}\n";
+            }
+            else if (stat.Value == character.MinAtk)
+            {
+                stats += $"Min-Max Atk: {character.MinAtk.Value} - {character.MaxAtk.Value}\n";
+            }
+            else if (stat.Value == character.MaxAtk)
+                stats += "";
+            else
+                stats += $"{stat.Key}: {stat.Value.Value}\n";
+        }
+        foreach (var trait in character.GetTraits())
+        {
+            traits += $"{trait.Key}: {trait.Value}\n";
+        }
+
+        if (isPlayer1)
+        {
+            player1Name.text = character.name;
+            player1Class.text = character.charClass;
+            player1Level.text = $"Lv {character.level}";
+            player1Stats.text = stats;
+            player1Traits.text = traits;
+        }
+        else
+        {
+            player2Name.text = character.name;
+            player2Class.text = character.charClass;
+            player2Level.text = $"Lv {character.level}";
+            player2Stats.text = stats;
+            player2Traits.text = traits;
+
+        }
+
+    }
+
+    public void SetInitCharacterUI(BaseCharacter character)
+    {
+        string stats = "";
+        string traits = "";
+        foreach (var stat in character.GetStats())
+        {
+            if (stat.Value == character.Health || stat.Value == character.Mana)
+            {
+                stats += $"{stat.Key}: {stat.Value.BaseValue} / {stat.Value.Value}\n";
+            }
+            else if (stat.Value == character.MinAtk)
+            {
+                stats += $"Min-Max Atk: {character.MinAtk.Value} - {character.MaxAtk.Value}\n";
+            }
+            else if (stat.Value == character.MaxAtk)
+                stats += "";
+            else
+                stats += $"{stat.Key}: {stat.Value.Value}\n";
+        }
+        foreach (var trait in character.GetTraits())
+        {
+            traits += $"{trait.Key}: {trait.Value}\n";
+        }
+
+            player1StatsInit.text = stats;
+            player1TraitsInit.text = traits;
+    }
+
+    public void UpdateUI()
+    {
+
+    }
+
+    public void HandleInitLoad()
+    {
+        homeHUD.SetActive(true);
+
+        battleHUD.SetActive(false);
+        preBattleHUD.SetActive(false);
+        initGameHUD.SetActive(false);
+        initNameHUD.SetActive(false);
+        winHUD.SetActive(false);
+        loseHUD.SetActive(false);
+        mainStoryHUD.SetActive(false);
+        mainMenuHUD.SetActive(false);
+    }
+    public void HandleChooseCharacter()
+    {
+        initGameHUD.SetActive(true);
+
+        homeHUD.SetActive(false);
+    }
+
+    public void HandlePreBattle()
+    {
+        battleHUD.SetActive(true);
+        preBattleHUD.SetActive(true);
+
+        initNameHUD.SetActive(false);
+        mainStoryHUD.SetActive(false);
+    }
+
+    public void HandlePinball()
+    {
+        pinballHUD.SetActive(true);
+
+        mainMenuHUD.SetActive(false);
+    }
+
+    public void HandleInitName()
+    {
+        initNameHUD.SetActive(true);
+
+        initGameHUD.SetActive(false);
+    }
+
+    public void HandleMainMenu()
+    {
+        mainMenuHUD.SetActive(true);
+
+        DisableAllButMM();
+    }
+
+    public void HandleBackToMM()
+    {
+        mainMenuHUD.SetActive(true);
+
+        mainStoryHUD.SetActive(false);
+    }
+
+    public void HandleMainStory()
+    {
+        mainStoryHUD.SetActive(true);
+
+        mainMenuHUD.SetActive(false);
+    }
+
+    public void HandleBattle()
+    {
+        battleHUD.SetActive(true);
+
+        mainMenuHUD.SetActive(false);
+        preBattleHUD.SetActive(false);
+    }
+
+    public void HandleBattleFinished()
+    {
+        if (winner)
+            winHUD.SetActive(true);
+        else
+            loseHUD.SetActive(true);
+
+        battleHUD.SetActive(false);
+        preBattleHUD.SetActive(false);
+    }
+
+    public void DisableMenu()
+    {
+            winHUD.SetActive(false);
+        loseHUD.SetActive(false);
+    }
+
+    public void DisableAllButMM()
+    {
+        battleHUD.SetActive(false);
+        preBattleHUD.SetActive(false);
+        initGameHUD.SetActive(false);
+        initNameHUD.SetActive(false);
+        winHUD.SetActive(false);
+        loseHUD.SetActive(false);
+        mainStoryHUD.SetActive(false);
+        homeHUD.SetActive(false);
+    }
+
+    public void SetPlayerName(BaseCharacter player)
+    {
+        player.name = playerNameInput.text;
+    }
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\CollectXP.cs
+=====
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.Collections.Generic;
+
+[RequireComponent(typeof(ParticleSystem))]
+public class CollectXP : MonoBehaviour
+{
+    [Header("Trigger Binding")]
+    [SerializeField, Min(1)] int maxTargets = 16;          // keep small (perf)
+    [SerializeField, Range(0.05f, 1f)] float refreshInterval = 0.25f;
+
+    [Header("XP Settings")]
+    [SerializeField] int xpPerParticle = 2;
+
+    [Header("References (drag in Inspector if available)")]
+    [SerializeField] BallXPBar ballXPScript;              // where you display/accumulate XP
+
+    ParticleSystem ps;
+    ParticleSystem.TriggerModule trigger;
+
+    // Reuse buffers to avoid GC allocations:
+    static readonly List<ParticleSystem.Particle> enteredBuf = new(256);
+    static readonly List<(Collider c, float d2)> sortBuf = new(64);
+
+    float elapsed;
+
+    void Awake()
+    {
+        ps = GetComponent<ParticleSystem>();
+        trigger = ps.trigger;
+    }
+
+    void OnEnable()
+    {
+        XPCollectorRegistry.OnChanged += RebindTargets;
+
+        SceneManager.sceneLoaded += OnSceneLoaded;
+
+        StartCoroutine(RebindNextFrame());
+    }
+
+    void OnDisable()
+    {
+        XPCollectorRegistry.OnChanged -= RebindTargets; 
+
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        RebindTargets();
+    }
+
+    System.Collections.IEnumerator RebindNextFrame()
+    {
+        yield return null;
+        RebindTargets();
+    }
+
+    void Start()
+    {
+        // Fallbacks if not wired in Inspector (still better to drag in!)
+        if (!ballXPScript)
+        {
+            var go = GameObject.FindWithTag("BallXPHolder");
+            if (go) ballXPScript = go.GetComponent<BallXPBar>();
+        }
+
+        // First binding pass
+        RebindTargets();
+    }
+
+    void Update()
+    {
+
+        // Periodically refresh the set of tracked colliders (nearest few)
+        elapsed += Time.deltaTime;
+        if (elapsed >= refreshInterval)
+        {
+            elapsed = 0f;
+            RebindTargets();
+        }
+
+        // Self-destroy once this system (and children) are done
+        if (ps.particleCount == 0)
+            Destroy(gameObject);
+    }
+
+    void RebindTargets()
+    {
+        var regs = XPCollectorRegistry.I?.collectors;
+        if (regs == null || regs.Count == 0) return;
+
+        sortBuf.Clear();
+        Vector3 p = transform.position;
+
+        // Collect (collider, squaredDistance)
+        for (int i = 0; i < regs.Count; i++)
+        {
+            var c = regs[i];
+            if (!c) continue;
+            var center = c.bounds.center;
+            float d2 = (center - p).sqrMagnitude;
+            sortBuf.Add((c, d2));
+        }
+
+        // Sort nearest first
+        sortBuf.Sort((a, b) => a.d2.CompareTo(b.d2));
+
+        // Assign nearest up to maxTargets
+        int assignCount = Mathf.Min(maxTargets, sortBuf.Count);
+        for (int i = 0; i < assignCount; i++)
+            trigger.SetCollider(i, sortBuf[i].c);
+
+        // Clear any leftover slots (prevents stale checks)
+        for (int i = assignCount; i < maxTargets; i++)
+            trigger.SetCollider(i, null);
+    }
+
+    void OnParticleTrigger()
+    {
+        // Pull only the particles that ENTERED a trigger this frame
+        enteredBuf.Clear();
+        int count = ps.GetTriggerParticles(ParticleSystemTriggerEventType.Enter, enteredBuf);
+
+        for (int i = 0; i < count; i++)
+        {
+            // Award XP
+            if (Pinball.Instance)
+            {
+                Pinball.Instance.AddXP(xpPerParticle);
+            }
+
+
+
+
+            // Kill ONLY the collected particle
+            var p = enteredBuf[i];
+            p.remainingLifetime = 0f;
+            enteredBuf[i] = p;
+        }
+
+        // Write changes back
+        if (count > 0)
+            ps.SetTriggerParticles(ParticleSystemTriggerEventType.Enter, enteredBuf);
+    }
+
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\CombatSystem.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+namespace Game.Combat
+{
+    public class CombatSystem
+    {
+
+        private BaseCharacter player1;
+        private BaseCharacter player2;
+
+        public List<BaseCharacter> upcomingTurns = new List<BaseCharacter>(8);
+
+        protected BaseCharacter firstAttacker;
+
+        private bool firstAttackerRemoved;
+
+        public float multiAtkChancePercent;
+
+
+        private float attackerAcc;
+        private float attackerBrk;
+        private float attackerCrt;
+
+        private float defenderEva;
+        private float defenderDef;
+        private float defenderRes;
+
+        private float AccEvaRatio;
+        private float BrkDefRatio;
+        private float CrtResRatio;
+
+        private float critRatio;
+        private float blockRatio;
+
+        private float dodgePenalty;
+        private float dodgeChance;
+        private float hitChance;
+
+        private float damage;
+
+        private float dmgPen;
+
+
+
+        bool doOnce;
+
+        // Start is called before the first frame update
+        void Start()
+        {
+        }
+
+        // Update is called once per frame
+        void Update()
+        {
+
+        }
+
+        public void Initialize(BaseCharacter p1, BaseCharacter p2)
+        {
+            player1 = p1;
+            player2 = p2;
+        }
+
+        public BaseCharacter DetermineFirstTurn()
+        {
+            if(player1.Speed.Value >= player2.Speed.Value)
+            {
+                firstAttacker = player1;
+                player1.previousHits++;
+                return player1;
+            }
+            else if(player2.Speed.Value > player1.Speed.Value)
+            {
+                firstAttacker = player2;
+                player2.previousHits++;
+                return player2;
+            }
+
+                return null;
+        }
+
+        public void DetermineTurns()
+        {
+
+
+            if(player1 != null && player2 != null)
+            {
+
+                const int maxTurns = 8;
+                while (upcomingTurns.Count < maxTurns)
+                {
+                    player1.FillTurnMeter();
+                        player2.FillTurnMeter();
+
+
+
+                    if (player1.previousHits > 0)
+                    {
+                        if (LuckyHit(player1, player2, player1.previousHits))
+                        {
+                            player2.previousHits = 0;
+                            player1.previousHits++;
+                            upcomingTurns.Add(player1);
+                            player1.ConsumeTurnMeter();
+                            player2.ConsumeTurnMeter();
+                            Debug.Log("P1 Lucky Hit!");
+                        }
+                        else if (player1.Speed.Value > (player2.Speed.Value * 5))
+                        {
+                            if (player1.previousHits >= player1.Speed.Value / player2.Speed.Value)
+                            {
+                                player1.ConsumeTurnMeter();
+                                player2.ConsumeTurnMeter();
+                                upcomingTurns.Add(player2);
+                                player1.previousHits = 0;
+                            }
+                        }
+                        else
+                        {
+                            player1.ConsumeTurnMeter();
+                            player1.previousHits = 0;
+                            player2.previousHits = 0;
+                        }
+                    }
+                    else if (player2.previousHits > 0)
+                    {
+                        if (LuckyHit(player2, player1, player2.previousHits))
+                        {
+                            player1.previousHits = 0;
+                            player2.previousHits++;
+                            upcomingTurns.Add(player2);
+                            player1.ConsumeTurnMeter();
+                            player2.ConsumeTurnMeter();
+                            Debug.Log("P2 Lucky Hit!");
+                        }
+                        else if (player2.Speed.Value > (player1.Speed.Value * 5))
+                        {
+                            if (player2.previousHits >= player2.Speed.Value / player1.Speed.Value)
+                            {
+                                player1.ConsumeTurnMeter();
+                                player2.ConsumeTurnMeter();
+                                upcomingTurns.Add(player1);
+                                player2.previousHits = 0;
+                            }
+                        }
+                        else
+                        {
+                            player2.ConsumeTurnMeter();
+                            player1.previousHits = 0;
+                            player2.previousHits = 0;
+                        }
+                    }
+
+                    if (player1.IsTurnReady && (!player2.IsTurnReady || player1.TurnMeter >= player2.TurnMeter))
+                    {
+                        player1.previousHits++;
+                        upcomingTurns.Add(player1);
+                        Debug.Log("P1 Added from turn!");
+                        player2.previousHits = 0;
+                        player1.ConsumeTurnMeter();
+                    }
+                    else if (player2.IsTurnReady)
+                    {
+                        player2.previousHits++;
+                        upcomingTurns.Add(player2);
+                        Debug.Log("P2 Added from turn!");
+                        player1.previousHits = 0;
+                        player2.ConsumeTurnMeter();
+                    }
+                }
+                if (upcomingTurns[0] != null)
+                    if (upcomingTurns[0].name == firstAttacker.name && !firstAttackerRemoved)
+                    {
+                        upcomingTurns.RemoveAt(0);
+                        firstAttackerRemoved = true;
+                    }
+
+
+
+            }
+
+        }
+
+
+        public void ExecuteAttack(BaseCharacter attacker, BaseCharacter defender)
+        {
+            damage = Random.Range(attacker.MinAtk.Value, attacker.MaxAtk.Value);
+
+            attackerAcc = attacker.Accuracy.Value;
+            attackerBrk = attacker.Break.Value;
+            attackerCrt = attacker.Critical.Value;
+
+            defenderEva = defender.Evasion.Value;
+            defenderDef = defender.Defense.Value;
+            defenderRes = defender.Resistance.Value;
+
+
+
+            //Evasion-to-Accuracy check //Dodge
+
+
+            //Break-to-Defense check //Penetration or Defense
+
+
+            
+
+
+
+
+
+            if (WillAttackerHit())
+              {
+                Debug.Log($" {attacker.name} Can hit! \nHit % - {hitChance} \nDodge % - {dodgeChance}");
+                if(!WillDefenderDodge())
+                {
+                    CalculateDamage();
+                    Debug.Log($"{attacker.name} Dmg Pen - {dmgPen}\nDamage - {damage}");
+                        if (WillAttackerCrit())
+                        {
+                            damage *= 1.5f;
+                            Debug.Log($" {attacker.name} Crit hit! \nCrit % - {critRatio}");
+                        }
+                        else if(WillDefenderBlock())
+                        {
+                            damage *= .5f;
+                            Debug.Log($" {defender.name} Blocked hit! \nBlock % - {blockRatio}");
+                        }
+                    defender.Health.baseValue -= damage;
+                }
+                else
+                    Debug.Log($" {defender.name} Dodged! \nHit % - {hitChance} \nDodge % - {dodgeChance}");
+
+            }
+              else
+                Debug.Log($" {attacker.name} Missed! \nHit % - {hitChance} \nDodge % - {dodgeChance}");
+            }
+        public bool LuckyHit(BaseCharacter attacker, BaseCharacter defender, int priorHits)
+        {
+            float decayRate = 0.2f;
+            if (priorHits > 5f)
+                decayRate = .3f;
+            else if (priorHits > 10f)
+                decayRate += .5f;
+            float penaltyMultiplier = Mathf.Exp(-decayRate * priorHits); // Shrinks toward 0 over time
+            float speedValueAtkr = Mathf.Max(1, attacker.Speed.Value * penaltyMultiplier);
+            float speedValueDfdr = defender.Speed.Value;
+
+            float speedRatio = Mathf.Log((speedValueAtkr / speedValueDfdr) + 1, 2f);
+
+
+            float rawSpeedDiff = Mathf.Abs(speedValueAtkr - speedValueDfdr);
+
+            float scaleFactor = Mathf.Lerp(5f, 2f, Mathf.Clamp01(rawSpeedDiff / 9999f));
+
+            float chance = Mathf.Clamp01(speedRatio / scaleFactor);
+
+            float luck = Mathf.Max(0f, attacker.Luck.Value);
+            float luckBonus = Mathf.Clamp01(luck / 99999f) * .25f;
+            
+            multiAtkChancePercent = chance;
+
+            float finalChance = Mathf.Clamp01(chance + luckBonus);
+
+            Debug.Log($"Luck Bonus -  {attacker.name} {luckBonus}");
+            Debug.Log($"Chance -  {attacker.name} {chance}");
+            Debug.Log($"Combo -  {attacker.name} {luckBonus + chance}");
+
+            return Random.value < chance;
+        }
+
+        public bool WillAttackerHit()
+        {
+            //Accuracy-to-Evasion check //Accuracy
+            AccEvaRatio = attackerAcc / Mathf.Max(1f, defenderEva);
+            hitChance = (float)System.Math.Tanh((double)(AccEvaRatio / 1.88f));
+            return (Random.value < hitChance);
+        }
+
+        public bool WillDefenderDodge()
+        {
+            dodgePenalty = Mathf.Lerp(0f, 0.15f, 1f - hitChance);
+            dodgeChance = Mathf.Clamp01(dodgeChance - dodgePenalty);
+            if (defenderEva >= attackerAcc)
+            {
+                AccEvaRatio = defenderEva / Mathf.Max(1f, attackerAcc);
+                dodgeChance = AccEvaRatio / (AccEvaRatio + 2.5f);
+            }
+            else
+            {
+                AccEvaRatio = defenderEva / Mathf.Max(1f, attackerAcc);
+                dodgeChance = 0.5f * (AccEvaRatio / (AccEvaRatio + 1.5f));
+            }
+            dodgeChance = Mathf.Clamp01(dodgeChance);
+            return (Random.value < Mathf.Clamp01(dodgeChance - dodgePenalty));
+        }
+
+        public bool WillAttackerCrit()
+        {
+            //Crit-to-Resistance check //Crits or Block
+
+            CrtResRatio = attackerCrt / Mathf.Max(1f, defenderRes);
+            critRatio = 0f;
+
+            if (Mathf.Approximately(CrtResRatio, 1f))
+            {
+                critRatio = 0f;
+            }
+            else if (CrtResRatio > 1f)
+            {
+                critRatio = Mathf.Log10(CrtResRatio) / Mathf.Log10(10f); // up to +1.0 (100%)
+            }
+
+            Debug.Log($"Crit % - {critRatio}");
+
+
+            if (attackerCrt == 0f)
+                return false;
+            else if (attackerCrt > defenderRes)
+                return (Random.value < critRatio);
+            else
+            {
+                Debug.Log($"Buffed Crit %! - {critRatio+ .05f}");
+                return (Random.value < critRatio + .05f);
+            }
+        }
+
+        public bool WillDefenderBlock()
+        {
+            CrtResRatio = attackerCrt / Mathf.Max(1f, defenderRes);
+            blockRatio = 0f;
+
+            if (Mathf.Approximately(CrtResRatio, 1f))
+            {
+                blockRatio = 0f;
+            }
+            else if(CrtResRatio <= 1f)
+            {
+                float inverseRatio = defenderRes / Mathf.Max(1f, attackerCrt);
+                blockRatio = Mathf.Clamp01(Mathf.Log10(inverseRatio) / Mathf.Log10(10f)); // down to -1.0 (-100%)
+            }
+
+            Debug.Log($"Block % - {blockRatio}");
+
+            if (defenderRes == 0f)
+                return false;
+            else if (defenderRes >= attackerCrt)
+                return (Random.value < blockRatio);
+            else
+            {
+                Debug.Log($"Buffed Block %! - {blockRatio + .05f}");
+                return (Random.value < blockRatio + .05f);
+            }
+        }
+
+        public void CalculateDamage()
+        {
+            BrkDefRatio = attackerBrk / Mathf.Max(1f, defenderDef);
+
+            if (Mathf.Approximately(BrkDefRatio, 1f))
+            {
+                dmgPen = 0f;
+            }
+            else if (BrkDefRatio > 1f)
+            {
+                dmgPen = Mathf.Log10(BrkDefRatio) / Mathf.Log10(10f); // up to +1.0 (100%)
+            }
+            else
+            {
+                float inverseRatio = defenderDef / Mathf.Max(1f, attackerBrk);
+                dmgPen = -Mathf.Log10(inverseRatio) / Mathf.Log10(10f); // down to -1.0 (-100%)
+            }
+
+            damage = Mathf.Round((damage + (damage * dmgPen)) * 10f) / 10f;
+        }
+
+    }
+
+
+
+}
+
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\DamageNumberStyleSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using TMPro;
+
+[CreateAssetMenu(menuName = "UI/Damage Numbers/Style", fileName = "DamageNumberStyle")]
+public class DamageNumberStyleSO : ScriptableObject
+{
+    [Header("Typography")]
+    public TMP_FontAsset font;
+    public Material fontMaterial;
+    public float baseFontSize = 4f;
+    public Color defaultColor = Color.white;
+
+    [Header("Timing")]
+    public float duration = 0.9f;
+    [Range(0.01f, 0.3f)] public float fadeInFraction = 0.08f;
+    [Range(0.1f, 0.6f)] public float fadeOutFraction = 0.25f;
+
+    [Header("Motion")]
+    public float riseDistance = 1.25f;
+
+    [Header("Scale Pop")]
+    public float popFromScale = 0.6f;
+    public float popToScale = 1.1f;
+
+    [Header("Rendering")]
+    public string sortingLayerName = "Default";
+    public int sortingOrder = 500;
+
+    [Header("Update")]
+    public bool useUnscaledTime = false;
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Druid.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Druid : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 5.8f;
+    protected float minAtkLvlIncrease = 1.8f;
+    protected float maxAtkLvlIncrease = 2.5f;
+
+    protected float endLVLinc = 2.43f;
+    protected float strLVLinc = 2.22f;
+    protected float agiLVLinc = 1.65f;
+    protected float witLVLinc = 4.31f;
+    protected float chaLVLinc = 3.86f;
+
+    public Druid(string name, int level)
+        : base(name, "Druid", level, 498.2f, 110f, 47.9f, 49.8f, 100f)
+    {
+        traits[TraitType.Endurance] = 6;
+        traits[TraitType.Strength] = 5;
+        traits[TraitType.Agility] = 3;
+        traits[TraitType.Wit] = 9;
+        traits[TraitType.Charm] = 6;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+
+    public Druid()
+    : base("", "Druid", 5, 498.2f, 110f, 47.9f, 49.8f, 100f)
+    {
+        traits[TraitType.Endurance] = 7;
+        traits[TraitType.Strength] = 6;
+        traits[TraitType.Agility] = 3;
+        traits[TraitType.Wit] = 6;
+        traits[TraitType.Charm] = 5;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\EndGame.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class EndGame : MonoBehaviour
+{
+
+
+    Pinball pm;
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+
+
+    void OnCollisionEnter(Collision col)
+    {
+        var ball = col.gameObject.GetComponent<Ball>();
+
+        if (pm.CurrentState == PinballState.Play && ball.isActive)
+        {
+            pm.ballCount--;
+            ball.isActive = false;
+            Debug.Log("blob");
+        }
+
+        Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();
+
+        rb.velocity = Vector3.zero;
+
+
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\GameManager.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using Game.Combat;
+
+public enum GameState
+{
+    InitLoad,
+    ChooseCharacter,
+    BeginTutorial,
+    MainMenu,
+    Pinball,
+    MainStory,
+    PreBattle,
+    Battle,
+    BattleFinished
+}
+
+public enum GameMode
+{
+    None,
+    Tutorial,
+    MainStory,
+    Pinball
+}
+
+
+public class GameManager : MonoBehaviour
+{
+
+    protected CombatSystem combatSystem;
+
+    private GameState currentState;
+    public GameState CurrentState => currentState;
+
+    private GameMode currentMode;
+    public GameMode CurrentMode => currentMode;
+
+    public Warrior warrior;
+    public Mage mage;
+    public Druid druid;
+    public Assassin assassin;
+    public Tank tank;
+    public Brawler brawler;
+
+
+    protected BaseCharacter currentTurn;
+    protected BaseCharacter tempChar;
+
+    public CharacterUI ui;
+
+    bool firstTurn;
+    bool stopIt;
+
+    protected int turnCount;
+
+    private float actionTimer = 2f;
+    public float actionDelay = 2f;
+
+    public BaseCharacter player1;
+    public BaseCharacter player2;
+
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        ChangeState(GameState.InitLoad);
+        ChangeMode(GameMode.None);
+
+        /*warrior = new Warrior("Jacque", 5);
+        mage = new Mage("Jill", 4);
+        druid = new Druid("Lacroix", 6);
+        assassin = new Assassin("Jinga", 5);
+        tank = new Tank("Ronald", 7);
+        player1 = warrior;
+        */
+
+
+
+
+
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+
+        //auto-battling function
+        if(currentState == GameState.Battle)
+        {
+            if (combatSystem != null)
+            {
+                actionTimer += Time.deltaTime;
+                if (actionTimer >= actionDelay)
+                {
+                    AutoBattle();
+                    actionTimer = 0;
+                }
+
+                if (player1 != null && player2 != null)
+                if (combatSystem.upcomingTurns.Count < 8 && (player1.Health.BaseValue > 0 && player2.Health.BaseValue > 0))
+                {
+                    combatSystem.DetermineTurns();
+                }
+
+
+
+                if (stopIt)
+                    for (int i = 0; i < combatSystem.upcomingTurns.Count; i++)
+                    {
+                        Debug.Log($"Turn {i} - {combatSystem.upcomingTurns[i].name}");
+                        if (i == 7)
+                            stopIt = false;
+                    }
+            }
+        }
+        else if(currentState == GameState.BattleFinished)
+        {
+            actionTimer = 2;
+            stopIt = false;
+        }
+    }
+
+    public void ChangeState(GameState newState)
+    {
+        currentState = newState;
+
+        switch (newState)
+        {
+            case GameState.InitLoad:
+                HandleInitLoad();
+                break;
+            case GameState.ChooseCharacter:
+                HandleChooseCharacter();
+                break;
+            case GameState.MainMenu:
+                HandleMainMenu();
+                break;
+            case GameState.Pinball:
+                HandlePinball();
+                break;
+            case GameState.MainStory:
+                HandleMainStory();
+                break;
+            case GameState.PreBattle:
+                HandlePreBattle();
+                break;
+            case GameState.Battle:
+                HandleBattle();
+                break;
+            case GameState.BattleFinished:
+                HandleBattleFinished();
+                break;
+        }
+    }
+
+    public void ChangeMode(GameMode newMode)
+    {
+        currentMode = newMode;
+
+        switch (newMode)
+        {
+            case GameMode.None:
+                break;
+            case GameMode.Tutorial:
+                break;
+            case GameMode.MainStory:
+                break;
+            case GameMode.Pinball:
+                break;
+        }
+    }
+
+    public void HandleInitLoad()
+    {
+        ui.HandleInitLoad();
+    }
+    public void HandleChooseCharacter()
+    {
+        ui.HandleChooseCharacter();
+    }
+    public void HandleMainMenu()
+    {
+        ui.DisableMenu();
+        ui.HandleMainMenu();
+    }
+
+    public void HandleMainStory()
+    {
+        ui.HandleMainStory();
+    }
+
+    public void HandleBattleFinished()
+    {
+        ui.HandleBattleFinished();
+    }
+
+    public void HandlePreBattle()
+    {
+        if (currentMode == GameMode.Tutorial)
+        {
+            player2 = new BaseCharacter();
+            player2.name = "Dummy";
+            ui.SetCharacterUI(player2, false);
+
+        }
+        else if (currentMode == GameMode.MainStory)
+        {
+            player2 = new BaseCharacter();
+            player2.name = "1-1";
+            ui.SetCharacterUI(player2, false);
+        }
+        else Debug.Log($"Bozo");
+            ui.SetCharacterUI(player1, true);
+        ui.HandlePreBattle();
+        combatSystem = new CombatSystem();
+    }
+    public void HandleBattle()
+    {
+        ui.HandleBattle();
+    }
+
+    public void HandlePinball()
+    {
+        ui.HandlePinball();
+    }
+
+
+
+    public void OnBeginButtonPressed()
+    {
+        ChangeState(GameState.ChooseCharacter);
+    }
+
+    public void OnHomeButtonPressed()
+    {
+        ChangeMode(GameMode.None);
+        ChangeState(GameState.MainMenu);
+    }
+    public void OnMainStoryButtonPressed()
+    {
+        ChangeState(GameState.MainStory);
+    }
+    public void OnMSBattleButtonPressed()
+    {
+        ChangeMode(GameMode.MainStory);
+        ChangeState(GameState.PreBattle);
+    }
+
+    public void OnWarriorButtonPressed()
+    {
+        tempChar = new Warrior();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnMageButtonPressed()
+    {
+        tempChar = new Mage();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnDruidButtonPressed()
+    {
+        tempChar = new Druid();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnTankButtonPressed()
+    {
+        tempChar = new Tank();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnAssassinButtonPressed()
+    {
+        tempChar = new Assassin();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnBrawlerButtonPressed()
+    {
+        tempChar = new Brawler();
+        ui.SetInitCharacterUI(tempChar);
+    }
+    public void OnCharConfirmButtonPressed()
+    {
+        if(tempChar != null)
+        {
+            player1 = tempChar;
+            ui.HandleInitName();
+        }
+    }
+    public void OnNameConfirmButtonPressed()
+    {
+        ui.SetPlayerName(player1);
+        ChangeMode(GameMode.Tutorial);
+        ChangeState(GameState.PreBattle);
+    }
+
+    public void OnStartBattleButtonPressed()
+    {
+        ChangeState(GameState.Battle);
+    }
+
+    public void StartBattle()
+    {
+        ChangeState(GameState.Battle);
+    }
+
+
+    public void AutoBattle()
+    {
+        turnCount++;
+        if(!firstTurn)
+        {
+            //player2 = GenerateEnemy(player1);
+            combatSystem.Initialize(player1, player2);
+            currentTurn = combatSystem.DetermineFirstTurn();
+            firstTurn = true;
+        }
+
+
+        stopIt = true;
+        HandleTurn();
+    }
+
+    public void FinishBattle(BaseCharacter winner)
+    {
+        //StopAutoBattle();
+        if(winner == player1)
+            ui.winner = true;
+        else
+            ui.winner = false;
+        ChangeState(GameState.BattleFinished);
+        turnCount = 0;
+    }
+
+
+    public void HandleTurn()
+    {
+        if(turnCount >= 2)
+        {
+            currentTurn = combatSystem.upcomingTurns[0];
+            combatSystem.upcomingTurns.RemoveAt(0);
+        }
+
+        BaseCharacter attacker = currentTurn;
+        BaseCharacter defender = currentTurn == player1 ? player2 : player1;
+
+        combatSystem.ExecuteAttack(attacker, defender);
+        ui.SetCharacterUI(player1, true);
+        ui.SetCharacterUI(player2, false);
+
+        //the attacker killed the defender first
+        if(defender.Health.BaseValue <= 0)
+        {
+            FinishBattle(attacker);
+        }
+        //the attacker hit the defender, but the defender survived and the attacker died to recoil dmg at some point
+        else if(attacker.Health.BaseValue <= 0 && defender.Health.BaseValue > 0)
+        {
+            FinishBattle(defender);
+        }
+
+
+    }
+
+
+
+    private BaseCharacter GenerateEnemy(BaseCharacter player1)
+    {
+        string[] allClasses = new string[] { "Warrior", "Mage", "Assassin", "Druid", "Tank" };
+        string chosenClass = allClasses[Random.Range(0, allClasses.Length)];
+        BaseCharacter player2 = BaseCharacter.CreateCharacterFromClass(chosenClass);
+
+        player2.RandomizeCharacter(player1.level, player1.stats, player1.traits);
+
+        Debug.Log(player2.Health.BaseValue);
+        ui.SetCharacterUI(player2, false);
+
+        return player2;
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\IDamageNumberSystem.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public interface IDamageNumberSystem
+{
+    void Spawn(float amount, Vector3 position, Color? overrideColor = null);
+}
+
+
+/// Thin static facade so gameplay code can do: DamageNumbers.Spawn(...).
+/// Keeps callers decoupled from the underlying UI/animation implementation.
+public static class DamageNumbers
+{
+    /// Set once by the concrete implementation on startup.
+    public static IDamageNumberSystem System { get; set; }
+
+    public static bool IsReady => System != null;
+
+    public static void Register(IDamageNumberSystem system) => System = system;
+
+    public static void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+        => System?.Spawn(amount, position, overrideColor);
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\IPowerup.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public interface IPowerup
+{
+    string Id { get; }
+    float Weight { get; }
+    string DebugLabel { get; }
+    bool CanTrigger(IRunContext ctx);
+    void Execute(Pinball pm, Vector3 triggerPos);
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\IRunContext.cs
+=====
+using System.Collections.Generic;
+
+public interface IRunContext
+{
+
+    bool IsActive(string rewardId);
+    bool IsAvailable(string rewardId);
+    bool Owns(string rewardId);
+    bool HasExclusiveKeyActive(string key);
+
+    int Lives { get; }
+    int MaxLives { get; }
+
+    void ApplyGrantedLives(int amount);
+
+    void MarkOwned(string rewardId);
+    void SetActive(string rewardId, bool on);
+    void SetAvailable(string rewardId, bool on);
+    void SetExclusive(string key, bool on);
+
+    IEnumerable<string> ActiveKeys { get; }
+
+    void ApplyScoreMultiplier(float multiplier, bool isCursed);
+    void ApplyXPMultiplier(float multiplier, bool isCursed);
+
+    void ApplyScoreBonusTime(float time, bool isCursed);
+    void ApplyXPBonusTime(float time, bool isCursed);
+
+    void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
+    void ApplyGrowFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
+
+    void ApplyDamageFX(float amount);
+    void ApplyDmgPerBounceFX(float damageMult, int bouncesNeeded);
+
+
+
+    void ApplyXPForcefield(float radiusIncrease);
+
+    void ApplyAdditionalBalls(int additionalBalls);
+
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Item.cs
+=====
+public class Item
+{
+    public void Equip(CharacterStat c)
+    {
+        c.AddModifier(new StatModifier(10, StatModType.Flat, this));
+        c.AddModifier(new StatModifier(.1f, StatModType.PercentMult, this));
+    }
+
+    public void Unequip(CharacterStat c)
+    {
+        c.RemoveAllModifiersFromSource(this);
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Mage.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Mage : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 4.9f;
+    protected float minAtkLvlIncrease = 2.6f;
+    protected float maxAtkLvlIncrease = 2.9f;
+
+    protected float endLVLinc = 2.54f;
+    protected float strLVLinc = 2.26f;
+    protected float agiLVLinc = 1.69f;
+    protected float witLVLinc = 4.65f;
+    protected float chaLVLinc = 3.84f;
+
+    public Mage(string name, int level)
+        : base(name, "Mage", level, 487.8f, 120f, 51.9f, 56.2f, 100f)
+    {
+        traits[TraitType.Endurance] = 5;
+        traits[TraitType.Strength] = 6;
+        traits[TraitType.Agility] = 5;
+        traits[TraitType.Wit] = 10;
+        traits[TraitType.Charm] = 6;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+
+    public Mage()
+    : base("", "Mage", 5, 487.8f, 120f, 51.9f, 56.2f, 100f)
+    {
+        traits[TraitType.Endurance] = 5;
+        traits[TraitType.Strength] = 6;
+        traits[TraitType.Agility] = 5;
+        traits[TraitType.Wit] = 9;
+        traits[TraitType.Charm] = 6;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PaddleEffectData.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PaddleEffectData
+{
+    public readonly PaddleState Element;
+
+    // Fire fields (extend later for other elements)
+    public readonly int FireBonusDamage;
+    public readonly float FireBurnDamage;
+    public readonly float FireBurnDuration;
+    public readonly int FireBounceDuration;
+    public readonly bool FireCanExplode;
+    public readonly float FireExplosionSize;
+    public readonly int FireExplosionDamageFlat;
+    public readonly bool FireIsCursed;
+
+    // Water fields (extend later for other elements)
+    public readonly float WaterBonusXP;
+    public readonly int WaterDamageFlat;
+    public readonly float WaterDrenchDuration;
+    public readonly int WaterBounceDuration;
+    public readonly bool WaterCanBurst;
+    public readonly float WaterBurstSize;
+    public readonly int WaterBurstDamageFlat;
+    public readonly bool WaterIsCursed;
+
+    public readonly int EarthBonusDamage;
+    public readonly float EarthFissureDuration;
+    public readonly float EarthXPBonus;
+    public readonly float EarthScoreBonus;
+    public readonly int EarthBounceDuration;
+    public readonly bool EarthIsCursed;
+
+    public readonly int ElectricShockDamage;
+    public readonly int ElectricChainCount;
+    public readonly float ElectricXPBonus;
+    public readonly float ElectricScoreBonus;
+    public readonly int ElectricBounceDuration;
+    public readonly bool ElectricIsCursed;
+
+    public PaddleEffectData(
+        PaddleState element,
+        int fireBonusDamage = 0,
+        float fireBurnDamage = 0f,
+        float fireBurnDuration = 0f,
+        int fireBounceDuration = 0,
+        bool fireCanExplode = false,
+        float fireExplosionSize = 0f,
+        int fireExplosionDamageFlat = 0,
+        bool fireIsCursed = false,
+
+        float waterBonusXP = 0,
+        int waterDamageFlat = 0,
+        float waterDrenchDuration = 0f,
+        int waterBounceDuration = 0,
+        bool waterCanBurst = false,
+        float waterBurstSize = 0f,
+        int waterBurstDamageFlat = 0,
+        bool waterIsCursed = false,
+
+                int earthBonusDamage = 0,
+        float earthFissureDuration = 0f,
+        float earthXPBonus = 0f,
+        float earthScoreBonus = 0f,
+        int earthBounceDuration = 0,
+        bool earthIsCursed = false,
+        
+        int electricShockDamage = 0,
+        int electricChainCount = 0,
+        float electricXPBonus = 0f,
+        float electricScoreBonus = 0f,
+        int electricBounceDuration = 0,
+        bool electricIsCursed = false
+        )
+    {
+        Element = element;
+        FireBonusDamage = fireBonusDamage;
+        FireBurnDamage = fireBurnDamage;
+        FireBurnDuration = fireBurnDuration;
+        FireBounceDuration = fireBounceDuration;
+        FireCanExplode = fireCanExplode;
+        FireExplosionSize = fireExplosionSize;
+        FireExplosionDamageFlat = fireExplosionDamageFlat;
+        FireIsCursed = fireIsCursed;
+
+        WaterBonusXP = waterBonusXP;
+        WaterDamageFlat = waterDamageFlat;
+        WaterDrenchDuration = waterDrenchDuration;
+        WaterBounceDuration = waterBounceDuration;
+        WaterCanBurst = waterCanBurst;
+        WaterBurstSize = waterBurstSize;
+        WaterBurstDamageFlat = waterBurstDamageFlat;
+        WaterIsCursed = waterIsCursed;
+
+        EarthBonusDamage = earthBonusDamage;
+        EarthFissureDuration = earthFissureDuration;
+        EarthXPBonus = earthXPBonus;
+        EarthScoreBonus = earthScoreBonus;
+        EarthBounceDuration = earthBounceDuration;
+        EarthIsCursed = earthIsCursed;
+
+        ElectricShockDamage = electricShockDamage;
+        ElectricChainCount = electricChainCount;
+        ElectricXPBonus = electricXPBonus;
+        ElectricScoreBonus = electricScoreBonus;
+        ElectricBounceDuration = electricBounceDuration;
+        ElectricIsCursed = electricIsCursed;
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PaddleElementalState.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PaddleElementalState : MonoBehaviour
+{
+    [SerializeField]
+    private PaddleState initialState = PaddleState.None;
+
+    public PaddleState CurrentState = PaddleState.None;
+
+
+
+    public int FireBonusDamage { get; private set; }
+    public int FireBounceDuration { get; private set; }
+    public float FireBurnDamage { get; private set; }
+    public float FireBurnDuration { get; private set; }
+    public bool FireCanExplode { get; private set; }
+    public float FireExplosionSize { get; private set; }
+    public int FireExplosionDamageFlat { get; private set; }
+    public bool FireIsCursed { get; private set; }
+
+    public float WaterBonusXP { get; private set; }
+    public int WaterBonusDamage { get; private set; }
+    public float WaterDrenchDuration { get; private set; }
+    public int WaterBounceDuration { get; private set; }
+    public bool WaterCanBurst { get; private set; }
+    public float WaterBurstSize { get; private set; }
+    public int WaterBurstDamageFlat { get; private set; }
+    public bool WaterIsCursed { get; private set; }
+
+    public int EarthFissureDamage { get; private set; }
+    public float EarthCrustDuration { get; private set; }
+    public float EarthXPBonus { get; private set; }
+    public float EarthScoreBonus { get; private set; }
+    public int EarthBounceDuration { get; private set; }
+    public bool EarthIsCursed { get; private set; }
+
+    public int ElectricShockDamage { get; private set; }
+    public int ElectricChainCount { get; private set; }
+    public float ElectricXPBonus { get; private set; }
+    public float ElectricScoreBonus { get; private set; }
+    public int ElectricBounceDuration { get; private set; }
+    public bool ElectricIsCursed { get; private set; }
+
+
+    void Start()
+    {
+        CurrentState = initialState;
+    }
+
+    public void SetPaddleState(PaddleState newState)
+    {
+        if (newState == PaddleState.None || CurrentState == newState)
+            return;
+        switch (newState)
+            {
+                case PaddleState.Fire:
+                    CurrentState = PaddleState.Fire;
+                    break;
+                case PaddleState.Water:
+                    CurrentState = PaddleState.Water;
+                    break;
+                case PaddleState.Earth:
+                    CurrentState = PaddleState.Earth;
+                    break;
+            case PaddleState.Electric:
+                    CurrentState = PaddleState.Electric;
+                    break;
+                default:
+                    CurrentState = PaddleState.None;
+                    break;
+        }
+    }
+
+    public void StoreFireData(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    {
+        FireBonusDamage = bonusDamage;
+        FireBurnDamage = burnDamage;
+        FireBurnDuration = burnDuration;
+        FireBounceDuration = bounceDuration;
+        FireCanExplode = canExplode;
+        FireExplosionSize = explosionSize;
+        FireExplosionDamageFlat = explosionDamageFlat;
+        FireIsCursed = cursed;
+    }
+
+    public void StoreWaterData(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
+    {
+        WaterBonusXP = bonusXP;
+        WaterBonusDamage = bonusDamage;
+        WaterDrenchDuration = drenchDuration;
+        WaterBounceDuration = bounceDuration;
+        WaterCanBurst = canBurst;
+        WaterBurstSize = burstSize;
+        WaterBurstDamageFlat = burstDamageFlat;
+        WaterIsCursed = cursed;
+        WaterBounceDuration = bounceDuration;
+        WaterIsCursed = cursed;
+    }
+
+    public void StoreEarthData(int bonusDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        EarthFissureDamage = bonusDamage;
+        EarthCrustDuration = crustDuration;
+        EarthXPBonus = xpBonus;
+        EarthScoreBonus = scoreBonus;
+        EarthBounceDuration = bounceDuration;
+        EarthIsCursed = cursed;
+    }
+
+    public void StoreElectricData(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        ElectricShockDamage = shockDamage;
+        ElectricChainCount = chainCount;
+        ElectricXPBonus = xpBonus;
+        ElectricScoreBonus = scoreBonus;
+        ElectricBounceDuration = bounceDuration;
+        ElectricIsCursed = cursed;
+    }
+    public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDur, int bounceDur, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    {
+        SetPaddleState(PaddleState.Fire);
+        StoreFireData(bonusDamageFlat, burnDamage, burnDur, bounceDur, canExplode, explosionSize, explosionDamageFlat, cursed);
+        // TODO: spawn paddle fire VFX/SFX here
+    }
+
+    public void ApplyWater(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
+    {
+        SetPaddleState(PaddleState.Water);
+        StoreWaterData(bonusXP, bonusDamage, drenchDuration, bounceDuration, canBurst, burstSize, burstDamageFlat, cursed);
+    }
+
+    public void ApplyEarth(int fissureDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Earth);
+        StoreEarthData(fissureDamage, crustDuration, xpBonus, scoreBonus, bounceDuration, cursed);
+    }
+
+    public void ApplyElectric(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Electric);
+        StoreElectricData(shockDamage, chainCount, xpBonus, scoreBonus, bounceDuration, cursed);
+    }
+
+    public PaddleEffectData GetEffectData()
+    {
+        return new PaddleEffectData(
+            CurrentState,
+            FireBonusDamage,
+            FireBurnDamage,
+            FireBurnDuration,
+            FireBounceDuration,
+            FireCanExplode,
+            FireExplosionSize,
+            FireExplosionDamageFlat,
+            FireIsCursed,
+
+            WaterBonusXP,
+            WaterBonusDamage,
+            WaterDrenchDuration,
+            WaterBounceDuration,
+            WaterCanBurst,
+            WaterBurstSize,
+            WaterBurstDamageFlat,
+            WaterIsCursed,
+
+            EarthFissureDamage,
+            EarthCrustDuration,
+            EarthXPBonus,
+            EarthScoreBonus,
+            EarthBounceDuration,
+            EarthIsCursed,
+            
+            ElectricShockDamage,
+            ElectricChainCount,
+            ElectricXPBonus,
+            ElectricScoreBonus,
+            ElectricBounceDuration,
+            ElectricIsCursed);
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PaddleElements.cs
+=====
+using UnityEngine;
+
+public enum PaddleState
+{
+    None,
+    Fire,
+    Water,
+    Earth,
+    Air,
+    Electric
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Pinball.cs
+=====
+using DG.Tweening;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.SceneManagement;
+using static UnityEngine.ProBuilder.AutoUnwrapSettings;
+
+
+public enum PinballState
+{
+    None,
+    Charging,
+    Push,
+    Play,
+    LevelUp,
+    PaddleSelect,
+    ResetBall,
+    GameOver
+}
+
+public class Pinball : MonoBehaviour, IRunContext
+{
+
+    public static Pinball Instance { get; private set; }
+
+
+    //
+    private readonly HashSet<string> owned = new();
+    private readonly HashSet<string> active = new();
+    private readonly HashSet<string> available = new();
+    private readonly HashSet<string> exclusiveKeysActive = new();
+
+    // IRunContext
+    public bool Owns(string rewardId) => owned.Contains(rewardId);
+    public bool IsActive(string rewardId) => active.Contains(rewardId);
+    public bool IsAvailable(string rewardId) => available.Contains(rewardId);
+    public bool HasExclusiveKeyActive(string key) =>
+        !string.IsNullOrEmpty(key) && exclusiveKeysActive.Contains(key);
+
+    public IEnumerable<string> ActiveKeys => exclusiveKeysActive;
+
+
+    //Helpers the rewards will call
+    public void MarkOwned(string rewardId) => owned.Add(rewardId);
+    public void SetActive(string rewardId, bool on)
+    {
+        if (on)
+            active.Add(rewardId);
+        else active.Remove(rewardId);
+    }
+
+    public void SetAvailable(string rewardId, bool on)
+    {
+        if (on)
+            available.Add(rewardId);
+        else available.Remove(rewardId);
+    }
+
+    public void SetExclusive(string key, bool on)
+    {
+        if (string.IsNullOrEmpty(key))
+            return;
+        if (on)
+            exclusiveKeysActive.Add(key);
+        else exclusiveKeysActive.Remove(key);
+
+    }
+
+    private static readonly Dictionary<RewardRarity, float> rarityWeights = new()
+    {
+        {RewardRarity.Common, 88f},
+        {RewardRarity.Uncommon, 52f},
+        {RewardRarity.Rare, 25f},
+        {RewardRarity.Epic, 12f},
+        {RewardRarity.Legendary, 3f},
+        {RewardRarity.Artifact, .5f},
+        {RewardRarity.Cursed, .5f},
+    };
+
+
+    private PinballState currentState;
+    public PinballState CurrentState => currentState;
+
+    public KeyCode chargeBind = KeyCode.Space;
+    public KeyCode leftPaddleBind = KeyCode.A;
+    public KeyCode rightPaddleBind = KeyCode.D;
+
+    public float curXP = 0;
+    public float maxXP;
+    public int level { get; private set; } = 1;
+
+    private int pendingLevelUps = 0;
+
+
+    public Ball ball;
+    BallElementalState elementalState;
+
+    // Track the intended "primary" ball so resets always target the same object
+    private int _primaryBallId; // set once, reconciled if the 'ball' ref changes
+
+    private Collider ballCol;
+
+    public PinballUIM uim;
+
+    public GameObject ballClone;
+
+    public GameObject invisWalls;
+
+    public PinballFlipper leftPaddle;
+    public PinballFlipper rightPaddle;
+
+    bool isHoldingCharge;
+    bool hasPressedCharge;
+
+    float chargeTimer;
+    public float chargePercentage;
+    float chargeMax;
+
+    public int ballCount;
+
+    private int score;
+    private int mult;
+    public int Score => score;
+    public int Mult => mult;
+    private int ballBumpCount;
+    private int ballBumpCountC;
+
+    private float scoreMultiplier = 1f;
+    private float xpMultiplier = 1f;
+    private float baseScoreMult = 1f;
+    private float baseXPMult = 1f;
+
+    private float scoreBonusTimer;
+    private float xpBonusTimer;
+    private bool hasMult;
+
+    private int bumperBouncesS;
+    private int bumperBouncesG;
+
+    private bool extraHitsS;
+    private bool extraHitsG;
+    private float bonusHitsS;
+    private float bonusHitsG;
+    private int bouncesForBonusS;
+    private int bouncesForBonusG;
+
+    private bool canHitL;
+    private bool canHitR;
+    private bool hasBeenHitL;
+    private bool hasBeenHitR;
+
+    [SerializeField, Range(0f, 1f)]
+    public float PowerupDropChance = .03f; //3% base chance
+
+    public bool ExtraHitsG => extraHitsG;
+    public bool ExtraHitsS => extraHitsS;
+    public float BonusHitsG => bonusHitsG;
+    public float BonusHitsS => bonusHitsS;
+    public int BouncesForBonusG => bouncesForBonusG;
+    public int BouncesForBonusS => bouncesForBonusS;
+
+
+    [SerializeField] private int startingLives = 3; // tweak in Inspector
+    private int lives;
+    public int Lives => lives;
+
+    [SerializeField] private int maxLives = 5;    // total slots shown in UI
+    public int MaxLives => maxLives;
+
+    // Optional helper to centralize UI updates for lives
+    private void OnLivesChanged()
+    {
+        if (uim != null)
+            uim.UpdateLives(lives, maxLives);
+    }
+
+    // cache the ball's spawn transform so we can reset it precisely
+    private Vector3 _ballStartPos;
+    private Quaternion _ballStartRot;
+    [SerializeField] private float noBallResetGrace = 0.20f; 
+    private float _noBallTimer;
+
+
+    private Vector3 _camDefaultLocalPos;   // cached starting local position for camera
+    private Quaternion _camDefaultLocalRot; // cached starting local rotation for camera
+
+
+    [SerializeField] private float defaultBaseDamage = 5f;
+
+    public float Damage => TryGetAnchorBall(out var b) ? b.CurrentDamage : defaultBaseDamage;
+
+
+    private const float x2MULT = 100f;
+    private const float x4MULT = 200f;
+
+    public float ScoreMultiplier => scoreMultiplier;
+    public bool IsScoreMultiplierActive => scoreMultiplier > 1f;
+    public float ScoreBonusTimeRemaining => scoreBonusTimer;
+
+    public float XPMultiplier => xpMultiplier;
+    public bool IsXPMultiplierActive => xpMultiplier > 1f;
+    public float XPBonusTimeRemaining => xpBonusTimer;
+
+
+    private RewardSO pendingPaddleReward;
+
+    private readonly List<RewardSO> rewardPool = new();
+
+    public bool destroyedBumper;
+    private float destroyedMult = 2f;
+
+
+    [SerializeField]
+    ParticleSystem xpFXPrefab;
+
+    [SerializeField]
+    BallXPBar ballXPScript;
+
+    private int xpCount = 3;
+    public int DroppedXP => xpCount;
+
+    public float explosionForce = 50f;
+    public float explosionRadius = 3f;
+
+
+    float wallTimer;
+    bool wallTimerStart;
+
+    [SerializeField] private Camera mainCam;
+    [SerializeField] private float shakeDuration = 0.15f;
+    [SerializeField] private float shakeStrength = 0.3f;
+    [SerializeField] private int shakeVibrato = 12;
+    [SerializeField, Range(0f, 1f)] private float shakeRandomness = 90f;
+
+    private readonly List<Ball> liveBalls = new();
+
+
+
+
+    public void ChangeState(PinballState state)
+    {
+        currentState = state;
+
+        switch (state)
+        {
+            case PinballState.None:
+                break;
+            case PinballState.Charging:
+                hasPressedCharge = false;
+                chargePercentage = 0;
+                chargeTimer = 0;
+                chargeMax = 1.5f;
+                break;
+            case PinballState.Push:
+                hasPressedCharge = false;
+                chargePercentage = 0;
+                chargeTimer = 0;
+                chargeMax = 1f;
+                break;
+            case PinballState.Play:
+                uim.DefaultUI();
+                chargePercentage = 0;
+                chargeTimer = 0;
+                Time.timeScale = 1f;
+                wallTimerStart = true;
+                break;
+            case PinballState.LevelUp:
+                LevelUp();
+                var choices = GetRewardChoices();
+                uim.ShowRewardPopup(choices);
+                Time.timeScale = 0f;
+                break;
+            case PinballState.PaddleSelect:
+                uim.PaddleSelect();
+                Time.timeScale = 0f;
+                break;
+            case PinballState.ResetBall:
+                lives = Mathf.Max(0, lives - 1);
+                OnLivesChanged();
+                ResetBallAndFlow(); // will route to Charging or GameOver
+                break;
+
+            case PinballState.GameOver:
+                leftPaddle = null;
+                rightPaddle = null;
+                break;
+        }
+    }
+
+    void Awake()
+    {
+        if (Instance && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+
+        Physics.gravity = new Vector3(0f, 0f, -19.62f); // stronger gravity for pinball feel
+
+        if (ball != null)
+        {
+            RegisterBall(ball);
+            _ballStartPos = ball.transform.position;
+            _ballStartRot = ball.transform.rotation;
+            _primaryBallId = ball.GetInstanceID();
+        }
+
+        maxXP = XPFormula.XpReq(level);
+        maxLives = Mathf.Max(1, maxLives);
+        startingLives = Mathf.Clamp(startingLives, 0, maxLives);
+        lives = startingLives;
+
+        elementalState = ball.GetComponent<BallElementalState>();
+
+        ballCol = ball.gameObject.GetComponent<Collider>();
+
+
+        if (mainCam != null)
+        {
+            // Cache defaults so we can always restore before a new shake starts
+            _camDefaultLocalPos = mainCam.transform.localPosition;
+            _camDefaultLocalRot = mainCam.transform.localRotation;
+        }
+
+    }
+
+    // Start is called before the first frame update
+    async void Start()
+    {
+        //load all reward assets
+        var loader = Addressables.LoadAssetsAsync<RewardSO>("Rewards", rewardPool.Add);
+        await loader.Task;
+
+
+        uim.InitLives(maxLives);
+        OnLivesChanged();
+        ChangeState(PinballState.Charging);
+        uim.Init(this);
+        invisWalls.SetActive(false);
+
+        ballCount = 1;
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        Debug.Log($"Current XP: {curXP} / {maxXP} | Level: {level} | Pending Level Ups: {pendingLevelUps}");
+
+
+        if (curXP >= maxXP)
+        {
+            pendingLevelUps++;
+            curXP -= maxXP;
+        }
+
+        if (pendingLevelUps > 0 && CurrentState != PinballState.LevelUp)
+        {
+            Debug.Log($"Doing this");
+            StartNextLevelUp();
+        }
+
+
+
+
+        if (leftPaddle != null)
+        {
+            leftPaddle.PaddleMovement(Input.GetKey(leftPaddleBind));
+
+            var leftElem = leftPaddle.GetComponent<PaddleElementalState>();
+            bool hasElem = leftElem != null && leftElem.CurrentState != PaddleState.None;
+
+            if (hasElem)
+            {
+                if (Input.GetKeyDown(leftPaddleBind))
+                {
+                    HitCheck(leftPaddleBind);
+                }
+
+                var leftPaddleBall = GetPaddleTarget();
+
+                if(leftPaddleBall != null && leftPaddleBall.isTouchingPaddles && (Input.GetKey(leftPaddleBind) || canHitL) && !hasBeenHitL)
+                {
+                    hasBeenHitL = true;
+                    StartCoroutine(ResetLBumper(.4f));
+                    if (leftElem != null)
+                        leftPaddleBall.OnPaddleHit(leftElem.GetEffectData());
+                }
+            }
+        }
+        if (rightPaddle != null)
+        {
+            rightPaddle.PaddleMovement(Input.GetKey(rightPaddleBind));
+
+            var rightElem = rightPaddle.GetComponent<PaddleElementalState>();
+            var hasElem = rightElem != null && rightElem.CurrentState != PaddleState.None;
+
+            if (hasElem)
+            {
+                if (Input.GetKeyDown(rightPaddleBind))
+                    HitCheck(rightPaddleBind);
+
+                var rightPaddleBall = GetPaddleTarget();
+
+                if (rightPaddleBall != null && rightPaddleBall.isTouchingPaddles && (Input.GetKey(rightPaddleBind) || canHitR) && !hasBeenHitR)
+                {
+                    hasBeenHitR = true;
+                    StartCoroutine(ResetRBumper(.4f));
+                    if (rightElem != null)
+                        rightPaddleBall.OnPaddleHit(rightElem.GetEffectData());
+                }
+
+            }
+
+        }
+
+        if (xpMultiplier < baseXPMult)
+            xpMultiplier = baseXPMult;
+        if (scoreMultiplier < baseScoreMult)
+            scoreMultiplier = baseScoreMult;
+
+        if (wallTimerStart)
+        {
+            wallTimer += Time.deltaTime;
+
+            if (wallTimer >= .2f)
+                EnableInvisibleWalls();
+        }
+
+        if (currentState == PinballState.GameOver)
+        {
+            if (Input.GetKey(chargeBind))
+                SceneManager.LoadScene(0);
+        }
+
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            AddXP(13);
+        }
+
+        //score mult
+        if (IsScoreMultiplierActive && scoreBonusTimer > 0f)
+        {
+            scoreBonusTimer -= Time.unscaledDeltaTime;
+            if (scoreBonusTimer <= 0f)
+            {
+                scoreBonusTimer = 0f;
+                scoreMultiplier = baseScoreMult;
+            }
+        }
+
+        //xp mult
+        if (IsXPMultiplierActive && xpBonusTimer > 0f)
+        {
+            xpBonusTimer -= Time.unscaledDeltaTime;
+            if (xpBonusTimer <= 0f)
+            {
+                xpBonusTimer = 0f;
+                xpMultiplier = baseXPMult;
+            }
+        }
+
+        // Replace the Play-state drain check in Update() with a debounced version
+        if (currentState == PinballState.Play)
+        {
+            // Consider both the tracked list AND the main ball as a fallback
+            bool any = HasAnyUsableBalls() || IsBallUsable(ball);
+
+            if (!any)
+            {
+                _noBallTimer += Time.unscaledDeltaTime; // use unscaled to resist pausing spikes
+                if (_noBallTimer >= noBallResetGrace)
+                {
+                    // Optional: helpful debug to trace intermittent teleports
+                    Debug.LogWarning($"[Pinball] No balls detected for {noBallResetGrace}s. " +
+                                     $"liveBalls.Count={liveBalls.Count}, mainUsable={IsBallUsable(ball)}. Resetting.");
+                    ChangeState(PinballState.ResetBall);
+                }
+            }
+            else
+            {
+                _noBallTimer = 0f;
+            }
+        }
+        //if in correct states
+        if (currentState == PinballState.Charging || currentState == PinballState.Push)
+        {
+            //holding space down
+            if (Input.GetKey(chargeBind))
+            {
+                isHoldingCharge = true;
+                hasPressedCharge = true;
+            }
+
+
+
+
+
+            chargePercentage = Mathf.Min(1, chargeTimer / chargeMax);
+
+            //if space is let up
+            if (Input.GetKeyUp(chargeBind))
+            {
+                isHoldingCharge = false;
+                //if charge at 25%
+                if (chargePercentage > .10f)
+                {
+                    //if in charging
+                    if (currentState == PinballState.Charging)
+
+                    {
+                        //launch ball
+                        ball.Launch(chargePercentage);
+                        //if charge enough %, push state to pre-charge, reset charge % and timer, change max
+                        if (chargePercentage > .648f)
+                        {
+                            ChangeState(PinballState.Push);
+                        }
+                    }
+                    //if in push state
+                    else
+                    {
+                        //if ball in CollisionStay in Zone, push it
+                        if (ball.isInZone)
+                        {
+                            ball.Push(chargePercentage);
+                            ChangeState(PinballState.Play);
+                        }
+                    }
+
+                }
+            }
+
+            if (currentState == PinballState.Push && !ball.isInZone && ball.GetComponent<Rigidbody>().velocity.z < 0)
+            {
+                ChangeState(PinballState.Charging);
+            }
+
+
+        }
+
+        if (!isHoldingCharge)
+        {
+            chargeTimer -= Time.deltaTime;
+            if (chargeTimer < 0)
+                chargeTimer = 0;
+        }
+        else
+        {
+            chargeTimer += Time.deltaTime;
+            if (chargeTimer > chargeMax)
+                chargeTimer = chargeMax;
+        }
+    }
+
+    public void AddPowerupDropChance(float additive)
+    {
+        PowerupDropChance = Mathf.Clamp01(PowerupDropChance + additive);
+    }
+
+
+    public void RegisterBall(Ball b)
+    {
+        if(b != null && !liveBalls.Contains(b))
+            liveBalls.Add(b);
+    }
+
+    public void UnregisterBall(Ball b)
+    {
+        if(b != null)
+            liveBalls.Remove(b);
+    }
+    private static bool IsBallUsable(Ball b)
+    {
+        return b != null
+            && b.isActiveAndEnabled
+            && b.gameObject.activeInHierarchy
+            && b.isActive; 
+    }
+
+    private IEnumerable<Ball> GetUsableBalls()
+    {
+        for(int i = liveBalls.Count -1; i >= 0; i--)
+        {
+            var b = liveBalls[i];
+            if(b == null) { liveBalls.RemoveAt(i);
+                continue;
+            }
+            if (IsBallUsable(b)) yield return b;
+        }
+    }
+
+    private void ForEachUsableBall(System.Action<Ball> action)
+    {
+        foreach(var b in GetUsableBalls())
+            action(b);
+    }
+
+    private bool TryGetAnchorBall(out Ball anchor)
+    {
+        for (int i = 0; i < liveBalls.Count; i++)
+        {
+            var candidate = liveBalls[i];
+
+            // prune dead/missing entries
+            if (candidate == null)
+            {
+                liveBalls.RemoveAt(i);
+                i--;
+                continue;
+            }
+
+            if (IsBallUsable(candidate))
+            {
+                anchor = candidate; // earliest active in insertion order
+                return true;
+            }
+        }
+
+        anchor = null;
+        return false;
+    }
+
+
+
+    private Ball GetPaddleTarget()
+    {
+        for (int i = 0; i < liveBalls.Count; i++)
+        {
+            var b = liveBalls[i];
+            if (b == null) { liveBalls.RemoveAt(i); i--; continue; }
+            if (IsBallUsable(b) && b.isTouchingPaddles)
+                return b;
+        }
+
+        return TryGetAnchorBall(out var anchor) ? anchor : null;
+    }
+
+    private void EnsurePrimaryBallRef()
+    {
+        if (ball != null && ball.GetInstanceID() == _primaryBallId)
+            return;
+
+        for(int i = 0; i < liveBalls.Count; i++)
+        {
+            var b = liveBalls[i];
+            if(b != null && b.GetInstanceID() == _primaryBallId)
+            {
+                ball = b;
+                return;
+            }
+        }
+
+
+        if(ball == null && liveBalls.Count > 0 && liveBalls[0] != null)
+        {
+            ball = liveBalls[0];
+            _primaryBallId = ball.GetInstanceID();
+        }
+
+    }
+
+    private void FreezeAndTeleportToStart(Ball target)
+    {
+        if(target == null)
+            return;
+        var t = target.transform;
+        var rb = target.GetComponent<Rigidbody>();
+
+        DOTween.Kill(t, complete: false);
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.velocity = Vector3.zero;
+            rb.position = _ballStartPos;
+            rb.rotation = _ballStartRot;
+            rb.Sleep();
+            rb.isKinematic = false;
+        }
+        else
+        {
+            t.position = _ballStartPos;
+            t.rotation = _ballStartRot;
+        }
+        target.ResetRb();
+    }
+
+    public void EnableInvisibleWalls()
+    {
+        invisWalls.SetActive(true);
+    }
+
+    public void DisableInvisibleWalls()
+    {
+        invisWalls.SetActive(false);
+        wallTimer = 0f;
+        wallTimerStart = false;
+    }
+
+    public void DupeBall()
+    {
+        if (!TryGetAnchorBall(out var anchor))
+        {
+            if (IsBallUsable(ball))
+                anchor = ball;
+        }
+
+        if (anchor == null)
+        {
+            Debug.Log("No valid ball to duplicate!");
+            return;
+        }
+
+
+        var dupedBallGO = Instantiate(ballClone, anchor.transform.position, Quaternion.identity);
+        var dupedBall = dupedBallGO.GetComponent<Ball>();
+
+        if(dupedBall != null && anchor != null)
+        {
+            dupedBall.BaseDamage = anchor.BaseDamage;
+            dupedBall.maxSpeed = anchor.maxSpeed;
+            dupedBall.transform.localScale = anchor.transform.localScale;
+
+
+            var anchorCol = anchor.GetComponent<Collider>();
+            var dupedCol = dupedBall.GetComponent<Collider>();
+
+
+
+            if (anchorCol != null && dupedCol != null && anchorCol.material != null)
+            {
+                var src = anchorCol.material;
+                dupedCol.material = Instantiate(src);
+            }
+
+            dupedBall.ResetRb();
+
+        }
+    }
+
+    public void AddScore(int gameScore, int bumpCount, int bumpCountConsec)
+    {
+        int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier);
+
+        if (extraHitsS)
+        {
+            bumperBouncesS++;
+            if (bumperBouncesS > bouncesForBonusS)
+            {
+                finalPoints = Mathf.RoundToInt(finalPoints * bonusHitsS);
+                bumperBouncesS = 0;
+            }
+        }
+        if (extraHitsG)
+        {
+            bumperBouncesG++;
+
+            if (bumperBouncesG > bouncesForBonusG)
+            {
+                xpCount = Mathf.RoundToInt(xpCount * bonusHitsG);
+                bumperBouncesG = -1;
+            }
+            if (bumperBouncesG == 0)
+            {
+                xpCount = Mathf.RoundToInt(xpCount / bonusHitsG);
+            }
+
+        }
+
+
+        if (destroyedBumper)
+        {
+            score += Mathf.RoundToInt(finalPoints * destroyedMult);
+            destroyedBumper = false;
+        }
+        else
+            score += finalPoints;
+        ballBumpCount = bumpCount;
+        ballBumpCountC = bumpCountConsec;
+        uim.UpdateScore(score, bumpCount, bumpCountConsec);
+    }
+
+    private bool HasAnyUsableBalls()
+    {
+        // Fast check without allocating an intermediate list
+        foreach (var b in GetUsableBalls())
+            return true;
+
+        if(IsBallUsable(ball))
+        {
+            if(!liveBalls.Contains(ball))
+                RegisterBall(ball);
+            return true;
+        }
+
+        return false;
+    }
+
+    // 7) Core reset flow. This preserves score, level, rewards, and scene objects.
+    private void ResetBallAndFlow()
+    {
+        EnsurePrimaryBallRef();
+        _noBallTimer = 0f;
+
+        DisableInvisibleWalls();
+        ResetCameraShakeState();
+
+        // Remove lingering duplicated balls (if any), keep the main 'ball' reference
+        for (int i = liveBalls.Count - 1; i >= 0; i--)
+        {
+            var b = liveBalls[i];
+            if (b == null) { liveBalls.RemoveAt(i); continue; }
+            if (b != ball) // only destroy clones; keep main ball instance
+            {
+                liveBalls.RemoveAt(i);
+                Destroy(b.gameObject);
+            }
+        }
+
+        // Ensure main ball is alive and reset to launcher spawn
+        if (ball != null)
+        {
+            ball.isActive = true;
+            ball.gameObject.SetActive(true);
+            var rb = ball.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+
+            FreezeAndTeleportToStart(ball);
+            // re-register the main ball if the list is empty or missing it
+            if (!liveBalls.Contains(ball))
+                RegisterBall(ball);
+        }
+
+        // Reset local charge state so the player can launch again
+        isHoldingCharge = false;
+        hasPressedCharge = false;
+        chargeTimer = 0f;
+        chargePercentage = 0f;
+
+        // Set counters back to a single-ball scenario
+        ballCount = 1;
+
+        // Important: DO NOT touch score, XP, level, reward sets, or any scene FX (XP orbs, bumper states)
+        // Route to Charging if lives remain; otherwise end the game
+        if (lives > 0)
+            ChangeState(PinballState.Charging);
+        else
+            ChangeState(PinballState.GameOver);
+    }
+
+    public void AddXP(float xp)
+    {
+        float finalXP = xp * xpMultiplier;
+        Debug.Log($"blob - XP Being Added: {finalXP}");
+        curXP += finalXP;
+        Debug.Log($"blob - CurXP : {curXP}");
+
+
+        ballXPScript.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(maxXP), level);
+
+
+
+    }
+
+    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage)
+    {
+        var emitParams = new ParticleSystem.EmitParams();
+        Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
+        //AdjustXP(emitParams);
+        ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
+        if (isDead)
+        {
+            xpFX.Emit(xpCount * 2);
+        }
+        else if (isTakingElemDamage)
+        {
+            xpFX.Emit(Mathf.RoundToInt(xpCount / 3));
+        }
+        else xpFX.Emit(xpCount);
+
+    }
+
+    public void SpawnBonusWaterXP(Vector3 pos, float waterBonusXP)
+    {
+        //bonus XP starts at 25% and goes up to 100%
+
+        float bonusXP = waterBonusXP / 100f;
+        var emitParams = new ParticleSystem.EmitParams();
+        Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
+        //AdjustXP(emitParams);
+        ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
+        xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + bonusXP)));
+    }
+
+    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP)
+    {
+        float bonusXP = earthBonusXP / 100f;
+        var emitParams = new ParticleSystem.EmitParams();
+        Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
+        //AdjustXP(emitParams);
+        ParticleSystem xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
+        xpFX.Emit(Mathf.RoundToInt(xpCount * (1 + bonusXP)));
+    }
+
+    private void StartNextLevelUp()
+    {
+        if (pendingLevelUps <= 0) return;
+
+        ChangeState(PinballState.LevelUp);
+    }
+
+    public void LevelUp()
+    {
+        level++;
+        maxXP = XPFormula.XpReq(level);
+        ballXPScript.UpdateXP((float)curXP, (float)maxXP, level);
+
+        ApplyLevelBonuses();
+    }
+
+
+    public void ApplyLevelBonuses()
+    {
+        if (level % 5 == 0)
+        {
+            baseScoreMult += .5f;
+            baseXPMult += .5f;
+        }
+        else
+        {
+            baseScoreMult += .15f;
+            baseXPMult += .15f;
+        }
+    }
+
+    private void HitCheck(KeyCode paddles)
+    {
+        if (paddles == leftPaddleBind)
+            StartCoroutine(RegCheck(leftPaddleBind));
+        else StartCoroutine(RegCheck(rightPaddleBind));
+    }
+
+    public IEnumerator RespawnRoutine(Bumper bumper)
+    {
+        if (bumper.type == BumperType.Small)
+        {
+            explosionForce *= .5f;
+            explosionRadius *= .5f;
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+                bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+        else if (bumper.type == BumperType.Default)
+        {
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+    bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+        else if (bumper.type == BumperType.Large)
+        {
+            explosionForce *= 1.5f;
+            explosionRadius *= 1.5f;
+            ball.GetComponent<Rigidbody>().AddExplosionForce(explosionForce,
+    bumper.transform.position, explosionRadius, 0f, ForceMode.Impulse);
+        }
+
+        Collider col = bumper.GetComponent<Collider>();
+        MeshRenderer mr = bumper.GetComponent<MeshRenderer>();
+        if (col) col.enabled = false;
+        if (mr) mr.enabled = false;
+
+        yield return new WaitForSeconds(bumper.cooldown);
+
+        bumper.curHealth = bumper.maxHealth;
+        bumper.gameObject.SetActive(true);
+        if (col) col.enabled = true;
+        if (mr) mr.enabled = true;
+
+    }
+
+    private IEnumerator RegCheck(KeyCode paddle)
+    {
+        if (paddle == leftPaddleBind)
+            canHitL = true;
+        else canHitR = true;
+
+        yield return new WaitForSeconds(.6f);
+
+        if (paddle == leftPaddleBind)
+            canHitL = false;
+        else canHitR = false;
+    }
+
+    private IEnumerator ResetLBumper(float cd)
+    {
+        yield return new WaitForSeconds(cd);
+
+        hasBeenHitL = false;
+    }
+    private IEnumerator ResetRBumper(float cd)
+    {
+        yield return new WaitForSeconds(cd);
+
+        hasBeenHitR = false;
+    }
+
+    public void ResetCameraShakeState()
+    {
+        if (mainCam == null) return;
+
+        var t = mainCam.transform;
+
+        // Stop any in-flight tweens without completing them (prevents inheriting partial offsets)
+        t.DOKill(false);
+
+        // Restore baseline transform so each new shake starts clean
+        t.localPosition = _camDefaultLocalPos;
+        t.localRotation = _camDefaultLocalRot;
+    }
+
+
+    public void ScreenShake()
+    {
+        ResetCameraShakeState();
+
+
+        // simple DOShakePosition call
+        mainCam.transform.DOShakePosition(
+            shakeDuration,
+            shakeStrength,
+            shakeVibrato,
+            shakeRandomness,
+            false,   // snapping
+            true     // fade out at end
+        ).SetEase(Ease.OutQuad)
+         .SetUpdate(false); // works even if Time.timeScale = 0
+    }
+
+
+
+
+
+    #region Ability Application
+
+    public void ApplyXPMultiplier(float multiplier, bool cursed)
+    {
+        if (cursed)
+        {
+            xpCount += 1;
+            if (xpBonusTimer > 5)
+                xpBonusTimer = 5;
+            xpMultiplier *= 2;
+        }
+        else
+            xpMultiplier += multiplier;
+    }
+
+    public void ApplyXPBonusTime(float time, bool cursed)
+    {
+        if (!IsXPMultiplierActive) return;
+
+        if (cursed)
+        {
+            if (xpBonusTimer > 3)
+                xpBonusTimer = 3;
+        }
+        else
+        {
+            xpBonusTimer += time;
+            if (xpBonusTimer > 30)
+                xpBonusTimer = 30f;
+        }
+    }
+
+    public void ApplyScoreMultiplier(float multiplier, bool cursed)
+    {
+
+
+        if (multiplier == x2MULT)
+            scoreMultiplier *= 2;
+        else if (cursed)
+            scoreMultiplier *= 4;
+        else
+            scoreMultiplier += multiplier;
+    }
+
+    public void ApplyScoreBonusTime(float time, bool cursed)
+    {
+
+        if (!IsScoreMultiplierActive) return;
+
+        if (cursed)
+        {
+            scoreBonusTimer *= .1f;
+        }
+        else
+            scoreBonusTimer += time;
+    }
+
+    public void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusBounces, int bounces, bool bonus, bool cursed)
+    {
+        float Size = (100f + size) / 100f;
+        float Speed = (100f + speed) / 1000f;
+        float Mult = (100f + scoreMult) / 100f;
+        float Bounciness = ((100f * bounciness) / 10000f);
+
+        if (scoreMult != 0)
+            baseScoreMult *= Mult;
+
+        if (bonus)
+        {
+            extraHitsS = true;
+            bouncesForBonusS = bounces;
+            bonusHitsS = bonusBounces;
+        }
+
+        ForEachUsableBall(b =>
+        {
+            if (bounciness != 0)
+                b.AdjustBounciness(1f + Bounciness);
+
+            if (size != 0)
+                b.transform.localScale *= Size;
+
+            if (speed != 0)
+                b.maxSpeed *= 1f + Speed;
+        });
+    }
+    public void ApplyGrowFX(float size, float speed, float bounciness, float xpMult, float bonusBounces, int bounces, bool bonus, bool cursed)
+    {
+        float Size = (100f + size) / 100f;
+        float Speed = (100f + speed) / 1000f;
+        float Mult = (100f + xpMult) / 100f;
+        float Bounciness = ((100f * bounciness) / 10000f);
+
+        if (xpMult != 0)
+            baseXPMult *= Mult;
+
+        if (bonus)
+        {
+            extraHitsG = true;
+            bouncesForBonusG = bounces;
+            bonusHitsG = bonusBounces;
+        }
+
+        ForEachUsableBall(b =>
+        {
+            if (bounciness != 0)
+                b.AdjustBounciness(1f + Bounciness);
+
+            if (size != 0)
+                b.transform.localScale *= Size;
+
+            if (speed != 0)
+                b.maxSpeed *= 1f - Speed;
+        });
+
+    }
+
+    public void ApplyXPForcefield(float amount)
+    {
+        float Amount = (100f + amount) / 100f;
+        ForEachUsableBall(b =>
+        {
+            b.UpdateForcefield(Amount);
+        });
+    }
+
+    public void ApplyAdditionalBalls(int additionalBalls)
+    {
+        if(additionalBalls != 100)
+        for (int i = 0; i < additionalBalls; i++)
+        {
+            DupeBall();
+            ballCount++;
+        }
+        else
+        {
+            int curBallCount = ballCount;
+            for (int i = 0; i < curBallCount; i++)
+            {
+                DupeBall();
+                ballCount++;
+            }
+        }
+
+
+
+    }
+
+    public void ApplyGrantedLives(int amount)
+    {
+        lives = Mathf.Clamp(lives + amount, 0, maxLives);
+        OnLivesChanged();
+    }
+
+    public void ApplyDamageFX(float amount)
+    {
+        float Amount = .01f * amount;
+        ForEachUsableBall(b =>
+        {
+            b.AddDamageMultiplier(Amount);
+        });
+    }
+
+    public void ApplyDmgPerBounceFX(float amount, int bounces)
+    {
+        float Amount = (100f + amount) / 100f;
+        ForEachUsableBall(b =>
+        {
+            b.AddTempDamageMultiplier(Amount, bounces);
+        });
+    }
+
+    public void SetPaddleState(bool isLeft)
+    {
+        var paddle = isLeft ? leftPaddle : rightPaddle;
+        var paddleElem = paddle.gameObject.GetComponent<PaddleElementalState>();
+        pendingPaddleReward.ApplyToPaddle(paddleElem);
+        pendingPaddleReward = null;
+        if (pendingLevelUps > 0)
+        {
+            var choices = GetRewardChoices();
+            uim.ShowRewardPopup(choices);
+            uim.ClosePaddleSelect(true);
+        }
+        else
+        {
+            uim.ClosePaddleSelect(false);
+            ChangeState(PinballState.Play);
+        }
+    }
+
+    #endregion
+
+
+    #region Reward Scriptable Object Methods
+
+    public void OnRewardChosen(RewardSO reward)
+    {
+        if (reward.isPaddleReward)
+        {
+            var leftPaddleElement = leftPaddle.GetComponent<PaddleElementalState>();
+            var rightPaddleElement = rightPaddle.GetComponent<PaddleElementalState>();
+            bool leftHasElem = leftPaddleElement.CurrentState != PaddleState.None;
+            bool rightHasElem = rightPaddleElement.CurrentState != PaddleState.None;
+            pendingPaddleReward = reward;
+            if (leftHasElem && !rightHasElem)
+            {
+                SetPaddleState(false);
+            }
+            else if (!leftHasElem && rightHasElem)
+            {
+                SetPaddleState(true);
+            }
+            else
+            {
+                reward.Apply(this);
+                pendingLevelUps--;
+
+                ChangeState(PinballState.PaddleSelect);
+                return;
+            }
+
+        }
+        if (reward.Scalable && reward.ReplacesReward != null)
+        {
+            var old = reward.ReplacesReward;
+
+            if (Owns(old.Id))
+            {
+                //remove old ownership
+                active.Remove(old.Id);
+                owned.Remove(old.Id);
+
+                //mark the new tier as owned
+                reward.Apply(this);
+
+                pendingLevelUps--;
+                ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
+                return;
+            }
+        }
+
+        reward.Apply(this);
+        pendingLevelUps--;
+        ChangeState(pendingLevelUps > 0 || currentState == PinballState.PaddleSelect ? PinballState.LevelUp : PinballState.Play);
+
+    }
+
+    private RewardSO PickOneWeighted(List<RewardSO> pool, RewardRarity rarity)
+    {
+        var candidates = pool.Where(r => r.Rarity == rarity).ToList();
+        if (candidates.Count == 0) return null;
+
+        int index = Random.Range(0, candidates.Count);
+        return candidates[index];
+
+    }
+
+    private RewardRarity RollRarity()
+    {
+        float total = rarityWeights.Values.Sum();
+        float roll = Random.Range(0f, total);
+
+        float cumulative = 0f;
+
+        foreach (var kv in rarityWeights)
+        {
+            cumulative += kv.Value;
+            if (roll <= cumulative)
+                return kv.Key;
+        }
+
+        return RewardRarity.Common;
+
+    }
+
+    private List<RewardSO> GetRewardChoices()
+    {
+        var eligible = rewardPool.Where(r => r.IsEligible(this)).ToList();
+
+        if (eligible.Count == 0)
+            return new List<RewardSO>();
+
+
+        var picks = new List<RewardSO>();
+
+        var localEligible = new List<RewardSO>(eligible);
+
+
+        for (int i = 0; i < 6; i++)
+        {
+            RewardSO choice = null;
+            for (int j = 0; j < 10 && choice == null; j++)
+            {
+                var tier = RollRarity();
+                choice = PickOneWeighted(localEligible, tier);
+            }
+            if (choice == null) break;
+            picks.Add(choice);
+            localEligible.Remove(choice);
+
+            if (localEligible.Count == 0) break;
+
+        }
+
+
+
+        return picks;
+
+    }
+    #endregion
+
+}
+
+
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PinballFlipper.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PinballFlipper : MonoBehaviour
+{
+    public HingeJoint hinge;
+    public float flipSpeed = 1500f;      // how fast the motor tries to move
+    public float returnSpeed = -200f;    // how fast it returns down
+    public float maxForce = 10000f;      // motor strength
+
+    void Awake()
+    {
+        // cache your HingeJoint reference
+        hinge = GetComponent<HingeJoint>();
+        hinge.useMotor = true;
+    }
+
+    public void PaddleMovement(bool isPressed)
+    {
+        var motor = hinge.motor;
+        motor.force = maxForce;
+        motor.targetVelocity = isPressed ? flipSpeed : returnSpeed;
+        hinge.motor = motor;
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PinballMusic.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Audio;
+
+public class PinballMusic : MonoBehaviour
+{
+    [Header("Clips")]
+    [Tooltip("Plays once, then hands off to Loop.")]
+    public AudioClip introClip;
+
+    [Tooltip("Seamlessly loops forever after Intro finishes.")]
+    public AudioClip loopClip;
+
+    [Header("Routing (optional)")]
+    [Tooltip("Optional mixer routing for both sources.")]
+    public AudioMixerGroup outputMixerGroup;
+
+    [Header("Behavior")]
+    [Tooltip("Automatically start music on Start().")]
+    public bool playOnStart = true;
+
+    [Tooltip("Safety lead time before scheduled start, in seconds.")]
+    [Min(0.01f)]
+    public double scheduleLeadIn = 0.08; // small buffer for preload
+
+    private AudioSource _introSource;
+    private AudioSource _loopSource;
+    private bool _started;
+
+
+
+    void Awake()
+    {
+        _introSource = gameObject.AddComponent<AudioSource>();
+        _loopSource = gameObject.AddComponent<AudioSource>();
+
+        ConfigureSource(_introSource, false);
+        ConfigureSource(_loopSource, true);
+    }
+
+
+    void Start()
+    {
+        if (playOnStart)
+            StartMusic();
+    }
+
+    public void StartMusic()
+    {
+        if (_started)
+            return;
+
+        double dspStart = AudioSettings.dspTime + scheduleLeadIn;
+
+        if (introClip != null)
+        {
+            _introSource.clip = introClip;
+            _introSource.loop = false;
+            _introSource.PlayScheduled(dspStart);
+
+            double introDuration = (double)introClip.samples / introClip.frequency;
+
+            if (loopClip != null)
+            {
+                _loopSource.clip = loopClip;
+                _loopSource.loop = true;
+                _loopSource.PlayScheduled(dspStart + introDuration);
+            }
+        }
+
+        _started = true;
+
+    }
+
+    private void ConfigureSource(AudioSource source, bool loop)
+    {
+        source.playOnAwake = false;
+        source.loop = loop;
+        source.spatialBlend = 0f;
+        source.ignoreListenerPause = false;
+        if(outputMixerGroup != null)
+            source.outputAudioMixerGroup = outputMixerGroup;
+    }
+
+
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PinballUIM.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using TMPro;
+using UnityEngine.UI;
+
+
+public class PinballUIM : MonoBehaviour
+{
+    [System.Serializable]
+    public class RewardSlot
+    {
+        public Button button;
+        public TMP_Text titleText;
+        public TMP_Text descText;
+    }
+
+    [Header("UI Slots(6 buttons)")]
+    [SerializeField] private List<RewardSlot> slots = new();
+
+    // Add these fields near the top
+    [Header("Lives UI")]
+    [SerializeField] private List<Image> lifeIcons = new(); // assign 5 placeholder Images in order (left->right)
+    [SerializeField] private Color32 lifeOnColor = new Color32(75, 202, 107, 255);
+    [SerializeField] private Color32 lifeOffColor = new Color32(75, 202, 107, 11);
+
+
+    public Image ChargingSlider;
+
+    public GameObject gamePanel;
+    public GameObject paddleSelectPanel;
+    public GameObject levelUpPanel;
+
+    public TMP_Text gameScore;
+    public TMP_Text bc;
+    public TMP_Text bcc;
+    public TMP_Text xpText;
+
+    private Pinball pm;
+    private List<RewardSO> currentRewards = new();
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        levelUpPanel.SetActive(false);
+        paddleSelectPanel.SetActive(false);
+
+        gamePanel.SetActive(true);
+
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        if(pm != null)
+        {
+            ChargingSlider.fillAmount = pm.chargePercentage;
+            bc.text = $"Score Mult: {pm.ScoreMultiplier.ToString()} | Timer: {pm.ScoreBonusTimeRemaining}";
+            bcc.text = $"XP Mult: {pm.XPMultiplier.ToString()} | Timer: {pm.XPBonusTimeRemaining}";
+            if (Mathf.RoundToInt(pm.curXP) >= Mathf.RoundToInt(pm.maxXP))
+            {
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP - 1)} / {pm.maxXP}";
+            }
+            else
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
+        }
+
+
+    }
+
+    public void Init(Pinball manager)
+    {
+        pm = manager;
+    }
+
+    public void InitLives(int maxLives)
+    {
+        // Activate only the first `maxLives` icons; hide the rest if more were assigned
+        for (int i = 0; i < lifeIcons.Count; i++)
+            lifeIcons[i].gameObject.SetActive(i < maxLives);
+    }
+
+    public void UpdateLives(int lives, int maxLives)
+    {
+        // Ensure slot visibility matches maxLives
+        InitLives(maxLives);
+
+        // Fill first `lives` icons, dim the rest
+        for (int i = 0; i < lifeIcons.Count && i < maxLives; i++)
+            lifeIcons[i].color = i < lives ? lifeOnColor : lifeOffColor;
+    }
+
+
+    public void ShowRewardPopup(List<RewardSO> rewards)
+    {
+        gamePanel.SetActive(false);
+
+        levelUpPanel.SetActive(true);
+        currentRewards = rewards ?? new List<RewardSO>();
+
+        for(int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+
+            slot.button.onClick.RemoveAllListeners();
+
+            if(i < currentRewards.Count && currentRewards[i] != null)
+            {
+                var reward = currentRewards[i];
+
+
+                slot.titleText.text = reward.Name;
+                slot.descText.text = reward.Description;
+
+                slot.button.interactable = true;
+                slot.button.gameObject.SetActive(true);
+
+
+                slot.button.onClick.AddListener(() => OnRewardClicked(reward));
+            }
+            else
+            {
+                slot.titleText.text = string.Empty;
+                slot.descText.text = string.Empty;
+                slot.button.gameObject.SetActive(false);
+            }
+
+
+        }
+    }
+
+    private void OnRewardClicked(RewardSO reward)
+    {
+        pm.OnRewardChosen(reward);
+    }
+
+    public void DefaultUI()
+    {
+        levelUpPanel.SetActive(false);
+        paddleSelectPanel.SetActive(false);
+
+        Debug.Log("Succcfion");
+
+
+        gamePanel.SetActive(true);
+    }
+
+    public void UpdateScore(int score, int bumpCount, int bumpCountConsec)
+    {
+        gameScore.text = score.ToString();
+    }
+
+    public void PaddleSelect()
+    {
+        gamePanel.SetActive(false);
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            slot.button.interactable = false;
+        }
+        paddleSelectPanel.SetActive(true);
+
+    }
+
+    public void ClosePaddleSelect(bool hasMoreLevels)
+    {
+        paddleSelectPanel.SetActive(false);
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            slot.button.interactable = true;
+        }
+        Debug.Log("Succc!!");
+
+
+        if (hasMoreLevels)
+        {
+            Debug.Log("1Succc!!");
+            levelUpPanel.SetActive(true);
+
+        }
+    }
+
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\PowerupSystem.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using Unity.VisualScripting;
+using UnityEngine;
+
+public static class PowerupSystem
+{
+    private static readonly List<IPowerup> _registry = new();
+    private static bool _initialized;
+
+    public static void EnsureInitialized()
+    {
+        if (_initialized)
+            return;
+        _initialized = true;
+
+        Register(new CollectAllXPPowerup());
+        Register(new NukeBumpersPowerup());
+        Register(new RandomFlingPowerup());
+    }
+
+    public static void Register(IPowerup powerup)
+    {
+        if (powerup == null)
+            return;
+        if (_registry.Exists(p => p.Id == powerup.Id))
+            return;
+        _registry.Add(powerup);
+    }
+
+    public static bool TryRoll(IRunContext ctx)
+    {
+        float chance = GetDropChance(ctx);
+        return Random.value < chance;
+    }
+
+    public static float GetDropChance(IRunContext ctx)
+    {
+        float baseChance = Pinball.Instance != null ? Pinball.Instance.PowerupDropChance : 0.03f;
+        return Mathf.Clamp01(baseChance);
+    }
+
+    public static bool TryTriggerRandom(Pinball pm, Vector3 triggerPos)
+    {
+        EnsureInitialized();
+
+        var eligibles = ListPool<IPowerup>.Get();
+        try
+        {
+            for(int i = 0; i < _registry.Count; i++)
+            {
+                var p = _registry[i];
+                if(p != null && p.CanTrigger(pm))
+                    eligibles.Add(p);
+            }
+
+            if (eligibles.Count == 0)
+                return false;
+
+            var picked = PickWeighted(eligibles);
+            picked.Execute(pm, triggerPos);
+            return true;
+        }
+        finally
+        {
+            ListPool<IPowerup>.Release(eligibles);
+        }
+    }
+
+    private static IPowerup PickWeighted(List<IPowerup> items)
+    {
+        float total = 0f;
+        for (int i = 0; i < items.Count; i++)
+            total += Mathf.Max(.0001f, items[i].Weight);
+
+        float r = Random.value * total;
+        float accum = 0f;
+        for(int i = 0; i < items.Count; i++)
+        {
+            accum += Mathf.Max(.0001f, items[i].Weight);
+            if(r <= accum)
+                return items[i];
+        }
+        return items[items.Count - 1];
+    }
+
+    private static class ListPool<T>
+    {
+        private static readonly Stack<List<T>> Pool = new();
+
+        public static List<T> Get() => Pool.Count > 0 ? Pool.Pop() : new List<T>();
+
+        public static void Release(List<T> list)
+        {
+            list.Clear();
+            Pool.Push(list);
+        }
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\RewardCatalogSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Reward Catalog")]
+public class RewardCatalogSO : ScriptableObject
+{
+    [Tooltip("All reward assets available for this mode")]
+    public List<RewardSO> allRewards = new List<RewardSO>();
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\RewardCategory.cs
+=====
+public enum RewardCategory
+{
+    ScoreMultiplier,
+    XPMultiplier,
+    PhysicsFX,
+    BallFX,
+    PaddleFX,
+    BumperFX,
+    LifeFX,
+    Abilities
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\RewardRarity.cs
+=====
+public enum RewardRarity
+{
+    Common,
+    Uncommon,
+    Rare,
+    Epic,
+    Legendary,
+    Artifact,
+    Cursed
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\RewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public abstract class RewardSO : ScriptableObject
+{
+    [Header("Identity")]
+    [SerializeField] private string rewardID;
+    [SerializeField] private string displayName;
+    [TextArea, SerializeField] private string description;
+
+    [Header("Classification")]
+    [SerializeField] private RewardCategory category;
+    [SerializeField] private RewardRarity rarity;
+    [SerializeField] public bool isPaddleReward;
+
+    [Header("Behavior")]
+    [Tooltip("If true, this reward should not be offered if an instance is currently active")]
+    [SerializeField] private bool blockWhenActive = true;
+    [SerializeField] private bool canStack = true;
+
+    [Header("Scaling")]
+    [SerializeField] private bool scalable = false;
+    [SerializeField] private RewardSO replacesReward;
+
+    [Tooltip("Exclusive group key. Rewards sharing same key cannot co-exist")]
+    [SerializeField] private string exclusivityKey;
+    [SerializeField] private List<string> blockedKeys;
+
+    public string Id => rewardID;
+    public string Name => displayName;
+    public string Description => description;
+    public RewardCategory Category => category;
+    public RewardRarity Rarity => rarity;
+    public bool BlockWhenActive => blockWhenActive;
+    public bool CanStack => canStack;
+    public string ExclusivityKey => exclusivityKey;
+    public List<string> BlockedKeys => blockedKeys;
+    public bool Scalable => scalable;
+    public RewardSO ReplacesReward => replacesReward;
+
+
+    public virtual bool IsEligible(IRunContext ctx)
+    {
+        //block if already active and this reward says to block
+        if(!Scalable)
+        {
+            if (BlockWhenActive && ctx.IsActive(Id))
+                return false;
+
+            //block if its available but cant stack
+            if (ctx.IsAvailable(Id) && !CanStack)
+                return false;
+        }
+
+        if (Scalable && ReplacesReward != null && !ctx.Owns(ReplacesReward.Id))
+            return false;
+
+        if(Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
+            return false;
+
+
+        //if rewards can be blocked, 
+        if (blockedKeys != null && blockedKeys.Count > 0)
+        {
+            foreach(var activeKey in ctx.ActiveKeys)
+            {
+                if(blockedKeys.Contains(activeKey)) return false;
+            }
+        }
+
+        //block if exclusivity key clashes
+        if(!string.IsNullOrEmpty(ExclusivityKey) && ctx.HasExclusiveKeyActive(ExclusivityKey))
+            return false;
+
+        return true;
+    }
+
+    public abstract void Apply(IRunContext ctx);
+
+    public virtual void ApplyToPaddle(PaddleElementalState state) { }
+
+
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\StatModifier.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+public enum StatModType
+{
+    Flat = 100,
+    PercentAdd = 200,
+    PercentMult = 300,
+}
+
+public class StatModifier
+{
+    public readonly float Value;
+    public readonly StatModType Type;
+    public readonly int Order;
+    public readonly object Source;
+
+    public StatModifier(float value, StatModType type, int order, object source)
+    {
+        Value = value;
+        Type = type;
+        Order = order;
+        Source = source;
+    }
+
+    public StatModifier(float value, StatModType type) : this(value, type, (int)type, null) { }
+
+    public StatModifier(float value, StatModType type, int order) : this(value, type, order, null) { }
+
+    public StatModifier(float value, StatModType type, object source) : this(value, type, (int)type, source) { }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Tank.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Tank : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 11.3f;
+    protected float minAtkLvlIncrease = 1.7f;
+    protected float maxAtkLvlIncrease = 2.04f;
+
+    protected float endLVLinc = 4.94f;
+    protected float strLVLinc = 2.68f;
+    protected float agiLVLinc = 1.08f;
+    protected float witLVLinc = 1.93f;
+    protected float chaLVLinc = 3.27f;
+
+
+    public Tank(string name, int level)
+        : base(name, "Tank", level, 624.9f, 100f, 44.8f, 49.9f, 98f)
+    {
+        traits[TraitType.Endurance] = 10;
+        traits[TraitType.Strength] = 5;
+        traits[TraitType.Agility] = 2;
+        traits[TraitType.Wit] = 5;
+        traits[TraitType.Charm] = 7;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+
+    }
+    public Tank()
+    : base("", "Tank", 5, 624.9f, 100f, 44.8f, 49.9f, 98f)
+    {
+        traits[TraitType.Endurance] = 10;
+        traits[TraitType.Strength] = 5;
+        traits[TraitType.Agility] = 2;
+        traits[TraitType.Wit] = 5;
+        traits[TraitType.Charm] = 7;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Test.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Test : MonoBehaviour
+{
+    public Warrior warrior;
+    public Mage mage;
+    public Druid druid;
+    public Assassin assassin;
+    public Tank tank;
+
+    protected Item sword;
+
+    public CharacterUI ui;
+
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        warrior = new Warrior("Jacque", 5);
+        mage = new Mage("Jill", 4);
+
+        ui.SetCharacterUI(warrior, true);
+        ui.SetCharacterUI(mage, false);
+
+
+        warrior.PrintStats();
+        mage.PrintStats();
+        warrior.Health.AddModifier(new StatModifier(5f, StatModType.Flat));
+        warrior.Health.AddModifier(new StatModifier(2.5f, StatModType.Flat));
+        warrior.Health.AddModifier(new StatModifier(1.9f, StatModType.PercentMult));
+        warrior.Health.baseValue = warrior.Health.Value;
+
+        Debug.Log("After Sword Equip Strength Value: " + warrior.Health.Value);
+        Debug.Log("After Sword Equip Strength base Value: " + warrior.Health.baseValue);
+        ui.SetCharacterUI(warrior, true);
+        /*
+        sword.Unequip(myCharacter.MaxAtk);
+        Debug.Log("After Sword Unequip Strength Value: " + myCharacter.MaxAtk.Value);
+        */
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\TweenDamageNumberSystem.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using TMPro;
+using DG.Tweening;
+using UnityEngine.Pool;
+
+public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
+{
+
+    [Header("Basics")]
+    [SerializeField] private Camera targetCamera;
+    [SerializeField] private float duration = 0.9f;
+    [SerializeField] private float riseDistance = 1.25f;
+    [SerializeField] private float surfaceOffset = 0.08f;
+    [SerializeField] private bool useUnscaledTime = false;
+    [SerializeField] private DamageNumberStyleSO style;
+    [SerializeField] private float cameraForwardOffset = 0.02f;
+
+    [Header("Typography")]
+    [SerializeField] private TMP_FontAsset font;
+    [SerializeField] private Material fontMaterial;
+    [SerializeField] private float baseFontSize = 4f;
+    [SerializeField] private Color defaultColor = Color.white;
+
+    [Header("Rendering")]
+    [SerializeField] private string sortingLayerName = "Default";
+    [SerializeField] private int sortingOrder = 500;
+
+    [Header("Damage -> Size Mapping")]
+    [SerializeField] private float minDamageForScale = 1f;
+    [SerializeField] private float maxDamageForScale = 100f;
+    [SerializeField] private float minScale = 0.75f;
+    [SerializeField] private float maxScale = 1.75f;
+    [SerializeField] private bool useLogScale = true;
+    [SerializeField] private float logBase = 10f;
+    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+
+    [SerializeField] private int defaultCapacity = 32;
+    [SerializeField] private int maxSize = 256;
+
+    private IObjectPool<GameObject> pool;
+
+
+    private float ComputeScale(float damage)
+    {
+        float d = Mathf.Max(damage, 0f);
+
+
+        if(useLogScale)
+        {
+            float minL = Mathf.Log(minDamageForScale + 1f, logBase);
+            float maxL = Mathf.Log(maxDamageForScale + 1f, logBase);
+            float valL = Mathf.Log(d + 1f, logBase);
+            float tL = Mathf.InverseLerp(minL, maxL, valL);
+            return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(tL));
+        }
+        float t = Mathf.InverseLerp(minDamageForScale, maxDamageForScale, d);
+        return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(t));
+    }
+
+    void Awake()
+    {
+        if(targetCamera == null)
+        {
+            targetCamera = Camera.main;
+        }
+        DamageNumbers.Register(this);
+
+        pool = new ObjectPool<GameObject>(Create, OnGet, OnRelease, OnDestroyPooled, true, defaultCapacity, maxSize);
+        Prewarm(48);
+        DOTween.SetTweensCapacity(200, 50);
+    }
+
+
+    public void Prewarm(int count)
+    {
+        count = Mathf.Max(0, count);
+        var arr = new GameObject[count];
+        for (int i = 0; i < count; i++) arr[i] = pool.Get();
+        for (int i = 0; i < count; i++) pool.Release(arr[i]);
+    }
+
+    private GameObject Create()
+    {
+        var go = new GameObject("DamageNumber", typeof(TextMeshPro));
+        go.transform.SetParent(transform, false);
+
+        var tmp = go.GetComponent<TextMeshPro>();
+        tmp.enableWordWrapping = false;
+        tmp.alignment = TextAlignmentOptions.Center;
+
+        var useFont = style != null ? style.font : font;
+        var useMat = style != null ? style.fontMaterial : fontMaterial;
+        var useSize = style != null ? style.baseFontSize : baseFontSize;
+        var useColor = style != null ? style.defaultColor : defaultColor;
+
+        if (useFont != null) tmp.font = useFont;
+        if (useMat != null) tmp.fontSharedMaterial = useMat;
+        tmp.fontSize = useSize;
+
+        var mr = go.GetComponent<MeshRenderer>();
+        var layerName = style != null ? style.sortingLayerName : sortingLayerName;
+        var order = style != null ? style.sortingOrder : sortingOrder;
+        if (mr != null) { mr.sortingLayerName = layerName; mr.sortingOrder = order; }
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
+
+        go.SetActive(false);
+        return go;
+    }
+
+    private void OnGet(GameObject go) => go.SetActive(true);
+
+    private void OnRelease(GameObject go)
+    {
+        ResetVisual(go);
+        go.SetActive(false);
+    }
+
+    private void OnDestroyPooled(GameObject go)
+    {
+        if(go != null) Destroy(go);
+    }
+
+    private void ResetVisual(GameObject go)
+    {
+        var tmp = go.GetComponent<TextMeshPro>();
+
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        tmp.fontSize = baseSize;
+
+        tmp.text = string.Empty;
+        var c = tmp.color; c.a = 0f; tmp.color = c;
+
+        go.transform.localScale = Vector3.one;
+    }
+
+
+    public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+    {
+        var go = pool.Get();
+        DOTween.Kill(go.transform, complete: false);
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, complete: false);
+
+        tmp.text = amount.ToString("0.#");
+        var fallbackColor = style != null ? style.defaultColor : defaultColor;
+        var col = overrideColor ?? fallbackColor;
+        tmp.color = new Color(col.r, col.g, col.b, 0f);
+
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        float sizeScale = ComputeScale(amount);
+        tmp.fontSize = baseSize * sizeScale;
+
+
+
+
+        var cam = targetCamera;
+
+
+
+
+        var basePos = position;
+        if(cam != null) basePos -= cam.transform.forward * cameraForwardOffset;
+        go.transform.position = position;
+        if(cam != null) go.transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+
+        var dur = Mathf.Max(0.05f, (style != null ? style.duration : duration));
+        var rise = (style != null ? style.riseDistance : riseDistance);
+        var fadeIn = Mathf.Clamp01(style != null ? style.fadeInFraction : 0.08f) * dur;
+        var fadeOut = Mathf.Clamp01(style != null ? style.fadeOutFraction : 0.25f) * dur;
+        var popFrom = (style != null ? style.popFromScale : 0.6f);
+        var popTo = (style != null ? style.popToScale : 1.1f);
+        var useUnscaled = (style != null ? style.useUnscaledTime : useUnscaledTime);
+
+        DOTween.Sequence()
+            .SetUpdate(useUnscaled)
+            .SetRecyclable(true)
+            .Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic))
+            .Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic))
+            .Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic))
+            .Join(go.transform.DOScale(popTo, fadeIn).From(popFrom).SetEase(Ease.OutBack, 2f))
+            .OnComplete(() => pool.Release(go));
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Warrior.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Warrior : BaseCharacter
+{
+
+    protected float hpLvlIncrease = 7.1f;
+    protected float minAtkLvlIncrease = 2.1f;
+    protected float maxAtkLvlIncrease = 2.2f;
+
+    protected float endLVLinc = 4.57f;
+    protected float strLVLinc = 3.93f;
+    protected float agiLVLinc = 2.36f;
+    protected float witLVLinc = 1.68f;
+    protected float chaLVLinc = 2.07f;
+
+
+    public Warrior(string name, int level)
+        : base(name, "Warrior", level, 539.4f, 100f, 52.3f, 60.1f, 100f)
+    {
+        traits[TraitType.Endurance] = 9;
+        traits[TraitType.Strength] = 8;
+        traits[TraitType.Agility] = 5;
+        traits[TraitType.Wit] = 3;
+        traits[TraitType.Charm] = 5;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public Warrior()
+    : base("", "Warrior", 5, 539.4f, 100f, 52.3f, 60.1f, 100f)
+    {
+        traits[TraitType.Endurance] = 9;
+        traits[TraitType.Strength] = 8;
+        traits[TraitType.Agility] = 5;
+        traits[TraitType.Wit] = 3;
+        traits[TraitType.Charm] = 5;
+        Endurance = traits[TraitType.Endurance];
+        Strength = traits[TraitType.Strength];
+        Agility = traits[TraitType.Agility];
+        Wit = traits[TraitType.Wit];
+        Charm = traits[TraitType.Charm];
+
+        ApplyLevelScaling();
+        ApplyTraitBonuses();
+    }
+    public override void ApplyLevelScaling()
+    {
+        stats[StatType.Health].baseValue += ((level) * hpLvlIncrease);
+        stats[StatType.MinAtk].baseValue += ((level) * minAtkLvlIncrease);
+        stats[StatType.MaxAtk].baseValue += ((level) * maxAtkLvlIncrease);
+
+        traits[TraitType.Endurance] += ((level) * endLVLinc);
+        traits[TraitType.Strength] += ((level) * strLVLinc);
+        traits[TraitType.Agility] += ((level) * agiLVLinc);
+        traits[TraitType.Wit] += ((level) * witLVLinc);
+        traits[TraitType.Charm] += ((level) * chaLVLinc);
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\XPCollectorRegistry.cs
+=====
+using System.Collections.Generic;
+using System;
+using UnityEngine;
+
+[DefaultExecutionOrder(-1000)]
+public class XPCollectorRegistry : MonoBehaviour
+{
+
+    public static XPCollectorRegistry I {  get; private set; }
+    public readonly List<Collider> collectors = new();
+
+    public static event Action OnChanged;
+
+    void Awake() => I = this;
+
+    public void Register(Collider c) 
+    {
+        if(c && !collectors.Contains(c)) collectors.Add(c);
+    }
+
+    public void Unregister(Collider c)
+    {
+        if(c) collectors.Remove(c);
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\XPFormula.cs
+=====
+using System;
+using UnityEngine;
+
+public static class XPFormula
+{
+    // Tunables
+    public static double A = 10.0;   // base; sets Lv1->2 XP
+    public static double p = 1.3;    // base growth
+    public static double bumpEvery = 5.0;
+    public static double bumpWidth = 0.8;    // narrow = "brick wall"
+    public static double bumpHeight = 0.20;  // 0.40 => +40% at the wall center
+
+    // Logistic hump centered at `center`
+    static double Bump(double n, double center, double width, double height)
+    {
+        // bounds/guard: avoid division by ~0 if someone sets width too tiny
+        width = Math.Max(0.5, width);
+
+        double x = (n - center) / width;
+        double s = 1.0 / (1.0 + Math.Exp(-x));        // 0..1 sigmoid
+        double hump = s * (1.0 - s) * 4.0;            // 0..1 bell, peak at center
+        return 1.0 + height * hump;                   // 1.0 away from center, 1+height at center
+    }
+
+    // XP required to go from level n -> n+1; n >= 1
+    public static int XpReq(int n)
+    {
+        double baseReq = A * Math.Pow(n, p);
+
+        // With narrow width, only the nearest centers meaningfully affect n.
+        // We multiply the nearest three (center, +/- 1 period) for clean tails.
+        int center = (int)Math.Round(n / bumpEvery) * (int)bumpEvery;
+
+        double mul =
+            Bump(n, center - bumpEvery, bumpWidth, bumpHeight) *
+            Bump(n, center, bumpWidth, bumpHeight) *
+            Bump(n, center + bumpEvery, bumpWidth, bumpHeight);
+
+        // Round to integer for final result
+        return Mathf.Max(1, (int)Math.Round(baseReq * mul));
+    }
+}
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\BallDuplicateRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Ball Duplicate FX")]
+public class BallDuplicateRewardSO : RewardSO
+{
+
+    [SerializeField] private int additionalBalls = 1;
+    [SerializeField] private bool cursed = false;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyAdditionalBalls(additionalBalls);
+
+    }
+
+    public override bool IsEligible(IRunContext ctx)
+    {
+        // keep all global rules (ownership, stacking, exclusivity, etc.)
+        if (!base.IsEligible(ctx))
+            return false;
+
+
+        if (cursed && ctx.Lives <= 1)
+            return false;
+
+        return true;
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\BallGrowRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Ball Grow")]
+public class BallGrowRewardSO : RewardSO
+{
+    [SerializeField] private float size = 1f;
+    [SerializeField] private float speed = 1f;
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusHits = 1f;
+    [SerializeField] private float bounciness = 1f;
+    [SerializeField] private int bouncesForBonusHits = 1;
+    [SerializeField] private bool bonus = false;
+    [SerializeField] private bool cursed = false;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyGrowFX(size, speed, bounciness, multiplier, bonusHits, bouncesForBonusHits, bonus, cursed);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\BallShrinkRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Ball Shrink")]
+public class BallShrinkRewardSO : RewardSO
+{
+    [SerializeField] private float size = 1f;
+    [SerializeField] private float speed = 1f;
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusHits = 1f;
+    [SerializeField] private float bounciness = 1f;
+    [SerializeField] private int bouncesForBonusHits = 1;
+    [SerializeField] private bool bonus = false;
+    [SerializeField] private bool cursed = false;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyShrinkFX(size, speed, bounciness, multiplier, bonusHits, bouncesForBonusHits, bonus, cursed);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\DamagePerBounceRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/DmgPerBounce")]
+public class DamagePerBounceRewardSO : RewardSO
+{
+    [SerializeField] private float damageMult = 10f;
+    [SerializeField] private int bouncesNeeded = 1;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyDmgPerBounceFX(damageMult, bouncesNeeded);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\DamageRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Damage")]
+public class DamageRewardSO : RewardSO
+{
+    [SerializeField] private float damageMult = 1f;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyDamageFX(damageMult);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\EarthPaddleRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Earth Paddle FX")]
+public class EarthPaddleRewardSO : RewardSO
+{
+
+    [SerializeField] private int fissureDamage = 1;
+    [SerializeField] private float crustedDuration = 1f;
+    [SerializeField] private float fissureHitScoreMultiplier = 1f;
+    [SerializeField] private float fissureHitXPMultiplier = 1f;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private bool cursed = false;
+
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+        isPaddleReward = true;
+    }
+
+    public override void ApplyToPaddle(PaddleElementalState paddle)
+    {
+        paddle.ApplyEarth(fissureDamage, crustedDuration, fissureHitScoreMultiplier, fissureHitXPMultiplier, bounceDuration, cursed);
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\ElectricPaddleRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Electric Paddle FX")]
+public class ElectricPaddleRewardSO : RewardSO
+{
+    [SerializeField] private int shockDamage = 1;
+    [SerializeField] private int chainCount = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float xpBonus = 0.1f;
+    [SerializeField] private float scoreBonus = 0.1f;
+    [SerializeField] private bool cursed = false;
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+        isPaddleReward = true;
+
+
+    }
+
+    public override void ApplyToPaddle(PaddleElementalState paddle)
+    {
+        Debug.Log("nice!");
+        paddle.ApplyElectric(shockDamage, chainCount, xpBonus, scoreBonus, bounceDuration, cursed);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\FirePaddleRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Fire Paddle FX")]
+public class FirePaddleRewardSO : RewardSO
+{
+    [SerializeField] private int bonusDamageFlat = 1;
+    [SerializeField] private float burnDamage = 1f;
+    [SerializeField] private float burnDuration = 1f;
+    [SerializeField] private int explosionDamageFlat = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float explosionSize = 1f;
+    [SerializeField] private bool canExplode = false;
+    [SerializeField] private bool cursed = false;
+
+
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+        isPaddleReward = true;
+
+
+    }
+
+    public override void ApplyToPaddle(PaddleElementalState paddle)
+    {
+        Debug.Log("nice!");
+        paddle.ApplyFire(bonusDamageFlat, burnDamage, burnDuration, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\LifeRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Life Reward", fileName = "LifeReward")]
+public sealed class LifeRewardSO : RewardSO
+{
+    // Optional manual override; leave 0 to use rarity mapping below
+    [SerializeField, Tooltip("Override grant amount. Leave 0 to use rarity mapping.")]
+    private int overrideAmount = 0;
+
+    // Map rarity -> lives granted: Rare=1, Epic=2, Legendary=3, Artifact=4
+    private int Amount =>
+        overrideAmount > 0 ? overrideAmount :
+        Rarity switch
+        {
+            RewardRarity.Rare => 1,
+            RewardRarity.Epic => 2,
+            RewardRarity.Legendary => 3,
+            RewardRarity.Artifact => 4,
+            _ => 1
+        };
+
+    public override bool IsEligible(IRunContext ctx)
+    {
+        // keep all global rules (ownership, stacking, exclusivity, etc.)
+        if (!base.IsEligible(ctx))
+            return false;
+
+        // lives must be known and not already capped
+        if (ctx.MaxLives <= 0 || ctx.Lives >= ctx.MaxLives)
+            return false;
+
+        // never offer a life reward that would exceed max
+        // e.g., at 4/5 only Amount=1 (Rare) is eligible
+        if (ctx.Lives + Amount > ctx.MaxLives)
+            return false;
+
+        return true;
+    }
+
+    public override void Apply(IRunContext ctx)
+    {
+        // Pinball implements this; value is clamped there as well
+        ctx.ApplyGrantedLives(Amount);
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\ScoreMultiplierRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Score Multiplier")]
+public class ScoreMultiplierRewardSO : RewardSO
+{
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusTime = 30f;
+    [SerializeField] private bool cursed = false;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyScoreMultiplier(multiplier, cursed);
+        ctx.ApplyScoreBonusTime(bonusTime, cursed);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\WaterPaddleRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Water Paddle FX")]
+public class WaterPaddleRewardSO : RewardSO
+{
+    [SerializeField] private float bonusXPPerc = 1f;
+    [SerializeField] private int bonusDamageFlat = 1;
+    [SerializeField] private float drenchDuration = 1f;
+    [SerializeField] private int explosionDamageFlat = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float explosionSize = 1f;
+    [SerializeField] private bool canExplode = false;
+    [SerializeField] private bool cursed = false;
+
+
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+        isPaddleReward = true;
+
+
+    }
+
+    public override void ApplyToPaddle(PaddleElementalState paddle)
+    {
+        Debug.Log("niceu!");
+        paddle.ApplyWater(bonusXPPerc, bonusDamageFlat, drenchDuration, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+
+    }
+
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\XPGravityRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/XP Gravity")]
+public class XPGravityRewardSO : RewardSO
+{
+    [SerializeField] private float radiusIncrease = 1f;
+
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyXPForcefield(radiusIncrease);
+
+    }
+}
+
+
+=====
+D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git\Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs
+=====
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/XP Multiplier")]
+public class XPMultiplierRewardSO : RewardSO
+{
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusTime = 30f;
+    [SerializeField] private bool cursed = false;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        ctx.ApplyXPMultiplier(multiplier, cursed);
+        ctx.ApplyXPBonusTime(bonusTime, cursed);
+
+    }
+}
+
+

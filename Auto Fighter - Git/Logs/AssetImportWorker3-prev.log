@@ -15,7 +15,7 @@ D:/game_dev/Auto-Fighter-Git/Auto Fighter - Git
 -logFile
 Logs/AssetImportWorker3.log
 -srvPort
-62071
+54154
 Successfully changed project path to: D:/game_dev/Auto-Fighter-Git/Auto Fighter - Git
 D:/game_dev/Auto-Fighter-Git/Auto Fighter - Git
 [UnityMemory] Configuration Parameters - Can be set up in boot.config
@@ -49,15 +49,15 @@ D:/game_dev/Auto-Fighter-Git/Auto Fighter - Git
     "memorysetup-temp-allocator-size-cloud-worker=32768"
     "memorysetup-temp-allocator-size-gi-baking-worker=262144"
     "memorysetup-temp-allocator-size-gfx=262144"
-Player connection [3260]  Target information:
+Player connection [3156]  Target information:
 
-Player connection [3260]  * "[IP] 192.168.1.157 [Port] 0 [Flags] 2 [Guid] 1688696579 [EditorId] 1688696579 [Version] 1048832 [Id] WindowsEditor(7,Kyle) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+Player connection [3156]  * "[IP] 192.168.1.157 [Port] 0 [Flags] 2 [Guid] 1556748532 [EditorId] 1556748532 [Version] 1048832 [Id] WindowsEditor(7,Kyle) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
 
-Player connection [3260] Host joined multi-casting on [225.0.0.222:54997]...
-Player connection [3260] Host joined alternative multi-casting on [225.0.0.222:34997]...
+Player connection [3156] Host joined multi-casting on [225.0.0.222:54997]...
+Player connection [3156] Host joined alternative multi-casting on [225.0.0.222:34997]...
 Input System module state changed to: Initialized.
 [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
-Refreshing native plugins compatible for Editor in 5.58 ms, found 3 plugins.
+Refreshing native plugins compatible for Editor in 7.04 ms, found 3 plugins.
 Preloading 0 native plugins for Editor in 0.00 ms.
 Initialize engine version: 2022.3.62f2 (7670c08855a9)
 [Subsystems] Discovering subsystems at path C:/Program Files/Unity/Hub/Editor/2022.3.62f2/Editor/Data/Resources/UnitySubsystems
@@ -73,44 +73,44 @@ Initialize mono
 Mono path[0] = 'C:/Program Files/Unity/Hub/Editor/2022.3.62f2/Editor/Data/Managed'
 Mono path[1] = 'C:/Program Files/Unity/Hub/Editor/2022.3.62f2/Editor/Data/MonoBleedingEdge/lib/mono/unityjit-win32'
 Mono config path = 'C:/Program Files/Unity/Hub/Editor/2022.3.62f2/Editor/Data/MonoBleedingEdge/etc'
-Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56868
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56324
 Begin MonoManager ReloadAssembly
 Registering precompiled unity dll's ...
 Register platform support module: C:/Program Files/Unity/Hub/Editor/2022.3.62f2/Editor/Data/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll
-Registered in 0.005947 seconds.
-- Loaded All Assemblies, in  0.370 seconds
+Registered in 0.005809 seconds.
+- Loaded All Assemblies, in  0.321 seconds
 Native extension for WindowsStandalone target not found
 Mono: successfully reloaded assembly
-- Finished resetting the current domain, in  0.261 seconds
-Domain Reload Profiling: 629ms
-	BeginReloadAssembly (151ms)
+- Finished resetting the current domain, in  0.214 seconds
+Domain Reload Profiling: 533ms
+	BeginReloadAssembly (130ms)
 		ExecutionOrderSort (0ms)
 		DisableScriptedObjects (0ms)
 		BackupInstance (0ms)
 		ReleaseScriptingObjects (0ms)
-		CreateAndSetChildDomain (2ms)
-	RebuildCommonClasses (28ms)
-	RebuildNativeTypeToScriptingClass (7ms)
-	initialDomainReloadingComplete (50ms)
-	LoadAllAssembliesAndSetupDomain (132ms)
-		LoadAssemblies (146ms)
+		CreateAndSetChildDomain (1ms)
+	RebuildCommonClasses (24ms)
+	RebuildNativeTypeToScriptingClass (6ms)
+	initialDomainReloadingComplete (45ms)
+	LoadAllAssembliesAndSetupDomain (114ms)
+		LoadAssemblies (128ms)
 		RebuildTransferFunctionScriptingTraits (0ms)
-		AnalyzeDomain (130ms)
-			TypeCache.Refresh (127ms)
-				TypeCache.ScanAssembly (112ms)
+		AnalyzeDomain (112ms)
+			TypeCache.Refresh (110ms)
+				TypeCache.ScanAssembly (98ms)
 			ScanForSourceGeneratedMonoScriptInfo (0ms)
 			ResolveRequiredComponents (1ms)
-	FinalizeReload (262ms)
+	FinalizeReload (214ms)
 		ReleaseScriptCaches (0ms)
 		RebuildScriptCaches (0ms)
-		SetupLoadedEditorAssemblies (214ms)
+		SetupLoadedEditorAssemblies (175ms)
 			LogAssemblyErrors (0ms)
-			InitializePlatformSupportModulesInManaged (11ms)
-			SetLoadedEditorAssemblies (10ms)
+			InitializePlatformSupportModulesInManaged (9ms)
+			SetLoadedEditorAssemblies (6ms)
 			RefreshPlugins (0ms)
 			BeforeProcessingInitializeOnLoad (2ms)
-			ProcessInitializeOnLoadAttributes (145ms)
-			ProcessInitializeOnLoadMethodAttributes (46ms)
+			ProcessInitializeOnLoadAttributes (121ms)
+			ProcessInitializeOnLoadMethodAttributes (37ms)
 			AfterProcessingInitializeOnLoad (0ms)
 			EditorAssembliesLoaded (0ms)
 		ExecutionOrderSort2 (0ms)
@@ -119,50 +119,50 @@ Domain Reload Profiling: 629ms
 Worker process is ready to serve import requests
 Caller must complete domain reload
 Begin MonoManager ReloadAssembly
-- Loaded All Assemblies, in  1.185 seconds
+- Loaded All Assemblies, in  1.626 seconds
 Native extension for WindowsStandalone target not found
 Mono: successfully reloaded assembly
-- Finished resetting the current domain, in  1.264 seconds
-Domain Reload Profiling: 2447ms
-	BeginReloadAssembly (266ms)
+- Finished resetting the current domain, in  0.687 seconds
+Domain Reload Profiling: 2312ms
+	BeginReloadAssembly (145ms)
 		ExecutionOrderSort (0ms)
-		DisableScriptedObjects (7ms)
+		DisableScriptedObjects (4ms)
 		BackupInstance (0ms)
 		ReleaseScriptingObjects (0ms)
-		CreateAndSetChildDomain (57ms)
-	RebuildCommonClasses (38ms)
-	RebuildNativeTypeToScriptingClass (8ms)
-	initialDomainReloadingComplete (45ms)
-	LoadAllAssembliesAndSetupDomain (826ms)
-		LoadAssemblies (692ms)
+		CreateAndSetChildDomain (21ms)
+	RebuildCommonClasses (21ms)
+	RebuildNativeTypeToScriptingClass (7ms)
+	initialDomainReloadingComplete (33ms)
+	LoadAllAssembliesAndSetupDomain (1418ms)
+		LoadAssemblies (1304ms)
 		RebuildTransferFunctionScriptingTraits (0ms)
-		AnalyzeDomain (284ms)
-			TypeCache.Refresh (247ms)
-				TypeCache.ScanAssembly (207ms)
-			ScanForSourceGeneratedMonoScriptInfo (27ms)
-			ResolveRequiredComponents (7ms)
-	FinalizeReload (1264ms)
+		AnalyzeDomain (212ms)
+			TypeCache.Refresh (188ms)
+				TypeCache.ScanAssembly (108ms)
+			ScanForSourceGeneratedMonoScriptInfo (17ms)
+			ResolveRequiredComponents (4ms)
+	FinalizeReload (687ms)
 		ReleaseScriptCaches (0ms)
 		RebuildScriptCaches (0ms)
-		SetupLoadedEditorAssemblies (1048ms)
+		SetupLoadedEditorAssemblies (579ms)
 			LogAssemblyErrors (0ms)
-			InitializePlatformSupportModulesInManaged (11ms)
-			SetLoadedEditorAssemblies (6ms)
+			InitializePlatformSupportModulesInManaged (7ms)
+			SetLoadedEditorAssemblies (3ms)
 			RefreshPlugins (0ms)
-			BeforeProcessingInitializeOnLoad (123ms)
-			ProcessInitializeOnLoadAttributes (860ms)
-			ProcessInitializeOnLoadMethodAttributes (35ms)
-			AfterProcessingInitializeOnLoad (12ms)
-			EditorAssembliesLoaded (1ms)
+			BeforeProcessingInitializeOnLoad (76ms)
+			ProcessInitializeOnLoadAttributes (468ms)
+			ProcessInitializeOnLoadMethodAttributes (18ms)
+			AfterProcessingInitializeOnLoad (6ms)
+			EditorAssembliesLoaded (0ms)
 		ExecutionOrderSort2 (0ms)
-		AwakeInstancesAfterBackupRestoration (9ms)
-Launched and connected shader compiler UnityShaderCompiler.exe after 0.12 seconds
-Refreshing native plugins compatible for Editor in 3.85 ms, found 3 plugins.
+		AwakeInstancesAfterBackupRestoration (4ms)
+Launched and connected shader compiler UnityShaderCompiler.exe after 0.07 seconds
+Refreshing native plugins compatible for Editor in 2.07 ms, found 3 plugins.
 Preloading 0 native plugins for Editor in 0.00 ms.
-Unloading 4253 Unused Serialized files (Serialized files now loaded: 0)
-Unloading 22 unused Assets / (112.2 KB). Loaded Objects now: 4729.
-Memory consumption went from 159.7 MB to 159.6 MB.
-Total: 8.988600 ms (FindLiveObjects: 0.614600 ms CreateObjectMapping: 0.275000 ms MarkObjects: 7.670700 ms  DeleteObjects: 0.422900 ms)
+Unloading 4256 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 22 unused Assets / (112.2 KB). Loaded Objects now: 4732.
+Memory consumption went from 159.5 MB to 159.4 MB.
+Total: 5.803600 ms (FindLiveObjects: 0.502800 ms CreateObjectMapping: 0.316200 ms MarkObjects: 4.754300 ms  DeleteObjects: 0.229000 ms)
 
 AssetImportParameters requested are different than current active one (requested -> active):
   custom:container-demuxer-ogg: 62fdf1f143b41e24485cea50d1cbac27 -> 
@@ -179,27 +179,359 @@ AssetImportParameters requested are different than current active one (requested
   custom:audio-encoder-webm-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
 ========================================================================
 Received Import Request.
-  Time since last request: 4500.796122 seconds.
-  path: Assets/Pinball_prefab.prefab
-  artifactKey: Guid(6257bb711fb736c4698c60f81e225883) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
-Start importing Assets/Pinball_prefab.prefab using Guid(6257bb711fb736c4698c60f81e225883) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+  Time since last request: 12376.087955 seconds.
+  path: Assets/dup_Pinball.prefab
+  artifactKey: Guid(7cbb8d8ceded06f4e92dfe855ac2e6bd) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/dup_Pinball.prefab using Guid(7cbb8d8ceded06f4e92dfe855ac2e6bd) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
 [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
- -> (artifact id: '369501f81c08fca14d10580262b5d68c') in 0.143691 seconds
+ -> (artifact id: '08b90f6be3f81594b16d4f057a6c7836') in 0.087087 seconds
 Number of updated asset objects reloaded before import = 0
-Number of asset objects unloaded after import = 20
+Number of asset objects unloaded after import = 19
 ========================================================================
 Received Import Request.
-  Time since last request: 0.000070 seconds.
+  Time since last request: 0.000092 seconds.
+  path: Assets/New Physic Material.physicMaterial
+  artifactKey: Guid(c728041b91fbf6e4a83acd8a977ee652) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/New Physic Material.physicMaterial using Guid(c728041b91fbf6e4a83acd8a977ee652) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+ -> (artifact id: '63a81810346bb0d498eeb9254b06f22f') in 0.001639 seconds
+Number of updated asset objects reloaded before import = 0
+Number of asset objects unloaded after import = 1
+========================================================================
+Received Import Request.
+  Time since last request: 0.000026 seconds.
   path: Assets/PinballPaddle.fbx
   artifactKey: Guid(a67b37df599a3724398ac0359a246bd5) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
 Start importing Assets/PinballPaddle.fbx using Guid(a67b37df599a3724398ac0359a246bd5) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
 [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
 [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
- -> (artifact id: '1405663931093c87a5a8e2b0a62c6894') in 0.055586 seconds
+ -> (artifact id: '1405663931093c87a5a8e2b0a62c6894') in 0.040495 seconds
 Number of updated asset objects reloaded before import = 0
 Number of asset objects unloaded after import = 7
+========================================================================
+Received Prepare
+Caller must complete domain reload
+Begin MonoManager ReloadAssembly
+- Loaded All Assemblies, in  0.424 seconds
+Native extension for WindowsStandalone target not found
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  0.783 seconds
+Domain Reload Profiling: 1206ms
+	BeginReloadAssembly (148ms)
+		ExecutionOrderSort (0ms)
+		DisableScriptedObjects (3ms)
+		BackupInstance (0ms)
+		ReleaseScriptingObjects (0ms)
+		CreateAndSetChildDomain (32ms)
+	RebuildCommonClasses (20ms)
+	RebuildNativeTypeToScriptingClass (7ms)
+	initialDomainReloadingComplete (22ms)
+	LoadAllAssembliesAndSetupDomain (225ms)
+		LoadAssemblies (283ms)
+		RebuildTransferFunctionScriptingTraits (0ms)
+		AnalyzeDomain (28ms)
+			TypeCache.Refresh (17ms)
+				TypeCache.ScanAssembly (2ms)
+			ScanForSourceGeneratedMonoScriptInfo (5ms)
+			ResolveRequiredComponents (4ms)
+	FinalizeReload (783ms)
+		ReleaseScriptCaches (0ms)
+		RebuildScriptCaches (0ms)
+		SetupLoadedEditorAssemblies (433ms)
+			LogAssemblyErrors (0ms)
+			InitializePlatformSupportModulesInManaged (5ms)
+			SetLoadedEditorAssemblies (3ms)
+			RefreshPlugins (0ms)
+			BeforeProcessingInitializeOnLoad (67ms)
+			ProcessInitializeOnLoadAttributes (311ms)
+			ProcessInitializeOnLoadMethodAttributes (39ms)
+			AfterProcessingInitializeOnLoad (7ms)
+			EditorAssembliesLoaded (0ms)
+		ExecutionOrderSort2 (0ms)
+		AwakeInstancesAfterBackupRestoration (7ms)
+Refreshing native plugins compatible for Editor in 1.58 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Unloading 4200 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 16 unused Assets / (91.5 KB). Loaded Objects now: 4747.
+Memory consumption went from 150.3 MB to 150.2 MB.
+Total: 3.128600 ms (FindLiveObjects: 0.241600 ms CreateObjectMapping: 0.111700 ms MarkObjects: 2.667600 ms  DeleteObjects: 0.106800 ms)
+
+Prepare: number of updated asset objects reloaded= 0
+AssetImportParameters requested are different than current active one (requested -> active):
+  custom:scripting/monoscript/fileName/SkewTextExample.cs: c142d02d70a129e0533975f7c2f96956 -> 
+  custom:container-demuxer-ogg: 62fdf1f143b41e24485cea50d1cbac27 -> 
+  custom:scripting/monoscript/fileName/TMP_TextEventHandler.cs: f5cd9d5a43bfefc8f4fec80e6de896a4 -> 
+  custom:scripting/monoscript/fileName/TextMeshProFloatingText.cs: 92608fa4a6315cd0786d82205e77b697 -> 
+  custom:scripting/monoscript/fileName/GameManager.cs: 9933fbcc6190e2a9171c2ec8808a053e -> 
+  custom:scripting/monoscript/fileName/IRunContext.cs: a5e78a7426f13452a9720042658860fe -> 
+  custom:scripting/monoscript/fileName/PaddleElementalState.cs: 7d462cf541efcaba670952f4d0bb7930 -> 
+  custom:scripting/monoscript/fileName/VertexZoom.cs: 650ab1e81d40126e3edcf737cce646e4 -> 
+  custom:scripting/monoscript/fileName/ElectricPaddleRewardSO.cs: e7d9e7ff182df2e798bfe9f0f925d576 -> 
+  custom:scripting/monoscript/fileName/DamageRewardSO.cs: d70568754ee872090c4cc6c5666a9806 -> 
+  custom:scripting/monoscript/fileName/VertexShakeA.cs: 63ec564c588058369499638dd899e05b -> 
+  custom:scripting/monoscript/fileName/CharacterStat.cs: 62a534e1c618f74b9272133d3b36dc4d -> 
+  custom:scripting/monoscript/fileName/TMP_ExampleScript_01.cs: a9d4be556104ff54e7d240529b3e01dc -> 
+  custom:video-decoder-ogg-theora: a1e56fd34408186e4bbccfd4996cb3dc -> 
+  custom:scripting/monoscript/fileName/TMP_TextEventCheck.cs: 13505d917eab5868c435e0c2986dadfa -> 
+  custom:scripting/monoscript/fileName/TMP_TextSelector_B.cs: ba2be21a7486d37b1011342977a2e49d -> 
+  custom:scripting/monoscript/fileName/Benchmark01.cs: 2d3e2cd961730ab95f139a49a673bace -> 
+  custom:framework-win-MediaFoundation: 216162199b28c13a410421893ffa2e32 -> 
+  custom:scripting/monoscript/fileName/BallElementalState.cs: c921439c2c1dc239e9deecd6fd733014 -> 
+  custom:scripting/monoscript/fileName/IPowerup.cs: 42c06e1e3d66ba20aae20c25c19e962f -> 
+  custom:scripting/monoscript/fileName/XPGravityRewardSO.cs: 9f7daedefd48a40d3221e4c8b3eb2420 -> 
+  custom:scripting/monoscript/fileName/Benchmark02.cs: 5640963252ce70910e726415f869ced6 -> 
+  custom:scripting/monoscript/fileName/IDamageNumberSystem.cs: e02e72230221adf5e333ebf971331a52 -> 
+  custom:scripting/monoscript/fileName/EarthPaddleRewardSO.cs: 9fdf8885422cda82fd2c56ab87615514 -> 
+  custom:scripting/monoscript/fileName/DropdownSample.cs: 0a92251794e5f10400149f96c3c59e5d -> 
+  custom:scripting/monoscript/fileName/Ball.cs: 049c2654812ca44acca88f91a5e04467 -> 
+  custom:scripting/monoscript/fileName/BallDuplicateRewardSO.cs: e5093c5d6bf00624e4eb97b820a77425 -> 
+  custom:scripting/monoscript/fileName/WarpTextExample.cs: 2663459c266363641981c7d17b698d7f -> 
+  custom:CustomObjectIndexerAttribute: 9a22284fe3817be447336de3de66b15e -> 
+  custom:scripting/monoscript/fileName/Bumper.cs: 16377a75083d22248a8afada0b93f459 -> 
+  custom:scripting/monoscript/fileName/StatModifier.cs: f775b02a03817c1840dd80c2ea70798a -> 
+  custom:container-demuxer-webm: 4f35f7cbe854078d1ac9338744f61a02 -> 
+  custom:scripting/monoscript/fileName/TweenDamageNumberSystem.cs: 5b6a22c26d2dfffa50519f6c6c62a9a9 -> 
+  custom:scripting/monoscript/fileName/BallXPBar.cs: e78fc20a8195de0c4044d41513b83a85 -> 
+  custom:scripting/monoscript/fileName/ChatController.cs: 876d5ccae6e345dd5d9450eb0a748f16 -> 
+  custom:scripting/monoscript/fileName/LifeRewardSO.cs: e0666b06dec3398d3f48471409bda9ec -> 
+  custom:scripting/monoscript/fileName/TextMeshSpawner.cs: 76f28e2ddb031571e6ec62b018f65fa8 -> 
+  custom:scripting/monoscript/fileName/TeleType.cs: 31fa97821c4c70f157ec81d507aa6b62 -> 
+  custom:scripting/monoscript/fileName/XPFormula.cs: 4f663d0705c27a54b5e000aef9b54996 -> 
+  custom:scripting/monoscript/fileName/Benchmark04.cs: 32220b148620e52aa81c13a114862bf4 -> 
+  custom:scripting/monoscript/fileName/FirePaddleRewardSO.cs: cf770c0d1f94c81db680fd1189a91c24 -> 
+  custom:scripting/monoscript/fileName/PowerupSystem.cs: bb066f388c135e7b47706a99174c105e -> 
+  custom:scripting/monoscript/fileName/PaddleEffectData.cs: 71bd91e56cac5a70869d8e2d62794734 -> 
+  custom:scripting/monoscript/fileName/Druid.cs: af589a046da4b956a0c73a896819b6a4 -> 
+  custom:scripting/monoscript/fileName/WaterPaddleRewardSO.cs: a69c348ce30f6a65253b1c636240e63c -> 
+  custom:scripting/monoscript/fileName/EndGame.cs: 2e68180d7ffae97093e10453a67665ae -> 
+  custom:scripting/monoscript/fileName/CharacterUI.cs: 09770519f6e89cdc504b3805c09e9163 -> 
+  custom:scripting/monoscript/fileName/Tank.cs: f4adf4643240b65b30e8ccba982e0451 -> 
+  custom:container-muxer-webm: aa71ff27fc2769a1b78a27578f13a17b -> 
+  custom:video-decoder-webm-vp8: 9c59270c3fd7afecdb556c50c9e8de78 -> 
+  custom:scripting/monoscript/fileName/TMP_PhoneNumberValidator.cs: 7c3049f481e464c6a9a15dee56c3126f -> 
+  custom:scripting/monoscript/fileName/BallShrinkRewardSO.cs: 7f680f6ef975d557902b3a5f1876db7d -> 
+  custom:scripting/monoscript/fileName/BumperAnimScript.cs: 437888718f28119271567c749c682b64 -> 
+  custom:scripting/monoscript/fileName/PinballFlipper.cs: 72585fde4b56163a415c97a3654cb8d2 -> 
+  custom:SearchIndexIgnoredProperties: e643bd26f0fe6173181afceb89e7c659 -> 
+  custom:AudioImporter_EditorPlatform: d09bf68614088b80899f8185d706f6e7 -> 
+  custom:scripting/monoscript/fileName/EnvMapAnimator.cs: 1b4f61c17e4b7283c3ac351aacff9d26 -> 
+  custom:scripting/monoscript/fileName/ShaderPropAnimator.cs: 55ce425812446482e623ff2695c94cb2 -> 
+  custom:scripting/monoscript/fileName/CollectXP.cs: b41919a5ff7684ff2cef0f2206947d16 -> 
+  custom:scripting/monoscript/fileName/SimpleScript.cs: 454caab0c6c050f29b39d82e1d66d0fa -> 
+  custom:scripting/monoscript/fileName/ObjectSpin.cs: 2b96bb2079dd7fa5108d981627a28e1e -> 
+  custom:scripting/monoscript/fileName/Brawler.cs: b638932ea1f082ede2861d8fffbec93e -> 
+  custom:scripting/monoscript/fileName/CameraController.cs: 34b6be4e23ce86dc89786916c5983296 -> 
+  custom:scripting/monoscript/fileName/TMP_TextInfoDebugTool.cs: 3f1709cfb2cc628169113a35b5e9be3f -> 
+  custom:scripting/monoscript/fileName/ProjectSummary.cs: 0a3bd66dfd535b28ae85688b42ef7abb -> 
+  custom:scripting/monoscript/fileName/UIRaycastInspector.cs: e152e62cbaf08e638235e04722bb0ad1 -> 
+  custom:scripting/monoscript/fileName/Warrior.cs: 4e84048ce3cee87bc5501f65e8b1196f -> 
+  custom:scripting/monoscript/fileName/RewardSO.cs: c41508891134779b117075bfbe0ea15f -> 
+  custom:scripting/monoscript/fileName/Assassin.cs: 7e0f43054005d9769ae2a694aa2156c3 -> 
+  custom:scripting/monoscript/fileName/TMP_TextSelector_A.cs: 347309a09d56e367b188a6978f75b424 -> 
+  custom:video-encoder-webm-vp8: eb34c28f22e8b96e1ab97ce403110664 -> 
+  custom:scripting/monoscript/fileName/Mage.cs: e59a82422258cd55c3e5d559fc323312 -> 
+  custom:audio-decoder-ogg-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
+  custom:scripting/monoscript/fileName/BallGrowRewardSO.cs: c2c2ce7b80a0672083732514069f2a2a -> 
+  custom:scripting/monoscript/fileName/VertexJitter.cs: d27eb5498e48714a66aece98da065133 -> 
+  custom:scripting/monoscript/fileName/PinballMusic.cs: 5771121e5170efd0e5f8bedd8268db60 -> 
+  custom:scripting/monoscript/fileName/DamagePerBounceRewardSO.cs: 9394382c5517c12f3d1945000ec5cddd -> 
+  custom:scripting/monoscript/fileName/TextConsoleSimulator.cs: 33fc311abb20b5b0ed8f00e4d86b574e -> 
+  custom:scripting/monoscript/fileName/XPCollectorRegistry.cs: f44e418dbc297d7b96be9844182ba77b -> 
+  custom:scripting/monoscript/fileName/VertexColorCycler.cs: 5f984ca91cf3609293aecc6bc5641572 -> 
+  custom:scripting/monoscript/fileName/TMP_FrameRateCounter.cs: 46f655df8cb483ac5958307137b1585a -> 
+  custom:scripting/monoscript/fileName/VertexShakeB.cs: a6f78c4fcda1a29a1a1c1baefedba9e7 -> 
+  custom:scripting/monoscript/fileName/Item.cs: e2626df27719ae821590ab6ec2382d8f -> 
+  custom:scripting/monoscript/fileName/Pinball.cs: f7e3ba37016b7f0b08cb71e1c293b53a -> 
+  custom:scripting/monoscript/fileName/TMP_UiFrameRateCounter.cs: b01021aea19247f14a98ab338907956a -> 
+  custom:scripting/monoscript/fileName/RewardCatalogSO.cs: 14bd62b3ab3c78ebb8175aa2eb07dcd1 -> 
+  custom:scripting/monoscript/fileName/PinballUIM.cs: 19a83bb0fb21f6a708fc2e0d70f75654 -> 
+  custom:scripting/monoscript/fileName/CombatSystem.cs: a7eb15758fb3908fdd6b7ac134ac6d23 -> 
+  custom:scripting/monoscript/fileName/TMPro_InstructionOverlay.cs: b626d2270e6ebd5c4311585c18b58d8d -> 
+  custom:scripting/monoscript/fileName/Test.cs: 8289d0398bd9a051035a87365428a0e7 -> 
+  custom:scripting/monoscript/fileName/TMP_DigitValidator.cs: ac02af96215ae3951a3cce9e1a8c6085 -> 
+  custom:scripting/monoscript/fileName/XPMultiplierRewardSO.cs: f67edd74db4a5a250c53dcd052b6f2a6 -> 
+  custom:scripting/monoscript/fileName/ScoreMultiplierRewardSO.cs: 61408b5c5f6b6c4cd98635a94244065d -> 
+  custom:scripting/monoscript/fileName/BumperElementalState.cs: 107a9af11591720c6e8be1fe963de4b1 -> 
+  custom:audio-encoder-webm-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
+  custom:scripting/monoscript/fileName/DamageNumberStyleSO.cs: 97acacc91a7cde55baf63a45283cd444 -> 
+  custom:scripting/precompiled-assembly-types:Assembly-CSharp-Editor: a07e3103cfd88ff640896604b09d3183 -> 
+  custom:scripting/monoscript/fileName/Benchmark01_UGUI.cs: 6148cfe2627b7708298f301788144139 -> 
+  custom:scripting/precompiled-assembly-types:Assembly-CSharp: 70cb567f7c6bfc39638520b44d87c2bc -> 
+  custom:scripting/monoscript/fileName/BaseCharacter.cs: 4b95a71b05a8694348fb36d108d3ee5e -> 
+  custom:scripting/monoscript/fileName/Benchmark03.cs: 17cc87e0529ac71d909a946afb47a274 -> 
+========================================================================
+Received Prepare
+Caller must complete domain reload
+Begin MonoManager ReloadAssembly
+- Loaded All Assemblies, in  0.408 seconds
+Native extension for WindowsStandalone target not found
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  1.171 seconds
+Domain Reload Profiling: 1578ms
+	BeginReloadAssembly (128ms)
+		ExecutionOrderSort (0ms)
+		DisableScriptedObjects (3ms)
+		BackupInstance (0ms)
+		ReleaseScriptingObjects (0ms)
+		CreateAndSetChildDomain (31ms)
+	RebuildCommonClasses (24ms)
+	RebuildNativeTypeToScriptingClass (6ms)
+	initialDomainReloadingComplete (19ms)
+	LoadAllAssembliesAndSetupDomain (230ms)
+		LoadAssemblies (269ms)
+		RebuildTransferFunctionScriptingTraits (0ms)
+		AnalyzeDomain (20ms)
+			TypeCache.Refresh (9ms)
+				TypeCache.ScanAssembly (0ms)
+			ScanForSourceGeneratedMonoScriptInfo (6ms)
+			ResolveRequiredComponents (4ms)
+	FinalizeReload (1171ms)
+		ReleaseScriptCaches (0ms)
+		RebuildScriptCaches (0ms)
+		SetupLoadedEditorAssemblies (783ms)
+			LogAssemblyErrors (0ms)
+			InitializePlatformSupportModulesInManaged (5ms)
+			SetLoadedEditorAssemblies (3ms)
+			RefreshPlugins (0ms)
+			BeforeProcessingInitializeOnLoad (116ms)
+			ProcessInitializeOnLoadAttributes (596ms)
+			ProcessInitializeOnLoadMethodAttributes (50ms)
+			AfterProcessingInitializeOnLoad (14ms)
+			EditorAssembliesLoaded (0ms)
+		ExecutionOrderSort2 (0ms)
+		AwakeInstancesAfterBackupRestoration (10ms)
+Refreshing native plugins compatible for Editor in 2.11 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Unloading 4200 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 16 unused Assets / (83.4 KB). Loaded Objects now: 4750.
+Memory consumption went from 150.3 MB to 150.2 MB.
+Total: 2.755800 ms (FindLiveObjects: 0.197500 ms CreateObjectMapping: 0.095100 ms MarkObjects: 2.381100 ms  DeleteObjects: 0.081600 ms)
+
+Prepare: number of updated asset objects reloaded= 0
+AssetImportParameters requested are different than current active one (requested -> active):
+  custom:scripting/monoscript/fileName/SkewTextExample.cs: c142d02d70a129e0533975f7c2f96956 -> 
+  custom:container-demuxer-ogg: 62fdf1f143b41e24485cea50d1cbac27 -> 
+  custom:scripting/monoscript/fileName/TMP_TextEventHandler.cs: f5cd9d5a43bfefc8f4fec80e6de896a4 -> 
+  custom:scripting/monoscript/fileName/TextMeshProFloatingText.cs: 92608fa4a6315cd0786d82205e77b697 -> 
+  custom:scripting/monoscript/fileName/GameManager.cs: 9933fbcc6190e2a9171c2ec8808a053e -> 
+  custom:scripting/monoscript/fileName/IRunContext.cs: a5e78a7426f13452a9720042658860fe -> 
+  custom:scripting/monoscript/fileName/PaddleElementalState.cs: 7d462cf541efcaba670952f4d0bb7930 -> 
+  custom:scripting/monoscript/fileName/VertexZoom.cs: 650ab1e81d40126e3edcf737cce646e4 -> 
+  custom:scripting/monoscript/fileName/ElectricPaddleRewardSO.cs: e7d9e7ff182df2e798bfe9f0f925d576 -> 
+  custom:scripting/monoscript/fileName/DamageRewardSO.cs: d70568754ee872090c4cc6c5666a9806 -> 
+  custom:scripting/monoscript/fileName/VertexShakeA.cs: 63ec564c588058369499638dd899e05b -> 
+  custom:scripting/monoscript/fileName/CharacterStat.cs: 62a534e1c618f74b9272133d3b36dc4d -> 
+  custom:scripting/monoscript/fileName/TMP_ExampleScript_01.cs: a9d4be556104ff54e7d240529b3e01dc -> 
+  custom:video-decoder-ogg-theora: a1e56fd34408186e4bbccfd4996cb3dc -> 
+  custom:scripting/monoscript/fileName/TMP_TextEventCheck.cs: 13505d917eab5868c435e0c2986dadfa -> 
+  custom:scripting/monoscript/fileName/TMP_TextSelector_B.cs: ba2be21a7486d37b1011342977a2e49d -> 
+  custom:scripting/monoscript/fileName/Benchmark01.cs: 2d3e2cd961730ab95f139a49a673bace -> 
+  custom:framework-win-MediaFoundation: 216162199b28c13a410421893ffa2e32 -> 
+  custom:scripting/monoscript/fileName/BallElementalState.cs: c921439c2c1dc239e9deecd6fd733014 -> 
+  custom:scripting/monoscript/fileName/IPowerup.cs: 42c06e1e3d66ba20aae20c25c19e962f -> 
+  custom:scripting/monoscript/fileName/XPGravityRewardSO.cs: 9f7daedefd48a40d3221e4c8b3eb2420 -> 
+  custom:scripting/monoscript/fileName/Benchmark02.cs: 5640963252ce70910e726415f869ced6 -> 
+  custom:scripting/monoscript/fileName/IDamageNumberSystem.cs: e02e72230221adf5e333ebf971331a52 -> 
+  custom:scripting/monoscript/fileName/EarthPaddleRewardSO.cs: 9fdf8885422cda82fd2c56ab87615514 -> 
+  custom:scripting/monoscript/fileName/DropdownSample.cs: 0a92251794e5f10400149f96c3c59e5d -> 
+  custom:scripting/monoscript/fileName/Ball.cs: 049c2654812ca44acca88f91a5e04467 -> 
+  custom:scripting/monoscript/fileName/BallDuplicateRewardSO.cs: e5093c5d6bf00624e4eb97b820a77425 -> 
+  custom:scripting/monoscript/fileName/WarpTextExample.cs: 2663459c266363641981c7d17b698d7f -> 
+  custom:CustomObjectIndexerAttribute: 9a22284fe3817be447336de3de66b15e -> 
+  custom:scripting/monoscript/fileName/Bumper.cs: 16377a75083d22248a8afada0b93f459 -> 
+  custom:scripting/monoscript/fileName/StatModifier.cs: f775b02a03817c1840dd80c2ea70798a -> 
+  custom:container-demuxer-webm: 4f35f7cbe854078d1ac9338744f61a02 -> 
+  custom:scripting/monoscript/fileName/TweenDamageNumberSystem.cs: 5b6a22c26d2dfffa50519f6c6c62a9a9 -> 
+  custom:scripting/monoscript/fileName/BallXPBar.cs: e78fc20a8195de0c4044d41513b83a85 -> 
+  custom:scripting/monoscript/fileName/ChatController.cs: 876d5ccae6e345dd5d9450eb0a748f16 -> 
+  custom:scripting/monoscript/fileName/LifeRewardSO.cs: e0666b06dec3398d3f48471409bda9ec -> 
+  custom:scripting/monoscript/fileName/TextMeshSpawner.cs: 76f28e2ddb031571e6ec62b018f65fa8 -> 
+  custom:scripting/monoscript/fileName/TeleType.cs: 31fa97821c4c70f157ec81d507aa6b62 -> 
+  custom:scripting/monoscript/fileName/XPFormula.cs: 4f663d0705c27a54b5e000aef9b54996 -> 
+  custom:scripting/monoscript/fileName/Benchmark04.cs: 32220b148620e52aa81c13a114862bf4 -> 
+  custom:scripting/monoscript/fileName/FirePaddleRewardSO.cs: cf770c0d1f94c81db680fd1189a91c24 -> 
+  custom:scripting/monoscript/fileName/PowerupSystem.cs: bb066f388c135e7b47706a99174c105e -> 
+  custom:scripting/monoscript/fileName/PaddleEffectData.cs: 71bd91e56cac5a70869d8e2d62794734 -> 
+  custom:scripting/monoscript/fileName/Druid.cs: af589a046da4b956a0c73a896819b6a4 -> 
+  custom:scripting/monoscript/fileName/WaterPaddleRewardSO.cs: a69c348ce30f6a65253b1c636240e63c -> 
+  custom:scripting/monoscript/fileName/EndGame.cs: 2e68180d7ffae97093e10453a67665ae -> 
+  custom:scripting/monoscript/fileName/CharacterUI.cs: 09770519f6e89cdc504b3805c09e9163 -> 
+  custom:scripting/monoscript/fileName/Tank.cs: f4adf4643240b65b30e8ccba982e0451 -> 
+  custom:container-muxer-webm: aa71ff27fc2769a1b78a27578f13a17b -> 
+  custom:video-decoder-webm-vp8: 9c59270c3fd7afecdb556c50c9e8de78 -> 
+  custom:scripting/monoscript/fileName/TMP_PhoneNumberValidator.cs: 7c3049f481e464c6a9a15dee56c3126f -> 
+  custom:scripting/monoscript/fileName/BallShrinkRewardSO.cs: 7f680f6ef975d557902b3a5f1876db7d -> 
+  custom:scripting/monoscript/fileName/BumperAnimScript.cs: 437888718f28119271567c749c682b64 -> 
+  custom:scripting/monoscript/fileName/PinballFlipper.cs: 72585fde4b56163a415c97a3654cb8d2 -> 
+  custom:SearchIndexIgnoredProperties: e643bd26f0fe6173181afceb89e7c659 -> 
+  custom:AudioImporter_EditorPlatform: d09bf68614088b80899f8185d706f6e7 -> 
+  custom:scripting/monoscript/fileName/EnvMapAnimator.cs: 1b4f61c17e4b7283c3ac351aacff9d26 -> 
+  custom:scripting/monoscript/fileName/ShaderPropAnimator.cs: 55ce425812446482e623ff2695c94cb2 -> 
+  custom:scripting/monoscript/fileName/CollectXP.cs: b41919a5ff7684ff2cef0f2206947d16 -> 
+  custom:scripting/monoscript/fileName/SimpleScript.cs: 454caab0c6c050f29b39d82e1d66d0fa -> 
+  custom:scripting/monoscript/fileName/ObjectSpin.cs: 2b96bb2079dd7fa5108d981627a28e1e -> 
+  custom:scripting/monoscript/fileName/Brawler.cs: b638932ea1f082ede2861d8fffbec93e -> 
+  custom:scripting/monoscript/fileName/CameraController.cs: 34b6be4e23ce86dc89786916c5983296 -> 
+  custom:scripting/monoscript/fileName/TMP_TextInfoDebugTool.cs: 3f1709cfb2cc628169113a35b5e9be3f -> 
+  custom:scripting/monoscript/fileName/ProjectSummary.cs: 0a3bd66dfd535b28ae85688b42ef7abb -> 
+  custom:scripting/monoscript/fileName/UIRaycastInspector.cs: e152e62cbaf08e638235e04722bb0ad1 -> 
+  custom:scripting/monoscript/fileName/Warrior.cs: 4e84048ce3cee87bc5501f65e8b1196f -> 
+  custom:scripting/monoscript/fileName/RewardSO.cs: c41508891134779b117075bfbe0ea15f -> 
+  custom:scripting/monoscript/fileName/Assassin.cs: 7e0f43054005d9769ae2a694aa2156c3 -> 
+  custom:scripting/monoscript/fileName/TMP_TextSelector_A.cs: 347309a09d56e367b188a6978f75b424 -> 
+  custom:video-encoder-webm-vp8: eb34c28f22e8b96e1ab97ce403110664 -> 
+  custom:scripting/monoscript/fileName/Mage.cs: e59a82422258cd55c3e5d559fc323312 -> 
+  custom:audio-decoder-ogg-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
+  custom:scripting/monoscript/fileName/BallGrowRewardSO.cs: c2c2ce7b80a0672083732514069f2a2a -> 
+  custom:scripting/monoscript/fileName/VertexJitter.cs: d27eb5498e48714a66aece98da065133 -> 
+  custom:scripting/monoscript/fileName/PinballMusic.cs: 5771121e5170efd0e5f8bedd8268db60 -> 
+  custom:scripting/monoscript/fileName/DamagePerBounceRewardSO.cs: 9394382c5517c12f3d1945000ec5cddd -> 
+  custom:scripting/monoscript/fileName/TextConsoleSimulator.cs: 33fc311abb20b5b0ed8f00e4d86b574e -> 
+  custom:scripting/monoscript/fileName/XPCollectorRegistry.cs: f44e418dbc297d7b96be9844182ba77b -> 
+  custom:scripting/monoscript/fileName/VertexColorCycler.cs: 5f984ca91cf3609293aecc6bc5641572 -> 
+  custom:scripting/monoscript/fileName/TMP_FrameRateCounter.cs: 46f655df8cb483ac5958307137b1585a -> 
+  custom:scripting/monoscript/fileName/VertexShakeB.cs: a6f78c4fcda1a29a1a1c1baefedba9e7 -> 
+  custom:scripting/monoscript/fileName/Item.cs: e2626df27719ae821590ab6ec2382d8f -> 
+  custom:scripting/monoscript/fileName/Pinball.cs: f7e3ba37016b7f0b08cb71e1c293b53a -> 
+  custom:scripting/monoscript/fileName/TMP_UiFrameRateCounter.cs: b01021aea19247f14a98ab338907956a -> 
+  custom:scripting/monoscript/fileName/RewardCatalogSO.cs: 14bd62b3ab3c78ebb8175aa2eb07dcd1 -> 
+  custom:scripting/monoscript/fileName/PinballUIM.cs: 19a83bb0fb21f6a708fc2e0d70f75654 -> 
+  custom:scripting/monoscript/fileName/CombatSystem.cs: a7eb15758fb3908fdd6b7ac134ac6d23 -> 
+  custom:scripting/monoscript/fileName/TMPro_InstructionOverlay.cs: b626d2270e6ebd5c4311585c18b58d8d -> 
+  custom:scripting/monoscript/fileName/Test.cs: 8289d0398bd9a051035a87365428a0e7 -> 
+  custom:scripting/monoscript/fileName/TMP_DigitValidator.cs: ac02af96215ae3951a3cce9e1a8c6085 -> 
+  custom:scripting/monoscript/fileName/XPMultiplierRewardSO.cs: f67edd74db4a5a250c53dcd052b6f2a6 -> 
+  custom:scripting/monoscript/fileName/ScoreMultiplierRewardSO.cs: 61408b5c5f6b6c4cd98635a94244065d -> 
+  custom:scripting/monoscript/fileName/BumperElementalState.cs: 107a9af11591720c6e8be1fe963de4b1 -> 
+  custom:audio-encoder-webm-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
+  custom:scripting/monoscript/fileName/DamageNumberStyleSO.cs: 97acacc91a7cde55baf63a45283cd444 -> 
+  custom:scripting/precompiled-assembly-types:Assembly-CSharp-Editor: c78ac2104bc8b21312ff0a81919f8c57 -> 
+  custom:scripting/monoscript/fileName/Benchmark01_UGUI.cs: 6148cfe2627b7708298f301788144139 -> 
+  custom:scripting/precompiled-assembly-types:Assembly-CSharp: 70cb567f7c6bfc39638520b44d87c2bc -> 
+  custom:scripting/monoscript/fileName/BaseCharacter.cs: 4b95a71b05a8694348fb36d108d3ee5e -> 
+  custom:scripting/monoscript/fileName/Benchmark03.cs: 17cc87e0529ac71d909a946afb47a274 -> 
+========================================================================
+Received Import Request.
+  Time since last request: 2629.121572 seconds.
+  path: Assets/dup_Pinball.prefab
+  artifactKey: Guid(7cbb8d8ceded06f4e92dfe855ac2e6bd) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/dup_Pinball.prefab using Guid(7cbb8d8ceded06f4e92dfe855ac2e6bd) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+[PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+ -> (artifact id: 'edbe18c5bedba499d58acefd8ddc4afc') in 0.110152 seconds
+Number of updated asset objects reloaded before import = 0
+Number of asset objects unloaded after import = 19
+========================================================================
+Received Import Request.
+  Time since last request: 0.000044 seconds.
+  path: Assets/Pinball.prefab
+  artifactKey: Guid(f2319656136478243baaf8bb86267644) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/Pinball.prefab using Guid(f2319656136478243baaf8bb86267644) Importer(815301076,1909f56bfc062723c751e8b465ee728b) [PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+[PhysX] Initialized MultithreadedTaskDispatcher with 24 workers.
+ -> (artifact id: '0a03c680fa0dbc6270d9be13db3aa18a') in 0.019746 seconds
+Number of updated asset objects reloaded before import = 0
+Number of asset objects unloaded after import = 19
 Editor requested this worker to shutdown with reason: Scaling down because of idle timeout
-TcpMessagingSession - receive error: operation aborted. errorcode: 995, details: The I/O operation has been aborted because of either a thread exit or an application request.
+TcpMessagingSession - receive error
+AssetImportWorkerClient::OnTransportError - code=2 error=End of file
 AssetImportWorker is now disconnected from the server
 Process exiting
 Exiting without the bug reporter. Application will terminate with return code 0

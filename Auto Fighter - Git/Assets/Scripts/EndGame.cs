@@ -25,11 +25,9 @@ public class EndGame : MonoBehaviour
     {
         var ball = col.gameObject.GetComponent<Ball>();
 
-        if (pm.CurrentState == PinballState.Play && ball.isActive)
+        if (pm.CurrentState == PinballState.Play && ball.IsActive)
         {
-            pm.ballCount--;
-            ball.isActive = false;
-            Debug.Log("blob");
+            pm.DisableBall(ball);
         }
 
         Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();

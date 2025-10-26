@@ -371,11 +371,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &58647141
 Rigidbody:
@@ -1227,11 +1227,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &161549916
 Rigidbody:
@@ -1418,11 +1418,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &230727672
 Rigidbody:
@@ -1609,11 +1609,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &235030869
 Rigidbody:
@@ -2108,11 +2108,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &320523515
 Rigidbody:
@@ -2442,11 +2442,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &370638393
 Rigidbody:
@@ -3257,11 +3257,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &444670438
 Rigidbody:
@@ -3763,11 +3763,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &502025819
 Rigidbody:
@@ -3954,11 +3954,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &504766960
 Rigidbody:
@@ -4364,11 +4364,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &542034332
 Rigidbody:
@@ -5191,11 +5191,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &641098136
 Rigidbody:
@@ -5382,11 +5382,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &651330590
 Rigidbody:
@@ -5763,11 +5763,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &660032094
 Rigidbody:
@@ -6059,11 +6059,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &721854637
 Rigidbody:
@@ -6564,11 +6564,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &812167330
 Rigidbody:
@@ -6869,11 +6869,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &832111590
 Rigidbody:
@@ -7060,11 +7060,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &861735642
 Rigidbody:
@@ -7348,11 +7348,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &875203539
 Rigidbody:
@@ -7661,11 +7661,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &903953532
 Rigidbody:
@@ -7954,11 +7954,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &959695433
 Rigidbody:
@@ -8247,11 +8247,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &984502549
 Rigidbody:
@@ -8438,11 +8438,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1033672090
 Rigidbody:
@@ -8983,11 +8983,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1077050414
 Rigidbody:
@@ -9174,11 +9174,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1105156949
 Rigidbody:
@@ -9499,11 +9499,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1140893315
 Rigidbody:
@@ -9824,11 +9824,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1191178952
 Rigidbody:
@@ -10015,11 +10015,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1194192834
 Rigidbody:
@@ -10243,11 +10243,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1209225356
 Rigidbody:
@@ -10868,11 +10868,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1342071121
 Rigidbody:
@@ -11193,11 +11193,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1383671584
 Rigidbody:
@@ -11459,11 +11459,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1404027271
 Rigidbody:
@@ -12450,11 +12450,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1490304020
 Rigidbody:
@@ -12709,11 +12709,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1495471492
 Rigidbody:
@@ -13148,11 +13148,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1537585204
 Rigidbody:
@@ -13473,11 +13473,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1589672261
 Rigidbody:
@@ -13779,11 +13779,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1623978258
 Rigidbody:
@@ -14109,11 +14109,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1660847130
 Rigidbody:
@@ -14434,11 +14434,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1712966704
 Rigidbody:
@@ -14681,11 +14681,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1741008203
 Rigidbody:
@@ -15205,11 +15205,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1817394877
 Rigidbody:
@@ -16181,11 +16181,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1886162891
 Rigidbody:
@@ -16372,11 +16372,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1887613498
 Rigidbody:
@@ -17202,11 +17202,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1983909962
 Rigidbody:
@@ -17393,11 +17393,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 65
   maxHealth: 65
   cooldown: 10
   type: 0
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!54 &1988304704
 Rigidbody:
@@ -17957,33 +17957,40 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f9971b4154ba4994b889d0809d97d8f7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chargeBind: 32
-  leftPaddleBind: 97
-  rightPaddleBind: 100
+  chargeKey: 32
+  leftPaddleKey: 97
+  rightPaddleKey: 100
   curXP: 0
   maxXP: 0
   ball: {fileID: 1593254472438865430}
-  uim: {fileID: 655282715}
-  ballClone: {fileID: 4442561586474914805, guid: 6257bb711fb736c4698c60f81e225883, type: 3}
+  ui: {fileID: 655282715}
+  ballClonePrefab: {fileID: 9000603096195884635, guid: f2319656136478243baaf8bb86267644, type: 3}
   invisWalls: {fileID: 239149409}
   leftPaddle: {fileID: 395541843}
   rightPaddle: {fileID: 1835668970}
-  chargePercentage: 0
-  ballCount: 0
+  chargeMaxCharging: 1.5
+  chargeMaxPush: 1
+  minChargeToLaunch: 0.1
+  chargeToEnterPush: 0.65
   startingLives: 3
   maxLives: 5
-  noBallResetGrace: 0.2
-  defaultBaseDamage: 5
-  destroyedBumper: 0
-  xpFXPrefab: {fileID: 8695386679933243561, guid: 8991fd01efd18ca48b45e69fe0641baf, type: 3}
-  ballXPScript: {fileID: 1739156359}
-  explosionForce: 50
-  explosionRadius: 3
+  baseScoreMult: 1
+  baseXPMult: 1
+  PowerupDropChance: 0.93
   mainCam: {fileID: 1749743885}
   shakeDuration: 0.15
   shakeStrength: 0.3
   shakeVibrato: 12
   shakeRandomness: 1
+  xpFXPrefab: {fileID: 8695386679933243561, guid: 8991fd01efd18ca48b45e69fe0641baf, type: 3}
+  ballXPScript: {fileID: 1739156359}
+  explosionForce: 50
+  explosionRadius: 3
+  overrideGlobalGravity: 1
+  gravityOverride: {x: 0, y: 0, z: -19.62}
+  noBallResetGrace: 0.2
+  destroyedBumperBonusActive: 0
+  Damage: 5
 --- !u!4 &2110142359
 Transform:
   m_ObjectHideFlags: 0
