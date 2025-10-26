@@ -845,7 +845,7 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (!xpFXPrefab) return;
 
-        int finalXP = Mathf.RoundToInt(xpCount * xpMultiplier * Mathf.Max(1f, damageFactor));
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
 
 
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
@@ -860,7 +860,7 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (!xpFXPrefab) return;
 
-        int finalXP = Mathf.RoundToInt(xpCount * xpMultiplier * Mathf.Max(1f, damageFactor));
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
 
 
         float bonus = Mathf.Max(0f, waterBonusXP) / 100f;
@@ -873,7 +873,8 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (!xpFXPrefab) return;
 
-        int finalXP = Mathf.RoundToInt(xpCount * xpMultiplier * Mathf.Max(1f, damageFactor));
+
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
 
 
         float bonus = Mathf.Max(0f, earthBonusXP) / 100f;

@@ -17964,7 +17964,7 @@ MonoBehaviour:
   maxXP: 0
   ball: {fileID: 1593254472438865430}
   ui: {fileID: 655282715}
-  ballClonePrefab: {fileID: 9000603096195884635, guid: f2319656136478243baaf8bb86267644, type: 3}
+  ballClonePrefab: {fileID: 4442561586474914805, guid: 6257bb711fb736c4698c60f81e225883, type: 3}
   invisWalls: {fileID: 239149409}
   leftPaddle: {fileID: 395541843}
   rightPaddle: {fileID: 1835668970}
@@ -17976,7 +17976,7 @@ MonoBehaviour:
   maxLives: 5
   baseScoreMult: 1
   baseXPMult: 1
-  PowerupDropChance: 0.93
+  PowerupDropChance: 0.06
   mainCam: {fileID: 1749743885}
   shakeDuration: 0.15
   shakeStrength: 0.3
