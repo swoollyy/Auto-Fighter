@@ -31,6 +31,7 @@ public class Bumper : MonoBehaviour
 
     // Per-hit XP/score scaling cache
     private float _lastDmgFactorForXP = 1f;
+    public float LastDmgFactorForXP => _lastDmgFactorForXP;
 
     private Vector3 normal;
 
@@ -165,8 +166,10 @@ public class Bumper : MonoBehaviour
     }
 
     // Applies Earth fissure tick damage and emits Earth XP, using last stored damage factor.
-    public void TakeFissureDamage(float amount)
+    public void TakeFissureDamage(float amount, float damageFactor)
     {
+        _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+
         curHealth -= amount;
 
         GetComponent<BumperAnimScript>()?.BumperHit();
@@ -196,12 +199,14 @@ public class Bumper : MonoBehaviour
     }
 
     // Applies Electric shock damage (with optional propagation), emits XP using last stored factor.
-    public void TakeShockDamage(float amount, bool propogate = false)
+    public void TakeShockDamage(float amount, float damageFactor, bool propogate = false)
     {
+        _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+
         if (propogate)
         {
             var nearest = FindNearestOther();
-            if (nearest) nearest.TakeShockDamage(amount, false);
+            if (nearest) nearest.TakeShockDamage(amount, _lastDmgFactorForXP, false);
         }
 
         curHealth -= amount;

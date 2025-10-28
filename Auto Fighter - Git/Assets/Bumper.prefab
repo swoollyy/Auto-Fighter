@@ -71,7 +71,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6dc669eb99c16234491f3d2c3ea95ec9, type: 2}
+  - {fileID: 2100000, guid: 3887f614cb3a2f74a8124aecbebfac29, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -155,11 +155,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc4e8ea2bdcb8e24389b77d0165665bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitCooldown: 0.08
   curHealth: 100
   maxHealth: 100
   cooldown: 20
   type: 1
+  hitCooldown: 0.08
   contactPointTimeout: 0.25
 --- !u!114 &49357397847346864
 MonoBehaviour:
@@ -186,6 +186,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 31430dae5ce85c24199d630236ba72d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  resetHPBarAlphaToZero: 1
   HPBar: {fileID: 4737981173515937957}
   hpFlashColor: {r: 1, g: 1, b: 1, a: 1}
   hpFlashAlpha: 0.9

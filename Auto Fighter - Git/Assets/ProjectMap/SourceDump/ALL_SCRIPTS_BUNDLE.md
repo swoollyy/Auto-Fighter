@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-10-26T00:12:37.9633710Z (UTC)
+- Generated: 2025-10-27T18:59:38.5537173Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 105
+- Files: 106
 
 ## Assets/BumperAnimScript.cs
 
@@ -12,10 +12,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
 
-[DisallowMultipleComponent]
-[RequireComponent(typeof(Bumper))]
 public class BumperAnimScript : MonoBehaviour
 {
+
     private Material defMaterial;
     private Color defMatColor;
 
@@ -30,7 +29,6 @@ public class BumperAnimScript : MonoBehaviour
     [SerializeField] private int hpPunchVibrato = 9;        // how �wobbly� the punch is
     [SerializeField, Range(0f, 1f)] private float hpPunchElasticity = 0.12f;
     [SerializeField, Range(0f, .1f)] private float genScale = 0.04f; // general scale reduction to keep things in check
-    [SerializeField, Min(0f)] private float hpFillLerpSpeed = 2f;    // lerp speed for HP fill
 
     private Vector3 _defLocalScale;        // default bumper scale
     private Vector3 _hpRTDefaultScale;     // default HP bar rect scale
@@ -41,31 +39,27 @@ public class BumperAnimScript : MonoBehaviour
 
     [SerializeField] private CanvasGroup hpGroup;
 
-    // Initializes UI alpha defaults.
+
     void Awake()
     {
-        if (hpGroup != null) hpGroup.alpha = 0f;
+        if(hpGroup != null) hpGroup.alpha = 0f;
     }
 
-    // Caches materials, UI refs, and defaults for tween resets.
+    // Start is called before the first frame update
     void Start()
     {
-        var renderer = GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            defMaterial = renderer.material;
-            defMatColor = defMaterial.color;
-        }
-
+        defMaterial = GetComponent<Renderer>().material;
+        defMatColor = defMaterial.color;
         bumper = GetComponent<Bumper>();
 
-        if (HPBar != null)
+        if(HPBar != null)
         {
             _hpDefaultColor = HPBar.color;
             _hpRT = HPBar.rectTransform;
+
         }
 
-        if (hpGroup != null)
+        if(hpGroup != null)
         {
             hpGroup.interactable = false;
             hpGroup.blocksRaycasts = false;
@@ -80,17 +74,12 @@ public class BumperAnimScript : MonoBehaviour
             _hpGroupDefaultAlpha = hpGroup.alpha;
     }
 
-    // Smoothly updates HP bar fill amount to match bumper health.
+    // Update is called once per frame
     void Update()
     {
-        if (HPBar == null || bumper == null) return;
-
-        float max = Mathf.Max(0.0001f, bumper.maxHealth);
-        float target = Mathf.Clamp01(bumper.curHealth / max);
-        HPBar.fillAmount = Mathf.MoveTowards(HPBar.fillAmount, target, Time.deltaTime * hpFillLerpSpeed);
+        HPBar.fillAmount = Mathf.MoveTowards(HPBar.fillAmount, bumper.curHealth / bumper.maxHealth, Time.deltaTime * 2);
     }
 
-    // Stops all tweens and restores transforms/materials/alphas to defaults.
     public void ResetTweenState()
     {
         transform.DOKill(false);
@@ -100,45 +89,40 @@ public class BumperAnimScript : MonoBehaviour
         if (hpGroup != null) hpGroup.DOKill(false);
 
         transform.localScale = _defLocalScale;
-        if (_hpRT != null) _hpRT.localScale = _hpRTDefaultScale;
+        if(_hpRT != null) _hpRT.localScale = _hpRTDefaultScale;
 
         if (defMaterial != null) defMaterial.color = defMatColor;
-        if (HPBar != null) HPBar.color = _hpDefaultColor;
+        if(HPBar != null) HPBar.color = _hpDefaultColor;
 
-        if (hpGroup != null)
+
+        if(hpGroup != null)
         {
             hpGroup.alpha = resetHPBarAlphaToZero ? 0f : _hpGroupDefaultAlpha;
             hpGroup.interactable = false;
             hpGroup.blocksRaycasts = false;
         }
+
     }
 
-    // Plays bumper hit feedback (punch scale + material flash) and flashes HP bar.
     public void BumperHit()
     {
         ResetTweenState();
-
         DOTween.Kill(transform);
         transform.DOPunchScale(new Vector3(.3f, .3f, .3f), 0.2f, 2, .1f);
-
-        if (defMaterial != null)
-        {
-            defMaterial.DOColor(Color.white, 0.1f).OnComplete(() =>
-            {
-                defMaterial.DOColor(defMatColor, 0.1f);
-            });
-        }
+        defMaterial.DOColor(Color.white, 0.1f).OnComplete(() => {
+            defMaterial.DOColor(defMatColor, 0.1f);
+        });
 
         FlashHPBar();
     }
 
-    // Flashes the HP bar: quick fade-in, color flash, optional punch, then fade-out.
     private void FlashHPBar()
     {
+
         if (hpGroup != null)
         {
             DOTween.Kill(hpGroup);
-            hpGroup.DOFade(1f, 0.05f).SetUpdate(true);
+            hpGroup.DOFade(1f, 0.05f).SetUpdate(true); // quick pop-in, pause-safe
         }
 
         if (HPBar == null) return;
@@ -151,6 +135,7 @@ public class BumperAnimScript : MonoBehaviour
 
         var half = hpFlashDuration * 0.5f;
 
+        // create seq first
         var seq = DOTween.Sequence().SetId(HPBar);
 
         // 1) flash up to target color
@@ -176,8 +161,11 @@ public class BumperAnimScript : MonoBehaviour
 
         // make the whole sequence run while paused
         seq.SetUpdate(true);
+
     }
+
 }
+
 ```
 
 ## Assets/Editor/ProjectSummary.cs
@@ -2596,21 +2584,6 @@ public sealed class PowerupPickupTween : MonoBehaviour
     public float spawnDuration = 0.35f;
     public Ease spawnEase = Ease.OutBack;
 
-    [Header("Spawn Scatter (world move on XZ)")]
-    public bool scatterOnSpawn = true;
-    [Tooltip("Random distance on XZ.")]
-    public Vector2 scatterDistanceRange = new Vector2(0.6f, 2.2f);
-    [Tooltip("Seconds to reach the scatter target.")]
-    public float scatterDuration = 0.45f;
-    public Ease scatterEase = Ease.OutQuart;
-    [Tooltip("Add a small vertical arc while moving.")]
-    public bool useJumpArc = true;
-    [Tooltip("Vertical jump height (Y).")]
-    public float jumpPower = 0.6f;
-
-    [Tooltip("Optional preferred XZ direction (normalized). If zero, a random direction is used.")]
-    public Vector3 initialDirHint; // set by spawner if you want bias; XZ used, Y ignored
-
     [Header("Idle Hover")]
     public float hoverAmplitude = 0.15f;
     public float hoverHalfCycle = 0.6f;
@@ -2628,29 +2601,13 @@ public sealed class PowerupPickupTween : MonoBehaviour
     private Tweener _hoverTw;
     private Tweener _rotateTw;
     private Tweener _spawnTw;
-    private Tween _scatterTw; // unified to Tween for both DOJump/DOMove
 
-    // Clamps invalid inspector values and normalizes ranges.
-    void OnValidate()
-    {
-        spawnDuration = Mathf.Max(0.01f, spawnDuration);
-        scatterDuration = Mathf.Max(0.01f, scatterDuration);
-        collectDuration = Mathf.Max(0.05f, collectDuration);
-        hoverHalfCycle = Mathf.Max(0.05f, hoverHalfCycle);
-        jumpPower = Mathf.Max(0f, jumpPower);
-
-        if (scatterDistanceRange.y < scatterDistanceRange.x)
-            scatterDistanceRange = new Vector2(scatterDistanceRange.y, scatterDistanceRange.x);
-    }
-
-    // Caches default model and base local position.
     void Awake()
     {
         if (!model) model = transform;
         _baseLocalPos = model.localPosition;
     }
 
-    // Kills all tweens and restores default local transform on disable.
     void OnDisable()
     {
         KillAllTweens();
@@ -2661,7 +2618,6 @@ public sealed class PowerupPickupTween : MonoBehaviour
         }
     }
 
-    // Plays the spawn scale pop, small lift, optional scatter, and starts idle on complete.
     public void PlaySpawn()
     {
         if (!model) return;
@@ -2671,7 +2627,7 @@ public sealed class PowerupPickupTween : MonoBehaviour
         model.localScale = Vector3.one * Mathf.Max(0f, spawnScaleFrom);
 
         _spawnTw = model
-            .DOScale(spawnScaleTo, spawnDuration)
+            .DOScale(spawnScaleTo, Mathf.Max(0.01f, spawnDuration))
             .SetEase(spawnEase)
             .SetUpdate(updateType, independentUpdate)
             .SetLink(gameObject, LinkBehaviour.KillOnDestroy)
@@ -2683,34 +2639,29 @@ public sealed class PowerupPickupTween : MonoBehaviour
              .SetEase(Ease.OutSine)
              .SetUpdate(updateType, independentUpdate)
              .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
-
-        if (scatterOnSpawn)
-            StartScatter();
     }
 
-    // Plays a quick punch scale when collected.
     public void PlayCollect()
     {
         if (!model) return;
 
         model.DOPunchScale(Vector3.one * collectPunchScale,
-                           collectDuration, vibrato: 1, elasticity: 0.5f)
+                           Mathf.Max(0.05f, collectDuration), vibrato: 1, elasticity: 0.5f)
              .SetEase(collectEase)
              .SetUpdate(updateType, independentUpdate)
              .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
     }
 
-    // Returns the punch animation duration used by collectors to time despawn.
     public float GetCollectDuration() => Mathf.Max(0.05f, collectDuration);
 
-    // Starts idle hover and continuous Y rotation.
     private void StartIdle()
     {
         if (!model) return;
 
         if (Mathf.Abs(hoverAmplitude) > 0.0001f)
         {
-            _hoverTw = model.DOLocalMoveY(_baseLocalPos.y + hoverAmplitude, hoverHalfCycle)
+            _hoverTw = model.DOLocalMoveY(_baseLocalPos.y + hoverAmplitude,
+                                          Mathf.Max(0.05f, hoverHalfCycle))
                            .SetEase(hoverEase)
                            .SetLoops(-1, LoopType.Yoyo)
                            .SetUpdate(updateType, independentUpdate)
@@ -2730,50 +2681,12 @@ public sealed class PowerupPickupTween : MonoBehaviour
         }
     }
 
-    // Performs an outward world-space scatter along XZ (jump arc optional).
-    private void StartScatter()
-    {
-        var tr = transform;
-        Vector3 start = tr.position;
-
-        Vector3 dirXZ = initialDirHint;
-        dirXZ.y = 0f;
-        if (dirXZ.sqrMagnitude < 0.0001f)
-        {
-            float yaw = Random.Range(0f, 360f);
-            float rad = yaw * Mathf.Deg2Rad;
-            dirXZ = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
-        }
-        dirXZ.Normalize();
-
-        float dist = Random.Range(scatterDistanceRange.x, scatterDistanceRange.y);
-        Vector3 target = start + dirXZ * dist;
-
-        if (useJumpArc)
-        {
-            _scatterTw = tr.DOJump(target, jumpPower, 1, scatterDuration)
-                           .SetEase(scatterEase)
-                           .SetUpdate(updateType, independentUpdate)
-                           .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
-        }
-        else
-        {
-            _scatterTw = tr.DOMove(target, scatterDuration)
-                           .SetEase(scatterEase)
-                           .SetUpdate(updateType, independentUpdate)
-                           .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
-        }
-    }
-
-    // Kills all active tweens and clears references.
     private void KillAllTweens()
     {
         _spawnTw?.Kill();
         _hoverTw?.Kill();
         _rotateTw?.Kill();
-        _scatterTw?.Kill();
         _spawnTw = _hoverTw = _rotateTw = null;
-        _scatterTw = null;
     }
 }
 ```
@@ -2855,230 +2768,149 @@ public class Assassin : BaseCharacter
 ## Assets/Scripts/Ball.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-/// Pinball ball: damage bookkeeping + stable launch/impulse helpers.
-[DisallowMultipleComponent]
-[RequireComponent(typeof(Rigidbody))]
 public class Ball : MonoBehaviour
 {
     [Header("Damage")]
     [SerializeField] private float baseDamage = 5f;
 
-    // Adds flat damage for N bounces (counted down on impact).
     private int flatBonusDamage;
-    // Persistent damage multiplier (stacking additively like 1.0 + x + y).
     private float damageMultiplier = 1f;
-    // Active temporary bounce-window multiplier.
     private float tempDamageMultiplier = 1f;
-    // Queued temporary multiplier that activates after its countdown finishes.
     private float tempDamageMultiplierStore = 1f;
-    // Active counters for the flat-bonus window.
-    private int bonusBouncesNeeded, bonusBouncesRemaining;
-    // Counters for the queued temp-mult window.
-    private int tmpBonusBouncesNeeded, tmpBonusBouncesRemaining;
+    private int bonusBouncesNeeded;
+    private int bonusBouncesRemaining;
+    private int tmpBonusBouncesNeeded;
+    private int tmpBonusBouncesRemaining;
 
-    private const float DAMAGE_BASELINE = 5f;
 
-    [Header("Launch / Push Tuning")]
-    [Tooltip("Impulse per unit mass (scaled by gravity magnitude) when fully charged.")]
-    [SerializeField] private float fullChargeImpulsePerMass = 9.5f;
-    [Tooltip("0..1 vertical bias applied to launch to help clear the trough.")]
-    [SerializeField, Range(0f, 1f)] private float upBias = 0.15f;
-    [Tooltip("Clamp to ensure the ball always leaves the launcher with at least this speed.")]
-    [SerializeField] private float minLaunchSpeed = 6.0f;
+    // === Glow / Combo UI state ===
+    [Header("Glow")]
+    [SerializeField] private Color glowColor = Color.red; // UI and material "glow" color
+    [SerializeField, Range(0f, 5f)] private float emissionBase = 1.5f; // base emission when no combo
+    [SerializeField, Range(0f, 5f)] private float emissionPerComboStep = 0.30f; // extra intensity per combo step
 
-    [Header("Anti-Stick")]
-    [Tooltip("If speed falls below this value for longer than StickTimeout, kick the ball.")]
-    [SerializeField] private float lowSpeedThreshold = 0.35f;
-    [Tooltip("Seconds at low speed before we kick the ball.")]
-    [SerializeField] private float lowSpeedTimeout = 0.9f;
+    private Renderer _renderer;
+    private Material _runtimeMat; // unique instance so enabling emission doesn't affect shared material
+    private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
-    private Rigidbody rb;
-    private float lowSpeedTimer;
+    // Events so UI can track ball lifecycle and combo changes
+    public static event System.Action<Ball> OnBallActivated;
+    public static event System.Action<Ball> OnBallDeactivated;
+    public event System.Action<Ball> OnComboChanged;
 
-    // Returns/sets the base damage (never negative).
+    // Expose for UI
+    public Color GlowColor
+    {
+        get => glowColor;
+        set
+        {
+            glowColor = value;
+            ApplyGlow();            // immediately reflect new color
+            OnComboChanged?.Invoke(this); // notify UI
+        }
+    }
+
+    public bool IsComboActive => comboActive;
+
+    // At 3 hits: 1.1x, then +0.1 per hit (already used by scoring)
+    public float CurrentComboMultiplierUI => CurrentComboMultiplier;
+
+    // Public intensity for UI (optional visual boosting of the dot)
+    public float EmissionIntensityUI => ComputeEmissionIntensity();
+
+    [SerializeField] private int comboThreshold = 3;                 // hits needed to start combo
+    [SerializeField, Range(0.05f, 1f)] private float comboBonusPerHit = 0.10f; // +0.1x per bumper while active
+    [SerializeField] private LayerMask comboBreakLayers;             // assign your "Wall(s)" layer(s) in Inspector
+
+    private int comboHitStreak;    // consecutive bumper hits
+    private bool comboActive;      // true once threshold reached
+
+    public float CurrentComboMultiplier
+    {
+        get
+        {
+            if (!comboActive) return 1f;
+            // At 3 hits: 1 + 0.1 * (3 - 2) = 1.1; each extra hit adds +0.1
+            int effectiveHits = Mathf.Max(0, comboHitStreak - (comboThreshold - 1));
+            return 1f + comboBonusPerHit * effectiveHits;
+        }
+    }
+
+    private const float DAMAGE_BASELINE = 5f; // level-1 baseline: 5 base dmg @ 1x multipliers
+
     public float BaseDamage
     {
         get => baseDamage;
         set => baseDamage = Mathf.Max(0f, value);
     }
 
-    // Computes the current damage considering flat and multiplier windows.
-    public float CurrentDamage =>
-        Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
+    public float CurrentDamage => Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
 
-    // Returns the ratio vs a fixed baseline to scale score/XP.
-    public float ScoreXpDamageFactor =>
-        Mathf.Max(0f, DAMAGE_BASELINE > 0f ? (CurrentDamage / DAMAGE_BASELINE) : 1f);
+    // Scale score/XP by actual dealt damage vs. baseline (includes flat and multipliers).
+    // e.g., 3 dmg vs 5 baseline => 0.6x score/XP; 6 dmg vs 5 => 1.2x.
+    public float ScoreXpDamageFactor => Mathf.Max(0f, DAMAGE_BASELINE > 0f ? (CurrentDamage / DAMAGE_BASELINE) : 1f);
 
-    // Cache rigidbody and reset state on enable.
-    private void Awake()
-    {
-        rb = GetComponent<Rigidbody>();
-    }
-
-    // Ticks anti-stick monitor; applies a gentle directional nudge if stalled.
-    private void Update()
-    {
-        if (rb == null) return;
-        float speed = rb.velocity.magnitude;
-        if (speed < lowSpeedThreshold)
-        {
-            lowSpeedTimer += Time.unscaledDeltaTime;
-            if (lowSpeedTimer >= lowSpeedTimeout)
-            {
-                KickFromStall(Mathf.Max(minLaunchSpeed * 0.6f, 3.5f));
-                lowSpeedTimer = 0f;
-            }
-        }
-        else
-        {
-            lowSpeedTimer = 0f;
-        }
-    }
-
-    // Adds a persistent damage multiplier (1.0 => no change).
     public void AddDamageMultiplier(float multiplier)
     {
         if (Mathf.Approximately(multiplier, 1f)) return;
         damageMultiplier += multiplier;
     }
 
-    // Adds a flat damage bonus for a number of bounces (overwrites previous).
     public void AddFlatDamage(int flatDamage, int bounces)
     {
-        if (flatDamage == 0 || bounces <= 0) return;
-        flatBonusDamage = flatDamage;
+        if (flatDamage == 0) return;
+        flatBonusDamage = 0;
+        flatBonusDamage += flatDamage;
         bonusBouncesNeeded = bounces;
-        bonusBouncesRemaining = bounces;
+        bonusBouncesRemaining = bonusBouncesNeeded;
     }
 
-    // Queues a temporary multiplier that will flip on after its countdown.
     public void AddTempDamageMultiplier(float multiplier, int bounces)
     {
-        if (bounces <= 0) return;
-        tempDamageMultiplierStore = 1f + multiplier;
+        tempDamageMultiplierStore = 1f;
+        tempDamageMultiplierStore += multiplier;
         tmpBonusBouncesNeeded = bounces;
-        tmpBonusBouncesRemaining = bounces;
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
     }
 
-    // Consumes one bounce across active windows; flips temp-mult when due.
-    public void OnBounceConsumed()
+    public void ConsumeBounceForDamageMods()
     {
-        if (bonusBouncesRemaining > 0 && --bonusBouncesRemaining == 0)
+        bonusBouncesRemaining--;
+        tmpBonusBouncesRemaining--;
+        if (bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
+            return;
+
+        if (bonusBouncesRemaining == 0)
         {
             flatBonusDamage = 0;
         }
-
-        if (tmpBonusBouncesRemaining > 0 && --tmpBonusBouncesRemaining == 0)
+        if (tmpBonusBouncesRemaining > 0)
         {
-            tempDamageMultiplier = tempDamageMultiplierStore;
-            // start a 1-bounce window then clear on next consume
-            tmpBonusBouncesNeeded = 0;
-        }
-        else if (tmpBonusBouncesRemaining == 0 && !Mathf.Approximately(tempDamageMultiplier, 1f))
-        {
-            // window elapsed � clear temp multiplier
             tempDamageMultiplier = 1f;
         }
-    }
-
-    // Applies a gravity/mass-agnostic impulse based on a [0..1] charge value.
-    public void ApplyChargedLaunch(float normalizedCharge)
-    {
-        normalizedCharge = Mathf.Clamp01(normalizedCharge);
-        if (rb == null) return;
-
-        float g = Physics.gravity.magnitude;            // robust to gravity changes
-        float mass = Mathf.Max(0.001f, rb.mass);
-        float impulse = fullChargeImpulsePerMass * mass * (g / 9.81f) * normalizedCharge;
-
-        // forward along the lane with a small up-bias to avoid re-contact
-        Vector3 dir = (transform.forward + Vector3.up * upBias).normalized;
-        rb.AddForce(dir * impulse, ForceMode.Impulse);
-
-        // ensure a minimum ejection speed for consistency
-        if (rb.velocity.magnitude < minLaunchSpeed)
+        else if (tmpBonusBouncesRemaining == 0)
         {
-            rb.velocity = dir * minLaunchSpeed;
+            tempDamageMultiplier = tempDamageMultiplierStore;
+            ResetTempBounceMods();
         }
     }
 
-    // Applies a small corrective nudge when the ball stalls.
-    public void KickFromStall(float speed)
+    private void ResetDamageMods()
     {
-        Vector3 baseDir = rb.velocity.sqrMagnitude > 0.01f ? rb.velocity.normalized : Vector3.forward;
-        baseDir.y = 0f;
-
-        float deflect = Random.Range(120f, 160f);
-        Vector3 newDir = (Quaternion.AngleAxis(deflect, Vector3.up) * baseDir).normalized;
-
-        rb.velocity = newDir * speed;
+        flatBonusDamage = 0;
+        bonusBouncesRemaining = 0;
     }
 
-    // Applies full elemental payload on paddle hit, then applies damage effect.
-    public void OnPaddleHit(PaddleEffectData effect)
+    private void ResetTempBounceMods()
     {
-        var elem = GetComponent<BallElementalState>();
-        if (elem != null)
-        {
-            switch (effect.Element)
-            {
-                case PaddleState.Fire:
-                    elem.SetFireState(effect.FireBonusDamage, effect.FireBurnDamage, effect.FireBurnDuration,
-                                      effect.FireBounceDuration, effect.FireCanExplode, effect.FireExplosionSize,
-                                      effect.FireExplosionDamageFlat, effect.FireIsCursed);
-                    break;
-                case PaddleState.Water:
-                    elem.SetWaterState(effect.WaterBonusXP, effect.WaterDamageFlat, effect.WaterDrenchDuration,
-                                       effect.WaterBounceDuration, effect.WaterCanBurst, effect.WaterBurstSize,
-                                       effect.WaterBurstDamageFlat, effect.WaterIsCursed);
-                    break;
-                case PaddleState.Earth:
-                    elem.SetEarthState(effect.EarthBonusDamage, effect.EarthFissureDuration, effect.EarthXPBonus,
-                                       effect.EarthScoreBonus, effect.EarthBounceDuration, effect.EarthIsCursed);
-                    break;
-                case PaddleState.Electric:
-                    elem.SetElectricState(effect.ElectricShockDamage, effect.ElectricChainCount, effect.ElectricXPBonus,
-                                          effect.ElectricScoreBonus, effect.ElectricBounceDuration, effect.ElectricIsCursed);
-                    break;
-            }
-        }
-
-        ApplyPaddleDamageEffect(effect);
+        tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
     }
 
-    // Forward paddle effect into this ball as flat/mult bonuses with bounce windows.
-    public void ApplyPaddleDamageEffect(PaddleEffectData effect)
-    {
-        int flat = 0;
-        int bounces = 0;
-
-        switch (effect.Element)
-        {
-            case PaddleState.Fire:
-                flat = effect.FireBonusDamage;
-                bounces = effect.FireBounceDuration;
-                break;
-            case PaddleState.Water:
-                flat = effect.WaterDamageFlat;
-                bounces = effect.WaterBounceDuration;
-                break;
-            case PaddleState.Earth:
-                flat = 0;
-                bounces = effect.EarthBounceDuration;
-                break;
-            case PaddleState.Electric:
-                flat = 0;
-                bounces = effect.ElectricBounceDuration;
-                break;
-            default:
-                break;
-        }
-
-        AddFlatDamage(flat, bounces);
-    }
+    private PhysicMaterial runtimePhysMat;
 
     public void EnsureUniquePhysicMaterial()
     {
@@ -3109,14 +2941,399 @@ public class Ball : MonoBehaviour
         }
     }
 
-    // Multiplies XP forcefield radius (persistently until counter-multiplied).
+    // Launch tube and paddle contact flags (read-only outside)
+    public bool IsInLaunchTube { get; private set; }
+    public bool IsTouchingPaddles { get; private set; }
+    public bool IsActive { get; private set; }
+
+    Rigidbody rb;
+    float debugTimer;
+
+    Pinball pinball;
+
+    public int bounceCount { private set; get; }
+    public int bumpCount { private set; get; }
+    public int bumpCountConsecutive { private set; get; }
+
+    private string lastBouncedTag;
+
+    Vector3 prevBumpDirection = Vector3.zero;
+    int sameDirHits = 0;
+    float lastBumpTime = -999f;
+
+    float sameDirDotThreshold = .98f;
+    int sameDirHitLimit = 25;
+    float sameDirWindow = .25f;
+
+    bool debugTimerStart;
+
+    bool resetBall = false;
+
+    bool isStuck;
+
+    public float maxSpeed = 50f;
+
+    [SerializeField] private ParticleSystemForceField forceField;
+    public float forceFieldRadius = 0f;
+
+    Collider col;
+
+    int count;
+    int dirBumpCount;
+
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        pinball = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+
+        _renderer = GetComponent<Renderer>();
+    }
+
+    void OnEnable()
+    {
+        IsActive = true;
+        if (Pinball.Instance != null)
+            Pinball.Instance.RegisterBall(this);
+        col = GetComponent<Collider>();
+        XPCollectorRegistry.I?.Register(col);
+
+        // Ensure unique material so enabling _EMISSION doesn't affect others
+        if (_renderer != null)
+        {
+            var shared = _renderer.sharedMaterial;
+            if (shared != null && (_runtimeMat == null || _renderer.sharedMaterial == _runtimeMat))
+            {
+                _runtimeMat = Instantiate(shared);
+                _runtimeMat.name = shared.name + " (Runtime Ball)";
+                _runtimeMat.EnableKeyword("_EMISSION");
+                _renderer.sharedMaterial = _runtimeMat;
+            }
+            ApplyGlow();
+        }
+
+        OnBallActivated?.Invoke(this);
+    }
+
+    void OnDisable()
+    {
+        IsActive = false;
+        if (Pinball.Instance != null)
+            Pinball.Instance.UnregisterBall(this);
+        XPCollectorRegistry.I?.Unregister(col);
+
+        BreakCombo("Ball disabled");
+        OnBallDeactivated?.Invoke(this);
+    }
+
+    void Start()
+    {
+        count = 0;
+        debugTimer = 0;
+
+        IsActive = true;
+
+        forceFieldRadius = forceField.endRange;
+    }
+
+    void FixedUpdate()
+    {
+        rb.velocity = Vector3.ClampMagnitude(rb.velocity, maxSpeed);
+
+        if (comboActive)
+        {
+
+        }
+    }
+
+    void Update()
+    {
+    }
+
+    private void RegisterBumperHitForCombo()
+    {
+        comboHitStreak++;
+
+        if(!comboActive && comboHitStreak >= comboThreshold)
+        {
+            comboActive = true;
+            Debug.Log("Combo activated!");
+        }
+
+        ApplyGlow();
+        OnComboChanged?.Invoke(this);
+    }
+
+    // Computes a simple emission intensity curve: base + steps*perStep
+    private float ComputeEmissionIntensity()
+    {
+        if (!comboActive) return Mathf.Max(0f, emissionBase);
+        int steps = Mathf.Max(0, comboHitStreak - (comboThreshold - 1));
+        return Mathf.Max(0f, emissionBase + emissionPerComboStep * steps);
+    }
+
+    // Assign a vibrant random glow color (not too dark)
+    public void RandomizeGlowColor()
+    {
+        // H:[0..1], S:[0.65..1], V:[0.9..1] for bright colors
+        var c = Random.ColorHSV(0f, 1f, 0.65f, 1f, 0.9f, 1f);
+        GlowColor = c; // triggers ApplyGlow() and OnComboChanged for UI refresh
+    }
+
+    // Pushes emission color to the ball material
+    private void ApplyGlow()
+    {
+        if (_renderer == null) return;
+
+        float intensity = ComputeEmissionIntensity();
+        var emissive = (Color)(glowColor * Mathf.LinearToGammaSpace(intensity));
+        if (_runtimeMat != null)
+        {
+            _runtimeMat.EnableKeyword("_EMISSION");
+            _runtimeMat.SetColor(EmissionColorId, emissive);
+            _runtimeMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+        }
+        else
+        {
+            // Fallback via MaterialPropertyBlock if we didn't clone material
+            var mpb = new MaterialPropertyBlock();
+            _renderer.GetPropertyBlock(mpb);
+            mpb.SetColor(EmissionColorId, emissive);
+            _renderer.SetPropertyBlock(mpb);
+        }
+    }
+
+    private void BreakCombo(string reason = null)
+    {
+        if(!comboActive && comboHitStreak == 0) return;
+        comboHitStreak = 0;
+        comboActive = false;
+
+        // Refresh emission and notify UI
+        ApplyGlow();
+        OnComboChanged?.Invoke(this);
+    }
+
+    public void ApplyPaddleDamageEffect(PaddleEffectData effect)
+    {
+        int flat = 0;
+        int bounces = 0;
+
+        switch (effect.Element)
+        {
+            case PaddleState.Fire:
+                flat = effect.FireBonusDamage;
+                bounces = effect.FireBounceDuration;
+                break;
+            case PaddleState.Water:
+                flat = effect.WaterDamageFlat;
+                bounces = effect.WaterBounceDuration;
+                break;
+            case PaddleState.Earth:
+                flat = 0;
+                bounces = effect.EarthBounceDuration;
+                break;
+            case PaddleState.Electric:
+                flat = 0;
+                bounces = effect.ElectricBounceDuration;
+                break;
+            default:
+                break;
+        }
+
+        AddFlatDamage(flat, bounces);
+    }
+
+    public void Launch(float power)
+    {
+        Debug.Log($"{30f * power}");
+        rb.velocity = Vector3.zero;
+        rb.AddForce(Vector3.forward * (45f * power), ForceMode.Impulse);
+    }
+
+    public void Push(float power)
+    {
+        rb.AddForce((-Vector3.right * (40f * power)) + (Vector3.forward * (5.5f * power)), ForceMode.Impulse);
+    }
+
+    public void Bump(Vector3 direction, float deltaV, int bumperKind, Bumper bumperInstance)
+    {
+        bumpCount++;
+
+        Vector3 currentDir = direction.sqrMagnitude > .0001f ? direction.normalized : Vector3.forward;
+
+        if (Time.time - lastBumpTime > sameDirWindow)
+        {
+            sameDirHits = 0;
+        }
+
+        if (prevBumpDirection != Vector3.zero)
+        {
+            float cos = Vector3.Dot(currentDir, prevBumpDirection.normalized);
+            print(cos + "chat");
+            if (Mathf.Abs(cos) >= sameDirDotThreshold)
+                sameDirHits++;
+            else
+                sameDirHits = 0;
+        }
+
+        lastBumpTime = Time.time;
+        prevBumpDirection = currentDir;
+
+        if (sameDirHits > sameDirHitLimit)
+        {
+            ResetRb();
+            Debug.Log("thanks chatgpt");
+            return;
+        }
+
+        rb.AddForce(currentDir * deltaV, ForceMode.Impulse);
+
+        RegisterBumperHitForCombo();
+
+        // Compute base points and apply ONLY combo multiplier locally (XP factor untouched)
+        int baseScore = bumperKind == 0 ? 100 : 50;
+        int adjustedScore = Mathf.RoundToInt(baseScore * CurrentComboMultiplier);
+
+        pinball?.AddScore(adjustedScore, bumpCount, bumpCountConsecutive, ScoreXpDamageFactor);
+
+        GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
+        ConsumeBounceForDamageMods();
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (pinball != null && pinball.CurrentState == PinballState.Play)
+        {
+            lastBouncedTag = other.gameObject.tag;
+            bounceCount++;
+
+            if (lastBouncedTag == "Bumper" || lastBouncedTag == "SmallBumper")
+            {
+                bumpCountConsecutive++;
+            }
+            else bumpCountConsecutive = 0;
+        }
+    }
+
+    void OnTriggerStay(Collider other)
+    {
+        if (other.gameObject.tag == "BallThreshold")
+            IsInLaunchTube = true;
+    }
+
+    void OnCollisionStay(Collision collision)
+    {
+        if (collision.gameObject.tag == "Paddle")
+            IsTouchingPaddles = true;
+    }
+
+    // Break the combo when colliding with walls (but ignore bumpers/paddles)
+    void OnCollisionEnter(Collision collision)
+    {
+        var other = collision.collider;
+
+        // Do not break on bumpers/paddles
+        if (other.CompareTag("Bumper") || other.CompareTag("SmallBumper") || other.CompareTag("Paddle"))
+            return;
+
+        bool inBreakLayer = (comboBreakLayers.value & (1 << other.gameObject.layer)) != 0;
+        if (inBreakLayer || other.CompareTag("Wall"))
+            BreakCombo("Wall");
+    }
+
+    void OnCollisionExit(Collision collision)
+    {
+        if (collision.gameObject.tag == "Paddle")
+            IsTouchingPaddles = false;
+    }
+
+    void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject.tag == "BallThreshold")
+            IsInLaunchTube = false;
+    }
+
+    public void ResetRb()
+    {
+        sameDirHits = 0;
+        prevBumpDirection = Vector3.zero;
+
+        float speed = rb.velocity.magnitude;
+        if (speed < 1f) speed = 8f;
+
+        Vector3 baseDir = rb.velocity.sqrMagnitude > .01f ? rb.velocity.normalized : Vector3.forward;
+        baseDir.y = 0f;
+
+        float bigDeflect = Random.Range(120f, 160f);
+        Vector3 newDir = (Quaternion.AngleAxis(bigDeflect, Vector3.up) * baseDir).normalized;
+
+        rb.velocity = newDir * speed;
+    }
+
+    public void OnPaddleHit(PaddleEffectData effect)
+    {
+        var elem = GetComponent<BallElementalState>();
+        if (elem == null) return;
+
+        switch (effect.Element)
+        {
+            case PaddleState.Fire:
+                elem.SetFireState(
+                    effect.FireBonusDamage,
+                    effect.FireBurnDamage,
+                    effect.FireBurnDuration,
+                    effect.FireBounceDuration,
+                    effect.FireCanExplode,
+                    effect.FireExplosionSize,
+                    effect.FireExplosionDamageFlat,
+                    effect.FireIsCursed
+                );
+                break;
+            case PaddleState.Water:
+                elem.SetWaterState(
+                    effect.WaterBonusXP,
+                    effect.WaterDamageFlat,
+                    effect.WaterDrenchDuration,
+                    effect.WaterBounceDuration,
+                    effect.WaterCanBurst,
+                    effect.WaterBurstSize,
+                    effect.WaterBurstDamageFlat,
+                    effect.WaterIsCursed
+                );
+                break;
+            case PaddleState.Earth:
+                elem.SetEarthState(
+                    effect.EarthBonusDamage,
+                    effect.EarthFissureDuration,
+                    effect.EarthXPBonus,
+                    effect.EarthScoreBonus,
+                    effect.EarthBounceDuration,
+                    effect.EarthIsCursed
+                );
+                break;
+            case PaddleState.Electric:
+                elem.SetElectricState(
+                    effect.ElectricShockDamage,
+                    effect.ElectricChainCount,
+                    effect.ElectricXPBonus,
+                    effect.ElectricScoreBonus,
+                    effect.ElectricBounceDuration,
+                    effect.ElectricIsCursed
+                );
+                break;
+            default:
+                break;
+        }
+
+        ApplyPaddleDamageEffect(effect);
+    }
+
     public void UpdateForcefield(float amount)
     {
         forceFieldRadius *= amount;
         forceField.endRange = forceFieldRadius;
     }
 }
-
 ```
 
 ## Assets/Scripts/BallElementalState.cs
@@ -3131,14 +3348,12 @@ public class BallElementalState : MonoBehaviour
     [SerializeField]
     private ElementalState initialState = ElementalState.None;
 
-    // Pinball reference (reserved for future use/FX routing).
-    private Pinball pinball;
+    Pinball PM;
 
     public ElementalState CurrentState = ElementalState.None;
     private Ball ball;
     private float originalMaxSpeed;
-
-    // Element-combination lookup
+    // Combination dictionary for easy expansion
     private static readonly Dictionary<(ElementalState, ElementalState), ElementalState> combinations =
         new()
         {
@@ -3154,9 +3369,9 @@ public class BallElementalState : MonoBehaviour
             {(ElementalState.Air, ElementalState.Water), ElementalState.Vapor},
             {(ElementalState.Air, ElementalState.Earth), ElementalState.Whirlwind},
             {(ElementalState.Earth, ElementalState.Air), ElementalState.Whirlwind},
+            // Add more combinations as needed
         };
 
-    // Fire
     private float fireTempDamage;
     private float fireBurnDamage;
     private float fireBurnDuration;
@@ -3166,7 +3381,6 @@ public class BallElementalState : MonoBehaviour
     private bool fireEffectActive;
     private bool fireIsCursed;
 
-    // Water
     private float waterBonusXP;
     private int waterBonusDamage;
     private float waterDrenchDuration;
@@ -3176,7 +3390,6 @@ public class BallElementalState : MonoBehaviour
     private bool waterEffectActive;
     private bool waterIsCursed;
 
-    // Earth
     private int earthFissureDamage;
     private float earthCrustDuration;
     private float earthBonusXP;
@@ -3184,7 +3397,6 @@ public class BallElementalState : MonoBehaviour
     private bool earthEffectActive;
     private bool earthIsCursed;
 
-    // Electric
     private int electricShockDamage;
     private int electricChainCount;
     private float electricBonusXP;
@@ -3199,7 +3411,7 @@ public class BallElementalState : MonoBehaviour
     private int earthBouncesRemaining;
     private int electricBouncesRemaining;
 
-    // Public getters
+    // Public getters if needed
     public float FireActiveTempDamage => fireTempDamage;
     public float FireBurnDamage => fireBurnDamage;
     public float FireBurnDuration => fireBurnDuration;
@@ -3210,7 +3422,7 @@ public class BallElementalState : MonoBehaviour
     public bool FireEffectActive => fireEffectActive;
     public bool FireIsCursed => fireIsCursed;
 
-    public float WaterBonusXP => waterBonusXP;
+    public float WaterBonusXP => waterBonusXP;  
     public int WaterBonusDamage => waterBonusDamage;
     public float WaterDrenchDuration => waterDrenchDuration;
     public bool WaterExplode => waterExplode;
@@ -3236,56 +3448,56 @@ public class BallElementalState : MonoBehaviour
     public bool ElectricIsCursed => electricIsCursed;
     public int ElectricBouncesRemaining => electricBouncesRemaining;
 
-    // Caches required components and validates setup.
+
+
+
     private void Awake()
     {
         ball = GetComponent<Ball>();
-        if (ball == null)
+        if(ball == null)
         {
             Debug.LogWarning("BallElementalState requires a Ball component on the same GameObject.");
         }
 
-        pinball = Pinball.Instance ?? GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
+        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+
     }
 
-    // Initializes the current state and captures baseline properties.
-    private void Start()
+    // Start is called before the first frame update
+    void Start()
     {
         CurrentState = initialState;
-        if (ball != null)
+        if(ball != null)
             originalMaxSpeed = ball.maxSpeed;
+
     }
 
-    // Sets the current elemental state and applies related effects.
     public void SetState(ElementalState newState)
     {
         if (CurrentState == newState) return;
         CurrentState = newState;
         ApplyStateEffects();
-        // TODO: trigger VFX/SFX hooks here if desired.
+        //TODO VFX/SFX
     }
 
-    // Combines current state with an incoming element using the combination table.
     public void CombineWith(ElementalState newElement)
     {
         var combined = CombineElements(CurrentState, newElement);
         SetState(combined);
     }
 
-    // Returns the combined state or falls back to the incoming element if no mapping exists.
     public ElementalState CombineElements(ElementalState existing, ElementalState incoming)
     {
-        if (combinations.TryGetValue((existing, incoming), out var result))
+        if(combinations.TryGetValue((existing, incoming), out var result))
         {
             return result;
         }
-        return incoming;
+        return incoming; // Default to the incoming element if no combination exists)
     }
 
-    // Applies simple per-state passive effects (placeholder: currently resets speed on None/Default).
     private void ApplyStateEffects()
     {
-        if (ball == null) return;
+        if(ball == null) return;
         switch (CurrentState)
         {
             case ElementalState.Fire:
@@ -3296,49 +3508,46 @@ public class BallElementalState : MonoBehaviour
                 break;
             case ElementalState.Air:
                 break;
+            // Add more cases for other elemental states as needed
             default:
                 ball.maxSpeed = originalMaxSpeed;
                 break;
         }
     }
 
-    // Clears current state to None (does not clear active effect flags or counters).
+
     public void ClearState()
     {
         CurrentState = ElementalState.None;
-        // TODO: remove VFX/SFX if added in ApplyStateEffects
+        //TODO Remove VFX/SFX
     }
 
-    // Called when the ball bounces a bumper; applies active effects to the bumper and consumes an effect bounce.
     public void OnBounce(Bumper bumper)
     {
-        if (!areEffectsActive || !bumper) return;
+        if (!areEffectsActive) return;
         var elem = bumper.gameObject.GetComponent<BumperElementalState>();
-        if (!elem) return;
 
-        // Apply effect markers on the bumper (these are not the damage calculations but the status flags)
-        if (fireEffectActive)
+        if (fireEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
         }
-        if (waterEffectActive)
+        if (waterEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyDrenched(waterDrenchDuration, waterBonusXP);
         }
-        if (earthEffectActive)
+        if (earthEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyCrusted(earthFissureDamage, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
-        if (electricEffectActive)
+        if(electricEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyShocked(electricShockDamage, electricBonusXP, electricBonusScore);
         }
 
-        // Consume one bounce from the active state and clear it when counters reach zero
         switch (CurrentState)
         {
             case ElementalState.Fire:
@@ -3365,6 +3574,7 @@ public class BallElementalState : MonoBehaviour
                     ClearState();
                 }
                 break;
+
             case ElementalState.Electric:
                 electricBouncesRemaining--;
                 if (electricBouncesRemaining <= 0)
@@ -3373,14 +3583,18 @@ public class BallElementalState : MonoBehaviour
                     ClearState();
                 }
                 break;
+            // Handle other elemental states with bounce effects as needed
             default:
                 break;
         }
+
+
+
+
     }
 
     #region Elemental State Methods
 
-    // Applies Fire parameters to the ball and activates the Fire state.
     public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
         waterEffectActive = false;
@@ -3389,11 +3603,13 @@ public class BallElementalState : MonoBehaviour
 
         fireEffectActive = true;
 
+        Debug.Log("Fire effect applied to ball");
+
         fireTempDamage = bonusDamage;
         fireBurnDamage = burnDamage;
         fireBurnDuration = burnDuration;
         fireBouncesRemaining += bounceDuration;
-        if (fireBouncesRemaining > bounceDuration)
+        if(fireBouncesRemaining > bounceDuration)
             fireBouncesRemaining = bounceDuration;
         fireExplode = canExplode;
         fireExplosionSize = explosionRadius;
@@ -3401,9 +3617,9 @@ public class BallElementalState : MonoBehaviour
         fireIsCursed = cursed;
 
         SetState(ElementalState.Fire);
+
     }
 
-    // Applies Water parameters to the ball and activates the Water state.
     public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
         electricEffectActive = false;
@@ -3411,6 +3627,8 @@ public class BallElementalState : MonoBehaviour
         earthEffectActive = false;
 
         waterEffectActive = true;
+        Debug.Log("Water effect applied to ball");
+
 
         waterBonusXP = bonusXP;
         waterBonusDamage = bonusDamage;
@@ -3421,12 +3639,11 @@ public class BallElementalState : MonoBehaviour
         waterExplode = canBurst;
         waterBurstSize = burstRadius;
         waterExplosionDamage = burstDamageFlat;
-        waterIsCursed = cursed;
 
         SetState(ElementalState.Water);
+
     }
 
-    // Applies Earth parameters to the ball and activates the Earth state.
     public void SetEarthState(int fissureDamage, float crustDuration, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
         fireEffectActive = false;
@@ -3434,6 +3651,7 @@ public class BallElementalState : MonoBehaviour
         electricEffectActive = false;
 
         earthEffectActive = true;
+        Debug.Log("Earth effect applied to ball");
 
         earthFissureDamage = fissureDamage;
         earthCrustDuration = crustDuration;
@@ -3446,7 +3664,6 @@ public class BallElementalState : MonoBehaviour
         SetState(ElementalState.Earth);
     }
 
-    // Applies Electric parameters to the ball and activates the Electric state.
     public void SetElectricState(int shockDamage, int chainCount, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
         fireEffectActive = false;
@@ -3454,7 +3671,7 @@ public class BallElementalState : MonoBehaviour
         earthEffectActive = false;
 
         electricEffectActive = true;
-
+        Debug.Log("Electric effect applied to ball");
         electricShockDamage = shockDamage;
         electricChainCount = chainCount;
         electricBonusXP = bonusXP;
@@ -3466,6 +3683,7 @@ public class BallElementalState : MonoBehaviour
         SetState(ElementalState.Electric);
     }
 
+
     #endregion
 }
 
@@ -3474,27 +3692,73 @@ public class BallElementalState : MonoBehaviour
 ## Assets/Scripts/BallElements.cs
 
 ```csharp
-/// Elemental states a ball can currently embody or fuse into.
+using UnityEngine;
+
 public enum ElementalState
 {
-    None = 0,
+    None,
+    Fire,
+    Water,
+    Earth,
+    Air,
+    Electric,
 
-    // Base elements
-    Fire = 1,
-    Water = 2,
-    Earth = 3,
-    Air = 4,
-    Electric = 5,
+    Steam,
+    Magma,
+    Wildfire,
 
-    // Fusions / advanced states
-    Steam = 10,
-    Magma = 11,
-    Wildfire = 12,
-    Sludge = 13,
-    Vapor = 14,
-    Whirlwind = 15,
+    Sludge,
+    Vapor,
+
+    Whirlwind,
+
 }
+```
 
+## Assets/Scripts/BallUIEntry.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+[DisallowMultipleComponent]
+public sealed class BallUIEntry : MonoBehaviour
+{
+    [SerializeField] private Image colorDot;
+    [SerializeField] private TMP_Text multiplierText;
+
+    private Ball _ball;
+
+    // When using a prefab, these are wired in the Inspector. If constructed at runtime, BindRuntime wires them.
+    public void BindRuntime(Image dot, TMP_Text label)
+    {
+        colorDot = dot;
+        multiplierText = label;
+    }
+
+    // Assign a Ball to this row
+    public void Init(Ball ball)
+    {
+        _ball = ball;
+    }
+
+    // Call to sync the visuals to current ball state
+    public void Refresh(Ball ball)
+    {
+        if (!ball) return;
+
+        // Color the dot: apply a little �intensity� boost to give some visual separation
+        float boost = Mathf.Clamp(ball.EmissionIntensityUI, 0.5f, 2.0f);
+        var c = ball.GlowColor;
+        var bright = new Color(Mathf.Clamp01(c.r * boost), Mathf.Clamp01(c.g * boost), Mathf.Clamp01(c.b * boost), 1f);
+        if (colorDot) colorDot.color = bright;
+
+        // Show combo multiplier if active; otherwise default �x1.0�
+        float mult = ball.IsComboActive ? ball.CurrentComboMultiplierUI : 1f;
+        if (multiplierText) multiplierText.text = $"x{mult:0.0}";
+    }
+}
 ```
 
 ## Assets/Scripts/BallXPBar.cs
@@ -3504,62 +3768,38 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-/// Simple, deterministic XP HUD for the current ball.
-[DisallowMultipleComponent]
-public sealed class BallXPBar : MonoBehaviour
+public class BallXPBar : MonoBehaviour
 {
-    [Header("UI")]
-    [SerializeField] private Image xpBar;
-    [SerializeField] private Image xpBarHolder;
-    [SerializeField] private TMP_Text levelText;
 
-    [Header("Behavior")]
-    [SerializeField, Min(0f)] private float reduceSpeed = 2.5f;
-    [SerializeField] private bool useUnscaledTime = false;
+    public Image xpBar;
+    public Image xpBarHolder;
 
-    private float _targetFill;   // desired fill (0..1), driven via UpdateXP
 
-    // Ensures references are present and sane in-editor.
-    private void OnValidate()
+    public TMP_Text levelText;
+
+    float target;
+    public float reduceSpeed;
+
+
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
     {
-        reduceSpeed = Mathf.Max(0f, reduceSpeed);
     }
 
-    // Initializes UI state and warns if bindings are missing.
-    private void Awake()
+    // Update is called once per frame
+    void Update()
     {
-        if (!xpBar) Debug.LogWarning("[BallXPBar] xpBar is not assigned.", this);
-        if (!levelText) Debug.LogWarning("[BallXPBar] levelText is not assigned.", this);
+        xpBar.fillAmount = Mathf.MoveTowards(xpBar.fillAmount, target, reduceSpeed * Time.deltaTime);
+
     }
 
-    // Smoothly moves the fill amount toward the latest target.
-    private void Update()
-    {
-        if (!xpBar) return;
-        float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
-        xpBar.fillAmount = Mathf.MoveTowards(xpBar.fillAmount, _targetFill, reduceSpeed * Mathf.Max(0.0001f, dt));
-    }
-
-    // Updates target fill and level label from the current XP snapshot.
     public void UpdateXP(float currentXP, float maxXP, int level)
     {
-        float denom = Mathf.Max(0.0001f, maxXP);
-        _targetFill = Mathf.Clamp01(currentXP / denom);
-        if (levelText) levelText.text = $"Level: {level}";
+        Debug.Log($"Start max XP {maxXP}");
+        target = currentXP / maxXP;
+        levelText.text = $"Level: {level}";
     }
 
-    // Immediately sets the bar to the target (skips smoothing); useful after scene loads.
-    public void SnapToTarget()
-    {
-        if (!xpBar) return;
-        xpBar.fillAmount = _targetFill;
-    }
-
-    // Allows dynamic tuning of lerp speed (powerups, slow-mo, etc.).
-    public void SetReduceSpeed(float speed)
-    {
-        reduceSpeed = Mathf.Max(0f, speed);
-    }
 }
 
 ```
@@ -4039,7 +4279,7 @@ public class Bumper : MonoBehaviour
         return nearest;
     }
 
-    // Core damage handler: applies damage, spawns feedback, emits XP (with Water override), and schedules respawn.
+    // Core damage handler: applies damage, spawns feedback, emits XP scaled by last hit factor, and schedules respawn.
     public void TakeDamage(float amount, bool elemDmg, float damageFactor = 1f)
     {
         _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
@@ -4057,20 +4297,17 @@ public class Bumper : MonoBehaviour
             DamageNumbers.Spawn((float)Math.Round(amount, 1, MidpointRounding.AwayFromZero), offset);
         }
 
-        // Water XP override: if drenched, ignore damageFactor for XP (water controls XP output).
-        bool isDrenched = bumperElemental != null && bumperElemental.CurrentState == BumperState.Drenched;
-
         if (pinball != null)
         {
             if (elemDmg)
             {
                 if (curHealth > 0)
-                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: isDrenched ? 1f : _lastDmgFactorForXP);
+                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: _lastDmgFactorForXP);
             }
             else
             {
-                if (isDrenched)
-                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: 1f);
+                if (bumperElemental != null && bumperElemental.CurrentState == BumperState.Drenched)
+                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: _lastDmgFactorForXP);
                 else
                     pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
             }
@@ -4081,8 +4318,7 @@ public class Bumper : MonoBehaviour
             curHealth = 0;
             if (pinball != null)
             {
-                // Death XP also ignores damageFactor when drenched.
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: isDrenched ? 1f : _lastDmgFactorForXP);
+                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: _lastDmgFactorForXP);
                 pinball.destroyedBumperBonusActive = true; // next score tick gets bonus
             }
             StartCoroutine(pinball.RespawnRoutine(this));
@@ -4166,9 +4402,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[DisallowMultipleComponent]
 public class BumperElementalState : MonoBehaviour
 {
+
     private Bumper bumper;
     public BumperState CurrentState  = BumperState.None;
 
@@ -4199,17 +4435,26 @@ public class BumperElementalState : MonoBehaviour
     public float ElectricBonusXP => electricBonusXP;
     public float ElectricBonusScore => electricBonusScore;
 
-    // Caches the bumper dependency.
+
+
     void Awake()
     {
         bumper = GetComponent<Bumper>();
     }
 
-    // Drives active status effects per-frame.
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        
+    }
+
+    // Update is called once per frame
     void Update()
     {
-        switch (CurrentState)
-        {
+
+        switch(CurrentState)
+{
             case BumperState.None:
                 break;
             case BumperState.Burning:
@@ -4227,9 +4472,9 @@ public class BumperElementalState : MonoBehaviour
             default:
                 break;
         }
+
     }
 
-    // Applies burning and schedules ticks.
     public void ApplyBurn(float dps, float duration)
     {
         CurrentState = BumperState.Burning;
@@ -4239,13 +4484,12 @@ public class BumperElementalState : MonoBehaviour
         fireBurnDamagePerTick = dps * fireBurnTickInterval;
     }
 
-    // Ticks burn damage and expires when due.
     private void HandleBurning()
     {
         if (Time.time >= fireBurnNextTickAt)
         {
             fireBurnNextTickAt += fireBurnTickInterval;
-            bumper?.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
+            bumper.TakeDamage(fireBurnDamagePerTick, elemDmg: true);
         }
 
         if (Time.time >= fireBurnExpireAt)
@@ -4254,16 +4498,14 @@ public class BumperElementalState : MonoBehaviour
         }
     }
 
-    // Clears burning state.
     public void ClearBurn()
     {
         fireBurnExpireAt = 0f;
         fireBurnNextTickAt = 0f;
         fireBurnDamagePerTick = 0f;
-        if (CurrentState == BumperState.Burning) CurrentState = BumperState.None;
+        CurrentState = BumperState.None;
     }
 
-    // Applies drenched and sets bonus XP.
     public void ApplyDrenched(float duration, float bonusXP)
     {
         CurrentState = BumperState.Drenched;
@@ -4272,7 +4514,6 @@ public class BumperElementalState : MonoBehaviour
         waterBonusXP = bonusXP;
     }
 
-    // Expires drenched state on timeout.
     private void HandleDrenched()
     {
         if (Time.time >= waterDrenchExpireAt)
@@ -4281,15 +4522,13 @@ public class BumperElementalState : MonoBehaviour
         }
     }
 
-    // Clears drenched state.
     public void ClearDrenched()
     {
         waterDrenchExpireAt = 0f;
         waterBonusXP = 0f;
-        if (CurrentState == BumperState.Drenched) CurrentState = BumperState.None;
+        CurrentState = BumperState.None;
     }
 
-    // Applies crusted effect and extends its expiration.
     public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
     {
         CurrentState = BumperState.Crusted;
@@ -4302,27 +4541,24 @@ public class BumperElementalState : MonoBehaviour
             earthCrustExpireAt = newExpire;
     }
 
-    // Triggers fissure damage on expiry then clears.
     public void HandleCrusted()
     {
         if (Time.time >= earthCrustExpireAt)
         {
-            bumper?.TakeFissureDamage(earthFissureDamage);
+            bumper.TakeFissureDamage(earthFissureDamage);
             ClearCrusted();
         }
     }
 
-    // Clears crusted state and its bonuses.
     public void ClearCrusted()
     {
         earthFissureDamage = 0f;
         earthCrustExpireAt = 0f;
         earthBonusXP = 0f;
         earthBonusScore = 0f;
-        if (CurrentState == BumperState.Crusted) CurrentState = BumperState.None;
+        CurrentState = BumperState.None;
     }
 
-    // Applies shocked metadata for next tick.
     public void ApplyShocked(float damage, float bonusXP, float bonusScore)
     {
         CurrentState = BumperState.Shocked;
@@ -4331,23 +4567,20 @@ public class BumperElementalState : MonoBehaviour
         electricBonusScore = bonusScore;
     }
 
-    // Triggers electric damage once then clears.
     public void HandleShocked()
     {
-        bumper?.TakeShockDamage(electricShockDamage, true);
+        bumper.TakeShockDamage(electricShockDamage, true);
         ClearShocked();
     }
 
-    // Clears shocked state.
     public void ClearShocked()
     {
         electricShockDamage = 0f;
         electricBonusXP = 0f;
         electricBonusScore = 0f;
-        if (CurrentState == BumperState.Shocked) CurrentState = BumperState.None;
+        CurrentState = BumperState.None;
     }
 
-    // Clears whichever elemental state is active.
     public void ClearElement()
     {
         ClearBurn();
@@ -4355,6 +4588,7 @@ public class BumperElementalState : MonoBehaviour
         ClearCrusted();
         ClearShocked();
     }
+
 }
 
 ```
@@ -4364,36 +4598,24 @@ public class BumperElementalState : MonoBehaviour
 ```csharp
 using UnityEngine;
 
-[System.Serializable]
 public enum BumperState
 {
-    // No elemental status is active.
     None,
-    // Fire DoT is ticking (handled in BumperElementalState.HandleBurning).
     Burning,
-    // Water state is active; XP emission uses water override/bonus.
     Drenched,
-    // Earth crust applied; fissure damage triggers on expiry.
     Crusted,
-    // Air/wind placeholder (not currently driven).
     Windswept,
-    // Electric shock applied; may propagate to neighbors.
     Shocked,
 
-    // Steam combo placeholder (unused by handlers).
     Steaming,
-    // Molten combo placeholder (unused by handlers).
     Molten,
-    // Blazing combo placeholder (unused by handlers).
     Blazing,
 
-    // Sludge combo placeholder (unused by handlers).
     Sludged,
-    // Mist combo placeholder (unused by handlers).
     Misted,
 
-    // Whirlwind combo placeholder (unused by handlers).
     Whirling,
+
 }
 ```
 
@@ -4901,55 +5123,56 @@ public class CollectXP : MonoBehaviour
 
     float elapsed;
 
-    // Cache particle system and trigger module.
     void Awake()
     {
         ps = GetComponent<ParticleSystem>();
         trigger = ps.trigger;
     }
 
-    // Subscribe to registry and scene events, then bind on next frame.
     void OnEnable()
     {
         XPCollectorRegistry.OnChanged += RebindTargets;
+
         SceneManager.sceneLoaded += OnSceneLoaded;
+
         StartCoroutine(RebindNextFrame());
     }
 
-    // Unsubscribe from events to avoid leaks.
     void OnDisable()
     {
         XPCollectorRegistry.OnChanged -= RebindTargets; 
+
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
-    // Rebind targets when a new scene loads.
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         RebindTargets();
     }
 
-    // Defer initial bind to ensure other systems have initialized.
     System.Collections.IEnumerator RebindNextFrame()
     {
         yield return null;
         RebindTargets();
     }
 
-    // Resolve UI fallback and perform initial bind.
     void Start()
     {
+        // Fallbacks if not wired in Inspector (still better to drag in!)
         if (!ballXPScript)
         {
             var go = GameObject.FindWithTag("BallXPHolder");
             if (go) ballXPScript = go.GetComponent<BallXPBar>();
         }
+
+        // First binding pass
         RebindTargets();
     }
 
-    // Periodically refresh bound colliders and self-destroy when empty.
     void Update()
     {
+
+        // Periodically refresh the set of tracked colliders (nearest few)
         elapsed += Time.deltaTime;
         if (elapsed >= refreshInterval)
         {
@@ -4957,11 +5180,11 @@ public class CollectXP : MonoBehaviour
             RebindTargets();
         }
 
+        // Self-destroy once this system (and children) are done
         if (ps.particleCount == 0)
             Destroy(gameObject);
     }
 
-    // Pick nearest collectors (up to maxTargets) and assign to the trigger module.
     void RebindTargets()
     {
         var regs = XPCollectorRegistry.I?.collectors;
@@ -4970,6 +5193,7 @@ public class CollectXP : MonoBehaviour
         sortBuf.Clear();
         Vector3 p = transform.position;
 
+        // Collect (collider, squaredDistance)
         for (int i = 0; i < regs.Count; i++)
         {
             var c = regs[i];
@@ -4979,35 +5203,47 @@ public class CollectXP : MonoBehaviour
             sortBuf.Add((c, d2));
         }
 
+        // Sort nearest first
         sortBuf.Sort((a, b) => a.d2.CompareTo(b.d2));
 
+        // Assign nearest up to maxTargets
         int assignCount = Mathf.Min(maxTargets, sortBuf.Count);
         for (int i = 0; i < assignCount; i++)
             trigger.SetCollider(i, sortBuf[i].c);
 
+        // Clear any leftover slots (prevents stale checks)
         for (int i = assignCount; i < maxTargets; i++)
             trigger.SetCollider(i, null);
     }
 
-    // Award XP for particles that entered a collector this frame and kill only those particles.
     void OnParticleTrigger()
     {
+        // Pull only the particles that ENTERED a trigger this frame
         enteredBuf.Clear();
         int count = ps.GetTriggerParticles(ParticleSystemTriggerEventType.Enter, enteredBuf);
 
         for (int i = 0; i < count; i++)
         {
+            // Award XP
             if (Pinball.Instance)
+            {
                 Pinball.Instance.AddXP(xpPerParticle);
+            }
 
+
+
+
+            // Kill ONLY the collected particle
             var p = enteredBuf[i];
             p.remainingLifetime = 0f;
             enteredBuf[i] = p;
         }
 
+        // Write changes back
         if (count > 0)
             ps.SetTriggerParticles(ParticleSystemTriggerEventType.Enter, enteredBuf);
     }
+
 }
 ```
 
@@ -5404,87 +5640,38 @@ namespace Game.Combat
 ## Assets/Scripts/DamageNumberStyleSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 
-/// Centralized visual/timing style for tweened damage numbers.
 [CreateAssetMenu(menuName = "UI/Damage Numbers/Style", fileName = "DamageNumberStyle")]
-public sealed class DamageNumberStyleSO : ScriptableObject
+public class DamageNumberStyleSO : ScriptableObject
 {
     [Header("Typography")]
-    [SerializeField] private TMP_FontAsset font;
-    [SerializeField] private Material fontMaterial;
-    [SerializeField, Min(0.1f)] private float baseFontSize = 4f;
-    [SerializeField] private Color defaultColor = Color.white;
+    public TMP_FontAsset font;
+    public Material fontMaterial;
+    public float baseFontSize = 4f;
+    public Color defaultColor = Color.white;
 
     [Header("Timing")]
-    [SerializeField, Min(0.05f)] private float duration = 0.9f;
-    [SerializeField, Range(0.01f, 0.3f)] private float fadeInFraction = 0.08f;
-    [SerializeField, Range(0.1f, 0.6f)] private float fadeOutFraction = 0.25f;
+    public float duration = 0.9f;
+    [Range(0.01f, 0.3f)] public float fadeInFraction = 0.08f;
+    [Range(0.1f, 0.6f)] public float fadeOutFraction = 0.25f;
 
     [Header("Motion")]
-    [SerializeField, Min(0f)] private float riseDistance = 1.25f;
+    public float riseDistance = 1.25f;
 
     [Header("Scale Pop")]
-    [SerializeField, Min(0.01f)] private float popFromScale = 0.6f;
-    [SerializeField, Min(0.01f)] private float popToScale = 1.1f;
+    public float popFromScale = 0.6f;
+    public float popToScale = 1.1f;
 
     [Header("Rendering")]
-    [SerializeField] private string sortingLayerName = "Default";
-    [SerializeField] private int sortingOrder = 500;
+    public string sortingLayerName = "Default";
+    public int sortingOrder = 500;
 
     [Header("Update")]
-    [SerializeField] private bool useUnscaledTime = false;
-
-    // Expose read-only access for runtime consumers.
-    public TMP_FontAsset Font => font;
-    public Material FontMaterial => fontMaterial;
-    public float BaseFontSize => baseFontSize;
-    public Color DefaultColor => defaultColor;
-    public float Duration => duration;
-    public float FadeInFraction => fadeInFraction;
-    public float FadeOutFraction => fadeOutFraction;
-    public float RiseDistance => riseDistance;
-    public float PopFromScale => popFromScale;
-    public float PopToScale => popToScale;
-    public string SortingLayerName => sortingLayerName;
-    public int SortingOrder => sortingOrder;
-    public bool UseUnscaledTime => useUnscaledTime;
-
-    // Validates ranges and relationships when the asset changes in the editor.
-    private void OnValidate()
-    {
-        // Ensure fade parts fit within duration and don�t overlap awkwardly
-        duration = Mathf.Max(0.05f, duration);
-        fadeInFraction = Mathf.Clamp(fadeInFraction, 0.01f, 0.95f);
-        fadeOutFraction = Mathf.Clamp(fadeOutFraction, 0.01f, 0.95f);
-
-        // Ensure pop scales make sense
-        if (popToScale < popFromScale)
-            popToScale = popFromScale;
-
-        // Nudge impossible combos
-        if (fadeInFraction + fadeOutFraction > 0.95f)
-            fadeOutFraction = 0.95f - fadeInFraction;
-    }
-
-    // Computes absolute fade times (seconds) from the stored fractional settings.
-    public void GetFadeTimings(out float fadeInSeconds, out float sustainSeconds, out float fadeOutSeconds)
-    {
-        fadeInSeconds = duration * fadeInFraction;
-        fadeOutSeconds = duration * fadeOutFraction;
-        sustainSeconds = Mathf.Max(0f, duration - fadeInSeconds - fadeOutSeconds);
-    }
-
-    // Applies only-safe fields to a TextMeshPro at runtime (optional helper).
-    public void ApplyToTMP(TMP_Text text)
-    {
-        if (!text) return;
-        text.font = font ? font : text.font;
-        text.fontMaterial = fontMaterial ? fontMaterial : text.fontMaterial;
-        text.fontSize = baseFontSize;
-        text.color = defaultColor;
-    }
+    public bool useUnscaledTime = false;
 }
 
 ```
@@ -5569,37 +5756,44 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[DisallowMultipleComponent]
 public class EndGame : MonoBehaviour
 {
-    private Pinball pinball;
 
-    // Cache reference to the Pinball manager (singleton or tagged fallback).
-    private void Awake()
+
+    Pinball pm;
+
+    // Start is called before the first frame update
+    void Start()
     {
-        pinball = Pinball.Instance ?? GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
+        pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
     }
 
-    // When a ball enters the drain, deactivate it and zero its motion (Play state only).
-    private void OnCollisionEnter(Collision col)
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+
+
+    void OnCollisionEnter(Collision col)
     {
         var ball = col.gameObject.GetComponent<Ball>();
-        if (!ball || pinball == null) return;
 
-        if (pinball.CurrentState == PinballState.Play && ball.IsActive)
+        if (pm.CurrentState == PinballState.Play && ball.IsActive)
         {
-            pinball.ballCount = Mathf.Max(0, pinball.ballCount - 1);
-            ball.gameObject.SetActive(false);
+            pm.DisableBall(ball);
         }
 
-        var rb = col.gameObject.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
+        Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();
+
+        rb.velocity = Vector3.zero;
+
+
+
     }
+
 }
+
 ```
 
 ## Assets/Scripts/GameManager.cs
@@ -5992,28 +6186,27 @@ public class GameManager : MonoBehaviour
 ## Assets/Scripts/IDamageNumberSystem.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-/// Spawns a floating damage number at a world position.
 public interface IDamageNumberSystem
 {
-    /// Spawn a damage number with optional color override at a world position.
     void Spawn(float amount, Vector3 position, Color? overrideColor = null);
 }
 
-/// Static facade so gameplay code stays decoupled from the UI/animation system.
+
+/// Thin static facade so gameplay code can do: DamageNumbers.Spawn(...).
+/// Keeps callers decoupled from the underlying UI/animation implementation.
 public static class DamageNumbers
 {
-    /// Register the active implementation once on startup (e.g., TweenDamageNumberSystem).
-    public static IDamageNumberSystem System { get; private set; }
+    /// Set once by the concrete implementation on startup.
+    public static IDamageNumberSystem System { get; set; }
 
-    /// Returns true if an implementation has registered.
     public static bool IsReady => System != null;
 
-    /// Register/replace the active damage number system.
     public static void Register(IDamageNumberSystem system) => System = system;
 
-    /// Try to spawn a damage number if a system is registered.
     public static void Spawn(float amount, Vector3 position, Color? overrideColor = null)
         => System?.Spawn(amount, position, overrideColor);
 }
@@ -6023,25 +6216,18 @@ public static class DamageNumbers
 ## Assets/Scripts/IPowerup.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-/// Contract for powerups that can trigger during pinball play.
 public interface IPowerup
 {
-    // Unique identifier for save/run tracking
     string Id { get; }
-
-    // Relative selection weight in RNG pools
     float Weight { get; }
-
-    // Human-friendly debug label for logs/inspector
     string DebugLabel { get; }
-
-    // Returns true if the powerup is eligible to trigger in the current run context
     bool CanTrigger(IRunContext ctx);
-
-    // Executes the powerup at a world position with access to Pinball systems
     void Execute(Pinball pm, Vector3 triggerPos);
+
 }
 
 ```
@@ -6051,93 +6237,45 @@ public interface IPowerup
 ```csharp
 using System.Collections.Generic;
 
-/// Abstraction for �current run� state & effect application (implemented by Pinball).
 public interface IRunContext
 {
-    // ��� Ownership / Availability / Exclusivity ���
 
-    /// Returns true if the player already owns the reward (regardless of active state).
-    bool Owns(string rewardId);
-
-    /// Returns true if the reward is currently active (its effects are applied).
     bool IsActive(string rewardId);
-
-    /// Returns true if the reward exists in the current pool of available rewards.
     bool IsAvailable(string rewardId);
-
-    /// Returns true if an exclusive key is currently active in the run.
+    bool Owns(string rewardId);
     bool HasExclusiveKeyActive(string key);
 
-    /// Gets the set of currently active exclusivity keys.
-    IEnumerable<string> ActiveKeys { get; }
-
-    /// Marks a reward as owned by the player this run.
-    void MarkOwned(string rewardId);
-
-    /// Toggles a reward�s active state on/off.
-    void SetActive(string rewardId, bool on);
-
-    /// Toggles a reward�s availability in the current pool.
-    void SetAvailable(string rewardId, bool on);
-
-    /// Toggles an exclusivity key on/off for mutual exclusion groups.
-    void SetExclusive(string key, bool on);
-
-
-    // ��� Run Resources (Lives) ���
-
-    /// Current number of lives remaining in this run.
     int Lives { get; }
-
-    /// Maximum number of lives allowed this run.
     int MaxLives { get; }
 
-    /// Grants additional lives (implementation should clamp to MaxLives).
     void ApplyGrantedLives(int amount);
 
+    void MarkOwned(string rewardId);
+    void SetActive(string rewardId, bool on);
+    void SetAvailable(string rewardId, bool on);
+    void SetExclusive(string key, bool on);
 
-    // ��� Scoring / XP Multipliers & Timed Bonuses ���
+    IEnumerable<string> ActiveKeys { get; }
 
-    /// Applies a score multiplier; cursed variants can invert/penalize internally.
     void ApplyScoreMultiplier(float multiplier, bool isCursed);
-
-    /// Applies an XP multiplier; cursed variants can invert/penalize internally.
     void ApplyXPMultiplier(float multiplier, bool isCursed);
 
-    /// Starts/extends a timed score bonus window (in seconds).
     void ApplyScoreBonusTime(float time, bool isCursed);
-
-    /// Starts/extends a timed XP bonus window (in seconds).
     void ApplyXPBonusTime(float time, bool isCursed);
 
-
-    // ��� Ball Size/Speed/Bounce FX ���
-
-    /// Applies a �shrink� profile to the ball (size, speed, bounciness, etc.).
     void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
-
-    /// Applies a �grow� profile to the ball (size, speed, bounciness, etc.).
     void ApplyGrowFX(float size, float speed, float bounciness, float scoreMult, float bonusHits, int bounces, bool bonus, bool isCursed);
 
-
-    // ��� Damage Hooks ���
-
-    /// Applies an immediate damage effect to valid targets.
     void ApplyDamageFX(float amount);
-
-    /// Applies �damage per bounce� effect with a bounce threshold.
     void ApplyDmgPerBounceFX(float damageMult, int bouncesNeeded);
 
 
-    // ��� Utility / Misc FX ���
 
-    /// Grows XP pickup radius / attraction force field.
     void ApplyXPForcefield(float radiusIncrease);
 
-    /// Spawns additional active balls into play.
     void ApplyAdditionalBalls(int additionalBalls);
-}
 
+}
 ```
 
 ## Assets/Scripts/Item.cs
@@ -6163,16 +6301,17 @@ public class Item
 ## Assets/Scripts/Level Up Rewards/BallDuplicateRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Ball Duplicate FX", fileName = "BallDuplicateReward")]
-public sealed class BallDuplicateRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Ball Duplicate FX")]
+public class BallDuplicateRewardSO : RewardSO
 {
-    [Header("Duplication")]
-    [SerializeField, Min(1)] private int additionalBalls = 1;
+
+    [SerializeField] private int additionalBalls = 1;
     [SerializeField] private bool cursed = false;
 
-    // Spawns extra balls (multi-ball) and flags ownership/activation.
     public override void Apply(IRunContext ctx)
     {
         ctx.MarkOwned(Id);
@@ -6180,17 +6319,19 @@ public sealed class BallDuplicateRewardSO : RewardSO
         ctx.SetAvailable(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
 
-        // Pinball implements duplication logic behind this call.
         ctx.ApplyAdditionalBalls(additionalBalls);
+
     }
 
-    // Uses global eligibility + prevents 'cursed' when on last life.
     public override bool IsEligible(IRunContext ctx)
     {
-        if (!base.IsEligible(ctx)) return false;
+        // keep all global rules (ownership, stacking, exclusivity, etc.)
+        if (!base.IsEligible(ctx))
+            return false;
 
-        // Simple guard to avoid soft-locking on last life if cursed.
-        if (cursed && ctx.Lives <= 1) return false;
+
+        if (cursed && ctx.Lives <= 1)
+            return false;
 
         return true;
     }
@@ -6201,22 +6342,22 @@ public sealed class BallDuplicateRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/BallGrowRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Ball Grow", fileName = "BallGrowReward")]
-public sealed class BallGrowRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Ball Grow")]
+public class BallGrowRewardSO : RewardSO
 {
-    [Header("Grow FX")]
-    [SerializeField, Min(0f)] private float size = 10f;
-    [SerializeField, Range(-100f, 100f)] private float speed = 0f; // �% change
-    [SerializeField, Range(-100f, 100f)] private float scoreMultiplier = 0f; // �% change
-    [SerializeField, Min(0f)] private float bonusHits = 0f;
-    [SerializeField, Range(-100f, 100f)] private float bounciness = 0f; // �% change
-    [SerializeField, Min(0)] private int bouncesForBonusHits = 0;
-    [SerializeField] private bool grantBonusWindow = false;
+    [SerializeField] private float size = 1f;
+    [SerializeField] private float speed = 1f;
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusHits = 1f;
+    [SerializeField] private float bounciness = 1f;
+    [SerializeField] private int bouncesForBonusHits = 1;
+    [SerializeField] private bool bonus = false;
     [SerializeField] private bool cursed = false;
 
-    // Applies growth FX via the run context and marks this reward state.
     public override void Apply(IRunContext ctx)
     {
         ctx.MarkOwned(Id);
@@ -6224,8 +6365,8 @@ public sealed class BallGrowRewardSO : RewardSO
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
 
-        // ctx.ApplyGrowFX(size, speed, bounciness, scoreMult, bonusHits, bounces, bonus, isCursed)
-        ctx.ApplyGrowFX(size, speed, bounciness, scoreMultiplier, bonusHits, bouncesForBonusHits, grantBonusWindow, cursed);
+        ctx.ApplyGrowFX(size, speed, bounciness, multiplier, bonusHits, bouncesForBonusHits, bonus, cursed);
+
     }
 }
 
@@ -6234,22 +6375,22 @@ public sealed class BallGrowRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/BallShrinkRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Ball Shrink", fileName = "BallShrinkReward")]
-public sealed class BallShrinkRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Ball Shrink")]
+public class BallShrinkRewardSO : RewardSO
 {
-    [Header("Shrink FX")]
-    [SerializeField, Min(0f)] private float size = 10f;
-    [SerializeField, Range(-100f, 100f)] private float speed = 0f; // �% change
-    [SerializeField, Range(-100f, 100f)] private float scoreMultiplier = 0f; // �% change
-    [SerializeField, Min(0f)] private float bonusHits = 0f;
-    [SerializeField, Range(-100f, 100f)] private float bounciness = 0f; // �% change
-    [SerializeField, Min(0)] private int bouncesForBonusHits = 0;
-    [SerializeField] private bool grantBonusWindow = false;
+    [SerializeField] private float size = 1f;
+    [SerializeField] private float speed = 1f;
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusHits = 1f;
+    [SerializeField] private float bounciness = 1f;
+    [SerializeField] private int bouncesForBonusHits = 1;
+    [SerializeField] private bool bonus = false;
     [SerializeField] private bool cursed = false;
 
-    // Applies shrink FX via the run context and marks this reward state.
     public override void Apply(IRunContext ctx)
     {
         ctx.MarkOwned(Id);
@@ -6257,8 +6398,8 @@ public sealed class BallShrinkRewardSO : RewardSO
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
 
-        // ctx.ApplyShrinkFX(size, speed, bounciness, scoreMult, bonusHits, bounces, bonus, isCursed)
-        ctx.ApplyShrinkFX(size, speed, bounciness, scoreMultiplier, bonusHits, bouncesForBonusHits, grantBonusWindow, cursed);
+        ctx.ApplyShrinkFX(size, speed, bounciness, multiplier, bonusHits, bouncesForBonusHits, bonus, cursed);
+
     }
 }
 
@@ -6267,25 +6408,25 @@ public sealed class BallShrinkRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/DamagePerBounceRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/DmgPerBounce", fileName = "DamagePerBounceReward")]
-public sealed class DamagePerBounceRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/DmgPerBounce")]
+public class DamagePerBounceRewardSO : RewardSO
 {
-    [Header("Per-Bounce")]
-    [SerializeField, Min(0f)] private float damageMult = 10f;
-    [SerializeField, Min(1)] private int bouncesNeeded = 1;
+    [SerializeField] private float damageMult = 10f;
+    [SerializeField] private int bouncesNeeded = 1;
 
-    // Grants a damage boost that triggers after N bounces; marks ownership/activation.
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
-        ctx.SetAvailable(Id, true);                 // preserved from your original
+        ctx.SetAvailable(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
 
         ctx.ApplyDmgPerBounceFX(damageMult, bouncesNeeded);
+
     }
 }
 
@@ -6294,24 +6435,24 @@ public sealed class DamagePerBounceRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/DamageRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Damage", fileName = "DamageReward")]
-public sealed class DamageRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Damage")]
+public class DamageRewardSO : RewardSO
 {
-    [Header("Damage")]
-    [SerializeField, Min(0f)] private float damageMult = 1f;
+    [SerializeField] private float damageMult = 1f;
 
-    // Applies a persistent global damage multiplier and marks ownership/activation.
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
-        ctx.SetAvailable(Id, true);                 // preserved from your original
+        ctx.SetAvailable(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
 
         ctx.ApplyDamageFX(damageMult);
+
     }
 }
 
@@ -6320,23 +6461,24 @@ public sealed class DamageRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/EarthPaddleRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Earth Paddle FX", fileName = "EarthPaddleReward")]
-public sealed class EarthPaddleRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Earth Paddle FX")]
+public class EarthPaddleRewardSO : RewardSO
 {
-    [Header("Earth FX")]
-    [SerializeField, Min(0)] private int fissureDamage = 1;
-    [SerializeField, Min(0f)] private float crustedDuration = 1f;
-    [SerializeField, Min(0f)] private float fissureHitScoreMultiplier = 1f;
-    [SerializeField, Min(0f)] private float fissureHitXPMultiplier = 1f;
-    [SerializeField, Min(0)] private int bounceDuration = 1;
+
+    [SerializeField] private int fissureDamage = 1;
+    [SerializeField] private float crustedDuration = 1f;
+    [SerializeField] private float fissureHitScoreMultiplier = 1f;
+    [SerializeField] private float fissureHitXPMultiplier = 1f;
+    [SerializeField] private int bounceDuration = 1;
     [SerializeField] private bool cursed = false;
 
-    // Marks ownership/activation and flags as a paddle reward.
+
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetAvailable(Id, false);
@@ -6344,10 +6486,8 @@ public sealed class EarthPaddleRewardSO : RewardSO
         isPaddleReward = true;
     }
 
-    // Applies Earth parameters to the target paddle's elemental state.
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
-        if (!paddle) return;
         paddle.ApplyEarth(fissureDamage, crustedDuration, fissureHitScoreMultiplier, fissureHitXPMultiplier, bounceDuration, cursed);
     }
 }
@@ -6357,35 +6497,35 @@ public sealed class EarthPaddleRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/ElectricPaddleRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Electric Paddle FX", fileName = "ElectricPaddleReward")]
-public sealed class ElectricPaddleRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Electric Paddle FX")]
+public class ElectricPaddleRewardSO : RewardSO
 {
-    [Header("Electric FX")]
-    [SerializeField, Min(0)] private int shockDamage = 1;
-    [SerializeField, Min(1)] private int chainCount = 1;
-    [SerializeField, Min(0)] private int bounceDuration = 1;
-    [SerializeField, Min(0f)] private float xpBonus = 0.1f;
-    [SerializeField, Min(0f)] private float scoreBonus = 0.1f;
+    [SerializeField] private int shockDamage = 1;
+    [SerializeField] private int chainCount = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float xpBonus = 0.1f;
+    [SerializeField] private float scoreBonus = 0.1f;
     [SerializeField] private bool cursed = false;
-
-    // Marks ownership/activation and flags as a paddle reward.
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
         isPaddleReward = true;
+
+
     }
 
-    // Applies Electric parameters to the target paddle's elemental state.
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
-        if (!paddle) return;
+        Debug.Log("nice!");
         paddle.ApplyElectric(shockDamage, chainCount, xpBonus, scoreBonus, bounceDuration, cursed);
+
     }
 }
 
@@ -6394,38 +6534,42 @@ public sealed class ElectricPaddleRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/FirePaddleRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Fire Paddle FX", fileName = "FirePaddleReward")]
-public sealed class FirePaddleRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Fire Paddle FX")]
+public class FirePaddleRewardSO : RewardSO
 {
-    [Header("Fire FX")]
-    [SerializeField, Min(0)] private int bonusDamageFlat = 1;
-    [SerializeField, Min(0f)] private float burnDamage = 1f;
-    [SerializeField, Min(0f)] private float burnDuration = 1f;
-    [SerializeField, Min(0)] private int explosionDamageFlat = 1;
-    [SerializeField, Min(0)] private int bounceDuration = 1;
-    [SerializeField, Min(0f)] private float explosionSize = 1f;
+    [SerializeField] private int bonusDamageFlat = 1;
+    [SerializeField] private float burnDamage = 1f;
+    [SerializeField] private float burnDuration = 1f;
+    [SerializeField] private int explosionDamageFlat = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float explosionSize = 1f;
     [SerializeField] private bool canExplode = false;
     [SerializeField] private bool cursed = false;
 
-    // Marks ownership/activation and flags as a paddle reward.
+
+
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
         isPaddleReward = true;
+
+
     }
 
-    // Applies Fire parameters to the target paddle's elemental state.
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
-        if (!paddle) return;
+        Debug.Log("nice!");
         paddle.ApplyFire(bonusDamageFlat, burnDamage, burnDuration, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+
     }
+
 }
 
 ```
@@ -6433,16 +6577,18 @@ public sealed class FirePaddleRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/LifeRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Rewards/Life Reward", fileName = "LifeReward")]
 public sealed class LifeRewardSO : RewardSO
 {
-    // Optional manual override; leave 0 to use rarity mapping
-    [SerializeField, Tooltip("Override grant amount. Leave 0 to use the rarity-based amount.")]
+    // Optional manual override; leave 0 to use rarity mapping below
+    [SerializeField, Tooltip("Override grant amount. Leave 0 to use rarity mapping.")]
     private int overrideAmount = 0;
 
-    // Computes lives granted based on rarity (or override if provided).
+    // Map rarity -> lives granted: Rare=1, Epic=2, Legendary=3, Artifact=4
     private int Amount =>
         overrideAmount > 0 ? overrideAmount :
         Rarity switch
@@ -6454,20 +6600,27 @@ public sealed class LifeRewardSO : RewardSO
             _ => 1
         };
 
-    // Ensures this reward is only offered when it won't exceed MaxLives.
     public override bool IsEligible(IRunContext ctx)
     {
-        if (!base.IsEligible(ctx)) return false;
-        if (ctx == null || ctx.MaxLives <= 0) return false;
-        if (ctx.Lives >= ctx.MaxLives) return false;
-        if (ctx.Lives + Amount > ctx.MaxLives) return false;
+        // keep all global rules (ownership, stacking, exclusivity, etc.)
+        if (!base.IsEligible(ctx))
+            return false;
+
+        // lives must be known and not already capped
+        if (ctx.MaxLives <= 0 || ctx.Lives >= ctx.MaxLives)
+            return false;
+
+        // never offer a life reward that would exceed max
+        // e.g., at 4/5 only Amount=1 (Rare) is eligible
+        if (ctx.Lives + Amount > ctx.MaxLives)
+            return false;
+
         return true;
     }
 
-    // Grants lives through the run context (manager clamps internally as well).
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
+        // Pinball implements this; value is clamped there as well
         ctx.ApplyGrantedLives(Amount);
     }
 }
@@ -6477,26 +6630,26 @@ public sealed class LifeRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/ScoreMultiplierRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Score Multiplier", fileName = "ScoreMultiplierReward")]
-public sealed class ScoreMultiplierRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Score Multiplier")]
+public class ScoreMultiplierRewardSO : RewardSO
 {
-    [Header("Score Bonus")]
-    [SerializeField, Min(0f)] private float multiplier = 1f;
-    [SerializeField, Min(0f)] private float bonusTime = 30f;
+    [SerializeField] private float multiplier = 1f;
+    [SerializeField] private float bonusTime = 30f;
     [SerializeField] private bool cursed = false;
 
-    // Applies score multiplier + bonus time and marks run ownership/activation.
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
 
         ctx.ApplyScoreMultiplier(multiplier, cursed);
         ctx.ApplyScoreBonusTime(bonusTime, cursed);
+
     }
 }
 
@@ -6505,38 +6658,47 @@ public sealed class ScoreMultiplierRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/WaterPaddleRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Rewards/Water Paddle FX", fileName = "WaterPaddleReward")]
-public sealed class WaterPaddleRewardSO : RewardSO
+[CreateAssetMenu(menuName = "Rewards/Water Paddle FX")]
+public class WaterPaddleRewardSO : RewardSO
 {
-    [Header("Water FX")]
-    [SerializeField, Min(0f)] private float bonusXPPerc = 1f;
-    [SerializeField, Min(0)] private int bonusDamageFlat = 1;
-    [SerializeField, Min(0f)] private float drenchDuration = 1f;
-    [SerializeField, Min(0)] private int explosionDamageFlat = 1;
-    [SerializeField, Min(0)] private int bounceDuration = 1;
-    [SerializeField, Min(0f)] private float explosionSize = 1f;
+    [SerializeField] private float bonusXPPerc = 1f;
+    [SerializeField] private int bonusDamageFlat = 1;
+    [SerializeField] private float drenchDuration = 1f;
+    [SerializeField] private int explosionDamageFlat = 1;
+    [SerializeField] private int bounceDuration = 1;
+    [SerializeField] private float explosionSize = 1f;
     [SerializeField] private bool canExplode = false;
     [SerializeField] private bool cursed = false;
 
-    // Marks ownership/activation and flags as a paddle reward.
+
+
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetAvailable(Id, false);
         ctx.SetExclusive(ExclusivityKey, true);
         isPaddleReward = true;
+
+
     }
 
-    // Applies Water parameters to the target paddle's elemental state.
+    public override void IsEligible(IRunContext ctx)
+    {
+        base.IsEligible(ctx);
+    }
+
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
-        if (!paddle) return;
+        Debug.Log("niceu!");
         paddle.ApplyWater(bonusXPPerc, bonusDamageFlat, drenchDuration, bounceDuration, canExplode, explosionSize, explosionDamageFlat, cursed);
+
     }
+
 }
 
 ```
@@ -6544,6 +6706,8 @@ public sealed class WaterPaddleRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/XPGravityRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Rewards/XP Gravity")]
@@ -6551,15 +6715,16 @@ public class XPGravityRewardSO : RewardSO
 {
     [SerializeField] private float radiusIncrease = 1f;
 
-    // Expands XP pickup forcefield radius and marks run ownership/activation.
+
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
-        ctx.SetAvailable(Id, true); // kept per your original
+        ctx.SetAvailable(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
+
         ctx.ApplyXPForcefield(radiusIncrease);
+
     }
 }
 
@@ -6568,6 +6733,8 @@ public class XPGravityRewardSO : RewardSO
 ## Assets/Scripts/Level Up Rewards/XPMultiplierRewardSO.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Rewards/XP Multiplier")]
@@ -6577,15 +6744,15 @@ public class XPMultiplierRewardSO : RewardSO
     [SerializeField] private float bonusTime = 30f;
     [SerializeField] private bool cursed = false;
 
-    // Applies XP multiplier + bonus time and marks run ownership/activation.
     public override void Apply(IRunContext ctx)
     {
-        if (ctx == null) return;
         ctx.MarkOwned(Id);
         ctx.SetActive(Id, true);
         ctx.SetExclusive(ExclusivityKey, true);
+
         ctx.ApplyXPMultiplier(multiplier, cursed);
         ctx.ApplyXPBonusTime(bonusTime, cursed);
+
     }
 }
 
@@ -6733,41 +6900,41 @@ using UnityEngine;
 
 public class PaddleEffectData
 {
-    public  PaddleState Element;
+    public readonly PaddleState Element;
 
     // Fire fields (extend later for other elements)
-    public  int FireBonusDamage;
-    public  float FireBurnDamage;
-    public  float FireBurnDuration;
-    public  int FireBounceDuration;
-    public  bool FireCanExplode;
-    public  float FireExplosionSize;
-    public  int FireExplosionDamageFlat;
-    public  bool FireIsCursed;
+    public readonly int FireBonusDamage;
+    public readonly float FireBurnDamage;
+    public readonly float FireBurnDuration;
+    public readonly int FireBounceDuration;
+    public readonly bool FireCanExplode;
+    public readonly float FireExplosionSize;
+    public readonly int FireExplosionDamageFlat;
+    public readonly bool FireIsCursed;
 
     // Water fields (extend later for other elements)
-    public  float WaterBonusXP;
-    public  int WaterDamageFlat;
-    public  float WaterDrenchDuration;
-    public  int WaterBounceDuration;
-    public  bool WaterCanBurst;
-    public  float WaterBurstSize;
+    public readonly float WaterBonusXP;
+    public readonly int WaterDamageFlat;
+    public readonly float WaterDrenchDuration;
+    public readonly int WaterBounceDuration;
+    public readonly bool WaterCanBurst;
+    public readonly float WaterBurstSize;
     public readonly int WaterBurstDamageFlat;
-    public bool WaterIsCursed;
+    public readonly bool WaterIsCursed;
 
-    public  int EarthBonusDamage;
-    public  float EarthFissureDuration;
-    public  float EarthXPBonus;
-    public  float EarthScoreBonus;
-    public  int EarthBounceDuration;
-    public  bool EarthIsCursed;
+    public readonly int EarthBonusDamage;
+    public readonly float EarthFissureDuration;
+    public readonly float EarthXPBonus;
+    public readonly float EarthScoreBonus;
+    public readonly int EarthBounceDuration;
+    public readonly bool EarthIsCursed;
 
-    public  int ElectricShockDamage;
-    public  int ElectricChainCount;
-    public  float ElectricXPBonus;
-    public  float ElectricScoreBonus;
-    public  int ElectricBounceDuration;
-    public  bool ElectricIsCursed;
+    public readonly int ElectricShockDamage;
+    public readonly int ElectricChainCount;
+    public readonly float ElectricXPBonus;
+    public readonly float ElectricScoreBonus;
+    public readonly int ElectricBounceDuration;
+    public readonly bool ElectricIsCursed;
 
     public PaddleEffectData(
         PaddleState element,
@@ -6844,191 +7011,188 @@ public class PaddleEffectData
 ## Assets/Scripts/PaddleElementalState.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-/// Tracks and applies elemental states for a paddle (one-shot bounce windows, bonuses, curses).
-[DisallowMultipleComponent]
-public sealed class PaddleElementalState : MonoBehaviour
+public class PaddleElementalState : MonoBehaviour
 {
-    public enum PaddleState { None, Fire, Water, Earth, Electric }
+    [SerializeField]
+    private PaddleState initialState = PaddleState.None;
 
-    [Header("Runtime")]
-    [SerializeField] private PaddleState current = PaddleState.None;
+    public PaddleState CurrentState = PaddleState.None;
 
-    // Fire
-    [SerializeField] private int fireBonusFlat = 0;
-    [SerializeField] private float fireBurnDamage = 0f;
-    [SerializeField] private float fireBurnDuration = 0f;
-    [SerializeField] private bool fireCanExplode = false;
-    [SerializeField] private float fireExplosionSize = 1f;
-    [SerializeField] private int fireExplosionDamageFlat = 0;
-    [SerializeField] private bool fireIsCursed = false;
-    [SerializeField] private int fireBounceDuration = 0;
 
-    // Water
-    [SerializeField] private float waterBonusXP = 0f;
-    [SerializeField] private int waterDamageFlat = 0;
-    [SerializeField] private float waterDrenchDuration = 0f;
-    [SerializeField] private bool waterCanBurst = false;
-    [SerializeField] private float waterBurstSize = 1f;
-    [SerializeField] private int waterBurstDamageFlat = 0;
-    [SerializeField] private bool waterIsCursed = false;
-    [SerializeField] private int waterBounceDuration = 0;
 
-    // Earth
-    [SerializeField] private int earthFissureDamage = 0;
-    [SerializeField] private float earthFissureDuration = 0f;
-    [SerializeField] private float earthXPBonus = 0f;
-    [SerializeField] private float earthScoreBonus = 0f;
-    [SerializeField] private bool earthIsCursed = false;
-    [SerializeField] private int earthBounceDuration = 0;
+    public int FireBonusDamage { get; private set; }
+    public int FireBounceDuration { get; private set; }
+    public float FireBurnDamage { get; private set; }
+    public float FireBurnDuration { get; private set; }
+    public bool FireCanExplode { get; private set; }
+    public float FireExplosionSize { get; private set; }
+    public int FireExplosionDamageFlat { get; private set; }
+    public bool FireIsCursed { get; private set; }
 
-    // Electric
-    [SerializeField] private int electricShockDamage = 0;
-    [SerializeField] private int electricChainCount = 1;
-    [SerializeField] private float electricXPBonus = 0f;
-    [SerializeField] private float electricScoreBonus = 0f;
-    [SerializeField] private bool electricIsCursed = false;
-    [SerializeField] private int electricBounceDuration = 0;
+    public float WaterBonusXP { get; private set; }
+    public int WaterBonusDamage { get; private set; }
+    public float WaterDrenchDuration { get; private set; }
+    public int WaterBounceDuration { get; private set; }
+    public bool WaterCanBurst { get; private set; }
+    public float WaterBurstSize { get; private set; }
+    public int WaterBurstDamageFlat { get; private set; }
+    public bool WaterIsCursed { get; private set; }
 
-    // Expose state to other systems
-    public PaddleState CurrentState => current;
+    public int EarthFissureDamage { get; private set; }
+    public float EarthCrustDuration { get; private set; }
+    public float EarthXPBonus { get; private set; }
+    public float EarthScoreBonus { get; private set; }
+    public int EarthBounceDuration { get; private set; }
+    public bool EarthIsCursed { get; private set; }
 
-    // Applies Fire parameters from rewards/selection
-    public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDuration, int bounceDuration,
-                          bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    public int ElectricShockDamage { get; private set; }
+    public int ElectricChainCount { get; private set; }
+    public float ElectricXPBonus { get; private set; }
+    public float ElectricScoreBonus { get; private set; }
+    public int ElectricBounceDuration { get; private set; }
+    public bool ElectricIsCursed { get; private set; }
+
+
+    void Start()
     {
-        current = PaddleState.Fire;
-        fireBonusFlat = Mathf.Max(0, bonusDamageFlat);
-        fireBurnDamage = Mathf.Max(0f, burnDamage);
-        fireBurnDuration = Mathf.Max(0f, burnDuration);
-        fireBounceDuration = Mathf.Max(0, bounceDuration);
-        fireCanExplode = canExplode;
-        fireExplosionSize = Mathf.Max(0f, explosionSize);
-        fireExplosionDamageFlat = Mathf.Max(0, explosionDamageFlat);
-        fireIsCursed = cursed;
+        CurrentState = initialState;
     }
 
-    // Applies Water parameters from rewards/selection
-    public void ApplyWater(float bonusXP, int damageFlat, float drenchDuration, int bounceDuration,
-                           bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
+    public void SetPaddleState(PaddleState newState)
     {
-        current = PaddleState.Water;
-        waterBonusXP = Mathf.Max(0f, bonusXP);
-        waterDamageFlat = Mathf.Max(0, damageFlat);
-        waterDrenchDuration = Mathf.Max(0f, drenchDuration);
-        waterBounceDuration = Mathf.Max(0, bounceDuration);
-        waterCanBurst = canBurst;
-        waterBurstSize = Mathf.Max(0f, burstSize);
-        waterBurstDamageFlat = Mathf.Max(0, burstDamageFlat);
-        waterIsCursed = cursed;
+        if (newState == PaddleState.None || CurrentState == newState)
+            return;
+        switch (newState)
+            {
+                case PaddleState.Fire:
+                    CurrentState = PaddleState.Fire;
+                    break;
+                case PaddleState.Water:
+                    CurrentState = PaddleState.Water;
+                    break;
+                case PaddleState.Earth:
+                    CurrentState = PaddleState.Earth;
+                    break;
+            case PaddleState.Electric:
+                    CurrentState = PaddleState.Electric;
+                    break;
+                default:
+                    CurrentState = PaddleState.None;
+                    break;
+        }
     }
 
-    // Applies Earth parameters from rewards/selection
-    public void ApplyEarth(int fissureDamage, float fissureDuration, float xpBonus, float scoreBonus,
-                           int bounceDuration, bool cursed)
+    public void StoreFireData(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
     {
-        current = PaddleState.Earth;
-        earthFissureDamage = Mathf.Max(0, fissureDamage);
-        earthFissureDuration = Mathf.Max(0f, fissureDuration);
-        earthXPBonus = Mathf.Max(0f, xpBonus);
-        earthScoreBonus = Mathf.Max(0f, scoreBonus);
-        earthBounceDuration = Mathf.Max(0, bounceDuration);
-        earthIsCursed = cursed;
+        FireBonusDamage = bonusDamage;
+        FireBurnDamage = burnDamage;
+        FireBurnDuration = burnDuration;
+        FireBounceDuration = bounceDuration;
+        FireCanExplode = canExplode;
+        FireExplosionSize = explosionSize;
+        FireExplosionDamageFlat = explosionDamageFlat;
+        FireIsCursed = cursed;
     }
 
-    // Applies Electric parameters from rewards/selection
-    public void ApplyElectric(int shockDamage, int chainCount, float xpBonus, float scoreBonus,
-                              int bounceDuration, bool cursed)
+    public void StoreWaterData(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
     {
-        current = PaddleState.Electric;
-        electricShockDamage = Mathf.Max(0, shockDamage);
-        electricChainCount = Mathf.Max(1, chainCount);
-        electricXPBonus = Mathf.Max(0f, xpBonus);
-        electricScoreBonus = Mathf.Max(0f, scoreBonus);
-        electricBounceDuration = Mathf.Max(0, bounceDuration);
-        electricIsCursed = cursed;
+        WaterBonusXP = bonusXP;
+        WaterBonusDamage = bonusDamage;
+        WaterDrenchDuration = drenchDuration;
+        WaterBounceDuration = bounceDuration;
+        WaterCanBurst = canBurst;
+        WaterBurstSize = burstSize;
+        WaterBurstDamageFlat = burstDamageFlat;
+        WaterIsCursed = cursed;
+        WaterBounceDuration = bounceDuration;
+        WaterIsCursed = cursed;
     }
 
-    // Clears all elemental parameters and returns to neutral
-    public void Clear()
+    public void StoreEarthData(int bonusDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
     {
-        current = PaddleState.None;
-        fireBonusFlat = fireExplosionDamageFlat = 0;
-        fireBurnDamage = fireBurnDuration = 0f;
-        fireCanExplode = fireIsCursed = false;
-        fireExplosionSize = 1f; fireBounceDuration = 0;
-
-        waterBonusXP = waterDrenchDuration = 0f;
-        waterDamageFlat = waterBurstDamageFlat = 0;
-        waterCanBurst = waterIsCursed = false;
-        waterBurstSize = 1f; waterBounceDuration = 0;
-
-        earthFissureDamage = 0; earthFissureDuration = 0f;
-        earthXPBonus = earthScoreBonus = 0f;
-        earthIsCursed = false; earthBounceDuration = 0;
-
-        electricShockDamage = 0; electricChainCount = 1;
-        electricXPBonus = electricScoreBonus = 0f;
-        electricIsCursed = false; electricBounceDuration = 0;
+        EarthFissureDamage = bonusDamage;
+        EarthCrustDuration = crustDuration;
+        EarthXPBonus = xpBonus;
+        EarthScoreBonus = scoreBonus;
+        EarthBounceDuration = bounceDuration;
+        EarthIsCursed = cursed;
     }
 
-    // Returns the current bounce-duration for the active element
-    public int GetBounceDuration()
+    public void StoreElectricData(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
     {
-        return current switch
-        {
-            PaddleState.Fire => fireBounceDuration,
-            PaddleState.Water => waterBounceDuration,
-            PaddleState.Earth => earthBounceDuration,
-            PaddleState.Electric => electricBounceDuration,
-            _ => 0
-        };
+        ElectricShockDamage = shockDamage;
+        ElectricChainCount = chainCount;
+        ElectricXPBonus = xpBonus;
+        ElectricScoreBonus = scoreBonus;
+        ElectricBounceDuration = bounceDuration;
+        ElectricIsCursed = cursed;
+    }
+    public void ApplyFire(int bonusDamageFlat, float burnDamage, float burnDur, int bounceDur, bool canExplode, float explosionSize, int explosionDamageFlat, bool cursed)
+    {
+        SetPaddleState(PaddleState.Fire);
+        StoreFireData(bonusDamageFlat, burnDamage, burnDur, bounceDur, canExplode, explosionSize, explosionDamageFlat, cursed);
+        // TODO: spawn paddle fire VFX/SFX here
     }
 
-    // Copies element-specific hit effects into a struct usable by Ball/Bumper logic
-    public PaddleEffectData ToEffectData()
+    public void ApplyWater(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstSize, int burstDamageFlat, bool cursed)
     {
-        var e = new PaddleEffectData { Element = (PaddleEffectData.PaddleState)current };
-
-        // Fire
-        e.FireBonusDamage = fireBonusFlat;
-        e.FireBurnDamage = fireBurnDamage;
-        e.FireBurnDuration = fireBurnDuration;
-        e.FireBounceDuration = fireBounceDuration;
-        e.FireCanExplode = fireCanExplode;
-        e.FireExplosionSize = fireExplosionSize;
-        e.FireExplosionDamageFlat = fireExplosionDamageFlat;
-        e.FireIsCursed = fireIsCursed;
-
-        // Water
-        e.WaterBonusXP = waterBonusXP;
-        e.WaterDamageFlat = waterDamageFlat;
-        e.WaterDrenchDuration = waterDrenchDuration;
-        e.WaterBounceDuration = waterBounceDuration;
-        e.WaterCanBurst = waterCanBurst;
-        e.WaterBurstSize = waterBurstSize;
-        e.WaterBurstDamageFlat = waterBurstDamageFlat;
-        e.WaterIsCursed = waterIsCursed;
-
-        // Earth
-        e.EarthBonusDamage = earthFissureDamage;
-        e.EarthFissureDuration = earthFissureDuration;
-        e.EarthXPBonus = earthXPBonus;
-        e.EarthScoreBonus = earthScoreBonus;
-        e.EarthBounceDuration = earthBounceDuration;
-        e.EarthIsCursed = earthIsCursed;
-
-        // Electric
-        e.ElectricShockDamage = electricShockDamage;
-        e.ElectricChainCount = electricChainCount;
-        e.ElectricXPBonus = electricXPBonus;
-        e.ElectricScoreBonus = electricScoreBonus;
-        e.ElectricBounceDuration = electricBounceDuration;
-        e.ElectricIsCursed = electricIsCursed;
-
-        return e;
+        SetPaddleState(PaddleState.Water);
+        StoreWaterData(bonusXP, bonusDamage, drenchDuration, bounceDuration, canBurst, burstSize, burstDamageFlat, cursed);
     }
+
+    public void ApplyEarth(int fissureDamage, float crustDuration, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Earth);
+        StoreEarthData(fissureDamage, crustDuration, xpBonus, scoreBonus, bounceDuration, cursed);
+    }
+
+    public void ApplyElectric(int shockDamage, int chainCount, float xpBonus, float scoreBonus, int bounceDuration, bool cursed)
+    {
+        SetPaddleState(PaddleState.Electric);
+        StoreElectricData(shockDamage, chainCount, xpBonus, scoreBonus, bounceDuration, cursed);
+    }
+
+    public PaddleEffectData GetEffectData()
+    {
+        return new PaddleEffectData(
+            CurrentState,
+            FireBonusDamage,
+            FireBurnDamage,
+            FireBurnDuration,
+            FireBounceDuration,
+            FireCanExplode,
+            FireExplosionSize,
+            FireExplosionDamageFlat,
+            FireIsCursed,
+
+            WaterBonusXP,
+            WaterBonusDamage,
+            WaterDrenchDuration,
+            WaterBounceDuration,
+            WaterCanBurst,
+            WaterBurstSize,
+            WaterBurstDamageFlat,
+            WaterIsCursed,
+
+            EarthFissureDamage,
+            EarthCrustDuration,
+            EarthXPBonus,
+            EarthScoreBonus,
+            EarthBounceDuration,
+            EarthIsCursed,
+            
+            ElectricShockDamage,
+            ElectricChainCount,
+            ElectricXPBonus,
+            ElectricScoreBonus,
+            ElectricBounceDuration,
+            ElectricIsCursed);
+    }
+
 }
 
 ```
@@ -7073,6 +7237,13 @@ public enum PinballState
     GameOver
 }
 
+/// Central runtime manager for the pinball minigame.
+/// Responsibilities:
+/// - State machine (charging/push/play/level-up/respawn)
+/// - Player input for paddles and launch
+/// - Lives/score/xp and reward application
+/// - Ball registry and duplication
+/// - Camera shake and basic FX
 [DisallowMultipleComponent]
 public class Pinball : MonoBehaviour, IRunContext
 {
@@ -7134,9 +7305,13 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private PinballFlipper rightPaddle;
 
     [Header("Charge/Push Tuning")]
+    [Tooltip("Max seconds of charge time for initial launch")]
     [SerializeField, Min(0.05f)] private float chargeMaxCharging = 1.5f;
+    [Tooltip("Max seconds for secondary push window while in the tube")]
     [SerializeField, Min(0.05f)] private float chargeMaxPush = 1.0f;
+    [Tooltip("Minimum fraction (0..1) of charge required to commit a launch")]
     [SerializeField, Range(0f, 1f)] private float minChargeToLaunch = 0.10f;
+    [Tooltip("Threshold fraction (0..1) to transition into Push window after launch")]
     [SerializeField, Range(0f, 1f)] private float chargeToEnterPush = 0.65f;
 
     [Header("Balls / Lives")]
@@ -7146,13 +7321,14 @@ public class Pinball : MonoBehaviour, IRunContext
     public int MaxLives => maxLives;
 
     [Header("Score/XP Multipliers")]
-    [SerializeField] private float baseScoreMult = 1f;
-    [SerializeField] private float baseXPMult = 1f;
+    [SerializeField, Tooltip("Base (floor) score multiplier that increases with leveling.")]
+    private float baseScoreMult = 1f;
+    [SerializeField, Tooltip("Base (floor) XP multiplier that increases with leveling.")]
+    private float baseXPMult = 1f;
 
     [Header("Powerups & Drops")]
     [SerializeField, Range(0f, 1f)]
-    private float powerupDropChance = .03f;
-    public float PowerupDropChance => powerupDropChance;
+    public float PowerupDropChance = .03f;
 
     [Header("Visual FX")]
     [SerializeField] private Camera mainCam;
@@ -7170,7 +7346,9 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private float explosionRadius = 3f;
 
     [Header("Global Physics")]
+    [Tooltip("If true, sets global Physics.gravity to a pinball-friendly value on Awake.")]
     [SerializeField] private bool overrideGlobalGravity = true;
+    [Tooltip("Gravity used if 'overrideGlobalGravity' is enabled.")]
     [SerializeField] private Vector3 gravityOverride = new Vector3(0f, 0f, -19.62f);
 
     #endregion
@@ -7183,8 +7361,8 @@ public class Pinball : MonoBehaviour, IRunContext
     // Charge state (transient)
     private bool isHoldingCharge;
     private float chargeTimer;
-    public float chargePercentage { get; private set; }
-    private float chargeMax;
+    public float chargePercentage { get; private set; } // exposed for UI meter
+    private float chargeMax; // per-state (Charging/Push)
 
     // Score/XP & flow
     private int score;
@@ -7235,7 +7413,7 @@ public class Pinball : MonoBehaviour, IRunContext
     private bool wallTimerStart;
     private float wallTimer;
 
-    // Extra “bonus hits”
+    // Extra “bonus hits” (from rewards)
     private int bumperBouncesS;
     private int bumperBouncesG;
     private bool extraHitsS;
@@ -7245,14 +7423,16 @@ public class Pinball : MonoBehaviour, IRunContext
     private int bouncesForBonusS;
     private int bouncesForBonusG;
 
+    // Constants used by some rewards as magic values
     private const float X2_MULT_MAGIC = 100f;
     private const float X4_MULT_MAGIC = 200f;
+
+    public float Damage = 5f;
 
     #endregion
 
     #region Unity lifecycle
 
-    // Initializes singleton, physics, caches, and primary ball references.
     private void Awake()
     {
         if (Instance && Instance != this) { Destroy(gameObject); return; }
@@ -7283,15 +7463,16 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Loads reward assets, initializes UI, and enters Charging state.
     private async void Start()
     {
+        // Load all reward assets (label: "Rewards")
         var loader = Addressables.LoadAssetsAsync<RewardSO>("Rewards", rewardPool.Add);
         await loader.Task;
 
         ui?.InitLives(maxLives);
         OnLivesChanged();
 
+        PowerupSystem.EnsureInitialized();
         ChangeState(PinballState.Charging);
 
         ui?.Init(this);
@@ -7300,14 +7481,12 @@ public class Pinball : MonoBehaviour, IRunContext
         ballCount = 1;
     }
 
-    // Clears singleton and resets camera transform on destroy.
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
         ResetCameraShakeState();
     }
 
-    // Clamps inspector-driven values and keeps push thresholds sane.
     private void OnValidate()
     {
         if (maxLives < 1) maxLives = 1;
@@ -7319,9 +7498,9 @@ public class Pinball : MonoBehaviour, IRunContext
             chargeToEnterPush = Mathf.Clamp01(Mathf.Max(minChargeToLaunch, chargeToEnterPush));
     }
 
-    // Main per-frame loop: UI, input, state ticks, timers.
     private void Update()
     {
+        // Global tick
         HandlePendingLevelUps();
         HandlePaddles();
         ClampBaseMultipliers();
@@ -7329,6 +7508,7 @@ public class Pinball : MonoBehaviour, IRunContext
         HandleGameOverRestart();
         UpdateMultipliersTimers();
 
+        // State ticks
         switch (currentState)
         {
             case PinballState.Play:
@@ -7347,7 +7527,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region State machine
 
-    // Changes current state using Exit/Enter hooks.
     public void ChangeState(PinballState newState)
     {
         if (currentState == newState) return;
@@ -7356,7 +7535,6 @@ public class Pinball : MonoBehaviour, IRunContext
         EnterState(newState);
     }
 
-    // Handles side effects on state entry (UI, time scale, lives, flows).
     private void EnterState(PinballState state)
     {
         switch (state)
@@ -7402,7 +7580,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Handles side effects on state exit (e.g., time scale restore).
     private void ExitState(PinballState state)
     {
         switch (state)
@@ -7414,7 +7591,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Resets charge variables for Charging/Push states.
     private void ResetChargeState(float max)
     {
         isHoldingCharge = false;
@@ -7427,7 +7603,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region UI & Lives
 
-    // Updates lives UI when the counter changes.
     private void OnLivesChanged()
     {
         ui?.UpdateLives(lives, maxLives);
@@ -7437,23 +7612,18 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Input/state helpers
 
-    // -- One-line summary: Converts current-level progress into queued level-ups (no overshoot).
     private void HandlePendingLevelUps()
     {
-        // Consume levels while our progress surpasses requirement
         while (curXP >= maxXP)
         {
             pendingLevelUps++;
             curXP -= maxXP;
-            // Prepare next level's requirement in case we chain multiple ups
-            maxXP = Mathf.Max(1f, XPFormula.XpReq(level + pendingLevelUps));
         }
 
         if (pendingLevelUps > 0 && CurrentState != PinballState.LevelUp)
             StartNextLevelUp();
     }
 
-    // Drives paddles (movement, elemental single-shot window, hit forwarding to the ball).
     private void HandlePaddles()
     {
         if (leftPaddle != null)
@@ -7495,14 +7665,12 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Ensures score/xp multipliers do not fall below base values.
     private void ClampBaseMultipliers()
     {
         if (xpMultiplier < baseXPMult) xpMultiplier = baseXPMult;
         if (scoreMultiplier < baseScoreMult) scoreMultiplier = baseScoreMult;
     }
 
-    // Arming delay before enabling invisible walls after launch.
     private void MaybeEnableInvisibleWalls()
     {
         if (!wallTimerStart) return;
@@ -7512,16 +7680,15 @@ public class Pinball : MonoBehaviour, IRunContext
             EnableInvisibleWalls();
     }
 
-    // Restarts scene when in GameOver if the player presses chargeKey.
     private void HandleGameOverRestart()
     {
         if (currentState == PinballState.GameOver && Input.GetKey(chargeKey))
             SceneManager.LoadScene(0);
     }
 
-    // Counts down temporary score/xp multiplier timers and restores base on expiry.
     private void UpdateMultipliersTimers()
     {
+        // Score mult
         if (IsScoreMultiplierActive && scoreBonusTimer > 0f)
         {
             scoreBonusTimer -= Time.unscaledDeltaTime;
@@ -7532,6 +7699,7 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
+        // XP mult
         if (IsXPMultiplierActive && xpBonusTimer > 0f)
         {
             xpBonusTimer -= Time.unscaledDeltaTime;
@@ -7543,7 +7711,10 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Handles Charging/Push input, launch and push commits, and state transitions.
+    /// Charging/Push mechanic:
+    /// - Player holds to charge in Charging/Push states.
+    /// - On release, if charge is above threshold, launch/push the ball.
+    /// - Push is valid only while the ball is still in the launch tube.
     private void HandleChargingAndPush()
     {
         if (Input.GetKey(chargeKey))
@@ -7551,6 +7722,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
         chargePercentage = Mathf.Min(1f, chargeMax > 0f ? (chargeTimer / chargeMax) : 0f);
 
+        // On release, attempt to launch/push
         if (Input.GetKeyUp(chargeKey))
         {
             isHoldingCharge = false;
@@ -7575,13 +7747,13 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
+        // If we’re in Push but ball has left the tube and is turning back, reset to Charging
         if (currentState == PinballState.Push && (ball == null || (!ball.IsInLaunchTube && ball.GetComponent<Rigidbody>()?.velocity.z < 0f)))
         {
             ChangeState(PinballState.Charging);
         }
     }
 
-    // Advances/reduces charge timer depending on input state.
     private void TickChargeTimer()
     {
         if (!isHoldingCharge)
@@ -7596,7 +7768,7 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Debounced detection of no usable balls during Play; triggers ResetBall.
+    /// Debounced "no-ball" detector while in Play.
     private void HandlePlayStateDrain()
     {
         bool any = HasAnyUsableBalls() || IsBallUsable(ball);
@@ -7615,31 +7787,34 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
+    public void DisableBall(Ball ball)
+    {
+        var go = ball.gameObject;
+        go.SetActive(false);
+        ballCount--;
+    }
+
     #endregion
 
     #region Ball registry
 
-    // Adds a ball to the live registry if not already present.
     public void RegisterBall(Ball b)
     {
         if (b != null && !liveBalls.Contains(b))
             liveBalls.Add(b);
     }
 
-    // Removes a ball from the live registry.
     public void UnregisterBall(Ball b)
     {
         if (b != null)
             liveBalls.Remove(b);
     }
 
-    // Verifies if a ball can be used by gameplay systems.
     private static bool IsBallUsable(Ball b)
     {
         return b != null && b.isActiveAndEnabled && b.gameObject.activeInHierarchy && b.IsActive;
     }
 
-    // Enumerates usable balls and prunes nulls.
     private IEnumerable<Ball> GetUsableBalls()
     {
         for (int i = liveBalls.Count - 1; i >= 0; i--)
@@ -7654,14 +7829,12 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Applies an action to each usable ball.
     private void ForEachUsableBall(System.Action<Ball> action)
     {
         foreach (var b in GetUsableBalls())
             action(b);
     }
 
-    // Attempts to find a currently usable anchor ball.
     private bool TryGetAnchorBall(out Ball anchor)
     {
         for (int i = 0; i < liveBalls.Count; i++)
@@ -7674,7 +7847,6 @@ public class Pinball : MonoBehaviour, IRunContext
         return false;
     }
 
-    // Prefers a ball touching paddles; otherwise returns any usable anchor ball.
     private Ball GetPaddleTarget()
     {
         for (int i = 0; i < liveBalls.Count; i++)
@@ -7687,7 +7859,6 @@ public class Pinball : MonoBehaviour, IRunContext
         return TryGetAnchorBall(out var anchor) ? anchor : null;
     }
 
-    // Ensures the public 'ball' field still refers to the primary instance.
     private void EnsurePrimaryBallRef()
     {
         if (ball != null && ball.GetInstanceID() == _primaryBallId)
@@ -7710,7 +7881,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Stops motion and teleports a ball to the launcher start pose.
     private void FreezeAndTeleportToStart(Ball target)
     {
         if (target == null) return;
@@ -7740,13 +7910,11 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Walls
 
-    // Enables invisible wall colliders.
     public void EnableInvisibleWalls()
     {
         if (invisWalls) invisWalls.SetActive(true);
     }
 
-    // Disables invisible walls and resets the arming timer.
     public void DisableInvisibleWalls()
     {
         if (invisWalls) invisWalls.SetActive(false);
@@ -7758,7 +7926,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Ball duplication
 
-    // Duplicates the current anchor ball (if any) and applies basic property copies.
     public void DupeBall()
     {
         if (!TryGetAnchorBall(out var anchor))
@@ -7782,6 +7949,8 @@ public class Pinball : MonoBehaviour, IRunContext
                 dupedCol.material = Instantiate(anchorCol.material);
 
             dupedBall.ResetRb();
+
+            dupedBall.RandomizeGlowColor();
         }
         ballCount++;
     }
@@ -7790,10 +7959,9 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Score/XP
 
-    // Adds score for a game event; damageFactor scales by the ball's actual damage (flats + multipliers).
     public void AddScore(int gameScore, int bumpCount, int bumpCountConsec, float damageFactor)
     {
-        int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier * Mathf.Max(0f, damageFactor));
+        int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier * Mathf.Max(1f, damageFactor));
 
         if (extraHitsS)
         {
@@ -7826,7 +7994,6 @@ public class Pinball : MonoBehaviour, IRunContext
         ui?.UpdateScore(score, bumpCount, bumpCountConsec);
     }
 
-    // Checks across all balls whether any usable one exists.
     private bool HasAnyUsableBalls()
     {
         foreach (var _ in GetUsableBalls()) return true;
@@ -7840,7 +8007,9 @@ public class Pinball : MonoBehaviour, IRunContext
         return false;
     }
 
-    // Clears extra balls, reseats main ball, and transitions to Charging or GameOver.
+    /// Core respawn flow:
+    /// - Keep progression/rewards intact; only reset the ball stack.
+    /// - Remove clones, re-seat main ball to launcher, go to Charging or GameOver.
     private void ResetBallAndFlow()
     {
         EnsurePrimaryBallRef();
@@ -7849,6 +8018,7 @@ public class Pinball : MonoBehaviour, IRunContext
         DisableInvisibleWalls();
         ResetCameraShakeState();
 
+        // Remove clones, keep main ball
         for (int i = liveBalls.Count - 1; i >= 0; i--)
         {
             var b = liveBalls[i];
@@ -7860,8 +8030,10 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
+        // Restore main ball
         if (ball != null)
         {
+            // IsActive will be updated by OnEnable when we activate the GO
             ball.gameObject.SetActive(true);
             var rb = ball.GetComponent<Rigidbody>();
             if (rb != null)
@@ -7873,6 +8045,7 @@ public class Pinball : MonoBehaviour, IRunContext
             if (!liveBalls.Contains(ball)) RegisterBall(ball);
         }
 
+        // Reset charge flow values
         isHoldingCharge = false;
         chargeTimer = 0f;
         chargePercentage = 0f;
@@ -7882,84 +8055,69 @@ public class Pinball : MonoBehaviour, IRunContext
         ChangeState(lives > 0 ? PinballState.Charging : PinballState.GameOver);
     }
 
-    // -- One-line summary: Adds XP with global multiplier and nudges the UI immediately.
     public void AddXP(float xp)
     {
         float finalXP = xp * xpMultiplier;
         curXP += finalXP;
-        // Guard against degenerate maxXP (editor misconfig, formula edge cases)
-        float safeMax = Mathf.Max(1f, maxXP);
-        ballXPScript?.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(safeMax), level);
+        ballXPScript?.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(maxXP), level);
     }
-    // Emits base XP particles (rounded) scaled by supplied damageFactor (0..∞).
-    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage, float damageFactor = 1f)
+
+    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage, float damageFactor)
     {
         if (!xpFXPrefab) return;
 
-        int count;
-        if (isDead) count = xpCount * 2;
-        else if (isTakingElemDamage) count = Mathf.RoundToInt(xpCount / 3f);
-        else count = xpCount;
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
 
-        count = Mathf.Max(0, Mathf.RoundToInt(count * Mathf.Max(0f, damageFactor)));
 
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(count);
+
+        if (isDead) xpFX.Emit(finalXP * 2);
+        else if (isTakingElemDamage) xpFX.Emit(Mathf.RoundToInt(finalXP / 3f));
+        else xpFX.Emit(finalXP);
     }
 
-    // Emits bonus XP for Water drenched state; external callers may override damageFactor (e.g., water ignores factor).
-    public void SpawnBonusWaterXP(Vector3 pos, float waterBonusXP, float damageFactor = 1f)
+    public void SpawnBonusWaterXP(Vector3 pos, float waterBonusXP, float damageFactor)
     {
         if (!xpFXPrefab) return;
+
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
+
 
         float bonus = Mathf.Max(0f, waterBonusXP) / 100f;
-        int count = Mathf.RoundToInt(xpCount * (1f + bonus));
-        count = Mathf.Max(0, Mathf.RoundToInt(count * Mathf.Max(0f, damageFactor)));
-
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(count);
+        xpFX.Emit(Mathf.RoundToInt(finalXP * (1f + bonus)));
     }
 
-    // Emits bonus XP for Earth effects (fissure/electric); scaled by damageFactor.
-    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP, float damageFactor = 1f)
+    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP, float damageFactor)
     {
         if (!xpFXPrefab) return;
 
-        float bonus = Mathf.Max(0f, earthBonusXP) / 100f;
-        int count = Mathf.RoundToInt(xpCount * (1f + bonus));
-        count = Mathf.Max(0, Mathf.RoundToInt(count * Mathf.Max(0f, damageFactor)));
 
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
+
+
+        float bonus = Mathf.Max(0f, earthBonusXP) / 100f;
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(count);
+        xpFX.Emit(Mathf.RoundToInt(finalXP * (1f + bonus)));
     }
 
-    // Begins a level-up UI flow if any are pending.
     private void StartNextLevelUp()
     {
         if (pendingLevelUps <= 0) return;
         ChangeState(PinballState.LevelUp);
     }
 
-
-    // -- One-line summary: Increments level, re-derives XP requirement, refreshes UI, and applies bonuses.
     public void LevelUp()
     {
-        level = Mathf.Max(1, level + 1);
-        maxXP = Mathf.Max(1f, XPFormula.XpReq(level));
+        level++;
+        maxXP = XPFormula.XpReq(level);
         ballXPScript?.UpdateXP(curXP, maxXP, level);
         ApplyLevelBonuses();
     }
 
-    // -- One-line summary: Resets maxXP from formula (call if you ever resync level externally).
-    private void RefreshXpRequirementFromLevel()
-    {
-        maxXP = Mathf.Max(1f, XPFormula.XpReq(level));
-    }
-
-    // Applies per-level base score/xp multipliers (bigger boost every 5 levels).
     public void ApplyLevelBonuses()
     {
         if (level % 5 == 0)
@@ -7978,14 +8136,12 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Paddle single-shot elemental hit window
 
-    // Starts a temporary single-shot hit window for a paddle.
     private void HitCheck(KeyCode paddle)
     {
         if (paddle == leftPaddleKey) StartCoroutine(RegCheck(leftPaddleKey));
         else StartCoroutine(RegCheck(rightPaddleKey));
     }
 
-    // Implements the 0.6s window where an elemental hit can be applied once.
     private IEnumerator RegCheck(KeyCode paddle)
     {
         if (paddle == leftPaddleKey) canHitL = true; else canHitR = true;
@@ -7993,16 +8149,13 @@ public class Pinball : MonoBehaviour, IRunContext
         if (paddle == leftPaddleKey) canHitL = false; else canHitR = false;
     }
 
-    // Resets L paddle one-shot latch after a cooldown.
     private IEnumerator ResetLBumper(float cd) { yield return new WaitForSeconds(cd); hasBeenHitL = false; }
-    // Resets R paddle one-shot latch after a cooldown.
     private IEnumerator ResetRBumper(float cd) { yield return new WaitForSeconds(cd); hasBeenHitR = false; }
 
     #endregion
 
     #region Camera shake
 
-    // Stops active tweens and restores camera to default local transform.
     public void ResetCameraShakeState()
     {
         if (mainCam == null) return;
@@ -8012,7 +8165,6 @@ public class Pinball : MonoBehaviour, IRunContext
         t.localRotation = _camDefaultLocalRot;
     }
 
-    // Plays a position shake on the camera with configured parameters.
     public void ScreenShake()
     {
         if (!mainCam) return;
@@ -8036,7 +8188,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Bumper respawn/explosion
 
-    // Plays bumper explosion feedback, disables it, waits its cooldown, and restores it.
     public IEnumerator RespawnRoutine(Bumper bumper)
     {
         if (!bumper || !ball) yield break;
@@ -8067,19 +8218,18 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Reward application (IRunContext impl)
 
-    // Applies an XP multiplier (with special cursed behavior).
     public void ApplyXPMultiplier(float multiplier, bool cursed)
     {
+        float Multiplier = multiplier * .01f;
         if (cursed)
         {
             xpCount += 1;
             if (xpBonusTimer > 5) xpBonusTimer = 5;
             xpMultiplier *= 2;
         }
-        else xpMultiplier += multiplier;
+        else xpMultiplier += Multiplier;
     }
 
-    // Adds time to the XP bonus timer (cursed caps it).
     public void ApplyXPBonusTime(float time, bool cursed)
     {
         if (!IsXPMultiplierActive) return;
@@ -8091,7 +8241,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Applies a score multiplier or special cursed overrides.
     public void ApplyScoreMultiplier(float multiplier, bool cursed)
     {
         if (Mathf.Approximately(multiplier, X2_MULT_MAGIC)) scoreMultiplier *= 2f;
@@ -8099,7 +8248,6 @@ public class Pinball : MonoBehaviour, IRunContext
         else scoreMultiplier += multiplier;
     }
 
-    // Adds time to the score bonus timer (cursed shrinks it).
     public void ApplyScoreBonusTime(float time, bool cursed)
     {
         if (!IsScoreMultiplierActive) return;
@@ -8107,7 +8255,6 @@ public class Pinball : MonoBehaviour, IRunContext
         else scoreBonusTimer += time;
     }
 
-    // Shrinks balls and applies optional score mult, extra hits, and physics changes.
     public void ApplyShrinkFX(float size, float speed, float bounciness, float scoreMult, float bonusBounces, int bounces, bool bonus, bool cursed)
     {
         float Size = (100f + size) / 100f;
@@ -8132,7 +8279,6 @@ public class Pinball : MonoBehaviour, IRunContext
         });
     }
 
-    // Grows balls and applies optional XP mult, extra hits, and physics changes.
     public void ApplyGrowFX(float size, float speed, float bounciness, float xpMult, float bonusBounces, int bounces, bool bonus, bool cursed)
     {
         float Size = (100f + size) / 100f;
@@ -8157,14 +8303,12 @@ public class Pinball : MonoBehaviour, IRunContext
         });
     }
 
-    // Multiplies each ball's XP forcefield radius.
     public void ApplyXPForcefield(float amount)
     {
         float Amount = (100f + amount) / 100f;
         ForEachUsableBall(b => b.UpdateForcefield(Amount));
     }
 
-    // Spawns additional balls (or doubles if amount is 100 per your rule).
     public void ApplyAdditionalBalls(int additionalBalls)
     {
         if (additionalBalls != 100)
@@ -8178,28 +8322,24 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    // Adds granted lives and updates UI.
     public void ApplyGrantedLives(int amount)
     {
         lives = Mathf.Clamp(lives + amount, 0, maxLives);
         OnLivesChanged();
     }
 
-    // Adds persistent damage multiplier to all usable balls.
     public void ApplyDamageFX(float amount)
     {
         float Amount = 0.01f * amount;
         ForEachUsableBall(b => b.AddDamageMultiplier(Amount));
     }
 
-    // Queues a temp damage multiplier window (bounces) to each ball.
     public void ApplyDmgPerBounceFX(float amount, int bounces)
     {
         float Amount = (100f + amount) / 100f;
         ForEachUsableBall(b => b.AddTempDamageMultiplier(Amount, bounces));
     }
 
-    // Applies a pending paddle reward to left/right or returns to Play.
     public void SetPaddleState(bool isLeft)
     {
         var paddle = isLeft ? leftPaddle : rightPaddle;
@@ -8241,7 +8381,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #region Reward selection flow
 
-    // Applies chosen rewards (with upgrade replacement rules) and advances the selection flow.
     public void OnRewardChosen(RewardSO reward)
     {
         if (reward == null) { ChangeState(PinballState.Play); return; }
@@ -8251,8 +8390,8 @@ public class Pinball : MonoBehaviour, IRunContext
             var leftElem = leftPaddle ? leftPaddle.GetComponent<PaddleElementalState>() : null;
             var rightElem = rightPaddle ? rightPaddle.GetComponent<PaddleElementalState>() : null;
 
-            bool leftHasElem = leftElem != null && leftElem.CurrentState != PaddleElementalState.PaddleState.None;
-            bool rightHasElem = rightElem != null && rightElem.CurrentState != PaddleElementalState.PaddleState.None;
+            bool leftHasElem = leftElem != null && leftElem.CurrentState != PaddleState.None;
+            bool rightHasElem = rightElem != null && rightElem.CurrentState != PaddleState.None;
 
             pendingPaddleReward = reward;
 
@@ -8285,7 +8424,6 @@ public class Pinball : MonoBehaviour, IRunContext
         ChangeState(pendingLevelUps > 0 || currentState == PinballState.PaddleSelect ? PinballState.LevelUp : PinballState.Play);
     }
 
-    // Picks one reward from a rarity bucket.
     private RewardSO PickOneWeighted(List<RewardSO> pool, RewardRarity rarity)
     {
         var candidates = pool.Where(r => r.Rarity == rarity).ToList();
@@ -8294,7 +8432,6 @@ public class Pinball : MonoBehaviour, IRunContext
         return candidates[index];
     }
 
-    // Rolls a reward rarity based on configured weights.
     private RewardRarity RollRarity()
     {
         float total = rarityWeights.Values.Sum();
@@ -8309,7 +8446,6 @@ public class Pinball : MonoBehaviour, IRunContext
         return RewardRarity.Common;
     }
 
-    // Builds a set of unique reward choices for the current pick.
     private List<RewardSO> GetRewardChoices()
     {
         var eligible = rewardPool.Where(r => r.IsEligible(this)).ToList();
@@ -8318,7 +8454,7 @@ public class Pinball : MonoBehaviour, IRunContext
         var picks = new List<RewardSO>();
         var localEligible = new List<RewardSO>(eligible);
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 4; i++)
         {
             RewardSO choice = null;
             for (int j = 0; j < 10 && choice == null; j++)
@@ -8345,34 +8481,22 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[DisallowMultipleComponent]
 public class PinballFlipper : MonoBehaviour
 {
-    [Header("References")]
     public HingeJoint hinge;
+    public float flipSpeed = 1500f;      // how fast the motor tries to move
+    public float returnSpeed = -200f;    // how fast it returns down
+    public float maxForce = 10000f;      // motor strength
 
-    [Header("Motor")]
-    public float flipSpeed = 1500f;   // motor velocity when pressed
-    public float returnSpeed = -200f; // motor velocity when released
-    public float maxForce = 10000f;   // motor strength
-
-    // Ensures hinge reference and enables motor.
     void Awake()
     {
-        if (!hinge) hinge = GetComponent<HingeJoint>();
-        if (!hinge)
-        {
-            Debug.LogWarning("[PinballFlipper] Missing HingeJoint.");
-            return;
-        }
+        // cache your HingeJoint reference
+        hinge = GetComponent<HingeJoint>();
         hinge.useMotor = true;
     }
 
-    // Drives the hinge motor based on pressed state.
     public void PaddleMovement(bool isPressed)
     {
-        if (!hinge) return;
-
         var motor = hinge.motor;
         motor.force = maxForce;
         motor.targetVelocity = isPressed ? flipSpeed : returnSpeed;
@@ -8489,7 +8613,7 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 
-[DisallowMultipleComponent]
+
 public class PinballUIM : MonoBehaviour
 {
     [System.Serializable]
@@ -8500,111 +8624,127 @@ public class PinballUIM : MonoBehaviour
         public TMP_Text descText;
     }
 
-    [Header("UI Slots (6 buttons)")]
+    [Header("Per-Ball Combo Row")]
+    [SerializeField] private Transform ballRowParent; // Horizontal group in your UI
+    [SerializeField] private GameObject ballEntryPrefab; // Prefab with BallUIEntry (see new script below)
+
+    // Runtime mapping Ball -> entry
+    private readonly Dictionary<Ball, BallUIEntry> _ballEntries = new();
+
+    [Header("UI Slots(6 buttons)")]
     [SerializeField] private List<RewardSlot> slots = new();
 
+    // Add these fields near the top
     [Header("Lives UI")]
     [SerializeField] private List<Image> lifeIcons = new(); // assign 5 placeholder Images in order (left->right)
     [SerializeField] private Color32 lifeOnColor = new Color32(75, 202, 107, 255);
     [SerializeField] private Color32 lifeOffColor = new Color32(75, 202, 107, 11);
 
-    [Header("Panels")]
+
+    public Image ChargingSlider;
+
     public GameObject gamePanel;
     public GameObject paddleSelectPanel;
     public GameObject levelUpPanel;
 
-    [Header("Charge/Readouts")]
-    public Image ChargingSlider;
     public TMP_Text gameScore;
-    public TMP_Text bc;   // score multiplier & timer
-    public TMP_Text bcc;  // XP multiplier & timer
+    public TMP_Text bc;
+    public TMP_Text bcc;
     public TMP_Text xpText;
 
     private Pinball pm;
     private List<RewardSO> currentRewards = new();
 
-    // Sets initial panel visibility.
+    // Start is called before the first frame update
     void Start()
     {
-        if (levelUpPanel) levelUpPanel.SetActive(false);
-        if (paddleSelectPanel) paddleSelectPanel.SetActive(false);
-        if (gamePanel) gamePanel.SetActive(true);
+        levelUpPanel.SetActive(false);
+        paddleSelectPanel.SetActive(false);
+
+        gamePanel.SetActive(true);
+
     }
 
-    // Updates charge fill, multiplier text, and XP progress each frame.
+    // Update is called once per frame
     void Update()
     {
-        if (pm == null) return;
-
-        if (ChargingSlider) ChargingSlider.fillAmount = pm.chargePercentage;
-
-        if (bc) bc.text = $"Score Mult: {pm.ScoreMultiplier:0.##}x | Timer: {pm.ScoreBonusTimeRemaining:0.0}s";
-        if (bcc) bcc.text = $"XP Mult: {pm.XPMultiplier:0.##}x | Timer: {pm.XPBonusTimeRemaining:0.0}s";
-
-        if (xpText)
+        if(pm != null)
         {
-            int cur = Mathf.RoundToInt(pm.curXP);
-            int max = Mathf.RoundToInt(pm.maxXP);
-            if (cur >= max) cur = Mathf.Max(0, max - 1); // avoid flashing "max" just before level up
-            xpText.text = $"{cur} / {max}";
+            ChargingSlider.fillAmount = pm.chargePercentage;
+            bc.text = $"Score Mult: {pm.ScoreMultiplier.ToString()} | Timer: {pm.ScoreBonusTimeRemaining}";
+            bcc.text = $"XP Mult: {pm.XPMultiplier.ToString()} | Timer: {pm.XPBonusTimeRemaining}";
+            if (Mathf.RoundToInt(pm.curXP) >= Mathf.RoundToInt(pm.maxXP))
+            {
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP - 1)} / {pm.maxXP}";
+            }
+            else
+                xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
         }
+
+
     }
 
-    // Injects the Pinball manager instance.
     public void Init(Pinball manager)
     {
         pm = manager;
+
+        // Listen to active balls coming and going
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallActivated += HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+        Ball.OnBallDeactivated += HandleBallDeactivated;
+
+        // Bootstrap any already-active balls
+        var existing = GameObject.FindObjectsOfType<Ball>();
+        for (int i = 0; i < existing.Length; i++)
+            if (existing[i].isActiveAndEnabled && existing[i].IsActive)
+                HandleBallActivated(existing[i]);
+
     }
 
-    // Shows only the first maxLives life icons (hides extras).
     public void InitLives(int maxLives)
     {
-        if (lifeIcons == null) return;
+        // Activate only the first `maxLives` icons; hide the rest if more were assigned
         for (int i = 0; i < lifeIcons.Count; i++)
-        {
-            if (!lifeIcons[i]) continue;
             lifeIcons[i].gameObject.SetActive(i < maxLives);
-        }
     }
 
-    // Colors life icons based on current lives.
     public void UpdateLives(int lives, int maxLives)
     {
+        // Ensure slot visibility matches maxLives
         InitLives(maxLives);
-        if (lifeIcons == null) return;
 
+        // Fill first `lives` icons, dim the rest
         for (int i = 0; i < lifeIcons.Count && i < maxLives; i++)
-        {
-            if (!lifeIcons[i]) continue;
             lifeIcons[i].color = i < lives ? lifeOnColor : lifeOffColor;
-        }
     }
 
-    // Shows the reward selection popup and binds button callbacks.
+
     public void ShowRewardPopup(List<RewardSO> rewards)
     {
-        if (gamePanel) gamePanel.SetActive(false);
-        if (levelUpPanel) levelUpPanel.SetActive(true);
+        gamePanel.SetActive(false);
 
+        levelUpPanel.SetActive(true);
         currentRewards = rewards ?? new List<RewardSO>();
 
-        for (int i = 0; i < slots.Count; i++)
+        for(int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
-            if (slot?.button == null || slot.titleText == null || slot.descText == null)
-                continue;
 
             slot.button.onClick.RemoveAllListeners();
 
-            if (i < currentRewards.Count && currentRewards[i] != null)
+            if(i < currentRewards.Count && currentRewards[i] != null)
             {
                 var reward = currentRewards[i];
+
 
                 slot.titleText.text = reward.Name;
                 slot.descText.text = reward.Description;
 
                 slot.button.interactable = true;
                 slot.button.gameObject.SetActive(true);
+
+
                 slot.button.onClick.AddListener(() => OnRewardClicked(reward));
             }
             else
@@ -8613,60 +8753,133 @@ public class PinballUIM : MonoBehaviour
                 slot.descText.text = string.Empty;
                 slot.button.gameObject.SetActive(false);
             }
+
+
         }
     }
 
-    // Forwards the chosen reward to the manager.
     private void OnRewardClicked(RewardSO reward)
     {
-        pm?.OnRewardChosen(reward);
+        pm.OnRewardChosen(reward);
     }
 
-    // Restores the default in-game UI (hides level-up/paddle-select).
     public void DefaultUI()
     {
-        if (levelUpPanel) levelUpPanel.SetActive(false);
-        if (paddleSelectPanel) paddleSelectPanel.SetActive(false);
-        if (gamePanel) gamePanel.SetActive(true);
+        levelUpPanel.SetActive(false);
+        paddleSelectPanel.SetActive(false);
+
+        Debug.Log("Succcfion");
+
+
+        gamePanel.SetActive(true);
     }
 
-    // Updates the score label.
     public void UpdateScore(int score, int bumpCount, int bumpCountConsec)
     {
-        if (gameScore) gameScore.text = score.ToString();
+        gameScore.text = score.ToString();
     }
 
-    // Opens the paddle selection panel and disables reward buttons temporarily.
     public void PaddleSelect()
     {
-        if (gamePanel) gamePanel.SetActive(false);
+        gamePanel.SetActive(false);
 
         for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
-            if (slot?.button == null) continue;
             slot.button.interactable = false;
         }
+        paddleSelectPanel.SetActive(true);
 
-        if (paddleSelectPanel) paddleSelectPanel.SetActive(true);
     }
 
-    // Closes paddle selection; optionally re-opens level-up if more levels are pending.
+
+
     public void ClosePaddleSelect(bool hasMoreLevels)
     {
-        if (paddleSelectPanel) paddleSelectPanel.SetActive(false);
-
+        paddleSelectPanel.SetActive(false);
         for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
-            if (slot?.button == null) continue;
             slot.button.interactable = true;
         }
+        Debug.Log("Succc!!");
 
-        if (hasMoreLevels && levelUpPanel)
+
+        if (hasMoreLevels)
+        {
+            Debug.Log("1Succc!!");
             levelUpPanel.SetActive(true);
+
+        }
+    }
+
+    private void HandleBallActivated(Ball b)
+    {
+        if (!ballRowParent || !b || _ballEntries.ContainsKey(b)) return;
+
+        var go = ballEntryPrefab
+            ? Instantiate(ballEntryPrefab, ballRowParent)
+            : CreateFallbackEntry(ballRowParent);
+
+        var entry = go.GetComponent<BallUIEntry>();
+        entry.Init(b);
+        _ballEntries[b] = entry;
+
+        b.OnComboChanged -= OnBallComboChanged;
+        b.OnComboChanged += OnBallComboChanged;
+
+        // Initial sync
+        entry.Refresh(b);
+    }
+
+    private void HandleBallDeactivated(Ball b)
+    {
+        if (!b) return;
+
+        b.OnComboChanged -= OnBallComboChanged;
+
+        if (_ballEntries.TryGetValue(b, out var entry))
+        {
+            if (entry) Destroy(entry.gameObject);
+            _ballEntries.Remove(b);
+        }
+    }
+
+    private void OnBallComboChanged(Ball b)
+    {
+        if (b != null && _ballEntries.TryGetValue(b, out var entry) && entry != null)
+            entry.Refresh(b);
+    }
+
+    // Small runtime fallback if no prefab was assigned
+    private GameObject CreateFallbackEntry(Transform parent)
+    {
+        var root = new GameObject("BallEntry", typeof(RectTransform));
+        root.transform.SetParent(parent, false);
+
+        var imgGO = new GameObject("Dot", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        imgGO.transform.SetParent(root.transform, false);
+
+        var txtGO = new GameObject("Label", typeof(RectTransform), typeof(TMPro.TextMeshProUGUI));
+        txtGO.transform.SetParent(root.transform, false);
+
+        var entry = root.AddComponent<BallUIEntry>();
+        entry.BindRuntime(imgGO.GetComponent<UnityEngine.UI.Image>(), txtGO.GetComponent<TMPro.TextMeshProUGUI>());
+        return root;
+    }
+
+
+    void OnDestroy()
+    {
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+
+        foreach (var kv in _ballEntries)
+            if (kv.Key != null)
+                kv.Key.OnComboChanged -= OnBallComboChanged;
     }
 }
+
 ```
 
 ## Assets/Scripts/PowerupPickup.cs
@@ -8695,31 +8908,10 @@ public sealed class PowerupPickup : MonoBehaviour
     public AudioSource audioSource;
     public AudioClip pickupSfx;
 
-    // Enforces trigger collider and ensures a kinematic rigidbody exists for reliable triggers.
-    private void OnValidate()
-    {
-        var col = GetComponent<Collider>();
-        if (col) col.isTrigger = true;
-
-        var rb = GetComponent<Rigidbody>();
-        if (!rb)
-        {
-            rb = gameObject.AddComponent<Rigidbody>();
-            rb.isKinematic = true;
-            rb.useGravity = false;
-        }
-        else
-        {
-            rb.isKinematic = true;
-            rb.useGravity = false;
-        }
-    }
-
-    // Ensures collider/rigidbody trigger setup (editor Reset hook).
     private void Reset()
     {
         var col = GetComponent<Collider>();
-        if (col) col.isTrigger = true;
+        col.isTrigger = true;
 
         var rb = GetComponent<Rigidbody>();
         if (!rb) rb = gameObject.AddComponent<Rigidbody>();
@@ -8727,12 +8919,12 @@ public sealed class PowerupPickup : MonoBehaviour
         rb.useGravity = false;
     }
 
-    // Arms lifetime despawn, applies small spawn push, and plays spawn tween if present.
     private void OnEnable()
     {
         if (lifetime > 0f)
             Destroy(gameObject, lifetime);
 
+        // Tiny outward push
         var rb = GetComponent<Rigidbody>();
         if (rb && spawnImpulse > 0f)
         {
@@ -8741,18 +8933,19 @@ public sealed class PowerupPickup : MonoBehaviour
             rb.AddForce(dir.normalized * spawnImpulse, ForceMode.Impulse);
         }
 
+        // Spawn animation
         var tween = GetComponent<PowerupPickupTween>();
         if (tween) tween.PlaySpawn();
     }
 
-    // Handles collection by a Ball: triggers powerup, plays feedback, disables collider, and schedules destroy.
     private void OnTriggerEnter(Collider other)
     {
         if (_collected) return;
 
-        var pm = Pinball.Instance;
-        if (!pm) return;
+        var pinball = Pinball.Instance;
+        if (!pinball) return;
 
+        // Any Ball collects
         var ball = other.GetComponentInParent<Ball>();
         if (!ball || !ball.isActiveAndEnabled || !ball.IsActive) return;
 
@@ -8762,11 +8955,12 @@ public sealed class PowerupPickup : MonoBehaviour
             return;
         }
 
-        bool ok = PowerupSystem.TryTriggerById(pm, powerupId, transform.position);
+        bool ok = PowerupSystem.TryTriggerById(pinball, powerupId, transform.position);
         if (!ok) return;
 
         _collected = true;
 
+        // Collect feedback
         var tween = GetComponent<PowerupPickupTween>();
         if (tween) tween.PlayCollect();
         if (pickupVfx) Instantiate(pickupVfx, transform.position, Quaternion.identity);
@@ -9025,174 +9219,15 @@ public sealed class RandomFlingPowerup : IPowerup
 ## Assets/Scripts/RewardCatalogSO.cs
 
 ```csharp
-using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Rewards/Reward Catalog")]
 public class RewardCatalogSO : ScriptableObject
 {
     [Tooltip("All reward assets available for this mode")]
-    public List<RewardSO> allRewards = new List<RewardSO>();   // kept PUBLIC for compatibility
-
-    // Cached maps (rebuilt on enable/validate)
-    private Dictionary<string, RewardSO> _byId;
-    private Dictionary<RewardRarity, List<RewardSO>> _byRarity;
-
-    // -- One-line summary: Exposes a read-only snapshot (optional convenience).
-    public ReadOnlyCollection<RewardSO> All => allRewards.AsReadOnly();
-
-    // -- One-line summary: Returns a reward by ID or null if not found.
-    public RewardSO GetById(string id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return null;
-        EnsureCaches();
-        return _byId.TryGetValue(id.Trim(), out var r) ? r : null;
-    }
-
-    // -- One-line summary: Tries to get a reward by ID with a bool success result.
-    public bool TryGetById(string id, out RewardSO reward)
-    {
-        reward = GetById(id);
-        return reward != null;
-    }
-
-    // -- One-line summary: Returns the subset of rewards currently eligible in this run context.
-    public List<RewardSO> GetEligible(IRunContext ctx)
-    {
-        EnsureCaches();
-        return allRewards.Where(r => r && r.IsEligible(ctx)).ToList();
-    }
-
-    // -- One-line summary: Returns all rewards of a given rarity (no eligibility filter).
-    public IReadOnlyList<RewardSO> GetByRarity(RewardRarity rarity)
-    {
-        EnsureCaches();
-        return _byRarity.TryGetValue(rarity, out var list) ? (IReadOnlyList<RewardSO>)list : Array.Empty<RewardSO>();
-    }
-
-    // -- One-line summary: Picks one eligible reward from a rarity bucket at random.
-    public RewardSO PickOneFromRarity(IRunContext ctx, RewardRarity rarity, System.Random rng = null)
-    {
-        rng ??= new System.Random();
-        var pool = GetEligible(ctx).Where(r => r.Rarity == rarity).ToList();
-        if (pool.Count == 0) return null;
-        return pool[rng.Next(0, pool.Count)];
-    }
-
-    // -- One-line summary: Rolls a rarity using weights, then picks an eligible reward of that rarity.
-    public RewardSO RollAndPick(IRunContext ctx, IReadOnlyDictionary<RewardRarity, float> weights, System.Random rng = null)
-    {
-        rng ??= new System.Random();
-        var rarity = RollRarity(weights, rng);
-        return PickOneFromRarity(ctx, rarity, rng);
-    }
-
-    // -- One-line summary: Builds N unique weighted choices; rerolls within a cap if buckets are empty.
-    public List<RewardSO> GetWeightedChoices(IRunContext ctx, int count, IReadOnlyDictionary<RewardRarity, float> weights, int maxRerollsPerPick = 10, System.Random rng = null)
-    {
-        rng ??= new System.Random();
-        EnsureCaches();
-
-        var eligible = GetEligible(ctx);
-        if (eligible.Count == 0) return new List<RewardSO>();
-
-        var local = new List<RewardSO>(eligible);
-        var picks = new List<RewardSO>(Mathf.Max(0, count));
-
-        for (int i = 0; i < count && local.Count > 0; i++)
-        {
-            RewardSO chosen = null;
-            for (int roll = 0; roll < maxRerollsPerPick && chosen == null; roll++)
-            {
-                var r = RollRarity(weights, rng);
-                var bucket = local.Where(x => x.Rarity == r).ToList();
-                if (bucket.Count > 0) chosen = bucket[rng.Next(0, bucket.Count)];
-            }
-            if (chosen == null) break;
-            picks.Add(chosen);
-            local.Remove(chosen);
-        }
-        return picks;
-    }
-
-    // -- One-line summary: Rolls a rarity given weights (falls back to Common if invalid).
-    private static RewardRarity RollRarity(IReadOnlyDictionary<RewardRarity, float> weights, System.Random rng)
-    {
-        if (weights == null || weights.Count == 0) return RewardRarity.Common;
-
-        float total = 0f;
-        foreach (var kv in weights) total += Mathf.Max(0f, kv.Value);
-        if (total <= 0f) return RewardRarity.Common;
-
-        float pick = (float)(rng.NextDouble() * total);
-        foreach (var kv in weights)
-        {
-            pick -= Mathf.Max(0f, kv.Value);
-            if (pick <= 0f) return kv.Key;
-        }
-        return RewardRarity.Common;
-    }
-
-    // -- One-line summary: Rebuilds lookup caches from the current list (removes nulls/dupes).
-    private void EnsureCaches()
-    {
-        if (_byId != null && _byRarity != null) return;
-
-        // Scrub nulls/dupes in-place but KEEP public list semantics
-        var seen = new HashSet<RewardSO>();
-        for (int i = allRewards.Count - 1; i >= 0; i--)
-        {
-            var r = allRewards[i];
-            if (!r || seen.Contains(r)) { allRewards.RemoveAt(i); continue; }
-            seen.Add(r);
-        }
-
-        _byId = new Dictionary<string, RewardSO>(StringComparer.Ordinal);
-        _byRarity = new Dictionary<RewardRarity, List<RewardSO>>();
-
-        foreach (var r in allRewards)
-        {
-            var id = string.IsNullOrWhiteSpace(r.Id) ? null : r.Id.Trim();
-            if (string.IsNullOrEmpty(id)) continue;
-
-            if (!_byId.ContainsKey(id))
-                _byId.Add(id, r);
-
-            if (!_byRarity.TryGetValue(r.Rarity, out var list))
-            {
-                list = new List<RewardSO>();
-                _byRarity.Add(r.Rarity, list);
-            }
-            list.Add(r);
-        }
-    }
-
-    // -- One-line summary: Resets caches and light-cleans the list while editing.
-    private void OnValidate()
-    {
-        _byId = null;
-        _byRarity = null;
-
-        // Remove nulls/dupes without changing public field semantics
-        var seen = new HashSet<RewardSO>();
-        for (int i = allRewards.Count - 1; i >= 0; i--)
-        {
-            var r = allRewards[i];
-            if (!r || seen.Contains(r)) { allRewards.RemoveAt(i); continue; }
-            seen.Add(r);
-        }
-    }
-
-    // -- One-line summary: Ensures caches are built on load/enable.
-    private void OnEnable()
-    {
-        _byId = null;
-        _byRarity = null;
-        EnsureCaches();
-    }
+    public List<RewardSO> allRewards = new List<RewardSO>();
 }
 
 ```
@@ -9233,52 +9268,35 @@ public enum RewardRarity
 ## Assets/Scripts/RewardSO.cs
 
 ```csharp
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Base ScriptableObject for all pinball rewards. Encapsulates identity, classification,
-/// stack/exclusivity rules, and provides an overridable Apply entry point.
-/// </summary>
 public abstract class RewardSO : ScriptableObject
 {
     [Header("Identity")]
-    [SerializeField] private string rewardID;          // Unique, stable ID used by save/ownership systems
-    [SerializeField] private string displayName;       // Player-facing name
+    [SerializeField] private string rewardID;
+    [SerializeField] private string displayName;
     [TextArea, SerializeField] private string description;
 
     [Header("Classification")]
     [SerializeField] private RewardCategory category;
     [SerializeField] private RewardRarity rarity;
-
-    // NOTE: Left as serialized public due to existing references in the project.
     [SerializeField] public bool isPaddleReward;
 
     [Header("Behavior")]
-    [Tooltip("If true, this reward should not be offered again while an instance is currently active.")]
+    [Tooltip("If true, this reward should not be offered if an instance is currently active")]
     [SerializeField] private bool blockWhenActive = true;
-
-    [Tooltip("If false, a reward that is available but already owned cannot be offered again.")]
     [SerializeField] private bool canStack = true;
 
-    [Header("Scaling / Replacement")]
-    [Tooltip("If true, this entry is part of a progression path and may replace a lower tier.")]
+    [Header("Scaling")]
     [SerializeField] private bool scalable = false;
-
-    [Tooltip("Lower tier reward that this instance supersedes (for scalable paths).")]
     [SerializeField] private RewardSO replacesReward;
 
-    [Header("Exclusivity")]
-    [Tooltip("Exclusive group key. Rewards that share this key cannot co-exist as active.")]
+    [Tooltip("Exclusive group key. Rewards sharing same key cannot co-exist")]
     [SerializeField] private string exclusivityKey;
+    [SerializeField] private List<string> blockedKeys;
 
-    [Tooltip("If any of these keys are active, this reward is ineligible.")]
-    [SerializeField] private List<string> blockedKeys = new List<string>();
-
-    // --------- Cached data for runtime checks (not serialized) ----------
-    private HashSet<string> _blockedKeySet;            // Built on demand for O(1) lookups
-
-    // ---------------- Public Read-Only API ----------------
     public string Id => rewardID;
     public string Name => displayName;
     public string Description => description;
@@ -9286,62 +9304,55 @@ public abstract class RewardSO : ScriptableObject
     public RewardRarity Rarity => rarity;
     public bool BlockWhenActive => blockWhenActive;
     public bool CanStack => canStack;
+    public string ExclusivityKey => exclusivityKey;
+    public List<string> BlockedKeys => blockedKeys;
     public bool Scalable => scalable;
     public RewardSO ReplacesReward => replacesReward;
-    public string ExclusivityKey => exclusivityKey;
 
-    // Expose as read-only view; keep List for Unity serialization friendliness.
-    public IReadOnlyList<string> BlockedKeys => blockedKeys;
 
-    // ---------------- Lifecycle / Helpers ----------------
-
-    // Ensures internal caches are built (safe to call multiple times).
-    private void EnsureCache()
-    {
-        // Build a set for quicker membership tests; tolerate null/empty gracefully.
-        if (_blockedKeySet == null)
-        {
-            _blockedKeySet = new HashSet<string>(blockedKeys ?? System.Array.Empty<string>());
-        }
-    }
-
-    // ---------------- Core Behavior ----------------
-
-    // Determines if the reward can currently be offered to the player in the given run context.
     public virtual bool IsEligible(IRunContext ctx)
     {
-        if (ctx == null) return false;
-
-        EnsureCache();
-
-        // If not part of a scalable chain, enforce "already active" + "available but can't stack" guards.
-        if (!Scalable)
+        //block if already active and this reward says to block
+        if(!Scalable)
         {
             if (BlockWhenActive && ctx.IsActive(Id))
                 return false;
 
-            // If already available but this reward can't stack, block it
+            //block if its available but cant stack
             if (ctx.IsAvailable(Id) && !CanStack)
                 return false;
         }
 
-        // For scalable chains, require ownership of the tier we replace
         if (Scalable && ReplacesReward != null && !ctx.Owns(ReplacesReward.Id))
             return false;
 
-        // For scalable commons, don't re-offer if already owned (prevents infinite re-roll on base tier)
-        if (Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
+        if(Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
             return false;
 
-    }
 
+        //if rewards can be blocked, 
+        if (blockedKeys != null && blockedKeys.Count > 0)
+        {
+            foreach(var activeKey in ctx.ActiveKeys)
+            {
+                if(blockedKeys.Contains(activeKey)) return false;
+            }
+        }
+
+        //block if exclusivity key clashes
+        if(!string.IsNullOrEmpty(ExclusivityKey) && ctx.HasExclusiveKeyActive(ExclusivityKey))
+            return false;
+
+        return true;
+    }
 
     public abstract void Apply(IRunContext ctx);
 
     public virtual void ApplyToPaddle(PaddleElementalState state) { }
 
-}
 
+
+}
 
 ```
 
@@ -9518,34 +9529,36 @@ public class Test : MonoBehaviour
 ## Assets/Scripts/TweenDamageNumberSystem.cs
 
 ```csharp
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using DG.Tweening;
 using UnityEngine.Pool;
 
-[DisallowMultipleComponent]
 public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
 {
+
     [Header("Basics")]
     [SerializeField] private Camera targetCamera;
-    [SerializeField] private float duration = 0.9f;               // fallback if style is null
-    [SerializeField] private float riseDistance = 1.25f;          // fallback if style is null
+    [SerializeField] private float duration = 0.9f;
+    [SerializeField] private float riseDistance = 1.25f;
     [SerializeField] private float surfaceOffset = 0.08f;
-    [SerializeField] private bool useUnscaledTime = false;        // fallback if style is null
+    [SerializeField] private bool useUnscaledTime = false;
     [SerializeField] private DamageNumberStyleSO style;
     [SerializeField] private float cameraForwardOffset = 0.02f;
 
-    [Header("Typography (fallbacks if style is null)")]
+    [Header("Typography")]
     [SerializeField] private TMP_FontAsset font;
     [SerializeField] private Material fontMaterial;
     [SerializeField] private float baseFontSize = 4f;
     [SerializeField] private Color defaultColor = Color.white;
 
-    [Header("Rendering (fallbacks if style is null)")]
+    [Header("Rendering")]
     [SerializeField] private string sortingLayerName = "Default";
     [SerializeField] private int sortingOrder = 500;
 
-    [Header("Damage → Size Mapping")]
+    [Header("Damage -> Size Mapping")]
     [SerializeField] private float minDamageForScale = 1f;
     [SerializeField] private float maxDamageForScale = 100f;
     [SerializeField] private float minScale = 0.75f;
@@ -9554,57 +9567,19 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
     [SerializeField] private float logBase = 10f;
     [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
-    [Header("Pooling")]
+
     [SerializeField] private int defaultCapacity = 32;
     [SerializeField] private int maxSize = 256;
 
     private IObjectPool<GameObject> pool;
 
-    // -- One-line summary: Clamp authoring ranges for safer runtime values.
-    private void OnValidate()
-    {
-        baseFontSize = Mathf.Max(0.1f, baseFontSize);
-        duration = Mathf.Max(0.05f, duration);
-        riseDistance = Mathf.Max(0f, riseDistance);
-        minScale = Mathf.Max(0.01f, minScale);
-        maxScale = Mathf.Max(minScale, maxScale);
-        maxDamageForScale = Mathf.Max(minDamageForScale + 0.0001f, maxDamageForScale);
-        logBase = Mathf.Clamp(logBase, 1.0001f, 100f);
-    }
 
-    // -- One-line summary: Register facade, build pool, and enlarge DOTween capacities.
-    private void Awake()
-    {
-        if (!targetCamera) targetCamera = Camera.main;
-        DamageNumbers.Register(this);
-
-        pool = new ObjectPool<GameObject>(Create, OnGet, OnRelease, OnDestroyPooled,
-                                          collectionCheck: true, defaultCapacity, maxSize);
-
-        Prewarm(48);
-        DOTween.SetTweensCapacity(200, 50);
-    }
-
-    // -- One-line summary: Unregister facade on destroy to avoid stale references.
-    private void OnDestroy()
-    {
-        if (DamageNumbers.System == this) DamageNumbers.Register(null);
-    }
-
-    // -- One-line summary: Pre-allocates a few instances to avoid runtime spikes.
-    public void Prewarm(int count)
-    {
-        count = Mathf.Max(0, count);
-        var temp = new GameObject[count];
-        for (int i = 0; i < count; i++) temp[i] = pool.Get();
-        for (int i = 0; i < count; i++) pool.Release(temp[i]);
-    }
-
-    // -- One-line summary: Compute scale multiplier from damage using log or linear mapping.
     private float ComputeScale(float damage)
     {
         float d = Mathf.Max(damage, 0f);
-        if (useLogScale)
+
+
+        if(useLogScale)
         {
             float minL = Mathf.Log(minDamageForScale + 1f, logBase);
             float maxL = Mathf.Log(maxDamageForScale + 1f, logBase);
@@ -9616,100 +9591,131 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
         return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(t));
     }
 
-    // -- One-line summary: Spawn a pooled TMP label, position it, animate rise/fade, then release.
-    public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+    void Awake()
     {
-        var go = pool.Get();
-        var tmp = go.GetComponent<TMP_Text>();
-        var cam = targetCamera ? targetCamera.transform : null;
-        var camFwd = cam ? cam.forward : Vector3.forward;
+        if(targetCamera == null)
+        {
+            targetCamera = Camera.main;
+        }
+        DamageNumbers.Register(this);
 
-        // Place slightly above surface and offset toward camera to avoid z-fighting
-        Vector3 basePos = position + Vector3.up * surfaceOffset + camFwd * cameraForwardOffset;
-        go.transform.position = basePos;
-        if (cam) go.transform.rotation = Quaternion.LookRotation(camFwd, Vector3.up);
-
-        // Fresh content
-        tmp.text = Mathf.RoundToInt(amount).ToString();
-
-        // Font & color come from style if present, otherwise fallbacks assigned in Create()
-        float baseSize = style ? style.BaseFontSize : baseFontSize;
-        tmp.fontSize = baseSize * ComputeScale(amount);
-        var c = overrideColor ?? (style ? style.DefaultColor : defaultColor);
-        tmp.color = new Color(c.r, c.g, c.b, 0f);
-
-        // Kill any lingering tweens on reuse
-        go.transform.DOKill();
-        tmp.DOKill();
-
-        // Timings from style or fallback
-        float dur = style ? style.Duration : duration;
-        bool unscaled = style ? style.UseUnscaledTime : useUnscaledTime;
-        float rise = style ? style.RiseDistance : riseDistance;
-
-        float fadeIn, sustain, fadeOut;
-        if (style) style.GetFadeTimings(out fadeIn, out sustain, out fadeOut);
-        else { fadeIn = dur * 0.08f; fadeOut = dur * 0.25f; }
-
-        // Animate rise + pop + fade, then return to pool
-        DOTween.Sequence()
-            .SetUpdate(unscaled)
-            .SetRecyclable(true)
-            .Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic))
-            .Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic))
-            .Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic))
-            .Join(go.transform.DOScale(style ? style.PopToScale : 1.1f, fadeIn)
-                               .From(style ? style.PopFromScale : 0.6f)
-                               .SetEase(Ease.OutBack, 2f))
-            .OnComplete(() => pool.Release(go));
+        pool = new ObjectPool<GameObject>(Create, OnGet, OnRelease, OnDestroyPooled, true, defaultCapacity, maxSize);
+        Prewarm(48);
+        DOTween.SetTweensCapacity(200, 50);
     }
 
-    // -- One-line summary: Create a pooled TextMeshPro object configured for world-space rendering.
+
+    public void Prewarm(int count)
+    {
+        count = Mathf.Max(0, count);
+        var arr = new GameObject[count];
+        for (int i = 0; i < count; i++) arr[i] = pool.Get();
+        for (int i = 0; i < count; i++) pool.Release(arr[i]);
+    }
+
     private GameObject Create()
     {
-        var go = new GameObject("DamageNumber");
-        var tmp = go.AddComponent<TextMeshPro>();
+        var go = new GameObject("DamageNumber", typeof(TextMeshPro));
+        go.transform.SetParent(transform, false);
+
+        var tmp = go.GetComponent<TextMeshPro>();
+        tmp.enableWordWrapping = false;
         tmp.alignment = TextAlignmentOptions.Center;
 
-        // Apply style or fallbacks
-        if (style) style.ApplyToTMP(tmp);
-        else
-        {
-            if (font) tmp.font = font;
-            if (fontMaterial) tmp.fontSharedMaterial = fontMaterial;
-            tmp.fontSize = baseFontSize;
-            tmp.color = defaultColor;
-        }
+        var useFont = style != null ? style.font : font;
+        var useMat = style != null ? style.fontMaterial : fontMaterial;
+        var useSize = style != null ? style.baseFontSize : baseFontSize;
+        var useColor = style != null ? style.defaultColor : defaultColor;
 
-        // Sorting from style or fallbacks
+        if (useFont != null) tmp.font = useFont;
+        if (useMat != null) tmp.fontSharedMaterial = useMat;
+        tmp.fontSize = useSize;
+
         var mr = go.GetComponent<MeshRenderer>();
-        if (mr)
-        {
-            mr.sortingLayerName = style ? style.SortingLayerName : sortingLayerName;
-            mr.sortingOrder = style ? style.SortingOrder : sortingOrder;
-        }
+        var layerName = style != null ? style.sortingLayerName : sortingLayerName;
+        var order = style != null ? style.sortingOrder : sortingOrder;
+        if (mr != null) { mr.sortingLayerName = layerName; mr.sortingOrder = order; }
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
 
         go.SetActive(false);
         return go;
     }
 
-    // -- One-line summary: Activate an instance when taken from the pool.
     private void OnGet(GameObject go) => go.SetActive(true);
 
-    // -- One-line summary: Reset minimal state and disable before pooling.
     private void OnRelease(GameObject go)
     {
-        var tmp = go.GetComponent<TMP_Text>();
-        if (tmp) { tmp.alpha = 1f; tmp.text = string.Empty; }
-        go.transform.localScale = Vector3.one;
+        ResetVisual(go);
         go.SetActive(false);
     }
 
-    // -- One-line summary: Destroy pooled instance when the pool trims capacity.
     private void OnDestroyPooled(GameObject go)
     {
-        if (go) Destroy(go);
+        if(go != null) Destroy(go);
     }
+
+    private void ResetVisual(GameObject go)
+    {
+        var tmp = go.GetComponent<TextMeshPro>();
+
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        tmp.fontSize = baseSize;
+
+        tmp.text = string.Empty;
+        var c = tmp.color; c.a = 0f; tmp.color = c;
+
+        go.transform.localScale = Vector3.one;
+    }
+
+
+    public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+    {
+        var go = pool.Get();
+        DOTween.Kill(go.transform, complete: false);
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, complete: false);
+
+        tmp.text = amount.ToString("0.#");
+        var fallbackColor = style != null ? style.defaultColor : defaultColor;
+        var col = overrideColor ?? fallbackColor;
+        tmp.color = new Color(col.r, col.g, col.b, 0f);
+
+        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        float sizeScale = ComputeScale(amount);
+        tmp.fontSize = baseSize * sizeScale;
+
+
+
+
+        var cam = targetCamera;
+
+
+
+
+        var basePos = position;
+        if(cam != null) basePos -= cam.transform.forward * cameraForwardOffset;
+        go.transform.position = position;
+        if(cam != null) go.transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+
+        var dur = Mathf.Max(0.05f, (style != null ? style.duration : duration));
+        var rise = (style != null ? style.riseDistance : riseDistance);
+        var fadeIn = Mathf.Clamp01(style != null ? style.fadeInFraction : 0.08f) * dur;
+        var fadeOut = Mathf.Clamp01(style != null ? style.fadeOutFraction : 0.25f) * dur;
+        var popFrom = (style != null ? style.popFromScale : 0.6f);
+        var popTo = (style != null ? style.popToScale : 1.1f);
+        var useUnscaled = (style != null ? style.useUnscaledTime : useUnscaledTime);
+
+        DOTween.Sequence()
+            .SetUpdate(useUnscaled)
+            .SetRecyclable(true)
+            .Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic))
+            .Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic))
+            .Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic))
+            .Join(go.transform.DOScale(popTo, fadeIn).From(popFrom).SetEase(Ease.OutBack, 2f))
+            .OnComplete(() => pool.Release(go));
+
+    }
+
 }
 
 ```
@@ -9793,59 +9799,28 @@ using System.Collections.Generic;
 using System;
 using UnityEngine;
 
-// Registry of colliders that attract XP particles; raises OnChanged on mutations.
-[DefaultExecutionOrder(-1000)] // Ensure this initializes before most systems.
+[DefaultExecutionOrder(-1000)]
 public class XPCollectorRegistry : MonoBehaviour
 {
-    // Singleton instance.
-    public static XPCollectorRegistry I { get; private set; }
 
-    // Current set of active XP collector colliders.
+    public static XPCollectorRegistry I {  get; private set; }
     public readonly List<Collider> collectors = new();
 
-    // Notifies listeners when the registry changes (add/remove/cleanup).
     public static event Action OnChanged;
 
-    // Initialize singleton and prune stale entries early in the frame.
-    void Awake()
+    void Awake() => I = this;
+
+    public void Register(Collider c) 
     {
-        if (I && I != this) { Destroy(gameObject); return; }
-        I = this;
-        PruneNulls();
+        if(c && !collectors.Contains(c)) collectors.Add(c);
     }
 
-    // Clear singleton reference if this instance is destroyed.
-    void OnDestroy()
-    {
-        if (I == this) I = null;
-    }
-
-    // Adds a collider to the registry (deduped); fires OnChanged.
-    public void Register(Collider c)
-    {
-        if (!c) return;
-        PruneNulls();
-        if (collectors.Contains(c)) return;
-        collectors.Add(c);
-        OnChanged?.Invoke();
-    }
-
-    // Removes a collider from the registry; fires OnChanged when removed.
     public void Unregister(Collider c)
     {
-        if (!c) return;
-        if (collectors.Remove(c))
-            OnChanged?.Invoke();
-        PruneNulls();
-    }
-
-    // Removes null entries left by destroyed objects.
-    private void PruneNulls()
-    {
-        for (int i = collectors.Count - 1; i >= 0; i--)
-            if (!collectors[i]) collectors.RemoveAt(i);
+        if(c) collectors.Remove(c);
     }
 }
+
 ```
 
 ## Assets/Scripts/XPFormula.cs
@@ -9854,102 +9829,45 @@ public class XPCollectorRegistry : MonoBehaviour
 using System;
 using UnityEngine;
 
-/// XP progression helpers: per-level requirement, cumulative totals, and reverse lookup.
 public static class XPFormula
 {
-    // Tunables (kept public/static for your existing usage)
-    public static double A = 10.0;     // base scale; Lv1->2 baseline
-    public static double p = 1.3;      // growth exponent
-    public static double bumpEvery = 5.0;    // spacing between "walls"
-    public static double bumpWidth = 0.8;    // narrow = steeper wall
+    // Tunables
+    public static double A = 10.0;   // base; sets Lv1->2 XP
+    public static double p = 1.3;    // base growth
+    public static double bumpEvery = 5.0;
+    public static double bumpWidth = 0.8;    // narrow = "brick wall"
     public static double bumpHeight = 0.20;  // 0.40 => +40% at the wall center
 
-    // -- One-liner: Validate tunables once per domain load.
-    static XPFormula()
-    {
-        ClampTunables();
-    }
-
-    // -- One-liner: Ensures no invalid values (e.g., zero/negative that cause math spikes).
-    public static void ClampTunables()
-    {
-        A = Math.Max(0.0001, A);
-        p = Math.Max(0.0001, p);
-        bumpEvery = Math.Max(1.0, bumpEvery);
-        bumpWidth = Math.Max(0.5, bumpWidth);     // matches your original safeguard
-        bumpHeight = Math.Max(0.0, bumpHeight);
-    }
-
-    // -- One-liner: Logistic "hump" multiplier centered at `center`.
+    // Logistic hump centered at `center`
     static double Bump(double n, double center, double width, double height)
     {
-        width = Math.Max(0.5, width);            // guard like your original
+        // bounds/guard: avoid division by ~0 if someone sets width too tiny
+        width = Math.Max(0.5, width);
+
         double x = (n - center) / width;
-        double s = 1.0 / (1.0 + Math.Exp(-x));   // sigmoid
-        double bell = s * (1.0 - s) * 4.0;       // smooth hill, peak=1 at center
-        return 1.0 + height * bell;              // baseline 1.0, peak 1+height
+        double s = 1.0 / (1.0 + Math.Exp(-x));        // 0..1 sigmoid
+        double hump = s * (1.0 - s) * 4.0;            // 0..1 bell, peak at center
+        return 1.0 + height * hump;                   // 1.0 away from center, 1+height at center
     }
 
-    // -- One-liner: XP needed to go from level n -> n+1 (n >= 1).
+    // XP required to go from level n -> n+1; n >= 1
     public static int XpReq(int n)
     {
-        if (n < 1) n = 1;
+        double baseReq = A * Math.Pow(n, p);
 
-        // base requirement
-        double baseReq = A * Math.Pow(n, p);  // your original shape :contentReference[oaicite:0]{index=0}
-
-        // multiply nearby humps (center and neighbors) for clean tails
-        int center = (int)Math.Round(n / bumpEvery) * (int)bumpEvery; // original pattern :contentReference[oaicite:1]{index=1}
+        // With narrow width, only the nearest centers meaningfully affect n.
+        // We multiply the nearest three (center, +/- 1 period) for clean tails.
+        int center = (int)Math.Round(n / bumpEvery) * (int)bumpEvery;
 
         double mul =
             Bump(n, center - bumpEvery, bumpWidth, bumpHeight) *
             Bump(n, center, bumpWidth, bumpHeight) *
-            Bump(n, center + bumpEvery, bumpWidth, bumpHeight);       // original approach :contentReference[oaicite:2]{index=2}
+            Bump(n, center + bumpEvery, bumpWidth, bumpHeight);
 
-        // clamp to at least 1 XP and return as int
+        // Round to integer for final result
         return Mathf.Max(1, (int)Math.Round(baseReq * mul));
     }
-
-    // -- One-liner: Total XP required to *reach* level `level` (sum of per-level reqs).
-    public static int TotalXpToReachLevel(int level)
-    {
-        if (level <= 1) return 0;
-        long total = 0;
-        for (int n = 1; n < level; n++)
-        {
-            total += XpReq(n);
-            if (total > int.MaxValue) return int.MaxValue; // safety cap
-        }
-        return (int)total;
-    }
-
-    // -- One-liner: Finds the level you�re at given a total XP pool (binary search).
-    public static int LevelForTotalXp(int totalXp, int maxLevel = 300)
-    {
-        totalXp = Math.Max(0, totalXp);
-        maxLevel = Math.Max(2, maxLevel);
-
-        int lo = 1, hi = maxLevel;
-        while (lo < hi)
-        {
-            int mid = (lo + hi + 1) >> 1;
-            int need = TotalXpToReachLevel(mid);
-            if (need <= totalXp) lo = mid; else hi = mid - 1;
-        }
-        return lo;
-    }
-
-    // -- One-liner: Predicts XP percent (0..1) toward next level at current total XP.
-    public static float PercentToNextLevel(int totalXp, int maxLevel = 300)
-    {
-        int cur = LevelForTotalXp(totalXp, maxLevel);
-        int curTotal = TotalXpToReachLevel(cur);
-        int nextReq = XpReq(cur);
-        if (nextReq <= 0) return 1f;
-        return Mathf.Clamp01((totalXp - curTotal) / (float)nextReq);
-    }
 }
-
 ```
 
 ## Assets/TextMesh Pro/Examples & Extras/Scripts/Benchmark01.cs

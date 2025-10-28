@@ -189,7 +189,7 @@ public class BallElementalState : MonoBehaviour
         if (fireEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
+            elem.ApplyBurn(fireBurnDamage * ball.CurrentMultipliers, fireBurnDuration);
         }
         if (waterEffectActive && bumper != null)
         {
@@ -199,12 +199,12 @@ public class BallElementalState : MonoBehaviour
         if (earthEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyCrusted(earthFissureDamage, earthCrustDuration, earthBonusXP, earthBonusScore);
+            elem.ApplyCrusted(earthFissureDamage * ball.CurrentMultipliers, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
         if(electricEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyShocked(electricShockDamage, electricBonusXP, electricBonusScore);
+            elem.ApplyShocked(electricShockDamage * ball.CurrentMultipliers, electricBonusXP, electricBonusScore);
         }
 
         switch (CurrentState)

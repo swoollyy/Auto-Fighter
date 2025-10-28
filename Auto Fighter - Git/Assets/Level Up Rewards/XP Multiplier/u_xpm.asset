@@ -14,17 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: u_xpm
   displayName: XP Multiplier (Uncommon)
-  description: '+4 Multiplier
-
-    +25 Seconds'
+  description: +10% XP Multiplier
   category: 1
   rarity: 1
+  isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
   scalable: 0
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  multiplier: 4
-  bonusTime: 25
+  multiplier: 10
+  bonusTime: 0
   cursed: 0

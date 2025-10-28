@@ -21,7 +21,16 @@ public class ElectricPaddleRewardSO : RewardSO
 
 
     }
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if (!base.IsEligible(ctx))
+            return false;
 
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+
+        return true;
+    }
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
         Debug.Log("nice!");

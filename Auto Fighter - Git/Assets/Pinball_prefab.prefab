@@ -150,10 +150,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseDamage: 5
-  isInZone: 0
-  isTouchingPaddles: 0
-  hasBounced: 0
-  isActive: 0
+  glowColor: {r: 1, g: 0, b: 0, a: 1}
+  emissionBase: 1.15
+  emissionPerComboStep: 0.3
+  comboThreshold: 3
+  comboBonusPerHit: 0.1
+  comboBreakLayers:
+    serializedVersion: 2
+    m_Bits: 4
   maxSpeed: 60
   forceField: {fileID: 7301997074838616247}
   forceFieldRadius: 0

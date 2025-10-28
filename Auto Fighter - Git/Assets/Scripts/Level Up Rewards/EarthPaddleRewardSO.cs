@@ -23,6 +23,16 @@ public class EarthPaddleRewardSO : RewardSO
         isPaddleReward = true;
     }
 
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if(!base.IsEligible(ctx))
+            return false;
+
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+        return true;
+    }
+
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
         paddle.ApplyEarth(fissureDamage, crustedDuration, fissureHitScoreMultiplier, fissureHitXPMultiplier, bounceDuration, cursed);

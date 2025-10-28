@@ -254,6 +254,7 @@ public class Pinball : MonoBehaviour, IRunContext
         ui?.InitLives(maxLives);
         OnLivesChanged();
 
+        PowerupSystem.EnsureInitialized();
         ChangeState(PinballState.Charging);
 
         ui?.Init(this);
@@ -302,6 +303,10 @@ public class Pinball : MonoBehaviour, IRunContext
         }
 
         TickChargeTimer();
+
+        if (Input.GetKeyDown("p"))
+            AddXP(50);
+
     }
 
     #endregion
@@ -730,6 +735,8 @@ public class Pinball : MonoBehaviour, IRunContext
                 dupedCol.material = Instantiate(anchorCol.material);
 
             dupedBall.ResetRb();
+
+            dupedBall.RandomizeGlowColor();
         }
         ballCount++;
     }
@@ -897,6 +904,25 @@ public class Pinball : MonoBehaviour, IRunContext
         ApplyLevelBonuses();
     }
 
+    // Call while already in LevelUp state to advance to the next level-up or resume play.
+    private void ShowNextLevelUpOrResume()
+    {
+        if (pendingLevelUps > 0)
+        {
+            // Perform the next level increment and re-roll the choices
+            LevelUp();
+            var choices = GetRewardChoices();
+            ui?.ShowRewardPopup(choices);
+            // Keep time paused (we're still in LevelUp)
+            Time.timeScale = 0f;
+        }
+        else
+        {
+            // No more level-ups queued: return to Play
+            ChangeState(PinballState.Play);
+        }
+    }
+
     public void ApplyLevelBonuses()
     {
         if (level % 5 == 0)
@@ -913,7 +939,20 @@ public class Pinball : MonoBehaviour, IRunContext
 
     #endregion
 
+
+
+
     #region Paddle single-shot elemental hit window
+
+    public bool AreBothPaddlesElemental()
+    {
+        var leftElem = leftPaddle ? leftPaddle.GetComponent<PaddleElementalState>() : null;
+        var rightElem = rightPaddle ? rightPaddle.GetComponent<PaddleElementalState>() : null;
+
+        bool leftHas = leftElem != null && leftElem.CurrentState != PaddleState.None;
+        bool rightHas = rightElem != null && rightElem.CurrentState != PaddleState.None;
+        return leftHas && rightHas;
+    }
 
     private void HitCheck(KeyCode paddle)
     {
@@ -999,13 +1038,14 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyXPMultiplier(float multiplier, bool cursed)
     {
+        float Multiplier = multiplier * .01f;
         if (cursed)
         {
             xpCount += 1;
             if (xpBonusTimer > 5) xpBonusTimer = 5;
             xpMultiplier *= 2;
         }
-        else xpMultiplier += multiplier;
+        else xpMultiplier += Multiplier;
     }
 
     public void ApplyXPBonusTime(float time, bool cursed)
@@ -1114,7 +1154,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyDmgPerBounceFX(float amount, int bounces)
     {
-        float Amount = (100f + amount) / 100f;
+        float Amount = 0.01f * amount;
         ForEachUsableBall(b => b.AddTempDamageMultiplier(Amount, bounces));
     }
 
@@ -1192,14 +1232,13 @@ public class Pinball : MonoBehaviour, IRunContext
 
                 reward.Apply(this);
                 pendingLevelUps--;
-                ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
-                return;
+                ShowNextLevelUpOrResume(); return;
             }
         }
 
         reward.Apply(this);
         pendingLevelUps--;
-        ChangeState(pendingLevelUps > 0 || currentState == PinballState.PaddleSelect ? PinballState.LevelUp : PinballState.Play);
+        ShowNextLevelUpOrResume();
     }
 
     private RewardSO PickOneWeighted(List<RewardSO> pool, RewardRarity rarity)
@@ -1232,7 +1271,7 @@ public class Pinball : MonoBehaviour, IRunContext
         var picks = new List<RewardSO>();
         var localEligible = new List<RewardSO>(eligible);
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 4; i++)
         {
             RewardSO choice = null;
             for (int j = 0; j < 10 && choice == null; j++)

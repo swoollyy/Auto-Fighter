@@ -15,6 +15,13 @@ public class PinballUIM : MonoBehaviour
         public TMP_Text descText;
     }
 
+    [Header("Per-Ball Combo Row")]
+    [SerializeField] private Transform ballRowParent; // Horizontal group in your UI
+    [SerializeField] private GameObject ballEntryPrefab; // Prefab with BallUIEntry (see new script below)
+
+    // Runtime mapping Ball -> entry
+    private readonly Dictionary<Ball, BallUIEntry> _ballEntries = new();
+
     [Header("UI Slots(6 buttons)")]
     [SerializeField] private List<RewardSlot> slots = new();
 
@@ -71,6 +78,19 @@ public class PinballUIM : MonoBehaviour
     public void Init(Pinball manager)
     {
         pm = manager;
+
+        // Listen to active balls coming and going
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallActivated += HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+        Ball.OnBallDeactivated += HandleBallDeactivated;
+
+        // Bootstrap any already-active balls
+        var existing = GameObject.FindObjectsOfType<Ball>();
+        for (int i = 0; i < existing.Length; i++)
+            if (existing[i].isActiveAndEnabled && existing[i].IsActive)
+                HandleBallActivated(existing[i]);
+
     }
 
     public void InitLives(int maxLives)
@@ -163,6 +183,8 @@ public class PinballUIM : MonoBehaviour
 
     }
 
+
+
     public void ClosePaddleSelect(bool hasMoreLevels)
     {
         paddleSelectPanel.SetActive(false);
@@ -182,5 +204,69 @@ public class PinballUIM : MonoBehaviour
         }
     }
 
+    private void HandleBallActivated(Ball b)
+    {
+        if (!ballRowParent || !b || _ballEntries.ContainsKey(b)) return;
 
+        var go = ballEntryPrefab
+            ? Instantiate(ballEntryPrefab, ballRowParent)
+            : CreateFallbackEntry(ballRowParent);
+
+        var entry = go.GetComponent<BallUIEntry>();
+        entry.Init(b);
+        _ballEntries[b] = entry;
+
+        b.OnComboChanged -= OnBallComboChanged;
+        b.OnComboChanged += OnBallComboChanged;
+
+        // Initial sync
+        entry.Refresh(b);
+    }
+
+    private void HandleBallDeactivated(Ball b)
+    {
+        if (!b) return;
+
+        b.OnComboChanged -= OnBallComboChanged;
+
+        if (_ballEntries.TryGetValue(b, out var entry))
+        {
+            if (entry) Destroy(entry.gameObject);
+            _ballEntries.Remove(b);
+        }
+    }
+
+    private void OnBallComboChanged(Ball b)
+    {
+        if (b != null && _ballEntries.TryGetValue(b, out var entry) && entry != null)
+            entry.Refresh(b);
+    }
+
+    // Small runtime fallback if no prefab was assigned
+    private GameObject CreateFallbackEntry(Transform parent)
+    {
+        var root = new GameObject("BallEntry", typeof(RectTransform));
+        root.transform.SetParent(parent, false);
+
+        var imgGO = new GameObject("Dot", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        imgGO.transform.SetParent(root.transform, false);
+
+        var txtGO = new GameObject("Label", typeof(RectTransform), typeof(TMPro.TextMeshProUGUI));
+        txtGO.transform.SetParent(root.transform, false);
+
+        var entry = root.AddComponent<BallUIEntry>();
+        entry.BindRuntime(imgGO.GetComponent<UnityEngine.UI.Image>(), txtGO.GetComponent<TMPro.TextMeshProUGUI>());
+        return root;
+    }
+
+
+    void OnDestroy()
+    {
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+
+        foreach (var kv in _ballEntries)
+            if (kv.Key != null)
+                kv.Key.OnComboChanged -= OnBallComboChanged;
+    }
 }

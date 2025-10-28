@@ -145,7 +145,7 @@ public class BumperElementalState : MonoBehaviour
     {
         if (Time.time >= earthCrustExpireAt)
         {
-            bumper.TakeFissureDamage(earthFissureDamage);
+            bumper.TakeFissureDamage(earthFissureDamage, bumper.LastDmgFactorForXP);
             ClearCrusted();
         }
     }
@@ -169,7 +169,7 @@ public class BumperElementalState : MonoBehaviour
 
     public void HandleShocked()
     {
-        bumper.TakeShockDamage(electricShockDamage, true);
+        bumper.TakeShockDamage(electricShockDamage, bumper.LastDmgFactorForXP, true);
         ClearShocked();
     }
 
