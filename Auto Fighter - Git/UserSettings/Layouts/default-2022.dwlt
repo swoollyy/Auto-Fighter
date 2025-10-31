@@ -19,7 +19,7 @@ MonoBehaviour:
     width: 1920
     height: 989
   m_ShowMode: 4
-  m_Title: Game
+  m_Title: Console
   m_RootView: {fileID: 2}
   m_MinSize: {x: 875, y: 300}
   m_MaxSize: {x: 10000, y: 10000}
@@ -118,7 +118,7 @@ MonoBehaviour:
   m_MinSize: {x: 400, y: 100}
   m_MaxSize: {x: 32384, y: 16192}
   vertical: 1
-  controlID: 55
+  controlID: 222
   draggingID: 0
 --- !u!114 &6
 MonoBehaviour:
@@ -145,7 +145,7 @@ MonoBehaviour:
   m_MinSize: {x: 400, y: 100}
   m_MaxSize: {x: 32384, y: 16192}
   vertical: 0
-  controlID: 56
+  controlID: 223
   draggingID: 0
 --- !u!114 &7
 MonoBehaviour:
@@ -197,7 +197,7 @@ MonoBehaviour:
   m_MinSize: {x: 200, y: 100}
   m_MaxSize: {x: 16192, y: 16192}
   vertical: 1
-  controlID: 57
+  controlID: 224
   draggingID: 0
 --- !u!114 &9
 MonoBehaviour:
@@ -223,7 +223,7 @@ MonoBehaviour:
   m_MinSize: {x: 200, y: 50}
   m_MaxSize: {x: 16192, y: 8096}
   vertical: 0
-  controlID: 58
+  controlID: 225
   draggingID: 0
 --- !u!114 &10
 MonoBehaviour:
@@ -272,8 +272,8 @@ MonoBehaviour:
     y: 0
     width: 748
     height: 665
-  m_MinSize: {x: 100, y: 100}
-  m_MaxSize: {x: 4000, y: 4000}
+  m_MinSize: {x: 102, y: 121}
+  m_MaxSize: {x: 4002, y: 4021}
   m_ActualView: {fileID: 14}
   m_Panes:
   - {fileID: 14}
@@ -471,9 +471,9 @@ MonoBehaviour:
   m_SceneHierarchy:
     m_TreeViewState:
       scrollPos: {x: 0, y: 0}
-      m_SelectedIDs: b61d0000
-      m_LastClickedID: 0
-      m_ExpandedIDs: 04fbffff3e660000fc680000f06900002a6b0000
+      m_SelectedIDs: 2ce8ffff
+      m_LastClickedID: -6100
+      m_ExpandedIDs: 3ae8ffffe0e9ffff
       m_RenameOverlay:
         m_UserAcceptedRename: 0
         m_Name: 
@@ -1078,14 +1078,15 @@ MonoBehaviour:
   m_LastFolders:
   - Assets/Scripts
   m_LastFoldersGridSize: -1
-  m_LastProjectPath: D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git
+  m_LastProjectPath: C:\Users\kylef\OneDrive\Documents\GitHub\Auto-Fighter\Auto Fighter
+    - Git
   m_LockTracker:
     m_IsLocked: 0
   m_FolderTreeState:
-    scrollPos: {x: 0, y: 127}
-    m_SelectedIDs: 746c0000
-    m_LastClickedID: 27764
-    m_ExpandedIDs: 00000000746c0000766c000000ca9a3bffffff7f
+    scrollPos: {x: 0, y: 79}
+    m_SelectedIDs: 4a290000
+    m_LastClickedID: 10570
+    m_ExpandedIDs: 000000004a290000ac71000000ca9a3bffffff7f
     m_RenameOverlay:
       m_UserAcceptedRename: 0
       m_Name: 
@@ -1113,7 +1114,7 @@ MonoBehaviour:
     scrollPos: {x: 0, y: 0}
     m_SelectedIDs: 
     m_LastClickedID: 0
-    m_ExpandedIDs: 00000000746c0000766c0000
+    m_ExpandedIDs: 000000004a290000ac710000
     m_RenameOverlay:
       m_UserAcceptedRename: 0
       m_Name: 
@@ -1138,8 +1139,8 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
   m_ListAreaState:
-    m_SelectedInstanceIDs: b61d0000
-    m_LastClickedInstanceID: 7606
+    m_SelectedInstanceIDs: 2ce8ffff
+    m_LastClickedInstanceID: -6100
     m_HadKeyboardFocusLastEvent: 1
     m_ExpandedInstanceIDs: c6230000a6ac01002ed6170030d61700a4d51700967a01000c9cfeffec6a0000e6540b007c0200009e740000be8100004c780000e0870000c2e503003a76000058760000f0a10200246b03000000000052800300808b00003c8b0000728c0000ee8a000044d400005032040068810000d4810000bc7a0000644f020062d10b000207010082970000b07c0000067d0000b0970000fa7c0000627e000024800000ac7e0000d68c00002c9300001cc800009ea900008c750000966d00009c6d00008a7c00004ea1000052a00000107e00007a9200005a920000ec9f0000c8a1000030a60000727c0b00787c0b00747c0b00707c0b00845f0000
     m_RenameOverlay:
@@ -1165,7 +1166,7 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
     m_NewAssetIndexInList: -1
-    m_ScrollPosition: {x: 0, y: 0}
+    m_ScrollPosition: {x: 0, y: 53.495667}
     m_GridSize: 64
   m_SkipHiddenPackages: 0
   m_DirectoriesAreaWidth: 148
@@ -1421,7 +1422,7 @@ MonoBehaviour:
     m_OverlaysVisible: 1
   m_LockTracker:
     m_IsLocked: 0
-  m_LastSelectedObjectID: -31430
+  m_LastSelectedObjectID: -6100
 --- !u!114 &23
 MonoBehaviour:
   m_ObjectHideFlags: 52

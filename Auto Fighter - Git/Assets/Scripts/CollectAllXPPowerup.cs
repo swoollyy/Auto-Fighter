@@ -38,6 +38,7 @@ public sealed class CollectAllXPPowerup : IPowerup
     {
         const float duration = 1.75f;
         const float boostFactor = 400f;
+        const float strengthFactor = 4f;
 
         List<Collider> snapshot = null;
         var registry = XPCollectorRegistry.I;
@@ -51,7 +52,10 @@ public sealed class CollectAllXPPowerup : IPowerup
         }
 
         if (anchor != null)
+        {
             anchor.UpdateForcefield(boostFactor);
+            anchor.UpdateForcefieldStrength(strengthFactor);
+        }
 
         var others = new List<Ball>(8);
         const float dampFactor = 0.01f;
@@ -74,7 +78,10 @@ public sealed class CollectAllXPPowerup : IPowerup
         }
 
         if (anchor != null)
+        {
             anchor.UpdateForcefield(1f / boostFactor);
+            anchor.UpdateForcefieldStrength(1f / strengthFactor);
+        }
 
         for (int i = 0; i < others.Count; i++)
         {

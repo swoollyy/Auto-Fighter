@@ -133,7 +133,8 @@ public class Ball : MonoBehaviour
         }
         else if (tmpBonusBouncesRemaining == 0)
         {
-            tempDamageMultiplier = tempDamageMultiplierStore;
+            tempDamageMultiplier = 1 + tempDamageMultiplierStore;
+            Debug.Log($"temp damage - {tempDamageMultiplier}");
             ResetTempBounceMods();
         }
     }
@@ -572,5 +573,9 @@ public class Ball : MonoBehaviour
     {
         forceFieldRadius *= amount;
         forceField.endRange = forceFieldRadius;
+    }
+
+    public void UpdateForcefieldStrength(float strength)
+    {
     }
 }
