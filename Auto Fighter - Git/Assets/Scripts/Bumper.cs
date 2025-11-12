@@ -29,30 +29,33 @@ public class Bumper : MonoBehaviour
     private BumperElementalState bumperElemental;
     private Pinball pinball;
 
-    // Per-hit XP/score scaling cache
     private float _lastDmgFactorForXP = 1f;
     public float LastDmgFactorForXP => _lastDmgFactorForXP;
 
     private Vector3 normal;
 
+    [SerializeField] private bool isDead = false;
+    public bool IsDead => isDead;
+
     private static readonly List<Bumper> AllBumpers = new();
     public static IEnumerable<Bumper> EnumerateAll() => AllBumpers;
 
-    // Register this bumper in the global list.
-    private void OnEnable() => AllBumpers.Add(this);
+    private BumperLightController _light;
 
-    // Unregister this bumper from the global list.
+    private void OnEnable() => AllBumpers.Add(this);
     private void OnDisable() => AllBumpers.Remove(this);
 
-    // Cache references and reset health to max.
     private void Awake()
     {
         pinball = Pinball.Instance ?? GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
         bumperElemental = GetComponent<BumperElementalState>();
         curHealth = maxHealth;
+        isDead = false;
+
+        _light = GetComponent<BumperLightController>();
+        if (_light == null) _light = gameObject.AddComponent<BumperLightController>();
     }
 
-    // Handles ball collision: debounces hits, computes impulse direction, forwards score/XP scaling, and applies damage.
     private void OnCollisionEnter(Collision col)
     {
         var rb = col.rigidbody;
@@ -65,6 +68,23 @@ public class Bumper : MonoBehaviour
         if (lastHitTimeByBall.TryGetValue(id, out float last) && Time.time - last < hitCooldown)
             return;
         lastHitTimeByBall[id] = Time.time;
+
+        // Detect if the colliding ball is currently in a ricochet window.
+        var assist = rb.GetComponent<RicochetAssist>();
+        bool ricochetActive = assist && assist.IsActive;
+
+        // Light behavior:
+        // - Normal hit: flash to peak then back to baseline
+        // - Ricochet hit: persistent light that increases with each ricochet hit
+        if (ricochetActive)
+        {
+            _light?.StartRicochetMode();
+            _light?.IncrementRicochet();
+        }
+        else
+        {
+            _light?.PulseFlash();
+        }
 
         var contact = col.contacts[0];
         lastContactPoint = contact.point;
@@ -81,19 +101,19 @@ public class Bumper : MonoBehaviour
         float totalDamage = ballComp != null ? ballComp.CurrentDamage : (pinball != null ? pinball.Damage : 0f);
         bool fireTick = ballElem != null && ballElem.CurrentState == ElementalState.Fire;
 
-        // Factor includes flats + multipliers vs baseline (from the ball that hit).
         float dmgFactor = ballComp != null ? ballComp.ScoreXpDamageFactor : 1f;
         _lastDmgFactorForXP = dmgFactor;
 
         int bumperKind = CompareTag("SmallBumper") ? 1 : 0;
-        float deltaV = bumperKind == 0 ? 225f : 100f;
+        float deltaV = bumperKind == 0 ? 150f : 200f;
 
+        int portalBoost = ballComp != null ? ballComp.ConsumePortalBoost() : 1;
         rb.velocity = Vector3.zero;
-        ballComp?.Bump(normal, deltaV, bumperKind, this);
+        ballComp?.Bump(normal, deltaV, bumperKind, this, portalBoost);
 
-        Debug.DrawRay(contact.point, normal * 2f, Color.red);
+        if (isDead) return;
 
-        TakeDamage(totalDamage, elemDmg: fireTick, damageFactor: _lastDmgFactorForXP);
+        TakeDamage(totalDamage, elemDmg: fireTick, damageFactor: _lastDmgFactorForXP, sourceBall: ballComp);
 
         if (pinball != null)
         {
@@ -102,7 +122,6 @@ public class Bumper : MonoBehaviour
         }
     }
 
-    // Finds the nearest other bumper within an optional max distance (used by chain effects).
     private Bumper FindNearestOther(float maxDistance = Mathf.Infinity)
     {
         Vector3 p = transform.position;
@@ -119,10 +138,12 @@ public class Bumper : MonoBehaviour
         return nearest;
     }
 
-    // Core damage handler: applies damage, spawns feedback, emits XP scaled by last hit factor, and schedules respawn.
-    public void TakeDamage(float amount, bool elemDmg, float damageFactor = 1f)
+    public void TakeDamage(float amount, bool elemDmg, float damageFactor = 1f, int xpScoreMult = 1, Ball sourceBall = null)
     {
+        if (isDead) return;
+
         _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+        bumperElemental?.RecordCrustedIncomingDamage(amount, sourceBall);
 
         curHealth -= amount;
 
@@ -142,34 +163,25 @@ public class Bumper : MonoBehaviour
             if (elemDmg)
             {
                 if (curHealth > 0)
-                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
             }
             else
             {
                 if (bumperElemental != null && bumperElemental.CurrentState == BumperState.Drenched)
-                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
                 else
-                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
             }
         }
 
-        if (curHealth <= 0)
-        {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true; // next score tick gets bonus
-            }
-            StartCoroutine(pinball.RespawnRoutine(this));
-        }
+        if (curHealth <= 0f)
+            Die(elemDmg, xpScoreMult);
     }
 
-    // Applies Earth fissure tick damage and emits Earth XP, using last stored damage factor.
     public void TakeFissureDamage(float amount, float damageFactor)
     {
+        if (isDead) return;
         _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
-
         curHealth -= amount;
 
         GetComponent<BumperAnimScript>()?.BumperHit();
@@ -186,22 +198,15 @@ public class Bumper : MonoBehaviour
         if (pinball != null && bumperElemental != null)
             pinball.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP, damageFactor: _lastDmgFactorForXP);
 
-        if (curHealth <= 0)
-        {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true;
-            }
-            StartCoroutine(pinball.RespawnRoutine(this));
-        }
+        if (curHealth <= 0f)
+            Die(false, 1);
     }
 
-    // Applies Electric shock damage (with optional propagation), emits XP using last stored factor.
     public void TakeShockDamage(float amount, float damageFactor, bool propogate = false)
     {
+        if (isDead) return;
         _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+        bumperElemental?.RecordCrustedIncomingDamage(amount, null);
 
         if (propogate)
         {
@@ -225,15 +230,66 @@ public class Bumper : MonoBehaviour
         if (pinball != null && bumperElemental != null)
             pinball.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP, damageFactor: _lastDmgFactorForXP);
 
-        if (curHealth <= 0)
+        if (curHealth <= 0f)
+            Die(false, 1);
+    }
+
+    public void RicochetHit(Ball ball, Vector3 forcedDirection, int portalBoost = 1, bool elemDmgOverride = false)
+    {
+        if (ball == null || isDead) return;
+        lastHitTimeByBall[ball.GetInstanceID()] = Time.time;
+
+        _light?.StartRicochetMode();
+        _light?.IncrementRicochet();
+
+        Vector3 dir = forcedDirection;
+        if (dir.sqrMagnitude < 0.0001f)
         {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true;
-            }
+            dir = (transform.position - ball.transform.position);
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) dir = Vector3.forward;
+            dir.Normalize();
+        }
+
+        int bumperKind = CompareTag("SmallBumper") ? 1 : 0;
+        float deltaV = bumperKind == 0 ? 150f : 200f;
+        ball.Bump(dir, deltaV, bumperKind, this, portalBoost);
+
+        float totalDamage = ball.CurrentDamage;
+        float dmgFactor = ball.ScoreXpDamageFactor;
+        _lastDmgFactorForXP = dmgFactor;
+
+        if (!isDead)
+            TakeDamage(totalDamage, elemDmg: elemDmgOverride, damageFactor: dmgFactor, xpScoreMult: portalBoost, sourceBall: ball);
+    }
+
+    private void Die(bool elemDmg, int xpScoreMult)
+    {
+        if (isDead) return;
+        isDead = true;
+        curHealth = 0f;
+
+        // Turn light off immediately
+        _light?.HandleBumperDeath();
+
+        if (pinball != null)
+        {
+            pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
+            pinball.destroyedBumperBonusActive = true;
             StartCoroutine(pinball.RespawnRoutine(this));
         }
+    }
+
+    public void Revive()
+    {
+        curHealth = maxHealth;
+        isDead = curHealth <= 0f;
+        if (!isDead)
+            _light?.HandleBumperRevive();
+    }
+
+    public void EndRicochetLight()
+    {
+        _light?.EndRicochetMode();
     }
 }

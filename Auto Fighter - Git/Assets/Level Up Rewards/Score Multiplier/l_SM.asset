@@ -14,14 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: l_score_mult
   displayName: Score Multiplier (Legendary)
-  description: '+84 Multiplier
-
-    +10 Seconds'
+  description: +25% Multiplier
   category: 0
   rarity: 4
+  isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
+  scalable: 0
+  replacesReward: {fileID: 0}
   exclusivityKey: 
-  multiplier: 84
-  bonusTime: 10
+  blockedKeys: []
+  multiplier: 0.25
+  bonusTime: 0
   cursed: 0

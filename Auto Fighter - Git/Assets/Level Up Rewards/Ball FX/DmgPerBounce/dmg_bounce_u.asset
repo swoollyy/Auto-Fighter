@@ -22,7 +22,7 @@ MonoBehaviour:
   canStack: 1
   scalable: 1
   replacesReward: {fileID: 11400000, guid: 9baa15f32a850944fbec172d97f82289, type: 2}
-  exclusivityKey: 
+  exclusivityKey: dmg_bounce_u
   blockedKeys: []
   damageMult: 15
   bouncesNeeded: 4

@@ -19,9 +19,13 @@ MonoBehaviour:
     -90% bonus time'
   category: 0
   rarity: 6
+  isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
+  scalable: 0
+  replacesReward: {fileID: 0}
   exclusivityKey: 
+  blockedKeys: []
   multiplier: 200
   bonusTime: 0
   cursed: 1

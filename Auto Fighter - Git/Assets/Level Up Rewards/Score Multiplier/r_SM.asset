@@ -14,14 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: r_score_mult
   displayName: Score Multiplier (Rare)
-  description: '+16 Multiplier
-
-    +15 seconds'
+  description: +15% Multiplier
   category: 0
   rarity: 2
+  isPaddleReward: 0
   blockWhenActive: 0
   canStack: 1
+  scalable: 0
+  replacesReward: {fileID: 0}
   exclusivityKey: 
-  multiplier: 16
-  bonusTime: 15
+  blockedKeys: []
+  multiplier: 0.15
+  bonusTime: 0
   cursed: 0

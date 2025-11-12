@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-10-27T18:59:38.5537173Z (UTC)
+- Generated: 2025-11-11T23:06:44.9403261Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 106
+- Files: 126
 
 ## Assets/BumperAnimScript.cs
 
@@ -166,6 +166,581 @@ public class BumperAnimScript : MonoBehaviour
 
 }
 
+```
+
+## Assets/BumperLightController.cs
+
+```csharp
+using DG.Tweening;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class BumperLightController : MonoBehaviour
+{
+    [Header("Setup")]
+    [SerializeField] private Light bumperLight;
+    [SerializeField] private string lightObjectName = "BumperLight";
+
+    [Header("Color/Range")]
+    [SerializeField] private Color lightColor = new Color(1f, 0.9f, 0.3f);
+    [SerializeField] private float baseRange = 4.0f;
+    [SerializeField] private LightShadows shadows = LightShadows.None;
+
+    [Header("Baseline")]
+    [SerializeField, Tooltip("Idle baseline intensity when alive.")]
+    private float baselineIntensity = 1.67f;
+
+    [Header("Normal Hit Pulse")]
+    [SerializeField] private float pulsePeakIntensity = 9f;
+    [SerializeField] private float pulseUpTime = 0.10f;
+    [SerializeField] private float pulseDownTime = 0.30f;
+
+    [Header("Ricochet Mode")]
+    [SerializeField] private float ricochetBaseIntensity = 2.0f;
+    [SerializeField] private float ricochetAddPerHit = 0.8f;
+    [SerializeField] private float ricochetMaxIntensity = 10f;
+    [SerializeField] private float ricochetRange = 5.0f;
+    [SerializeField] private float ricochetStepTween = 0.08f;
+
+    [Header("Idle Return")]
+    [SerializeField] private bool idleTurnOff = true;
+    [SerializeField] private float idleOffDelay = 0.75f;
+    [SerializeField] private float idleOffFade = 0.25f;
+
+    [Header("Ricochet Cleanup")]
+    [Tooltip("Fade completely off after ricochet ends instead of staying at baseline immediately.")]
+    [SerializeField] private bool fadeOffAfterRicochet = true;
+    [Tooltip("Delay before starting forced off fade (seconds).")]
+    [SerializeField] private float postRicochetOffDelay = 0.25f;
+
+    private Tween _intensityTween;
+    private bool _ricochetMode;
+    private bool _dead;
+    private float _lastActiveTime;
+    private bool _idleFading;
+
+    // NEW: suppress idle fade while post-ricochet sequence drives intensity down
+    private float _suppressIdleFadeUntil;
+
+    void Awake()
+    {
+        EnsureLight();
+        ApplyBaseSettings();
+        _lastActiveTime = Time.time;
+    }
+
+    void Update()
+    {
+        if (!_dead && idleTurnOff && !_ricochetMode && bumperLight && !_idleFading)
+        {
+            // Skip idle fade until ricochet cleanup sequence finished
+            if (Time.time < _suppressIdleFadeUntil) return;
+
+            if (Time.time - _lastActiveTime >= idleOffDelay)
+            {
+                _idleFading = true;
+                _intensityTween?.Kill(false);
+                float target = Mathf.Max(0f, baselineIntensity);
+                _intensityTween = DOTween.To(() => bumperLight.intensity, v => bumperLight.intensity = v, target, idleOffFade)
+                    .SetEase(Ease.InQuad)
+                    .SetUpdate(true)
+                    .OnComplete(() =>
+                    {
+                        if (bumperLight)
+                        {
+                            bumperLight.intensity = target;
+                            bumperLight.enabled = target > 0f;
+                        }
+                        _idleFading = false;
+                    });
+            }
+        }
+
+        // Safety: if not ricochet and intensity is irrationally high, clamp down
+        if (!_ricochetMode && !_dead && bumperLight)
+        {
+            float over = bumperLight.intensity - Mathf.Max(baselineIntensity, 0f);
+            if (over > 0.01f && Time.time >= _suppressIdleFadeUntil)
+            {
+                bumperLight.intensity = Mathf.Lerp(bumperLight.intensity, Mathf.Max(baselineIntensity, 0f), Time.deltaTime * 6f);
+            }
+        }
+    }
+
+    void OnDisable() => _intensityTween?.Kill(false);
+
+    private void EnsureLight()
+    {
+        if (bumperLight != null) return;
+
+        var child = transform.Find(lightObjectName);
+        if (child != null)
+            bumperLight = child.GetComponent<Light>();
+
+        if (bumperLight == null)
+        {
+            var go = new GameObject(lightObjectName);
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, 0.35f, 0f);
+            bumperLight = go.AddComponent<Light>();
+        }
+    }
+
+    private void ApplyBaseSettings()
+    {
+        if (!bumperLight) return;
+        bumperLight.type = LightType.Point;
+        bumperLight.color = lightColor;
+        bumperLight.range = baseRange;
+        bumperLight.shadows = shadows;
+        bumperLight.intensity = baselineIntensity;
+        bumperLight.enabled = !_dead && (baselineIntensity > 0f);
+    }
+
+    private void MarkActive()
+    {
+        _lastActiveTime = Time.time;
+        if (bumperLight && !bumperLight.enabled)
+        {
+            bumperLight.enabled = true;
+            if (bumperLight.intensity <= 0f && !_ricochetMode)
+                bumperLight.intensity = baselineIntensity;
+        }
+    }
+
+    private void SetIntensityInstant(float v)
+    {
+        if (!bumperLight) return;
+        bumperLight.intensity = Mathf.Max(0f, v);
+    }
+
+    public void PulseFlash()
+    {
+        if (_dead || _ricochetMode || !bumperLight) return;
+
+        MarkActive();
+        _idleFading = false;
+
+        _intensityTween?.Kill(false);
+        bumperLight.enabled = true;
+
+        _intensityTween = DOTween.Sequence().SetUpdate(true)
+            .Append(DOTween.To(() => bumperLight.intensity, x => bumperLight.intensity = x, pulsePeakIntensity, pulseUpTime).SetEase(Ease.OutQuad))
+            .Append(DOTween.To(() => bumperLight.intensity, x => bumperLight.intensity = x, baselineIntensity, pulseDownTime).SetEase(Ease.InQuad));
+    }
+
+    public void StartRicochetMode()
+    {
+        if (_dead || !bumperLight) return;
+        _ricochetMode = true;
+        _idleFading = false;
+        _suppressIdleFadeUntil = 0f;
+
+        MarkActive();
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight); // kill any leftover tweens targeting light
+
+        bumperLight.enabled = true;
+        bumperLight.range = ricochetRange;
+
+        float target = Mathf.Max(baselineIntensity, ricochetBaseIntensity);
+        if (bumperLight.intensity < target)
+            SetIntensityInstant(target);
+    }
+
+    public void IncrementRicochet()
+    {
+        if (_dead || !bumperLight) return;
+        _ricochetMode = true;
+        MarkActive();
+        bumperLight.enabled = true;
+        bumperLight.range = ricochetRange;
+
+        float target = Mathf.Min(ricochetMaxIntensity, bumperLight.intensity + Mathf.Max(0f, ricochetAddPerHit));
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight);
+        _intensityTween = DOTween.To(() => bumperLight.intensity, v => bumperLight.intensity = v, target, ricochetStepTween)
+                                 .SetEase(Ease.OutQuad)
+                                 .SetUpdate(true);
+    }
+
+    public void EndRicochetMode()
+    {
+        if (_dead || !bumperLight || !_ricochetMode) return;
+
+        _ricochetMode = false;
+
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight);
+
+        bumperLight.range = baseRange;
+
+        if (fadeOffAfterRicochet)
+        {
+            // Prevent idle fade from interrupting our off sequence
+            _suppressIdleFadeUntil = Time.time + postRicochetOffDelay + idleOffFade + 0.05f;
+
+            float targetBaseline = Mathf.Max(0f, baselineIntensity);
+            _intensityTween = DOTween.Sequence().SetUpdate(true)
+                .Append(DOTween.To(() => bumperLight.intensity, v => bumperLight.intensity = v, targetBaseline, 0.20f).SetEase(Ease.InQuad))
+                .AppendInterval(postRicochetOffDelay)
+                .Append(DOTween.To(() => bumperLight.intensity, v => bumperLight.intensity = v, 0f, idleOffFade)
+                              .SetEase(Ease.InQuad)
+                              .OnComplete(() =>
+                              {
+                                  if (bumperLight)
+                                  {
+                                      bumperLight.intensity = 0f;
+                                      bumperLight.enabled = false;
+                                  }
+                              }));
+        }
+        else
+        {
+            // Allow immediate idle fade by backdating last active time
+            _lastActiveTime = Time.time - idleOffDelay - 0.02f;
+            _suppressIdleFadeUntil = 0f;
+            _intensityTween = DOTween.To(() => bumperLight.intensity, v => bumperLight.intensity = v, Mathf.Max(0f, baselineIntensity), 0.25f)
+                                     .SetEase(Ease.InQuad)
+                                     .SetUpdate(true);
+        }
+    }
+
+    public void HandleBumperDeath()
+    {
+        _dead = true;
+        _ricochetMode = false;
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight);
+        if (bumperLight)
+        {
+            bumperLight.intensity = 0f;
+            bumperLight.enabled = false;
+            bumperLight.range = baseRange;
+        }
+    }
+
+    public void HandleBumperRevive()
+    {
+        _dead = false;
+        _ricochetMode = false;
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight);
+        ApplyBaseSettings();
+        MarkActive();
+    }
+
+    public void ForceResetLight(bool offCompletely)
+    {
+        _intensityTween?.Kill(false);
+        DOTween.Kill(bumperLight);
+        if (!bumperLight) return;
+        bumperLight.range = baseRange;
+        bumperLight.intensity = offCompletely ? 0f : baselineIntensity;
+        bumperLight.enabled = !offCompletely && baselineIntensity > 0f;
+        _suppressIdleFadeUntil = 0f;
+    }
+
+    public void EndRicochetLight()
+    {
+        EndRicochetMode();
+    }
+}
+```
+
+## Assets/DullPad.cs
+
+```csharp
+using UnityEngine;
+using DG.Tweening;
+using System.Collections;
+
+[DisallowMultipleComponent]
+public class DullPad : MonoBehaviour
+{
+    public enum PadState { Idle, Flipping, Active, DisabledCooldown }
+    public enum UpgradeKind { Blue, Green }
+
+    [Header("Flip Animation")]
+    public float halfFlipDuration = 0.30f;
+    [Tooltip("Punch parameters when becoming active.")]
+    public float punchScale = 0.10f;
+    public int punchVibrato = 6;
+    public float punchElasticity = 0.35f;
+
+    [Header("Upgrade Probability")]
+    [Range(0f, 1f)] public float blueChance = 0.5f; // remainder -> green
+
+    [Header("Visuals / Colors")]
+    public Renderer padRenderer;
+    public Light padLight;
+    public Color dullColor = new Color(0.35f, 0.35f, 0.35f);
+    public Color blueColor = new Color(0.25f, 0.55f, 1f);
+    public Color greenColor = new Color(0.25f, 1f, 0.55f);
+    public float activeLightIntensity = 2.0f;
+
+    [Header("Upgrade Method")]
+    public bool addScriptInsteadOfInstantiate = true;
+    public GameObject bluePadPrefab;
+    public GameObject greenPadPrefab;
+
+    [Header("Auto Revert (Inactivity)")]
+    [Tooltip("If the active pad is not hit for this long, it will flip back to dull.")]
+    [Min(0f)] public float inactivityAutoRevertSeconds = 15f;
+    public bool enableInactivityAutoRevert = true;
+
+    // Runtime
+    public DynamicPadManager Manager { get; set; }
+    public PadState State { get; private set; } = PadState.Idle;
+    public float NextEnableTime { get; private set; }
+    private float _interactionCooldownSeconds;
+    private bool _hasVariantScript;
+    private Tween _flipTween;
+    private Component _variantComponent; // BluePad / GreenPad
+
+    // Inactivity tracking
+    private float _lastActivityAt;
+    private Coroutine _inactivityCR;
+
+    // Collider cache for safety
+    private Collider _collider;
+
+    void Reset()
+    {
+        padRenderer = GetComponent<Renderer>();
+        padLight = GetComponentInChildren<Light>();
+        _collider = GetComponent<Collider>();
+    }
+
+    void Awake()
+    {
+        if (!padRenderer) padRenderer = GetComponent<Renderer>();
+        if (padLight) { padLight.color = dullColor; padLight.intensity = 0.6f; }
+        _collider = GetComponent<Collider>();
+        if (_collider) _collider.enabled = true;
+        ApplyColor(dullColor);
+    }
+
+    public bool IsIdle => State == PadState.Idle;
+    public bool IsFlipping => State == PadState.Flipping;
+    public bool IsActivePad => State == PadState.Active;
+
+    // NEW: single parameter for cooldown after ball interaction
+    public void SetInteractionCooldown(float seconds)
+    {
+        _interactionCooldownSeconds = Mathf.Max(0f, seconds);
+    }
+
+    public void ScheduleNextEnable(float delay)
+    {
+        NextEnableTime = Time.time + Mathf.Max(0.01f, delay);
+    }
+
+    public void BeginFlipAndUpgrade()
+    {
+        if (State != PadState.Idle) return;
+        if (_collider && !_collider.enabled) _collider.enabled = true;
+
+        State = PadState.Flipping;
+        Manager?.ReserveActivation(this);
+        DoFlipSequence();
+    }
+
+    private void DoFlipSequence()
+    {
+        _flipTween?.Kill(false);
+
+        var startEuler = transform.localEulerAngles;
+        transform.localEulerAngles = new Vector3(startEuler.x, startEuler.y, 0f);
+
+        var seq = DOTween.Sequence().SetUpdate(false);
+
+        seq.Append(transform.DOLocalRotate(new Vector3(startEuler.x, startEuler.y, -90f), halfFlipDuration).SetEase(Ease.InQuad));
+        seq.AppendCallback(MidFlipUpgrade);
+        seq.Append(transform.DOLocalRotate(new Vector3(startEuler.x, startEuler.y, 0f), halfFlipDuration).SetEase(Ease.OutQuad));
+        seq.AppendCallback(() =>
+        {
+            if (punchScale > 0f && State == PadState.Active)
+                transform.DOPunchScale(Vector3.one * punchScale, 0.35f, punchVibrato, punchElasticity);
+        });
+
+        _flipTween = seq;
+    }
+
+    private void MidFlipUpgrade()
+    {
+        var cur = transform.localEulerAngles;
+        transform.localEulerAngles = new Vector3(cur.x, cur.y, 90f);
+
+        UpgradeKind chosen = (Random.value < blueChance) ? UpgradeKind.Blue : UpgradeKind.Green;
+        UpgradeTo(chosen);
+        State = PadState.Active;
+        StartInactivityWatch();
+    }
+
+    private void UpgradeTo(UpgradeKind kind)
+    {
+        switch (kind)
+        {
+            case UpgradeKind.Blue:
+                ApplyColor(blueColor);
+                if (padLight) { padLight.color = blueColor; padLight.intensity = activeLightIntensity; }
+                AttachVariant<BluePad>(bluePadPrefab);
+                break;
+            case UpgradeKind.Green:
+                ApplyColor(greenColor);
+                if (padLight) { padLight.color = greenColor; padLight.intensity = activeLightIntensity; }
+                AttachVariant<GreenPad>(greenPadPrefab);
+                break;
+        }
+    }
+
+    private void AttachVariant<T>(GameObject prefab) where T : Component
+    {
+        if (addScriptInsteadOfInstantiate)
+        {
+            _variantComponent = GetComponent<T>();
+            if (!_variantComponent) _variantComponent = gameObject.AddComponent<T>();
+            _hasVariantScript = true;
+            if (_variantComponent is IPadVariant variant)
+                variant.BindHost(this);
+        }
+        else
+        {
+            if (prefab)
+            {
+                var inst = Instantiate(prefab, transform.position, transform.rotation, transform.parent);
+                inst.transform.localScale = transform.localScale;
+                var variant = inst.GetComponent<IPadVariant>();
+                variant?.BindHost(null);
+                Destroy(gameObject);
+            }
+        }
+    }
+
+    private void ApplyColor(Color c)
+    {
+        if (!padRenderer) return;
+        if (!padRenderer.material || padRenderer.sharedMaterial == padRenderer.material)
+            padRenderer.material = new Material(padRenderer.material);
+        padRenderer.material.color = c;
+        if (padRenderer.material.HasProperty("_Cull"))
+            padRenderer.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+    }
+
+    // Called by Blue/Green variants when the ball interacts with the active pad.
+    public void NotifyActivity()
+    {
+        _lastActivityAt = Time.time;
+    }
+
+    private void StartInactivityWatch()
+    {
+        if (!enableInactivityAutoRevert || inactivityAutoRevertSeconds <= 0f) return;
+        _lastActivityAt = Time.time;
+        if (_inactivityCR != null) StopCoroutine(_inactivityCR);
+        _inactivityCR = StartCoroutine(InactivityRoutine());
+    }
+
+    private IEnumerator InactivityRoutine()
+    {
+        while (State == PadState.Active)
+        {
+            if (Time.time - _lastActivityAt >= inactivityAutoRevertSeconds)
+            {
+                RevertToDull(); // uses interaction cooldown
+                yield break;
+            }
+            yield return null;
+        }
+        _inactivityCR = null;
+    }
+
+    /// <summary>
+    /// Called by variant (Blue/Green) AFTER its effect completes or by inactivity timeout.
+    /// Applies interaction cooldown before returning to idle.
+    /// </summary>
+    public void RevertToDull()
+    {
+        if (State != PadState.Active && State != PadState.Flipping) return;
+
+        if (_inactivityCR != null)
+        {
+            StopCoroutine(_inactivityCR);
+            _inactivityCR = null;
+        }
+
+        if (_hasVariantScript && _variantComponent)
+        {
+            Destroy(_variantComponent);
+            _variantComponent = null;
+            _hasVariantScript = false;
+        }
+
+        ApplyColor(dullColor);
+        if (padLight)
+        {
+            padLight.color = dullColor;
+            padLight.intensity = 0.6f;
+        }
+
+        if (_collider && !_collider.enabled) _collider.enabled = true;
+
+        State = PadState.DisabledCooldown;
+        StartCoroutine(DisabledCooldownRoutine(_interactionCooldownSeconds));
+    }
+
+    private IEnumerator DisabledCooldownRoutine(float seconds)
+    {
+        float endT = Time.time + seconds;
+        while (Time.time < endT)
+            yield return null;
+
+        if (_collider && !_collider.enabled) _collider.enabled = true;
+
+        State = PadState.Idle;
+        Manager?.OnPadDeactivated(this);
+    }
+
+    /// <summary>
+    /// Forcefully revert to dull immediately (no cooldown).
+    /// Used by manager's random auto-disable tick.
+    /// </summary>
+    public void ForceRevertToDullNoCooldown()
+    {
+        if (State != PadState.Active && State != PadState.Flipping) return;
+
+        if (_inactivityCR != null)
+        {
+            StopCoroutine(_inactivityCR);
+            _inactivityCR = null;
+        }
+
+        if (_hasVariantScript && _variantComponent)
+        {
+            Destroy(_variantComponent);
+            _variantComponent = null;
+            _hasVariantScript = false;
+        }
+
+        ApplyColor(dullColor);
+        if (padLight)
+        {
+            padLight.color = dullColor;
+            padLight.intensity = 0.6f;
+        }
+
+        if (_collider && !_collider.enabled) _collider.enabled = true;
+
+        State = PadState.Idle;
+        Manager?.OnPadDeactivated(this);
+    }
+}
+
+public interface IPadVariant
+{
+    void BindHost(DullPad host);
+}
 ```
 
 ## Assets/Editor/ProjectSummary.cs
@@ -2768,8 +3343,10 @@ public class Assassin : BaseCharacter
 ## Assets/Scripts/Ball.cs
 
 ```csharp
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class Ball : MonoBehaviour
@@ -2778,14 +3355,111 @@ public class Ball : MonoBehaviour
     [SerializeField] private float baseDamage = 5f;
 
     private int flatBonusDamage;
-    private float damageMultiplier = 1f;
-    private float tempDamageMultiplier = 1f;
-    private float tempDamageMultiplierStore = 1f;
+    private float damageMultiplier = 1f;          // permanent aggregated factor (1 = no change)
+    private float tempDamageMultiplier = 1f;      // active temporary factor (1 = no change)
+    private float tempDamageMultiplierStore = 1f; // queued temp factor to apply
     private int bonusBouncesNeeded;
     private int bonusBouncesRemaining;
     private int tmpBonusBouncesNeeded;
     private int tmpBonusBouncesRemaining;
+    private float tempDamageBounceMultiplier = 1f;
+    private int tempDamageBouncesRemaining;
+    private float forceFieldGravity;
 
+    // === Speed Uncap (BluePad interaction) ===
+    [Header("Runtime Speed Uncap")]
+    [SerializeField, Tooltip("DEBUG: show current uncapped state in inspector")]
+    private bool _maxSpeedUncapped;                       // NEW
+    private float _maxSpeedUncapUntil;                    // NEW
+    private float _originalMaxSpeedBeforeUncap;           // NEW
+    private float _temporaryMaxSpeedTarget;               // NEW
+    private bool _restoreOriginalMaxOnExpire;             // NEW
+
+    // Apply temporary effects while uncapped
+    private bool _uncapModsApplied;
+    private float _savedBounciness = -1f;
+    private float _uncapDamageBonus = 1f;
+
+    // Add near existing Glow fields
+    [Header("Glow Light Smoothing")]
+    [SerializeField, Tooltip("Units/sec to brighten when speeding up. Higher = snappier rise.")]
+    private float glowIntensityRiseRate = 8f;
+    [SerializeField, Range(0.03f, 0.6f), Tooltip("Smooth time (s) to dim when slowing down. Lower = faster.")]
+    private float glowIntensityFallSmoothTime = 0.18f;
+
+    private float _glowIntensity;      // smoothed current intensity
+    private float _glowIntensityVel;   // velocity for SmoothDamp
+
+        // ================= Kill‑Bumper Velocity Control =================
+    [Header("Kill Bumper Velocity Control")]
+    [SerializeField, Tooltip("Apply a soft clamp to post‑kill bumper impulses so the ball does not go flying.")]
+    private bool limitKillBumperImpulse = true;
+    [SerializeField, Tooltip("Target cap for speed right after killing a bumper (only if exceeded).")]
+    private float killBumperSpeedCap = 55f;
+    [SerializeField, Range(0f, 1f), Tooltip("How strongly to damp the excess above the cap (0 = none, 1 = snap directly to cap).")]    
+    private float killBumperDampStrength = 0.65f;
+    [SerializeField, Tooltip("Clamp absolute vertical (Y) component after kill to prevent huge upward/downward launches.")]
+    private float killBumperVerticalClamp = 25f;
+    [SerializeField, Tooltip("Ignore soft clamp if the added impulse was small relative to current speed (ratio threshold).")]
+    private float killBumperImpulseRatioThreshold = 0.35f;
+
+    [Header("Global Velocity Clamp")]
+    [SerializeField, Tooltip("Clamp to the finite uncap value (>0) while the uncap window is active. Fully uncapped (<=0) remains uncapped.")]
+    private bool clampDuringUncapIfFinite = true;
+
+    [SerializeField, Tooltip("Optional absolute safety ceiling regardless of state. 0 = disabled.")]
+    private float hardSpeedCap = 0f;
+
+    /// <summary>
+    /// Temporarily disable clamping OR raise maxSpeed for 'duration' seconds.
+    /// If newMaxSpeed <= 0: remove clamp entirely. Otherwise raise to newMaxSpeed.
+    /// Also applies temporary bounciness (+80%) and damage (+20%) bonuses during the window.
+    /// </summary>
+    public void TemporarilyUncapMaxSpeed(float duration, float newMaxSpeed, bool restoreOriginal = true)
+    {
+        duration = Mathf.Max(0.05f, duration);
+
+        // Capture the original cap only the first time we enter the window.
+        if (!_maxSpeedUncapped)
+        {
+            _originalMaxSpeedBeforeUncap = maxSpeed;
+            _restoreOriginalMaxOnExpire = restoreOriginal;
+        }
+        else
+        {
+            // If any subsequent call asks to restore, keep that intent.
+            _restoreOriginalMaxOnExpire |= restoreOriginal;
+        }
+
+        _maxSpeedUncapped = true;
+
+        // Extend the window if re-applied while active (don't shorten an existing longer window).
+        _maxSpeedUncapUntil = Mathf.Max(_maxSpeedUncapUntil, Time.time + duration);
+
+        // Prefer the highest temporary cap while active.
+        // newMaxSpeed <= 0 means "fully uncapped": keep it as 0 so FixedUpdate doesn't set maxSpeed.
+        if (newMaxSpeed <= 0f)
+        {
+            _temporaryMaxSpeedTarget = 0f;
+        }
+        else
+        {
+            _temporaryMaxSpeedTarget = _temporaryMaxSpeedTarget <= 0f
+                ? newMaxSpeed
+                : Mathf.Max(_temporaryMaxSpeedTarget, newMaxSpeed);
+        }
+
+        // Apply temporary physics/damage bonuses immediately
+        if (!_uncapModsApplied)
+            ApplyUncapMods();
+
+        // Optionally bump current velocity so player feels immediate boost when fully uncapped.
+        var rbLocal = rb;
+        if (rbLocal && newMaxSpeed > 0 && rbLocal.velocity.magnitude < newMaxSpeed * 0.5f)
+        {
+            rbLocal.velocity = rbLocal.velocity.normalized * Mathf.Min(newMaxSpeed * 0.65f, newMaxSpeed);
+        }
+    }
 
     // === Glow / Combo UI state ===
     [Header("Glow")]
@@ -2793,54 +3467,67 @@ public class Ball : MonoBehaviour
     [SerializeField, Range(0f, 5f)] private float emissionBase = 1.5f; // base emission when no combo
     [SerializeField, Range(0f, 5f)] private float emissionPerComboStep = 0.30f; // extra intensity per combo step
 
+    // NEW: optional light attached to the ball prefab
+    [SerializeField, Tooltip("Optional child Light used to match glow color and modulate intensity with speed.")]
+    private Light glowLight;
+
+    private const float LightIntensityMin = .6f;
+    private const float LightIntensityMax = 3.5f;
+
     private Renderer _renderer;
     private Material _runtimeMat; // unique instance so enabling emission doesn't affect shared material
     private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
-    // Events so UI can track ball lifecycle and combo changes
     public static event System.Action<Ball> OnBallActivated;
     public static event System.Action<Ball> OnBallDeactivated;
     public event System.Action<Ball> OnComboChanged;
 
-    // Expose for UI
     public Color GlowColor
     {
         get => glowColor;
         set
         {
             glowColor = value;
-            ApplyGlow();            // immediately reflect new color
-            OnComboChanged?.Invoke(this); // notify UI
+            ApplyGlow();
+            OnComboChanged?.Invoke(this);
         }
     }
 
     public bool IsComboActive => comboActive;
-
-    // At 3 hits: 1.1x, then +0.1 per hit (already used by scoring)
     public float CurrentComboMultiplierUI => CurrentComboMultiplier;
-
-    // Public intensity for UI (optional visual boosting of the dot)
     public float EmissionIntensityUI => ComputeEmissionIntensity();
 
-    [SerializeField] private int comboThreshold = 3;                 // hits needed to start combo
-    [SerializeField, Range(0.05f, 1f)] private float comboBonusPerHit = 0.10f; // +0.1x per bumper while active
-    [SerializeField] private LayerMask comboBreakLayers;             // assign your "Wall(s)" layer(s) in Inspector
+    private int _nextPortalHitMult = 1;
 
-    private int comboHitStreak;    // consecutive bumper hits
-    private bool comboActive;      // true once threshold reached
+    public void ActivatePortalBoost(int mult = 2)
+    {
+        _nextPortalHitMult = Mathf.Max(_nextPortalHitMult, Mathf.Max(1, mult));
+    }
+    public int ConsumePortalBoost()
+    {
+        int m = _nextPortalHitMult;
+        _nextPortalHitMult = 1;
+        return Mathf.Max(1, m);
+    }
+
+    [SerializeField] private int comboThreshold = 3;
+    [SerializeField, Range(0.05f, 1f)] private float comboBonusPerHit = 0.10f;
+    [SerializeField] private LayerMask comboBreakLayers;
+
+    private int comboHitStreak;
+    private bool comboActive;
 
     public float CurrentComboMultiplier
     {
         get
         {
             if (!comboActive) return 1f;
-            // At 3 hits: 1 + 0.1 * (3 - 2) = 1.1; each extra hit adds +0.1
             int effectiveHits = Mathf.Max(0, comboHitStreak - (comboThreshold - 1));
             return 1f + comboBonusPerHit * effectiveHits;
         }
     }
 
-    private const float DAMAGE_BASELINE = 5f; // level-1 baseline: 5 base dmg @ 1x multipliers
+    private const float DAMAGE_BASELINE = 5f;
 
     public float BaseDamage
     {
@@ -2848,16 +3535,14 @@ public class Ball : MonoBehaviour
         set => baseDamage = Mathf.Max(0f, value);
     }
 
-    public float CurrentDamage => Mathf.Max(0f, ((baseDamage + flatBonusDamage) * damageMultiplier) * tempDamageMultiplier);
-
-    // Scale score/XP by actual dealt damage vs. baseline (includes flat and multipliers).
-    // e.g., 3 dmg vs 5 baseline => 0.6x score/XP; 6 dmg vs 5 => 1.2x.
+    public float CurrentMultipliers => damageMultiplier * tempDamageMultiplier * tempDamageBounceMultiplier * _uncapDamageBonus;
+    public float CurrentDamage => Mathf.Max(0f, (baseDamage + flatBonusDamage) * CurrentMultipliers);
     public float ScoreXpDamageFactor => Mathf.Max(0f, DAMAGE_BASELINE > 0f ? (CurrentDamage / DAMAGE_BASELINE) : 1f);
 
-    public void AddDamageMultiplier(float multiplier)
+    public void AddDamageMultiplier(float addPercent)
     {
-        if (Mathf.Approximately(multiplier, 1f)) return;
-        damageMultiplier += multiplier;
+        if (Mathf.Approximately(addPercent, 0f)) return;
+        damageMultiplier = Mathf.Max(0f, damageMultiplier + addPercent);
     }
 
     public void AddFlatDamage(int flatDamage, int bounces)
@@ -2869,33 +3554,46 @@ public class Ball : MonoBehaviour
         bonusBouncesRemaining = bonusBouncesNeeded;
     }
 
-    public void AddTempDamageMultiplier(float multiplier, int bounces)
+    public void AddTempDamageMultiplier(float factor, int bounces)
     {
-        tempDamageMultiplierStore = 1f;
-        tempDamageMultiplierStore += multiplier;
+        tempDamageMultiplierStore = Mathf.Max(0f, factor);
         tmpBonusBouncesNeeded = bounces;
         tmpBonusBouncesRemaining = tmpBonusBouncesNeeded;
+        tempDamageMultiplier = 1f;
+    }
+
+    public void AddTempDamageForBounce(float factor, int bounces)
+    {
+        // CHANGED: factor is now multiplicative (2 => double damage), not additive
+        tempDamageBounceMultiplier *= Mathf.Max(0f, factor);
+        tempDamageBouncesRemaining = bounces;
     }
 
     public void ConsumeBounceForDamageMods()
     {
         bonusBouncesRemaining--;
         tmpBonusBouncesRemaining--;
-        if (bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0)
+        tempDamageBouncesRemaining--;
+
+        if (bonusBouncesRemaining < 0 && tmpBonusBouncesRemaining < 0 && tempDamageBouncesRemaining < 0)
             return;
 
         if (bonusBouncesRemaining == 0)
-        {
             flatBonusDamage = 0;
-        }
+
         if (tmpBonusBouncesRemaining > 0)
         {
             tempDamageMultiplier = 1f;
         }
         else if (tmpBonusBouncesRemaining == 0)
         {
-            tempDamageMultiplier = tempDamageMultiplierStore;
+            tempDamageMultiplier = 1 + tempDamageMultiplierStore;
             ResetTempBounceMods();
+        }
+
+        if (tempDamageBouncesRemaining == 0)
+        {
+            tempDamageBounceMultiplier = 1;
         }
     }
 
@@ -2941,7 +3639,6 @@ public class Ball : MonoBehaviour
         }
     }
 
-    // Launch tube and paddle contact flags (read-only outside)
     public bool IsInLaunchTube { get; private set; }
     public bool IsTouchingPaddles { get; private set; }
     public bool IsActive { get; private set; }
@@ -2966,15 +3663,33 @@ public class Ball : MonoBehaviour
     float sameDirWindow = .25f;
 
     bool debugTimerStart;
-
     bool resetBall = false;
-
     bool isStuck;
-
     public float maxSpeed = 50f;
 
     [SerializeField] private ParticleSystemForceField forceField;
+
+    // OLD (was directly mutated). Keep for UI/debug.
     public float forceFieldRadius = 0f;
+
+    // NEW: persistent baseline captured from prefab
+    [SerializeField, Tooltip("Baseline (prefab) radius; level-up inherits via Pinball.XPBaseRadiusScale")]
+    private float baseForceFieldRadius = 0f;
+
+    // NEW: temporary multiplier for one-off effects (e.g., vacuum)
+    private float tempForcefieldScale = 1f;
+
+    public float TempForcefieldScale => tempForcefieldScale;
+
+    public void SetTempForcefieldScaleAbsolute(float newAbsoluteScale)
+    {
+        newAbsoluteScale = Mathf.Max(0.0001f, newAbsoluteScale);
+        float factor = newAbsoluteScale / Mathf.Max(0.0001f, tempForcefieldScale);
+        ApplyTempForcefieldScale(factor);
+    }
+
+
+    public float forceFieldRadiusEffective => baseForceFieldRadius * (Pinball.Instance ? Pinball.Instance.XPBaseRadiusScale : 1f) * tempForcefieldScale;
 
     Collider col;
 
@@ -2985,8 +3700,11 @@ public class Ball : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         pinball = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
-
         _renderer = GetComponent<Renderer>();
+
+        // Try auto-bind the child light if not set
+        if (!glowLight)
+            glowLight = GetComponentInChildren<Light>(true);
     }
 
     void OnEnable()
@@ -2997,7 +3715,6 @@ public class Ball : MonoBehaviour
         col = GetComponent<Collider>();
         XPCollectorRegistry.I?.Register(col);
 
-        // Ensure unique material so enabling _EMISSION doesn't affect others
         if (_renderer != null)
         {
             var shared = _renderer.sharedMaterial;
@@ -3008,7 +3725,9 @@ public class Ball : MonoBehaviour
                 _runtimeMat.EnableKeyword("_EMISSION");
                 _renderer.sharedMaterial = _runtimeMat;
             }
-            ApplyGlow();
+            ApplyGlow();        // sets emission and syncs light color
+            UpdateGlowLightIntensity(); // initialize intensity
+            if (glowLight) _glowIntensity = glowLight.intensity;
         }
 
         OnBallActivated?.Invoke(this);
@@ -3021,6 +3740,18 @@ public class Ball : MonoBehaviour
             Pinball.Instance.UnregisterBall(this);
         XPCollectorRegistry.I?.Unregister(col);
 
+        // If we get disabled mid-uncap, restore the original cap (prevents sticky maxSpeed).
+        if (_maxSpeedUncapped)
+        {
+            if (_restoreOriginalMaxOnExpire)
+                maxSpeed = _originalMaxSpeedBeforeUncap;
+            _temporaryMaxSpeedTarget = 0f;
+            _maxSpeedUncapped = false;
+        }
+
+        // Ensure temp uncap mods are reverted if ball gets disabled
+        RevertUncapMods();
+
         BreakCombo("Ball disabled");
         OnBallDeactivated?.Invoke(this);
     }
@@ -3029,20 +3760,64 @@ public class Ball : MonoBehaviour
     {
         count = 0;
         debugTimer = 0;
-
         IsActive = true;
 
-        forceFieldRadius = forceField.endRange;
+        forceFieldGravity = forceField.gravity.constant;
+
+        // Capture baseline from prefab and initialize effective radius
+        baseForceFieldRadius = forceField.endRange;
+        forceFieldRadius = baseForceFieldRadius;
+        RefreshForcefieldFromContext();
     }
 
     void FixedUpdate()
     {
-        rb.velocity = Vector3.ClampMagnitude(rb.velocity, maxSpeed);
-
-        if (comboActive)
+        // Speed cap logic
+        if (_maxSpeedUncapped)
         {
+            // Ensure temporary mods applied in case this was set elsewhere
+            if (!_uncapModsApplied)
+                ApplyUncapMods();
 
+            if (Time.time >= _maxSpeedUncapUntil)
+            {
+                // Expired -> restore original maxSpeed if requested and revert temporary mods
+                if (_restoreOriginalMaxOnExpire)
+                    maxSpeed = _originalMaxSpeedBeforeUncap;
+
+                _temporaryMaxSpeedTarget = 0f; // fully clear the window
+                RevertUncapMods();
+                _maxSpeedUncapped = false;
+            }
+            else
+            {
+                // While uncapped:
+                //   - newMaxSpeed <= 0f => fully uncapped (no clamp here)
+                //   - newMaxSpeed  > 0f => treat as a finite cap; clamp if enabled
+                if (_temporaryMaxSpeedTarget > 0f)
+                {
+                    maxSpeed = Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap);
+                    if (clampDuringUncapIfFinite)
+                        EnforceSpeedCapNow(maxSpeed);
+                }
+            }
         }
+        else
+        {
+            // Normal clamp
+            EnforceSpeedCapNow(maxSpeed);
+
+            // Safety: if for any reason mods are still applied while not uncapped, revert them
+            if (_uncapModsApplied)
+                RevertUncapMods();
+        }
+
+        // Optional absolute safety hard cap (applied last, regardless of state)
+        if (hardSpeedCap > 0f)
+            EnforceSpeedCapNow(hardSpeedCap);
+
+        // Update the glow light intensity based on current speed
+        UpdateGlowLightIntensity();
     }
 
     void Update()
@@ -3053,17 +3828,15 @@ public class Ball : MonoBehaviour
     {
         comboHitStreak++;
 
-        if(!comboActive && comboHitStreak >= comboThreshold)
+        if (!comboActive && comboHitStreak >= comboThreshold)
         {
             comboActive = true;
-            Debug.Log("Combo activated!");
         }
 
         ApplyGlow();
         OnComboChanged?.Invoke(this);
     }
 
-    // Computes a simple emission intensity curve: base + steps*perStep
     private float ComputeEmissionIntensity()
     {
         if (!comboActive) return Mathf.Max(0f, emissionBase);
@@ -3071,19 +3844,15 @@ public class Ball : MonoBehaviour
         return Mathf.Max(0f, emissionBase + emissionPerComboStep * steps);
     }
 
-    // Assign a vibrant random glow color (not too dark)
     public void RandomizeGlowColor()
     {
-        // H:[0..1], S:[0.65..1], V:[0.9..1] for bright colors
-        var c = Random.ColorHSV(0f, 1f, 0.65f, 1f, 0.9f, 1f);
-        GlowColor = c; // triggers ApplyGlow() and OnComboChanged for UI refresh
+        var c = UnityEngine.Random.ColorHSV(0f, 1f, 0.65f, 1f, 0.9f, 1f);
+        GlowColor = c;
     }
 
-    // Pushes emission color to the ball material
     private void ApplyGlow()
     {
         if (_renderer == null) return;
-
         float intensity = ComputeEmissionIntensity();
         var emissive = (Color)(glowColor * Mathf.LinearToGammaSpace(intensity));
         if (_runtimeMat != null)
@@ -3094,21 +3863,60 @@ public class Ball : MonoBehaviour
         }
         else
         {
-            // Fallback via MaterialPropertyBlock if we didn't clone material
             var mpb = new MaterialPropertyBlock();
             _renderer.GetPropertyBlock(mpb);
             mpb.SetColor(EmissionColorId, emissive);
             _renderer.SetPropertyBlock(mpb);
         }
+
+        // Keep the light color in sync with glow color
+        SyncGlowLightColor();
+    }
+
+    // NEW: keep the attached light color in sync with the ball glow color
+    private void SyncGlowLightColor()
+    {
+        if (glowLight != null)
+            glowLight.color = glowColor;
+    }
+
+    // NEW: map speed [0..maxSpeed] to intensity [0.5 .. 2]
+    private void UpdateGlowLightIntensity()
+    {
+        if (glowLight == null || rb == null) return;
+
+        // Target intensity from current speed
+        float max = Mathf.Max(0.01f, maxSpeed);
+        float speed = rb.velocity.magnitude;
+        float t = Mathf.InverseLerp(0f, max, speed);
+        float target = Mathf.Lerp(LightIntensityMin, LightIntensityMax, t);
+
+        // Initialize smoothed value once
+        if (_glowIntensity <= 0f)
+            _glowIntensity = glowLight.intensity > 0f ? glowLight.intensity : target;
+
+        // Fast rise, slower fall
+        float dt = Time.unscaledDeltaTime;
+        if (target >= _glowIntensity)
+        {
+            // Quick but not instant rise
+            _glowIntensity = Mathf.MoveTowards(_glowIntensity, target, glowIntensityRiseRate * dt);
+        }
+        else
+        {
+            // Smooth, slightly slower decay
+            _glowIntensity = Mathf.SmoothDamp(_glowIntensity, target, ref _glowIntensityVel, glowIntensityFallSmoothTime, Mathf.Infinity, dt);
+        }
+
+        _glowIntensity = Mathf.Clamp(_glowIntensity, LightIntensityMin, LightIntensityMax);
+        glowLight.intensity = _glowIntensity;
     }
 
     private void BreakCombo(string reason = null)
     {
-        if(!comboActive && comboHitStreak == 0) return;
+        if (!comboActive && comboHitStreak == 0) return;
         comboHitStreak = 0;
         comboActive = false;
-
-        // Refresh emission and notify UI
         ApplyGlow();
         OnComboChanged?.Invoke(this);
     }
@@ -3145,9 +3953,8 @@ public class Ball : MonoBehaviour
 
     public void Launch(float power)
     {
-        Debug.Log($"{30f * power}");
         rb.velocity = Vector3.zero;
-        rb.AddForce(Vector3.forward * (45f * power), ForceMode.Impulse);
+        rb.AddForce(Vector3.forward * (50f * power), ForceMode.Impulse);
     }
 
     public void Push(float power)
@@ -3155,7 +3962,7 @@ public class Ball : MonoBehaviour
         rb.AddForce((-Vector3.right * (40f * power)) + (Vector3.forward * (5.5f * power)), ForceMode.Impulse);
     }
 
-    public void Bump(Vector3 direction, float deltaV, int bumperKind, Bumper bumperInstance)
+    public void Bump(Vector3 direction, float deltaV, int bumperKind, Bumper bumperInstance, int portalBoost = 1)
     {
         bumpCount++;
 
@@ -3169,7 +3976,6 @@ public class Ball : MonoBehaviour
         if (prevBumpDirection != Vector3.zero)
         {
             float cos = Vector3.Dot(currentDir, prevBumpDirection.normalized);
-            print(cos + "chat");
             if (Mathf.Abs(cos) >= sameDirDotThreshold)
                 sameDirHits++;
             else
@@ -3182,19 +3988,28 @@ public class Ball : MonoBehaviour
         if (sameDirHits > sameDirHitLimit)
         {
             ResetRb();
-            Debug.Log("thanks chatgpt");
             return;
         }
 
         rb.AddForce(currentDir * deltaV, ForceMode.Impulse);
 
+        // NEW: immediate velocity cap after an impulse
+        if (!_maxSpeedUncapped || (_temporaryMaxSpeedTarget > 0f && clampDuringUncapIfFinite))
+        {
+            float cap = _maxSpeedUncapped
+                ? Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap)
+                : maxSpeed;
+            EnforceSpeedCapNow(cap);
+        }
+        if (hardSpeedCap > 0f) EnforceSpeedCapNow(hardSpeedCap);
+
+        ApplyKillBumperVelocitySoftClamp(bumperInstance);
         RegisterBumperHitForCombo();
 
-        // Compute base points and apply ONLY combo multiplier locally (XP factor untouched)
         int baseScore = bumperKind == 0 ? 100 : 50;
         int adjustedScore = Mathf.RoundToInt(baseScore * CurrentComboMultiplier);
 
-        pinball?.AddScore(adjustedScore, bumpCount, bumpCountConsecutive, ScoreXpDamageFactor);
+        pinball?.AddScore(adjustedScore, bumpCount, bumpCountConsecutive, ScoreXpDamageFactor, ScoreMultPortal: Mathf.Max(1, portalBoost));
 
         GetComponent<BallElementalState>()?.OnBounce(bumperInstance);
         ConsumeBounceForDamageMods();
@@ -3227,12 +4042,9 @@ public class Ball : MonoBehaviour
             IsTouchingPaddles = true;
     }
 
-    // Break the combo when colliding with walls (but ignore bumpers/paddles)
     void OnCollisionEnter(Collision collision)
     {
         var other = collision.collider;
-
-        // Do not break on bumpers/paddles
         if (other.CompareTag("Bumper") || other.CompareTag("SmallBumper") || other.CompareTag("Paddle"))
             return;
 
@@ -3264,7 +4076,7 @@ public class Ball : MonoBehaviour
         Vector3 baseDir = rb.velocity.sqrMagnitude > .01f ? rb.velocity.normalized : Vector3.forward;
         baseDir.y = 0f;
 
-        float bigDeflect = Random.Range(120f, 160f);
+        float bigDeflect = UnityEngine.Random.Range(120f, 160f);
         Vector3 newDir = (Quaternion.AngleAxis(bigDeflect, Vector3.up) * baseDir).normalized;
 
         rb.velocity = newDir * speed;
@@ -3328,11 +4140,180 @@ public class Ball : MonoBehaviour
         ApplyPaddleDamageEffect(effect);
     }
 
-    public void UpdateForcefield(float amount)
+    // === XP Forcefield helpers (NEW model) ===
+
+    // Recompute effective XP radius from baseline, global scale and temp scale
+    public void RefreshForcefieldFromContext()
     {
-        forceFieldRadius *= amount;
-        forceField.endRange = forceFieldRadius;
+        float global = Pinball.Instance ? Pinball.Instance.XPBaseRadiusScale : 1f;
+        float eff = Mathf.Max(0f, baseForceFieldRadius) * Mathf.Max(0.0001f, global) * Mathf.Max(0.0001f, tempForcefieldScale);
+        forceFieldRadius = eff;
+        if (forceField) forceField.endRange = eff;
     }
+
+    // Temporary scaling used by one-shot powerups (vacuum)
+    public void ApplyTempForcefieldScale(float scaleFactor)
+    {
+        tempForcefieldScale *= Mathf.Max(0.0001f, scaleFactor);
+        RefreshForcefieldFromContext();
+    }
+
+    // Backwards-compat shim (if any old callsites exist)
+    [Obsolete("Use ApplyTempForcefieldScale instead.")]
+    public void UpdateForcefield(float amount) => ApplyTempForcefieldScale(amount);
+
+    public void UpdateForcefieldStrength(float strength)
+    {
+        forceField.gravity = strength;
+    }
+
+    public void ResetForcefieldStrength()
+    {
+        forceField.gravity = forceFieldGravity;
+    }
+
+    // NEW: comprehensive copy helper
+    public void CopyFrom(Ball src)
+    {
+        if (src == null || ReferenceEquals(src, this)) return;
+
+        // Base stats
+        BaseDamage = src.BaseDamage;
+
+        // Permanent + temporary multipliers
+        flatBonusDamage = src.flatBonusDamage;
+        damageMultiplier = src.damageMultiplier;
+
+        tempDamageMultiplier = src.tempDamageMultiplier;
+        tempDamageMultiplierStore = src.tempDamageMultiplierStore;
+        tempDamageBounceMultiplier = src.tempDamageBounceMultiplier;
+
+        // Bounce windows/counters
+        bonusBouncesNeeded = src.bonusBouncesNeeded;
+        bonusBouncesRemaining = src.bonusBouncesRemaining;
+        tmpBonusBouncesNeeded = src.tmpBonusBouncesNeeded;
+        tmpBonusBouncesRemaining = src.tmpBonusBouncesRemaining;
+        tempDamageBouncesRemaining = src.tempDamageBouncesRemaining;
+
+        // Size & speed
+        transform.localScale = src.transform.localScale;
+        maxSpeed = src.maxSpeed;
+
+        // PhysicMaterial properties
+        EnsureUniquePhysicMaterial();
+        src.EnsureUniquePhysicMaterial();
+        if (col && col.material && src.col && src.col.material)
+        {
+            col.material.bounciness = src.col.material.bounciness;
+            col.material.dynamicFriction = src.col.material.dynamicFriction;
+            col.material.staticFriction = src.col.material.staticFriction;
+            col.material.bounceCombine = src.col.material.bounceCombine;
+            col.material.frictionCombine = src.col.material.frictionCombine;
+        }
+
+        // XP forcefield state (NEW: inherit baseline & temp, then recompute from Pinball context)
+        if (forceField && src.forceField)
+        {
+            baseForceFieldRadius = src.baseForceFieldRadius;
+            tempForcefieldScale = src.tempForcefieldScale;
+            forceField.gravity = src.forceField.gravity;
+            RefreshForcefieldFromContext();
+        }
+    }
+
+    private void ApplyKillBumperVelocitySoftClamp(Bumper bumper)
+    {
+        if (!limitKillBumperImpulse || bumper == null || !bumper.IsDead) return;
+
+        // Only skip if fully uncapped (<= 0). If we have a finite uncap target, still clamp to it.
+        if (_maxSpeedUncapped && _temporaryMaxSpeedTarget <= 0f) return;
+        if (rb == null) return;
+
+        // Determine the working cap reference for this moment
+        float capRef = _maxSpeedUncapped && _temporaryMaxSpeedTarget > 0f
+            ? Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap)
+            : maxSpeed;
+
+        Vector3 v = rb.velocity;
+        float speed = v.magnitude;
+        if (speed <= 0.0001f) return;
+
+        // If the impulse wasn't disproportionately large, do nothing.
+        float ratio = (speed - capRef) / Mathf.Max(1f, capRef);
+        if (ratio < killBumperImpulseRatioThreshold && speed <= killBumperSpeedCap) return;
+
+        // Only clamp if above desired cap (soft approach)
+        if (speed > killBumperSpeedCap)
+        {
+            float excess = speed - killBumperSpeedCap;
+            float damped = killBumperSpeedCap + excess * (1f - killBumperDampStrength);
+            v = v.normalized * Mathf.Max(killBumperSpeedCap, damped);
+        }
+
+        // Vertical clamp (optional; preserve sign)
+        if (Mathf.Abs(v.y) > killBumperVerticalClamp)
+            v.y = Mathf.Sign(v.y) * killBumperVerticalClamp;
+
+        // Ensure we don't exceed our working cap or the global hard cap afterwards
+        float finalCap = capRef;
+        if (hardSpeedCap > 0f) finalCap = Mathf.Min(finalCap, hardSpeedCap);
+        if (finalCap > 0f && v.magnitude > finalCap)
+            v = v.normalized * finalCap;
+
+        rb.velocity = v;
+    }
+
+    // Backward-compat shim
+    public void GetProperties(Ball ball)
+    {
+        CopyFrom(ball);
+    }
+
+    public void UpdateForcefield(float amount, bool obsoleteCompatOnly) => ApplyTempForcefieldScale(amount); // keep API stable for any lingering calls
+
+    // === Helpers for temporary uncap bonuses ===
+    private void ApplyUncapMods()
+    {
+        // +80% bounciness (x1.8)
+        EnsureUniquePhysicMaterial();
+        if (col != null && col.material != null)
+        {
+            _savedBounciness = col.material.bounciness;
+            col.material.bounciness = _savedBounciness * 1.8f;
+        }
+
+        // +20% damage multiplier
+        _uncapDamageBonus = 1.75f;
+
+        _uncapModsApplied = true;
+    }
+
+    private void RevertUncapMods()
+    {
+        if (!_uncapModsApplied) return;
+
+        if (col != null && col.material != null && _savedBounciness >= 0f)
+        {
+            col.material.bounciness = _savedBounciness;
+        }
+
+        _uncapDamageBonus = 1f;
+        _savedBounciness = -1f;
+        _uncapModsApplied = false;
+    }
+
+    private void EnforceSpeedCapNow(float cap)
+    {
+        if (!rb) return;
+        cap = Mathf.Max(0f, cap);
+        if (cap <= 0f) return;
+
+        var v = rb.velocity;
+        float speed = v.magnitude;
+        if (speed > cap)
+            rb.velocity = v.normalized * cap;
+    }
+
 }
 ```
 
@@ -3530,7 +4511,7 @@ public class BallElementalState : MonoBehaviour
         if (fireEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyBurn(fireBurnDamage, fireBurnDuration);
+            elem.ApplyBurn(fireBurnDamage * ball.CurrentMultipliers, fireBurnDuration);
         }
         if (waterEffectActive && bumper != null)
         {
@@ -3540,12 +4521,12 @@ public class BallElementalState : MonoBehaviour
         if (earthEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyCrusted(earthFissureDamage, earthCrustDuration, earthBonusXP, earthBonusScore);
+            elem.ApplyCrusted(earthFissureDamage * ball.CurrentMultipliers, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
         if(electricEffectActive && bumper != null)
         {
             elem.ClearElement();
-            elem.ApplyShocked(electricShockDamage, electricBonusXP, electricBonusScore);
+            elem.ApplyShocked(electricShockDamage * ball.CurrentMultipliers, electricBonusXP, electricBonusScore);
         }
 
         switch (CurrentState)
@@ -4083,6 +5064,282 @@ public class BaseCharacter
 
 ```
 
+## Assets/Scripts/BluePad.cs
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[RequireComponent(typeof(Collider))]
+[DisallowMultipleComponent]
+public class BluePad : MonoBehaviour, IPadVariant
+{
+    [Header("Activation")]
+    public bool onlyDuringPlay = true;
+
+    [Header("General Boost")]
+    public float minSpeedToBoost = 10f;
+    public float targetMinSpeed = 24f;
+    [Range(0.1f, 3f)] public float boostGain = 1.5f;
+
+    [Header("Flap Tuning")]
+    public float upwardPerPlanarSpeed = 0.35f;
+    [Range(0f, 2f)] public float reflectDownwardZFactor = 0.85f;
+    public float maxUpwardZ = 60f;
+
+    [Header("Stall Handling")]
+    public float stallSpeedThreshold = 3.0f;
+    public float stallUpwardSpeed = 18f;
+    public bool correctDownwardWhenStalling = true;
+
+    [Header("Axis Assumptions")]
+    public Vector3 upwardAxis = Vector3.forward;
+
+    [Header("Vertical Jump (+Z Enforcement)")]
+    public float guaranteedUpwardSpeed = 10f;
+    public float verticalLiftSpeed = 4f;
+
+    [Header("Refire Control")]
+    public bool singleActivation = true;
+    public float minRefireInterval = 0.15f;
+
+    [Header("Planar Reset")]
+    public bool zeroOnlyZBeforeLift = true;
+
+    [Header("Speed Uncap After Boost")]
+    public float uncapDuration = .85f;
+    public float uncapMaxSpeed = 80f;
+    public bool restoreMaxOnExpire = true;
+
+    [Header("Collision / High Speed")]
+    public ForceMode forceMode = ForceMode.VelocityChange;
+    public bool enforceContinuousCollision = true;
+
+    [Header("Slow-Mo FX")]
+    public bool enableSlowMo = true;
+    [Range(0.05f, 1f)] public float slowMoScale = 0.5f;
+    [Min(0.05f)] public float slowMoHoldDuration = 0.22f;
+    [Min(0.02f)] public float slowMoEaseOutDuration = 0.10f;
+
+    [Header("PostFX")]
+    public bool enablePostFX = true;
+    [Range(0f, 1f)] public float vignettePeak = 0.45f;
+
+    private readonly Dictionary<int, float> _lastApplyTimeByBall = new();
+    private readonly HashSet<int> _insideAppliedOnce = new();
+
+    private Collider _trigger;
+
+    private bool _ownsSlowMo;
+    private Coroutine _slowMoCR;
+    private PostFXController _postFX;
+
+    private DullPad _host;
+    public void BindHost(DullPad host) => _host = host;
+
+    void Reset()
+    {
+        _trigger = GetComponent<Collider>();
+        if (_trigger) _trigger.isTrigger = true;
+    }
+
+    void Awake()
+    {
+        _trigger = GetComponent<Collider>();
+        _postFX = Pinball.Instance?.PostFX;
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        TryApply(other);
+    }
+
+    void OnTriggerExit(Collider other)
+    {
+        var rb = other.attachedRigidbody;
+        if (!rb) return;
+        int id = rb.GetInstanceID();
+        _insideAppliedOnce.Remove(id);
+    }
+
+    private bool CanApply(int id)
+    {
+        if (singleActivation && _insideAppliedOnce.Contains(id))
+            return false;
+        if (!_lastApplyTimeByBall.TryGetValue(id, out float last))
+            return true;
+        return (Time.time - last) >= minRefireInterval;
+    }
+
+    private void MarkApplied(int id)
+    {
+        _lastApplyTimeByBall[id] = Time.time;
+        if (singleActivation)
+            _insideAppliedOnce.Add(id);
+    }
+
+    private void TryApply(Collider other)
+    {
+        var rb = other.attachedRigidbody;
+        if (!rb) return;
+
+        var ball = rb.GetComponent<Ball>();
+        if (!ball || !ball.isActiveAndEnabled || !ball.IsActive) return;
+
+        if (onlyDuringPlay)
+        {
+            var pm = Pinball.Instance;
+            if (!pm || pm.CurrentState != PinballState.Play) return;
+        }
+
+        _host?.NotifyActivity();
+
+        int id = rb.GetInstanceID();
+        if (!CanApply(id)) return;
+
+        if (enforceContinuousCollision && rb.collisionDetectionMode != CollisionDetectionMode.ContinuousDynamic)
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+
+        Vector3 v = rb.velocity;
+        Vector3 planar = new Vector3(v.x, 0f, v.z);
+        float speed = planar.magnitude;
+        float preZ = v.z;
+
+        if (speed <= Mathf.Max(0.01f, stallSpeedThreshold))
+        {
+            if (correctDownwardWhenStalling && planar.z < 0f)
+                rb.velocity = new Vector3(rb.velocity.x, rb.velocity.y, 0f);
+
+            Vector3 dirUp = upwardAxis; dirUp.y = 0f;
+            if (dirUp.sqrMagnitude < 1e-5f) dirUp = Vector3.forward;
+            dirUp.Normalize();
+
+            Vector3 desiredPlanar = dirUp * Mathf.Max(0f, stallUpwardSpeed);
+            Vector3 delta = desiredPlanar - new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+            rb.AddForce(new Vector3(delta.x, 0f, delta.z), forceMode);
+        }
+        else if (speed < targetMinSpeed)
+        {
+            Vector3 dir = planar.sqrMagnitude > 1e-6f ? planar.normalized : upwardAxis.normalized;
+            float deltaSpeed = (targetMinSpeed - speed) * Mathf.Max(0.1f, boostGain);
+            rb.AddForce(new Vector3(dir.x, 0f, dir.z) * deltaSpeed, forceMode);
+        }
+
+        if (zeroOnlyZBeforeLift)
+            rb.velocity = new Vector3(rb.velocity.x, rb.velocity.y, 0f);
+
+        float targetZ = Mathf.Max(guaranteedUpwardSpeed, verticalLiftSpeed);
+
+        if (preZ < 0f)
+            targetZ += (-preZ) * Mathf.Max(0f, reflectDownwardZFactor);
+
+        if (upwardPerPlanarSpeed > 0f)
+            targetZ += speed * upwardPerPlanarSpeed;
+
+        if (maxUpwardZ > 0f)
+            targetZ = Mathf.Min(targetZ, maxUpwardZ);
+
+        var newVel = rb.velocity;
+        newVel.z = Mathf.Max(targetZ, 0f);
+        rb.velocity = newVel;
+
+        ball.TemporarilyUncapMaxSpeed(uncapDuration, uncapMaxSpeed, restoreMaxOnExpire);
+
+        if (enableSlowMo)
+            StartSlowMo();
+
+        Pinball.Instance?.ScreenShake();
+        MarkApplied(id);
+
+        // FIX: Disable collider only briefly; will re-enable before revert to avoid leaving pad un-hittable.
+        if (_trigger) _trigger.enabled = false;
+    }
+
+    private void StartSlowMo()
+    {
+        if (_slowMoCR != null) return;
+        _slowMoCR = StartCoroutine(SlowMoRoutine());
+    }
+
+    private IEnumerator SlowMoRoutine()
+    {
+        _ownsSlowMo = true;
+        TimeScaleHub.Begin(this, slowMoScale, affectFixedDelta: true);
+
+        if (enablePostFX && _postFX)
+        {
+            _postFX.VignetteMax = vignettePeak;
+            _postFX.SetVignette(0f);
+            _postFX.FadeVignette(0.25f, 0.08f);
+            _postFX.ChromaticPulse(0.25f, 0.06f, 0.14f);
+        }
+
+        float holdEnd = Time.realtimeSinceStartup + slowMoHoldDuration;
+        while (Time.realtimeSinceStartup < holdEnd)
+            yield return null;
+
+        yield return new WaitForSecondsRealtime(slowMoEaseOutDuration);
+
+        TimeScaleHub.End(this);
+        _ownsSlowMo = false;
+
+        if (enablePostFX && _postFX)
+            _postFX.ClearVignette(0.15f);
+
+        _slowMoCR = null;
+
+        // FIX: Re-enable collider BEFORE host reverts (so underlying DullPad stays usable).
+        if (_trigger) _trigger.enabled = true;
+
+        if (_host != null)
+        {
+            _host.RevertToDull();
+        }
+        else
+        {
+            StartCoroutine(PostActivationDisable());
+        }
+    }
+
+    private IEnumerator PostActivationDisable()
+    {
+        if (_trigger)
+            _trigger.enabled = false;
+
+        yield return new WaitForSecondsRealtime(2.0f);
+
+        if (_trigger)
+            _trigger.enabled = true;
+
+        _insideAppliedOnce.Clear();
+    }
+
+    private void CancelSlowMo()
+    {
+        if (_slowMoCR != null)
+        {
+            StopCoroutine(_slowMoCR);
+            _slowMoCR = null;
+        }
+        if (_ownsSlowMo)
+        {
+            TimeScaleHub.End(this);
+            _ownsSlowMo = false;
+        }
+        if (enablePostFX && _postFX)
+            _postFX.ClearVignette(0.15f);
+    }
+
+    void OnDisable()
+    {
+        // FIX: Safety re-enable collider if script is disabled mid-effect.
+        if (_trigger && !_trigger.enabled) _trigger.enabled = true;
+        CancelSlowMo();
+    }
+}
+```
+
 ## Assets/Scripts/Brawler.cs
 
 ```csharp
@@ -4190,29 +5447,33 @@ public class Bumper : MonoBehaviour
     private BumperElementalState bumperElemental;
     private Pinball pinball;
 
-    // Per-hit XP/score scaling cache
     private float _lastDmgFactorForXP = 1f;
+    public float LastDmgFactorForXP => _lastDmgFactorForXP;
 
     private Vector3 normal;
+
+    [SerializeField] private bool isDead = false;
+    public bool IsDead => isDead;
 
     private static readonly List<Bumper> AllBumpers = new();
     public static IEnumerable<Bumper> EnumerateAll() => AllBumpers;
 
-    // Register this bumper in the global list.
-    private void OnEnable() => AllBumpers.Add(this);
+    private BumperLightController _light;
 
-    // Unregister this bumper from the global list.
+    private void OnEnable() => AllBumpers.Add(this);
     private void OnDisable() => AllBumpers.Remove(this);
 
-    // Cache references and reset health to max.
     private void Awake()
     {
         pinball = Pinball.Instance ?? GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
         bumperElemental = GetComponent<BumperElementalState>();
         curHealth = maxHealth;
+        isDead = false;
+
+        _light = GetComponent<BumperLightController>();
+        if (_light == null) _light = gameObject.AddComponent<BumperLightController>();
     }
 
-    // Handles ball collision: debounces hits, computes impulse direction, forwards score/XP scaling, and applies damage.
     private void OnCollisionEnter(Collision col)
     {
         var rb = col.rigidbody;
@@ -4225,6 +5486,23 @@ public class Bumper : MonoBehaviour
         if (lastHitTimeByBall.TryGetValue(id, out float last) && Time.time - last < hitCooldown)
             return;
         lastHitTimeByBall[id] = Time.time;
+
+        // Detect if the colliding ball is currently in a ricochet window.
+        var assist = rb.GetComponent<RicochetAssist>();
+        bool ricochetActive = assist && assist.IsActive;
+
+        // Light behavior:
+        // - Normal hit: flash to peak then back to baseline
+        // - Ricochet hit: persistent light that increases with each ricochet hit
+        if (ricochetActive)
+        {
+            _light?.StartRicochetMode();
+            _light?.IncrementRicochet();
+        }
+        else
+        {
+            _light?.PulseFlash();
+        }
 
         var contact = col.contacts[0];
         lastContactPoint = contact.point;
@@ -4241,19 +5519,19 @@ public class Bumper : MonoBehaviour
         float totalDamage = ballComp != null ? ballComp.CurrentDamage : (pinball != null ? pinball.Damage : 0f);
         bool fireTick = ballElem != null && ballElem.CurrentState == ElementalState.Fire;
 
-        // Factor includes flats + multipliers vs baseline (from the ball that hit).
         float dmgFactor = ballComp != null ? ballComp.ScoreXpDamageFactor : 1f;
         _lastDmgFactorForXP = dmgFactor;
 
         int bumperKind = CompareTag("SmallBumper") ? 1 : 0;
-        float deltaV = bumperKind == 0 ? 225f : 100f;
+        float deltaV = bumperKind == 0 ? 150f : 200f;
 
+        int portalBoost = ballComp != null ? ballComp.ConsumePortalBoost() : 1;
         rb.velocity = Vector3.zero;
-        ballComp?.Bump(normal, deltaV, bumperKind, this);
+        ballComp?.Bump(normal, deltaV, bumperKind, this, portalBoost);
 
-        Debug.DrawRay(contact.point, normal * 2f, Color.red);
+        if (isDead) return;
 
-        TakeDamage(totalDamage, elemDmg: fireTick, damageFactor: _lastDmgFactorForXP);
+        TakeDamage(totalDamage, elemDmg: fireTick, damageFactor: _lastDmgFactorForXP, sourceBall: ballComp);
 
         if (pinball != null)
         {
@@ -4262,7 +5540,6 @@ public class Bumper : MonoBehaviour
         }
     }
 
-    // Finds the nearest other bumper within an optional max distance (used by chain effects).
     private Bumper FindNearestOther(float maxDistance = Mathf.Infinity)
     {
         Vector3 p = transform.position;
@@ -4279,10 +5556,12 @@ public class Bumper : MonoBehaviour
         return nearest;
     }
 
-    // Core damage handler: applies damage, spawns feedback, emits XP scaled by last hit factor, and schedules respawn.
-    public void TakeDamage(float amount, bool elemDmg, float damageFactor = 1f)
+    public void TakeDamage(float amount, bool elemDmg, float damageFactor = 1f, int xpScoreMult = 1, Ball sourceBall = null)
     {
+        if (isDead) return;
+
         _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+        bumperElemental?.RecordCrustedIncomingDamage(amount, sourceBall);
 
         curHealth -= amount;
 
@@ -4302,32 +5581,25 @@ public class Bumper : MonoBehaviour
             if (elemDmg)
             {
                 if (curHealth > 0)
-                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: true, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
             }
             else
             {
                 if (bumperElemental != null && bumperElemental.CurrentState == BumperState.Drenched)
-                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnBonusWaterXP(transform.position, bumperElemental.WaterBonusXP, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
                 else
-                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
+                    pinball.SpawnXP(transform.position, isDead: false, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
             }
         }
 
-        if (curHealth <= 0)
-        {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true; // next score tick gets bonus
-            }
-            StartCoroutine(pinball.RespawnRoutine(this));
-        }
+        if (curHealth <= 0f)
+            Die(elemDmg, xpScoreMult);
     }
 
-    // Applies Earth fissure tick damage and emits Earth XP, using last stored damage factor.
-    public void TakeFissureDamage(float amount)
+    public void TakeFissureDamage(float amount, float damageFactor)
     {
+        if (isDead) return;
+        _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
         curHealth -= amount;
 
         GetComponent<BumperAnimScript>()?.BumperHit();
@@ -4344,25 +5616,20 @@ public class Bumper : MonoBehaviour
         if (pinball != null && bumperElemental != null)
             pinball.SpawnBonusEarthXP(transform.position, bumperElemental.EarthBonusXP, damageFactor: _lastDmgFactorForXP);
 
-        if (curHealth <= 0)
-        {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true;
-            }
-            StartCoroutine(pinball.RespawnRoutine(this));
-        }
+        if (curHealth <= 0f)
+            Die(false, 1);
     }
 
-    // Applies Electric shock damage (with optional propagation), emits XP using last stored factor.
-    public void TakeShockDamage(float amount, bool propogate = false)
+    public void TakeShockDamage(float amount, float damageFactor, bool propogate = false)
     {
+        if (isDead) return;
+        _lastDmgFactorForXP = Mathf.Max(0f, damageFactor);
+        bumperElemental?.RecordCrustedIncomingDamage(amount, null);
+
         if (propogate)
         {
             var nearest = FindNearestOther();
-            if (nearest) nearest.TakeShockDamage(amount, false);
+            if (nearest) nearest.TakeShockDamage(amount, _lastDmgFactorForXP, false);
         }
 
         curHealth -= amount;
@@ -4381,16 +5648,67 @@ public class Bumper : MonoBehaviour
         if (pinball != null && bumperElemental != null)
             pinball.SpawnBonusEarthXP(transform.position, bumperElemental.ElectricBonusXP, damageFactor: _lastDmgFactorForXP);
 
-        if (curHealth <= 0)
+        if (curHealth <= 0f)
+            Die(false, 1);
+    }
+
+    public void RicochetHit(Ball ball, Vector3 forcedDirection, int portalBoost = 1, bool elemDmgOverride = false)
+    {
+        if (ball == null || isDead) return;
+        lastHitTimeByBall[ball.GetInstanceID()] = Time.time;
+
+        _light?.StartRicochetMode();
+        _light?.IncrementRicochet();
+
+        Vector3 dir = forcedDirection;
+        if (dir.sqrMagnitude < 0.0001f)
         {
-            curHealth = 0;
-            if (pinball != null)
-            {
-                pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: false, damageFactor: _lastDmgFactorForXP);
-                pinball.destroyedBumperBonusActive = true;
-            }
+            dir = (transform.position - ball.transform.position);
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) dir = Vector3.forward;
+            dir.Normalize();
+        }
+
+        int bumperKind = CompareTag("SmallBumper") ? 1 : 0;
+        float deltaV = bumperKind == 0 ? 150f : 200f;
+        ball.Bump(dir, deltaV, bumperKind, this, portalBoost);
+
+        float totalDamage = ball.CurrentDamage;
+        float dmgFactor = ball.ScoreXpDamageFactor;
+        _lastDmgFactorForXP = dmgFactor;
+
+        if (!isDead)
+            TakeDamage(totalDamage, elemDmg: elemDmgOverride, damageFactor: dmgFactor, xpScoreMult: portalBoost, sourceBall: ball);
+    }
+
+    private void Die(bool elemDmg, int xpScoreMult)
+    {
+        if (isDead) return;
+        isDead = true;
+        curHealth = 0f;
+
+        // Turn light off immediately
+        _light?.HandleBumperDeath();
+
+        if (pinball != null)
+        {
+            pinball.SpawnXP(transform.position, isDead: true, isTakingElemDamage: elemDmg, damageFactor: _lastDmgFactorForXP, mult: xpScoreMult);
+            pinball.destroyedBumperBonusActive = true;
             StartCoroutine(pinball.RespawnRoutine(this));
         }
+    }
+
+    public void Revive()
+    {
+        curHealth = maxHealth;
+        isDead = curHealth <= 0f;
+        if (!isDead)
+            _light?.HandleBumperRevive();
+    }
+
+    public void EndRicochetLight()
+    {
+        _light?.EndRicochetMode();
     }
 }
 ```
@@ -4406,7 +5724,7 @@ public class BumperElementalState : MonoBehaviour
 {
 
     private Bumper bumper;
-    public BumperState CurrentState  = BumperState.None;
+    public BumperState CurrentState = BumperState.None;
 
     private float fireBurnExpireAt;
     private float fireBurnNextTickAt;
@@ -4435,6 +5753,9 @@ public class BumperElementalState : MonoBehaviour
     public float ElectricBonusXP => electricBonusXP;
     public float ElectricBonusScore => electricBonusScore;
 
+    // NEW: accumulation for Earth fissure
+    private float earthAccumulatedDamage;
+    private Ball lastBallDuringCrust; // last ball that dealt damage while crusted
 
 
     void Awake()
@@ -4442,19 +5763,12 @@ public class BumperElementalState : MonoBehaviour
         bumper = GetComponent<Bumper>();
     }
 
+    void Start() { }
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
     void Update()
     {
-
-        switch(CurrentState)
-{
+        switch (CurrentState)
+        {
             case BumperState.None:
                 break;
             case BumperState.Burning:
@@ -4472,13 +5786,11 @@ public class BumperElementalState : MonoBehaviour
             default:
                 break;
         }
-
     }
 
     public void ApplyBurn(float dps, float duration)
     {
         CurrentState = BumperState.Burning;
-        Debug.Log("Bumper Burn Applied");
         fireBurnExpireAt = Time.time + duration;
         fireBurnNextTickAt = Time.time + fireBurnTickInterval;
         fireBurnDamagePerTick = dps * fireBurnTickInterval;
@@ -4503,13 +5815,13 @@ public class BumperElementalState : MonoBehaviour
         fireBurnExpireAt = 0f;
         fireBurnNextTickAt = 0f;
         fireBurnDamagePerTick = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Burning)
+            CurrentState = BumperState.None;
     }
 
     public void ApplyDrenched(float duration, float bonusXP)
     {
         CurrentState = BumperState.Drenched;
-        Debug.Log("Bumper Drenched Applied");
         waterDrenchExpireAt = Time.time + duration;
         waterBonusXP = bonusXP;
     }
@@ -4526,26 +5838,54 @@ public class BumperElementalState : MonoBehaviour
     {
         waterDrenchExpireAt = 0f;
         waterBonusXP = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Drenched)
+            CurrentState = BumperState.None;
     }
 
-    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore, float bonusUnused, float bonusUnused2)
     {
+        // NOTE: parameters kept for compatibility (reward code passes more args).
         CurrentState = BumperState.Crusted;
-        Debug.Log("Bumper Crusted Applied");
         float newExpire = Time.time + duration;
-        earthFissureDamage = damage;
+        earthFissureDamage = damage; // legacy baseline, not directly used for eruption now
         earthBonusXP = bonusXP;
         earthBonusScore = bonusScore;
         if (newExpire > earthCrustExpireAt)
             earthCrustExpireAt = newExpire;
+
+        // NEW reset accumulation
+        earthAccumulatedDamage = 0f;
+        lastBallDuringCrust = null;
+    }
+
+    // Overload used by reward (keeping original signature)
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
+    {
+        ApplyCrusted(damage, duration, bonusXP, bonusScore, 0f, 0f);
     }
 
     public void HandleCrusted()
     {
         if (Time.time >= earthCrustExpireAt)
         {
-            bumper.TakeFissureDamage(earthFissureDamage);
+            // NEW: eruption damage = 75% of accumulated damage during crust.
+            // Minimum: 75% of the current damage of a relevant ball.
+            float eruptionFromAccum = 0.75f * earthAccumulatedDamage;
+
+            // Pick ball reference: last one that hit while crusted, else primary pinball ball.
+            Ball anchorBall = lastBallDuringCrust;
+            if (anchorBall == null)
+                anchorBall = Pinball.Instance != null ? Pinball.Instance.ball : null;
+
+            float minDamage = 0f;
+            if (anchorBall != null)
+                minDamage = 0.75f * anchorBall.CurrentDamage;
+
+            float finalDamage = Mathf.Max(eruptionFromAccum, minDamage);
+
+            bumper.TakeFissureDamage(finalDamage, bumper.LastDmgFactorForXP);
+
+            // Clear / reset state
             ClearCrusted();
         }
     }
@@ -4556,7 +5896,10 @@ public class BumperElementalState : MonoBehaviour
         earthCrustExpireAt = 0f;
         earthBonusXP = 0f;
         earthBonusScore = 0f;
-        CurrentState = BumperState.None;
+        earthAccumulatedDamage = 0f;
+        lastBallDuringCrust = null;
+        if (CurrentState == BumperState.Crusted)
+            CurrentState = BumperState.None;
     }
 
     public void ApplyShocked(float damage, float bonusXP, float bonusScore)
@@ -4569,7 +5912,7 @@ public class BumperElementalState : MonoBehaviour
 
     public void HandleShocked()
     {
-        bumper.TakeShockDamage(electricShockDamage, true);
+        bumper.TakeShockDamage(electricShockDamage, bumper.LastDmgFactorForXP, true);
         ClearShocked();
     }
 
@@ -4578,7 +5921,8 @@ public class BumperElementalState : MonoBehaviour
         electricShockDamage = 0f;
         electricBonusXP = 0f;
         electricBonusScore = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Shocked)
+            CurrentState = BumperState.None;
     }
 
     public void ClearElement()
@@ -4589,8 +5933,17 @@ public class BumperElementalState : MonoBehaviour
         ClearShocked();
     }
 
-}
+    // NEW: record incoming damage while crusted
+    public void RecordCrustedIncomingDamage(float amount, Ball sourceBall)
+    {
+        if (CurrentState != BumperState.Crusted) return;
+        if (amount > 0f)
+            earthAccumulatedDamage += amount;
+        if (sourceBall != null)
+            lastBallDuringCrust = sourceBall;
+    }
 
+}
 ```
 
 ## Assets/Scripts/BumperElements.cs
@@ -4616,6 +5969,362 @@ public enum BumperState
 
     Whirling,
 
+}
+```
+
+## Assets/Scripts/CameraFollowSimple.cs
+
+```csharp
+using UnityEngine;
+using DG.Tweening;
+
+[DisallowMultipleComponent]
+public class CameraFollowSimple : MonoBehaviour
+{
+    [Header("Follow Target")]
+    [SerializeField] private Transform target;
+
+    [Header("Zoom Framing")]
+    [SerializeField] private bool anchorTargetOnZoom = true;
+    [SerializeField, Min(0f)] private float targetAnchorDuration = 0.25f;
+    [SerializeField, Min(0f)] private float anchorReleaseDistance = 0.35f;
+    [SerializeField] private bool recenterLateralDuringZoom = true;
+    [SerializeField, Min(0f)] private float lateralRecenterSpeed = 6f;
+
+    [Header("Zoom Jitter Suppression")]
+    [SerializeField, Min(0f)] private float microMoveThreshold = 0.015f;
+    [SerializeField, Min(0f)] private float stableTrackSpeed = 8f;
+    [SerializeField, Min(0f)] private float chargingStableTrackSpeed = 3f;
+    [SerializeField] private bool disableSmoothDampWhileAnchored = true;
+    [SerializeField] private bool forceExactForwardDuringAnchor = true;
+
+    private Vector3 _stableTargetPos;
+    private bool _isCharging;
+
+    private Vector3 _zoomAnchorTargetPos;
+    private bool _zoomAnchored;
+    private float _zoomAnchorEndTime;
+
+    [Header("Pre-Zoom Lock-On")]
+    [SerializeField, Min(0f)] private float preZoomLockTolerance = 0.05f;
+    [SerializeField] private bool requireLockBeforeZoom = true;
+
+    [SerializeField] private bool hardSnapOnLockStart = true;
+    [SerializeField] private bool hardSnapOnAnchorStart = true;
+
+    private bool _justAnchored;
+
+    private Vector3 ComputeDesiredPosition(Vector3 effTargetPos, Vector3 fwdNow)
+    {
+        return effTargetPos
+               - fwdNow * followDistance
+               + Vector3.up * height
+               + lateralOffset;
+    }
+
+    private bool _waitingForPreZoomLock;
+    private float _pendingZoomDistance;
+    private float _pendingZoomHeight;
+    private System.Action _onPreZoomLocked;
+
+    [Header("Rig")]
+    [SerializeField] private float followDistance = 12f;
+    [SerializeField] private float height = 10f;
+    [SerializeField] private float damping = 12f;
+    [SerializeField] private Vector3 lateralOffset = Vector3.zero;
+    [SerializeField] private bool lookAtTarget = true;
+    [SerializeField] private bool lockRotation = true;
+    [SerializeField] private bool enableZoomSmoothing = true;
+    [SerializeField, Min(0.01f)] private float zoomLerpSpeed = 6f;
+
+    private Vector3 _velocity;
+    private Quaternion _initialRotation;
+    private Vector3 _initialForward;
+    private float _targetFollowDistance;
+    private float _targetHeight;
+
+    // Shake state
+    private Vector3 _shakeOffset;
+    private Tween _shakeTween;
+
+    public Transform Target
+    {
+        get => target;
+        set => target = value;
+    }
+
+    public float FollowDistance
+    {
+        get => followDistance;
+        set => followDistance = Mathf.Max(0.5f, value);
+    }
+
+    public float Height
+    {
+        get => height;
+        set => height = Mathf.Max(0f, value);
+    }
+
+    public float Damping
+    {
+        get => damping;
+        set => damping = Mathf.Max(0f, value);
+    }
+
+    void Awake()
+    {
+        _initialRotation = transform.rotation;
+        _initialForward = transform.forward;
+        _targetFollowDistance = followDistance;
+        _targetHeight = height;
+    }
+
+    void LateUpdate()
+    {
+        if (!target) return;
+
+        // Zoom interpolation
+        if (enableZoomSmoothing)
+        {
+            followDistance = Mathf.Lerp(followDistance, _targetFollowDistance, Time.unscaledDeltaTime * zoomLerpSpeed);
+            height = Mathf.Lerp(height, _targetHeight, Time.unscaledDeltaTime * zoomLerpSpeed);
+        }
+        else
+        {
+            followDistance = _targetFollowDistance;
+            height = _targetHeight;
+        }
+
+        // Handle anchor lifecycle
+        if (_zoomAnchored)
+        {
+            bool closeEnough = Mathf.Abs(followDistance - _targetFollowDistance) <= anchorReleaseDistance
+                            && Mathf.Abs(height - _targetHeight) <= anchorReleaseDistance;
+
+            if (Time.unscaledTime >= _zoomAnchorEndTime || closeEnough)
+                _zoomAnchored = false;
+        }
+
+        // Update filtered target position while anchored
+        Vector3 rawTargetPos = target.position;
+        if (_zoomAnchored)
+        {
+            float trackSpeed = _isCharging ? chargingStableTrackSpeed : stableTrackSpeed;
+            Vector3 diff = rawTargetPos - _stableTargetPos;
+
+            if (diff.sqrMagnitude > microMoveThreshold * microMoveThreshold)
+                _stableTargetPos = Vector3.Lerp(_stableTargetPos, rawTargetPos, Time.unscaledDeltaTime * trackSpeed);
+        }
+        else
+        {
+            _stableTargetPos = rawTargetPos;
+        }
+
+        Vector3 effectiveTargetPos = _zoomAnchored ? _stableTargetPos : rawTargetPos;
+
+        // Forward vector handling
+        Vector3 fwd = lockRotation ? _initialForward : transform.forward;
+        if (forceExactForwardDuringAnchor && lockRotation && _zoomAnchored)
+            fwd = _initialForward;
+
+        // Optional lateral recentralization during zoom anchor
+        if (recenterLateralDuringZoom && _zoomAnchored)
+            lateralOffset = Vector3.Lerp(lateralOffset, Vector3.zero, Time.unscaledDeltaTime * lateralRecenterSpeed);
+
+        Vector3 desiredPos = effectiveTargetPos
+                           - fwd * followDistance
+                           + Vector3.up * height
+                           + lateralOffset
+                           + _shakeOffset; // additive camera shake
+
+        // Pre-zoom lock check
+        if (_waitingForPreZoomLock)
+        {
+            float distToDesired = (transform.position - desiredPos).magnitude;
+            if (distToDesired <= preZoomLockTolerance)
+            {
+                _waitingForPreZoomLock = false;
+                ApplyPendingZoomAndCallback();
+            }
+        }
+
+        if (_zoomAnchored && disableSmoothDampWhileAnchored)
+        {
+            // Hard snap once on the first anchored frame to remove any visible drift
+            if (hardSnapOnAnchorStart && _justAnchored)
+            {
+                transform.position = desiredPos;
+                _velocity = Vector3.zero;
+                _justAnchored = false;
+            }
+            else
+            {
+                // Then short, tight blend to avoid jitter while anchored
+                transform.position = Vector3.Lerp(
+                    transform.position,
+                    desiredPos,
+                    Time.unscaledDeltaTime * (damping <= 0f ? 20f : damping)
+                );
+            }
+        }
+        else
+        {
+            transform.position = Vector3.SmoothDamp(
+                transform.position,
+                desiredPos,
+                ref _velocity,
+                damping <= 0f ? 0f : (1f / damping)
+            );
+        }
+
+        // Rotation maintenance
+        if (lockRotation)
+        {
+            if (transform.rotation != _initialRotation)
+                transform.rotation = _initialRotation;
+        }
+        else if (lookAtTarget)
+        {
+            Vector3 lookPos = rawTargetPos;
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                Quaternion.LookRotation((lookPos - transform.position).normalized, Vector3.up),
+                Time.unscaledDeltaTime * (damping <= 0f ? 20f : damping)
+            );
+        }
+    }
+
+    public void ZoomTo(float newDistance, float newHeight)
+    {
+        _targetFollowDistance = Mathf.Max(0.5f, newDistance);
+        _targetHeight = Mathf.Max(0f, newHeight);
+
+        if (anchorTargetOnZoom && target)
+        {
+            _zoomAnchorTargetPos = target.position;
+            _stableTargetPos = _zoomAnchorTargetPos;
+            _zoomAnchored = true;
+            _justAnchored = true;
+            _zoomAnchorEndTime = Time.unscaledTime + targetAnchorDuration;
+        }
+    }
+
+    public void SnapZoom(float newDistance, float newHeight)
+    {
+        _targetFollowDistance = followDistance = Mathf.Max(0.5f, newDistance);
+        _targetHeight = height = Mathf.Max(0f, newHeight);
+
+        if (anchorTargetOnZoom && target)
+        {
+            _zoomAnchorTargetPos = target.position;
+            _stableTargetPos = _zoomAnchorTargetPos;
+            _zoomAnchored = true;
+            _justAnchored = true;
+            _zoomAnchorEndTime = Time.unscaledTime + Mathf.Min(0.05f, targetAnchorDuration);
+        }
+    }
+
+    public void CancelZoomAnchor() => _zoomAnchored = false;
+
+    public void LockOnThenZoom(float zoomDistance, float zoomHeight, System.Action onLocked = null)
+    {
+        if (!target)
+        {
+            onLocked?.Invoke();
+            return;
+        }
+
+        _pendingZoomDistance = Mathf.Max(0.5f, zoomDistance);
+        _pendingZoomHeight = Mathf.Max(0f, zoomHeight);
+        _onPreZoomLocked = onLocked;
+
+        if (!requireLockBeforeZoom)
+        {
+            ApplyPendingZoomAndCallback();
+            return;
+        }
+
+        StabilizeNow();
+        // NEW: remove the brief "machine view" by snapping immediately to current desired framing
+        if (hardSnapOnLockStart && target)
+        {
+            // Recompute a desired position exactly like LateUpdate()
+            Vector3 rawTargetPos = target.position;
+            Vector3 fwdNow = lockRotation ? _initialForward : transform.forward;
+
+            // If an anchor will be used, respect the stable target position (already set by StabilizeNow)
+            Vector3 effTargetPos = _zoomAnchored ? _stableTargetPos : rawTargetPos;
+
+            Vector3 snapPos = ComputeDesiredPosition(effTargetPos, fwdNow);
+            transform.position = snapPos;
+            _velocity = Vector3.zero;
+
+            if (!lockRotation && lookAtTarget)
+            {
+                Vector3 lookPos = rawTargetPos;
+                transform.rotation = Quaternion.LookRotation((lookPos - transform.position).normalized, Vector3.up);
+            }
+        }
+
+        _waitingForPreZoomLock = true;
+    }
+
+    private void ApplyPendingZoomAndCallback()
+    {
+        _targetFollowDistance = _pendingZoomDistance;
+        _targetHeight = _pendingZoomHeight;
+
+        if (anchorTargetOnZoom && target)
+        {
+            _zoomAnchorTargetPos = target.position;
+            _stableTargetPos = _zoomAnchorTargetPos;
+            _zoomAnchored = true;
+            _zoomAnchorEndTime = Time.unscaledTime + targetAnchorDuration;
+        }
+
+        var cb = _onPreZoomLocked;
+        _onPreZoomLocked = null;
+        cb?.Invoke();
+    }
+
+    public void StabilizeNow()
+    {
+        if (!target) return;
+        _stableTargetPos = target.position;
+        _velocity = Vector3.zero;
+    }
+
+    public void SetCharging(bool charging) => _isCharging = charging;
+
+    public void SnapToTarget()
+    {
+        if (!target) return;
+        Vector3 desiredPos = target.position - transform.forward * followDistance + Vector3.up * height + lateralOffset;
+        transform.position = desiredPos;
+        if (lookAtTarget) transform.LookAt(target);
+    }
+
+    // Camera shake (additive offset)
+    public void StartShake(float duration, float strength, int vibrato, float randomness)
+    {
+        _shakeTween?.Kill(false);
+        _shakeOffset = Vector3.zero;
+
+        // Use a dummy transform-less tween updating a vector offset
+        _shakeTween = DOTween.Shake(
+            () => _shakeOffset,
+            v => _shakeOffset = v,
+            duration,
+            strength,
+            vibrato,
+            randomness,
+            fadeOut: true
+        )
+        .SetUpdate(false)
+        .SetTarget(this)
+        .OnKill(() => _shakeOffset = Vector3.zero)
+        .OnComplete(() => _shakeOffset = Vector3.zero);
+    }
 }
 ```
 
@@ -5007,89 +6716,201 @@ public sealed class CollectAllXPPowerup : IPowerup
     public float Weight => 1.0f;
     public string DebugLabel => "Collect All XP";
 
-    // Only trigger while actively playing.
+    [Header("Vacuum Settings")]
+    [SerializeField] private float duration = 4f;
+    [SerializeField] private float anchorRangeMultiplier = 400f;
+    [SerializeField] private float anchorGravity = 36f;
+    [SerializeField, Min(0.01f)] private float reassertInterval = 0.1f;
+    [SerializeField] private bool debugLogs = true;
+
+    // Prevent stacking runaway radius
+    private static bool _vacuumActive;
+    private static float _vacuumEndsAt;
+
     public bool CanTrigger(IRunContext ctx) => ctx is Pinball pb && pb.CurrentState == PinballState.Play;
 
-    // Temporarily redirects all XP to the anchor ball by boosting its forcefield and suppressing others.
     public void Execute(Pinball pm, Vector3 triggerPos)
     {
         if (!pm) return;
 
         var anchor = pm.ball;
-        if (!anchor)
+        if (anchor == null || !anchor.isActiveAndEnabled || !anchor.IsActive)
         {
-            var balls = Object.FindObjectsOfType<Ball>();
-            for (int i = 0; i < balls.Length; i++)
+            foreach (var b in Object.FindObjectsOfType<Ball>())
             {
-                if (balls[i] && balls[i].isActiveAndEnabled && balls[i].IsActive)
+                if (b && b.isActiveAndEnabled && b.IsActive) { anchor = b; break; }
+            }
+        }
+        if (!anchor) return;
+
+        // If already active, just extend the window (do NOT snapshot inflated radii again)
+        if (_vacuumActive)
+        {
+            _vacuumEndsAt = Mathf.Max(_vacuumEndsAt, Time.time + duration);
+            if (debugLogs) Debug.Log($"[CollectAllXPPowerup] Extended vacuum -> ends at {_vacuumEndsAt:0.00}");
+            return;
+        }
+
+        _vacuumActive = true;
+        _vacuumEndsAt = Time.time + duration;
+        pm.StartCoroutine(VacuumToAnchor(pm, anchor));
+    }
+
+    private struct FFState
+    {
+        public ParticleSystemForceField ff;
+        public bool enabled;
+        public float startRange;
+        public float endRange;
+        public ParticleSystem.MinMaxCurve gravity;
+    }
+
+    private IEnumerator VacuumToAnchor(Pinball pm, Ball initialAnchor)
+    {
+        var registry = XPCollectorRegistry.I;
+        if (debugLogs) Debug.Log($"[CollectAllXPPowerup] Vacuum start -> anchor {initialAnchor?.name}");
+
+        // Snapshot current state once (do NOT treat expanded radius as new baseline later)
+        var originals = new List<FFState>(32);
+        foreach (var b in Object.FindObjectsOfType<Ball>())
+        {
+            if (!b || !b.isActiveAndEnabled || !b.IsActive) continue;
+            var ffs = b.GetComponentsInChildren<ParticleSystemForceField>(true);
+            foreach (var ff in ffs)
+            {
+                if (!ff) continue;
+                originals.Add(new FFState
                 {
-                    anchor = balls[i];
-                    break;
+                    ff = ff,
+                    enabled = ff.enabled,
+                    startRange = ff.startRange,
+                    endRange = ff.endRange,
+                    gravity = ff.gravity
+                });
+            }
+        }
+        if (debugLogs) Debug.Log($"[CollectAllXPPowerup] Found {originals.Count} forcefields.");
+
+        Ball anchorBall = initialAnchor;
+
+        void ApplySuppressionAndBoost(Ball anchor)
+        {
+            for (int i = 0; i < originals.Count; i++)
+            {
+                var st = originals[i];
+                if (!st.ff) continue;
+                var owner = st.ff.GetComponentInParent<Ball>();
+                if (!owner) continue;
+
+                if (owner == anchor)
+                {
+                    st.ff.enabled = true;
+                    st.ff.startRange = st.startRange;
+                    st.ff.endRange = st.endRange * Mathf.Max(1f, anchorRangeMultiplier);
+                    st.ff.gravity = new ParticleSystem.MinMaxCurve(anchorGravity);
+                }
+                else
+                {
+                    st.ff.enabled = false;
                 }
             }
         }
 
-        pm.StartCoroutine(VacuumToAnchor(pm, anchor));
-    }
-
-    // Performs the XP �vacuum� effect: boosts anchor�s XP field, damps others, and restores after a delay.
-    private static IEnumerator VacuumToAnchor(Pinball pm, Ball anchor)
-    {
-        const float duration = 1.75f;
-        const float boostFactor = 400f;
-
-        List<Collider> snapshot = null;
-        var registry = XPCollectorRegistry.I;
-        var anchorCol = anchor ? anchor.GetComponent<Collider>() : null;
-
-        if (registry != null && anchorCol != null)
+        void SetRegistryToAnchor(Ball anchor)
         {
-            snapshot = new List<Collider>(registry.collectors);
+            if (registry == null) return;
             registry.collectors.Clear();
-            registry.collectors.Add(anchorCol);
+            if (anchor)
+            {
+                var col = anchor.GetComponent<Collider>();
+                if (col) registry.collectors.Add(col);
+            }
+            registry.NotifyChanged();
         }
 
-        if (anchor != null)
-            anchor.UpdateForcefield(boostFactor);
-
-        var others = new List<Ball>(8);
-        const float dampFactor = 0.01f;
-        var allBalls = Object.FindObjectsOfType<Ball>();
-        for (int i = 0; i < allBalls.Length; i++)
+        void RestoreForcefields()
         {
-            var b = allBalls[i];
-            if (!b || b == anchor) continue;
-            others.Add(b);
-            b.UpdateForcefield(dampFactor);
+            for (int i = 0; i < originals.Count; i++)
+            {
+                var st = originals[i];
+                if (!st.ff) continue;
+                st.ff.enabled = st.enabled;
+                st.ff.startRange = st.startRange;
+                st.ff.endRange = st.endRange;
+                st.ff.gravity = st.gravity;
+            }
+            if (debugLogs) Debug.Log("[CollectAllXPPowerup] Forcefields restored.");
         }
 
+        void RebuildRegistryFromActiveBalls()
+        {
+            if (registry == null) return;
+            registry.collectors.Clear();
+
+            var balls = Object.FindObjectsOfType<Ball>();
+            for (int i = 0; i < balls.Length; i++)
+            {
+                var b = balls[i];
+                if (!b || !b.isActiveAndEnabled || !b.IsActive) continue;
+                var col = b.GetComponent<Collider>();
+                if (col) registry.collectors.Add(col);
+            }
+            registry.NotifyChanged();
+            if (debugLogs) Debug.Log($"[CollectAllXPPowerup] Registry rebuilt (count={registry.collectors.Count}).");
+        }
+
+        void RefreshAllBallForcefields()
+        {
+            foreach (var b in Object.FindObjectsOfType<Ball>())
+            {
+                if (b && b.isActiveAndEnabled && b.IsActive)
+                    b.RefreshForcefieldFromContext(); // ensures original radius restored
+            }
+        }
+
+        ApplySuppressionAndBoost(anchorBall);
+        SetRegistryToAnchor(anchorBall);
         pm.ScreenShake();
 
-        float t = 0f;
-        while (t < duration)
+        float reassertT = 0f;
+        while (Time.time < _vacuumEndsAt)
         {
-            t += Time.unscaledDeltaTime;
+            // unscaled progress so slowmo doesn't extend effect
+            reassertT += Time.unscaledDeltaTime;
+
+            if (!anchorBall || !anchorBall.isActiveAndEnabled || !anchorBall.IsActive)
+            {
+                Ball newAnchor = null;
+                foreach (var b in Object.FindObjectsOfType<Ball>())
+                {
+                    if (b && b.isActiveAndEnabled && b.IsActive) { newAnchor = b; break; }
+                }
+                if (newAnchor && newAnchor != anchorBall)
+                {
+                    anchorBall = newAnchor;
+                    ApplySuppressionAndBoost(anchorBall);
+                    SetRegistryToAnchor(anchorBall);
+                    if (debugLogs) Debug.Log($"[CollectAllXPPowerup] Anchor changed -> {anchorBall.name}");
+                }
+            }
+
+            if (reassertT >= reassertInterval)
+            {
+                reassertT = 0f;
+                ApplySuppressionAndBoost(anchorBall);
+                SetRegistryToAnchor(anchorBall);
+            }
+
             yield return null;
         }
 
-        if (anchor != null)
-            anchor.UpdateForcefield(1f / boostFactor);
+        // Restore
+        RestoreForcefields();
+        RebuildRegistryFromActiveBalls();
+        RefreshAllBallForcefields(); // CRUCIAL: revert inflated radius to true baseline
+        _vacuumActive = false;
 
-        for (int i = 0; i < others.Count; i++)
-        {
-            var b = others[i];
-            if (b) b.UpdateForcefield(1f / dampFactor);
-        }
-
-        if (registry != null && snapshot != null)
-        {
-            registry.collectors.Clear();
-            for (int i = 0; i < snapshot.Count; i++)
-            {
-                var c = snapshot[i];
-                if (c) registry.collectors.Add(c);
-            }
-        }
+        if (debugLogs) Debug.Log("[CollectAllXPPowerup] Vacuum end.");
     }
 }
 ```
@@ -5117,6 +6938,8 @@ public class CollectXP : MonoBehaviour
     ParticleSystem ps;
     ParticleSystem.TriggerModule trigger;
 
+    private readonly List<Collider> assignedTargets = new();
+
     // Reuse buffers to avoid GC allocations:
     static readonly List<ParticleSystem.Particle> enteredBuf = new(256);
     static readonly List<(Collider c, float d2)> sortBuf = new(64);
@@ -5140,7 +6963,7 @@ public class CollectXP : MonoBehaviour
 
     void OnDisable()
     {
-        XPCollectorRegistry.OnChanged -= RebindTargets; 
+        XPCollectorRegistry.OnChanged -= RebindTargets;
 
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
@@ -5205,13 +7028,14 @@ public class CollectXP : MonoBehaviour
 
         // Sort nearest first
         sortBuf.Sort((a, b) => a.d2.CompareTo(b.d2));
-
+        assignedTargets.Clear();
         // Assign nearest up to maxTargets
         int assignCount = Mathf.Min(maxTargets, sortBuf.Count);
         for (int i = 0; i < assignCount; i++)
+        {
             trigger.SetCollider(i, sortBuf[i].c);
-
-        // Clear any leftover slots (prevents stale checks)
+            assignedTargets.Add(sortBuf[i].c); // keep a local list to pick nearest on collect
+        }
         for (int i = assignCount; i < maxTargets; i++)
             trigger.SetCollider(i, null);
     }
@@ -5230,11 +7054,33 @@ public class CollectXP : MonoBehaviour
                 Pinball.Instance.AddXP(xpPerParticle);
             }
 
-
-
-
-            // Kill ONLY the collected particle
+            // Spawn XP numbers at the actual collection point
             var p = enteredBuf[i];
+            var main = ps.main;
+            Vector3 worldPos = main.simulationSpace == ParticleSystemSimulationSpace.World
+                ? p.position
+                : ps.transform.TransformPoint(p.position);
+
+            if (XPNumbers.IsReady)
+            {
+                // pick the nearest assigned collector (typically the ball) to this particle
+                Transform follow = null;
+                float best = float.PositiveInfinity;
+                for (int t = 0; t < assignedTargets.Count; t++)
+                {
+                    var col = assignedTargets[t];
+                    if (!col) continue;
+                    float d2 = (col.bounds.center - worldPos).sqrMagnitude;
+                    if (d2 < best) { best = d2; follow = col.transform; }
+                }
+
+                // Fallback to world-space if none found
+                if (follow)
+                    XPNumbers.Spawn(Mathf.RoundToInt(Pinball.Instance.FinalXPCalculated), follow, new Vector3(0f, 1.25f, 0f));
+                else
+                    XPNumbers.Spawn(Mathf.RoundToInt(Pinball.Instance.FinalXPCalculated), worldPos + new Vector3(0f, 1.25f, 0f));
+            }
+            // Kill ONLY the collected particle
             p.remainingLifetime = 0f;
             enteredBuf[i] = p;
         }
@@ -5749,6 +7595,226 @@ public class Druid : BaseCharacter
 
 ```
 
+## Assets/Scripts/DynamicPadManager.cs
+
+```csharp
+using UnityEngine;
+using System.Collections.Generic;
+
+/// <summary>
+/// Central controller:
+/// - Keeps at most maxActivePads enabled (upgraded or flipping) at once.
+/// - Pads sit in an idle dull state until:
+///     * Their individual nextEnableTime has elapsed
+///     * Active/flipping count < maxActivePads
+///   Then manager triggers their flip/upgrade.
+/// - When a pad finishes its effect via ball interaction, it reverts to dull and enters an interaction cooldown before being eligible again.
+/// - NEW: Random auto-disable ("tick off") will turn off active pads after a random active lifetime, bypassing the interaction cooldown.
+/// </summary>
+[DisallowMultipleComponent]
+public class DynamicPadManager : MonoBehaviour
+{
+    [Header("Limits")]
+    [SerializeField, Min(1)] private int maxActivePads = 3;
+
+    [Header("Enable Timing")]
+    [SerializeField, Min(0.1f)] private float minEnableDelay = 2f;
+    [SerializeField, Min(0.1f)] private float maxEnableDelay = 6f;
+
+    [Header("Interaction Cooldown (after ball interaction)")]
+    [SerializeField, Min(0f)] private float interactionDisabledCooldownSeconds = 30f;
+
+    [Header("Random Auto-Disable (Tick Off)")]
+    [Tooltip("If enabled, active pads will randomly go off after a random active lifetime (bypassing interaction cooldown).")]
+    [SerializeField] private bool enableRandomAutoDisable = true;
+    [SerializeField, Min(0.1f)] private float minActiveLifetimeSeconds = 3f;
+    [SerializeField, Min(0.1f)] private float maxActiveLifetimeSeconds = 10f;
+
+    [Header("References / Auto-Discover")]
+    [Tooltip("If empty, will find all DullPad components in scene at Start.")]
+    [SerializeField] private List<DullPad> pads = new();
+
+    // Count of pads currently reserved (flipping or active)
+    private int _activeCount;
+    // Pads that have been reserved (activation slot claimed)
+    private readonly HashSet<DullPad> _reservedPads = new();
+    private readonly List<DullPad> _eligibleBuffer = new();
+
+    // NEW: per-pad scheduled auto-disable times
+    private readonly Dictionary<DullPad, float> _autoDisableAt = new();
+
+    void Start()
+    {
+        if (pads.Count == 0)
+            pads.AddRange(FindObjectsOfType<DullPad>());
+
+        foreach (var p in pads)
+        {
+            if (!p) continue;
+            p.Manager = this;
+            p.SetInteractionCooldown(interactionDisabledCooldownSeconds);
+            p.ScheduleNextEnable(RandomEnableDelay());
+        }
+    }
+
+    void Update()
+    {
+        TickEnableLogic();
+        TickDisableLogic();
+    }
+
+    private void TickEnableLogic()
+    {
+        // If at capacity (including flipping), push back any idle pads whose timers just matured
+        if (_activeCount >= maxActivePads)
+        {
+            KickBackEligibleIdlePads();
+            return;
+        }
+
+        _eligibleBuffer.Clear();
+        float now = Time.time;
+
+        foreach (var p in pads)
+        {
+            if (!p) continue;
+            if (!p.IsIdle) continue; // only idle dull pads
+            if (p.NextEnableTime <= now)
+                _eligibleBuffer.Add(p);
+        }
+
+        if (_eligibleBuffer.Count == 0) return;
+
+        int freeSlots = Mathf.Max(0, maxActivePads - _activeCount);
+        int toActivate = Mathf.Min(freeSlots, _eligibleBuffer.Count);
+
+        for (int i = 0; i < toActivate; i++)
+        {
+            var pad = _eligibleBuffer[i];
+            if (!pad) continue;
+            pad.BeginFlipAndUpgrade(); // ReserveActivation happens inside
+        }
+    }
+
+    // NEW: random auto-disable ticking
+    private void TickDisableLogic()
+    {
+        if (!enableRandomAutoDisable) return;
+
+        float now = Time.time;
+
+        // Cleanup stale entries and ensure schedule exists for active pads
+        for (int i = pads.Count - 1; i >= 0; i--)
+        {
+            var pad = pads[i];
+            if (!pad) continue;
+
+            if (pad.IsActivePad)
+            {
+                if (!_autoDisableAt.ContainsKey(pad))
+                    _autoDisableAt[pad] = now + RandomActiveLifetime();
+
+                // Time to auto-disable this pad (bypass interaction cooldown)
+                if (_autoDisableAt.TryGetValue(pad, out float when) && now >= when)
+                {
+                    // Force disable without cooldown; will immediately return to Idle and notify manager
+                    pad.ForceRevertToDullNoCooldown();
+                    _autoDisableAt.Remove(pad);
+                }
+            }
+            else
+            {
+                // Not active -> no pending auto-disable time
+                _autoDisableAt.Remove(pad);
+            }
+        }
+    }
+
+    private void KickBackEligibleIdlePads()
+    {
+        float now = Time.time;
+        foreach (var p in pads)
+        {
+            if (!p) continue;
+            if (!p.IsIdle) continue;
+            if (p.NextEnableTime <= now)
+                p.ScheduleNextEnable(RandomEnableDelay()); // delay again since slots full
+        }
+    }
+
+    private float RandomEnableDelay()
+    {
+        float min = Mathf.Max(0.01f, minEnableDelay);
+        float max = Mathf.Max(min, maxEnableDelay);
+        return Random.Range(min, max);
+    }
+
+    private float RandomActiveLifetime()
+    {
+        float min = Mathf.Max(0.01f, minActiveLifetimeSeconds);
+        float max = Mathf.Max(min, maxActiveLifetimeSeconds);
+        return Random.Range(min, max);
+    }
+
+    /// <summary>
+    /// Called by DullPad when flip starts. Reserves an activation slot immediately.
+    /// Also schedules random auto-disable if enabled.
+    /// </summary>
+    public void ReserveActivation(DullPad pad)
+    {
+        if (!pad) return;
+        if (_reservedPads.Contains(pad)) return;
+        _reservedPads.Add(pad);
+        _activeCount++;
+
+        if (enableRandomAutoDisable)
+            _autoDisableAt[pad] = Time.time + RandomActiveLifetime();
+        else
+            _autoDisableAt.Remove(pad);
+    }
+
+    /// <summary>
+    /// Called when pad effect ends and reverts to dull (either via interaction cooldown or forced auto-disable).
+    /// </summary>
+    public void OnPadDeactivated(DullPad pad)
+    {
+        if (!pad) return;
+        _autoDisableAt.Remove(pad);
+
+        if (_reservedPads.Remove(pad))
+            _activeCount = Mathf.Max(0, _activeCount - 1);
+
+        pad.ScheduleNextEnable(RandomEnableDelay());
+    }
+
+    // External API (optional)
+    public void SetMaxActive(int max) => maxActivePads = Mathf.Max(1, max);
+    public void SetEnableWindow(float minDelay, float maxDelay)
+    {
+        minEnableDelay = Mathf.Max(0.01f, minDelay);
+        maxEnableDelay = Mathf.Max(minEnableDelay, maxDelay);
+    }
+    public void SetInteractionCooldown(float seconds)
+    {
+        interactionDisabledCooldownSeconds = Mathf.Max(0f, seconds);
+        foreach (var p in pads)
+            if (p) p.SetInteractionCooldown(interactionDisabledCooldownSeconds);
+    }
+
+#if UNITY_EDITOR
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = new Color(0.2f, 0.9f, 0.4f, 0.35f);
+        foreach (var p in pads)
+        {
+            if (!p) continue;
+            Gizmos.DrawWireSphere(p.transform.position + Vector3.up * 0.1f, 0.4f);
+        }
+    }
+#endif
+}
+```
+
 ## Assets/Scripts/EndGame.cs
 
 ```csharp
@@ -5758,42 +7824,98 @@ using UnityEngine;
 
 public class EndGame : MonoBehaviour
 {
+    [SerializeField, Min(0.05f)] private float scanInterval = 0.20f; // "every couple of ticks"
+    [SerializeField, Min(0f)] private float boundsPadding = 0.02f;   // small pad for overlap box
+    private float _scanTimer;
 
+    private Pinball pm;
+    private Collider _col;
+    private BoxCollider _box;
 
-    Pinball pm;
-
-    // Start is called before the first frame update
     void Start()
     {
         pm = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        _col = GetComponent<Collider>();
+        _box = _col as BoxCollider;
+
+        if (_col == null)
+            Debug.LogWarning("[EndGame] No Collider found; overlap scan disabled.");
+        else if (_box == null)
+            Debug.LogWarning("[EndGame] Overlap scan requires BoxCollider. Will rely on collision/trigger only.");
     }
 
-    // Update is called once per frame
     void Update()
     {
-        
+        // periodic overlap scan to catch missed entries
+        _scanTimer += Time.unscaledDeltaTime;
+        if (_scanTimer >= scanInterval)
+        {
+            _scanTimer = 0f;
+            ScanForOverlappingBalls();
+        }
     }
-
 
     void OnCollisionEnter(Collision col)
     {
         var ball = col.gameObject.GetComponent<Ball>();
+        var rb = col.gameObject.GetComponent<Rigidbody>();
+        TryDrain(ball, rb);
+    }
 
+    void OnCollisionStay(Collision col)
+    {
+        var ball = col.gameObject.GetComponent<Ball>();
+        var rb = col.gameObject.GetComponent<Rigidbody>();
+        TryDrain(ball, rb);
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        var ball = other.GetComponent<Ball>() ?? other.GetComponentInParent<Ball>();
+        var rb = ball ? ball.GetComponent<Rigidbody>() : null;
+        TryDrain(ball, rb);
+    }
+
+    private void ScanForOverlappingBalls()
+    {
+        if (_box == null) return; // only safe/oriented with BoxCollider
+
+        // Build oriented box in world space from the BoxCollider (not from bounds!)
+        Vector3 centerWS = _box.transform.TransformPoint(_box.center);
+        Vector3 halfExtentsWS = Vector3.Scale(_box.size * 0.5f, _box.transform.lossyScale) + Vector3.one * boundsPadding;
+        Quaternion rotWS = _box.transform.rotation;
+
+        var hits = Physics.OverlapBox(centerWS, halfExtentsWS, rotWS, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var h = hits[i];
+            if (!h) continue;
+            if (h.transform == transform || h.transform.IsChildOf(transform)) continue; // skip self
+
+            var ball = h.GetComponent<Ball>() ?? h.GetComponentInParent<Ball>();
+            if (ball == null) continue;
+
+            var rb = ball.GetComponent<Rigidbody>();
+            TryDrain(ball, rb);
+        }
+    }
+
+    private void TryDrain(Ball ball, Rigidbody rb)
+    {
+        if (pm == null || ball == null) return;
+
+        // only drain during active play, matching original behavior
         if (pm.CurrentState == PinballState.Play && ball.IsActive)
         {
             pm.DisableBall(ball);
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
         }
-
-        Rigidbody rb = col.gameObject.GetComponent<Rigidbody>();
-
-        rb.velocity = Vector3.zero;
-
-
-
     }
-
 }
-
 ```
 
 ## Assets/Scripts/GameManager.cs
@@ -6183,6 +8305,573 @@ public class GameManager : MonoBehaviour
 
 ```
 
+## Assets/Scripts/GreenPad.cs
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class GreenPad : MonoBehaviour, IPadVariant
+{
+    [Header("Aim Settings")]
+    public float slowMoScale = 0.15f;
+    public float aimWindow = 0.85f;
+    public float minLaunchSpeed = 15f;
+    public float maxLaunchSpeed = 30f;
+    public float magnetPull = 0f;
+    public Transform focusPoint;
+
+    [Header("Camera Zoom (Optional)")]
+    public bool applyCameraZoom = false;
+    public float zoomDistance = 8f;
+    public float zoomHeight = 6f;
+    public float zoomRecoverDelay = 0.25f;
+    public float restoreDistance = 12f;
+    public float restoreHeight = 10f;
+
+    [Header("Next-Hit Buff")]
+    public float nextHitDamageFactor = 2f;
+    public int nextHitBounces = 1;
+
+    private DullPad _host;
+    private Collider _col;
+
+    public void BindHost(DullPad host) => _host = host;
+
+    void Awake()
+    {
+        _col = GetComponent<Collider>();
+        if (_col) _col.isTrigger = true;
+    }
+
+    private void Reset()
+    {
+        if (!focusPoint) focusPoint = transform;
+        var col = GetComponent<Collider>();
+        if (col) col.isTrigger = true;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        var ball = other.attachedRigidbody ? other.attachedRigidbody.GetComponent<Ball>() : null;
+        if (!ball) return;
+        if (!_col) return;
+
+        _host?.NotifyActivity();
+
+        var rb = ball.GetComponent<Rigidbody>();
+        if (rb)
+        {
+            Vector3 toward = ((focusPoint ? focusPoint.position : transform.position) - rb.position);
+            toward.y = 0f;
+            rb.AddForce(toward.normalized * magnetPull, ForceMode.VelocityChange);
+        }
+
+        var pm = Pinball.Instance ?? GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
+        if (!pm) return;
+
+        pm.EnterGreenPadAim(ball, focusPoint ? focusPoint : transform,
+            slowMoScale, aimWindow, minLaunchSpeed, maxLaunchSpeed,
+            nextHitDamageFactor, nextHitBounces);
+
+        if (applyCameraZoom)
+        {
+            var camFollow = Camera.main ? Camera.main.GetComponent<CameraFollowSimple>() : null;
+            if (camFollow)
+            {
+                camFollow.ZoomTo(zoomDistance, zoomHeight);
+                camFollow.StabilizeNow();
+                StartCoroutine(RestoreCameraZoomAfter(camFollow, aimWindow + zoomRecoverDelay));
+            }
+        }
+
+        // Disable during aim window
+        if (_col) _col.enabled = false;
+
+        StartCoroutine(RevertAfterAimWindow());
+    }
+
+    private IEnumerator RestoreCameraZoomAfter(CameraFollowSimple cam, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (cam) cam.ZoomTo(restoreDistance, restoreHeight);
+    }
+
+    private IEnumerator RevertAfterAimWindow()
+    {
+        yield return new WaitForSeconds(aimWindow + 0.05f);
+
+        // FIX: Re-enable collider BEFORE revert so base dull collider remains usable.
+        if (_col && !_col.enabled) _col.enabled = true;
+
+        if (_host != null)
+            _host.RevertToDull();
+    }
+
+    void OnDisable()
+    {
+        // FIX: Safety if disabled mid-window.
+        if (_col && !_col.enabled) _col.enabled = true;
+    }
+}
+```
+
+## Assets/Scripts/GrenadeController.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class GrenadeController : MonoBehaviour
+{
+    [Header("Bindings")]
+    [SerializeField] private Ball ball;
+    [SerializeField] private Rigidbody ballRb;
+
+    [Header("Config")]
+    [SerializeField] private float cooldown = 10f;
+    [SerializeField] private float fuseSeconds = 2f;
+    [SerializeField] private float radius = 6f;
+    [SerializeField, Range(0.01f, 1f)] private float maxPctAtCenter = 0.80f;
+    [SerializeField, Range(0.01f, 1f)] private float minPctAtEdge = 0.60f;
+    [SerializeField, Range(0f, 1f)] private float inheritVelFactor = 0.75f;
+    [SerializeField] private float upArcMin = 2.5f;
+    [SerializeField] private float upArcMax = 8.0f;
+    [SerializeField, Range(0f, 1f)] private float linearDrag = 0.28f;
+    [SerializeField, Range(0f, 1f)] private float angularDrag = 0.15f;
+    [SerializeField, Range(0f, 1f)] private float bounciness = 0.35f;
+    [SerializeField] private float customGravityY = -14f;
+
+    private float _cooldownRemain;
+    private Pinball _pm;
+    private PinballUIM _ui;
+
+    public void Bind(Ball b,
+        float cd, float fuse, float rad, float maxPct, float minPct,
+        float inheritFactor, float arcMin, float arcMax,
+        float linDrag, float angDrag, float bounce, float gravityY)
+    {
+        ball = b;
+        ballRb = b ? b.GetComponent<Rigidbody>() : null;
+        _pm = Pinball.Instance;
+        _ui = FindFirstObjectByType<PinballUIM>();
+
+        cooldown = Mathf.Max(0.05f, cd);
+        fuseSeconds = Mathf.Max(0.05f, fuse);
+        radius = Mathf.Max(0.05f, rad);
+        maxPctAtCenter = Mathf.Clamp01(maxPct);
+        minPctAtEdge = Mathf.Clamp01(minPct);
+        inheritVelFactor = Mathf.Clamp01(inheritFactor);
+        upArcMin = Mathf.Max(0f, arcMin);
+        upArcMax = Mathf.Max(arcMin, arcMax);
+        linearDrag = Mathf.Clamp01(linDrag);
+        angularDrag = Mathf.Clamp01(angDrag);
+        bounciness = Mathf.Clamp01(bounce);
+        customGravityY = gravityY;
+
+        if (_ui && ball) _ui.RegisterGrenadeIcon(ball);
+        SetUiReady(true);
+    }
+
+    public void ForceCooldown(float seconds)
+    {
+        _cooldownRemain = Mathf.Max(_cooldownRemain, seconds);
+        SetUiReady(false);
+        SetUiCooldown(1f);
+    }
+
+    void OnDisable()
+    {
+        if (_ui && ball) _ui.UnregisterGrenadeIcon(ball);
+    }
+
+    void Update()
+    {
+        if (!_pm || !ball || !ball.isActiveAndEnabled || !ball.IsActive) return;
+
+        if (_cooldownRemain > 0f)
+        {
+            _cooldownRemain -= Time.deltaTime;
+            if (_cooldownRemain <= 0f)
+            {
+                _cooldownRemain = 0f;
+                SetUiReady(true);
+            }
+            else
+            {
+                float norm = Mathf.Clamp01(_cooldownRemain / cooldown);
+                SetUiCooldown(norm);
+            }
+        }
+
+        if (_pm.CurrentState != PinballState.Play) return;
+
+        if (Input.GetKeyDown(KeyCode.Space) && _cooldownRemain <= 0f)
+            DropGrenade();
+    }
+
+    private void DropGrenade()
+    {
+        if (!ball || !ballRb) return;
+
+        var go = new GameObject("GrenadeProjectile");
+        go.layer = LayerMask.NameToLayer("Projectile");
+        go.transform.position = ball.transform.position + new Vector3(0f, 0.2f, 0f);
+        var proj = go.AddComponent<GrenadeProjectile>();
+        proj.Init(new GrenadeProjectile.Params
+        {
+            fuseSeconds = fuseSeconds,
+            radius = radius,
+            maxPctAtCenter = maxPctAtCenter,
+            minPctAtEdge = minPctAtEdge,
+            inheritVelocityFactor = inheritVelFactor,
+            upArcMin = upArcMin,
+            upArcMax = upArcMax,
+            linearDrag = linearDrag,
+            angularDrag = angularDrag,
+            bounciness = bounciness,
+            customGravityY = customGravityY,
+            ownerBall = ball
+        });
+
+        _cooldownRemain = cooldown;
+        SetUiReady(false);
+        SetUiCooldown(1f);
+    }
+
+    private void SetUiReady(bool ready)
+    {
+        if (_ui && ball) _ui.SetBallGrenadeReady(ball, ready);
+    }
+
+    private void SetUiCooldown(float normalizedRemaining)
+    {
+        if (_ui && ball) _ui.SetBallGrenadeCooldown(ball, normalizedRemaining);
+    }
+}
+```
+
+## Assets/Scripts/GrenadeProjectile.cs
+
+```csharp
+using System.Collections;
+using DG.Tweening;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+[DisallowMultipleComponent]
+public sealed class GrenadeProjectile : MonoBehaviour
+{
+    public struct Params
+    {
+        public float fuseSeconds;
+        public float radius;
+        public float maxPctAtCenter;
+        public float minPctAtEdge;
+        public float inheritVelocityFactor;
+        public float upArcMin;
+        public float upArcMax;
+        public float linearDrag;
+        public float angularDrag;
+        public float bounciness;
+        public float customGravityY;
+        public Ball ownerBall;
+    }
+
+    private Params P;
+    private Rigidbody rb;
+    private float bornAt;
+    private bool exploded;
+
+    // Cached runtime material (for color / emission)
+    private Material _mat;
+
+    public void Init(Params p)
+    {
+        P = p;
+
+        // Visual sphere (bigger & matches ball glow color)
+        var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        sphere.name = "GrenadeMesh";
+        sphere.transform.SetParent(transform, false);
+        sphere.transform.localScale = Vector3.one * 0.6f; // was 0.25f (larger now)
+        var col = sphere.GetComponent<Collider>(); if (col) Destroy(col);
+
+        var rend = sphere.GetComponent<MeshRenderer>();
+        if (rend)
+        {
+            _mat = new Material(Shader.Find("Standard"));
+            Color glowBase = (P.ownerBall && P.ownerBall.isActiveAndEnabled)
+                ? P.ownerBall.GlowColor
+                : new Color(1f, 0.35f, 0.15f);
+
+            float emissiveIntensity = (P.ownerBall && P.ownerBall.isActiveAndEnabled)
+                ? Mathf.Clamp(P.ownerBall.EmissionIntensityUI * 1.2f, 0.2f, 5f)
+                : 1.5f;
+
+            ConfigureStandardFade(_mat, new Color(glowBase.r, glowBase.g, glowBase.b, 0.85f));
+            if (_mat.HasProperty("_EmissionColor"))
+            {
+                _mat.EnableKeyword("_EMISSION");
+                _mat.SetColor("_EmissionColor", glowBase * Mathf.LinearToGammaSpace(emissiveIntensity));
+            }
+            rend.sharedMaterial = _mat;
+        }
+
+        var rootCol = gameObject.AddComponent<SphereCollider>();
+        rootCol.radius = 0.3f;
+        rootCol.material = new PhysicMaterial("GrenadePhysMat")
+        {
+            bounciness = Mathf.Clamp01(P.bounciness),
+            bounceCombine = PhysicMaterialCombine.Maximum,
+            frictionCombine = PhysicMaterialCombine.Average,
+            dynamicFriction = 0.4f,
+            staticFriction = 0.5f
+        };
+
+        rb = gameObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.drag = Mathf.Clamp01(P.linearDrag);
+        rb.angularDrag = Mathf.Clamp01(P.angularDrag);
+
+        Vector3 inherit = Vector3.zero;
+        if (P.ownerBall && P.ownerBall.isActiveAndEnabled)
+        {
+            var brb = P.ownerBall.GetComponent<Rigidbody>();
+            if (brb) inherit = brb.velocity * Mathf.Clamp01(P.inheritVelocityFactor);
+        }
+
+        var planar = new Vector3(inherit.x, 0f, inherit.z);
+        float speed = planar.magnitude;
+        float refSpeed = P.ownerBall ? Mathf.Max(0.01f, P.ownerBall.maxSpeed) : 50f;
+        float t = Mathf.InverseLerp(0f, refSpeed, speed);
+        float up = Mathf.Lerp(P.upArcMin, P.upArcMax, t);
+        rb.velocity = new Vector3(inherit.x, up, inherit.z);
+
+        bornAt = Time.time;
+        StartCoroutine(FuseCoroutine());
+    }
+
+    void FixedUpdate()
+    {
+        if (!rb) return;
+        rb.AddForce(new Vector3(0f, P.customGravityY, 0f), ForceMode.Acceleration);
+    }
+
+    private IEnumerator FuseCoroutine()
+    {
+        float end = Time.time + Mathf.Max(0.05f, P.fuseSeconds);
+        while (Time.time < end) yield return null;
+        if (!exploded) Explode();
+    }
+
+    private void Explode()
+    {
+        exploded = true;
+
+        float currentDamage = (P.ownerBall && P.ownerBall.isActiveAndEnabled) ? P.ownerBall.CurrentDamage : 0f;
+        float currentFactor = (P.ownerBall && P.ownerBall.isActiveAndEnabled) ? P.ownerBall.ScoreXpDamageFactor : 1f;
+
+        var pm = Pinball.Instance;
+        if (pm)
+        {
+            pm.ScreenShakeGrenade();
+            pm.PostFX?.BloomPulse(0.5f, 0.05f, 0.30f); // NEW bloom pulse
+            pm.PostFX?.ChromaticPulse(0.30f, 0.05f, 0.22f);
+        }
+
+        SpawnRingVfx();
+        SpawnExplosionLight(); // NEW yellow light flash
+
+        var hits = Physics.OverlapSphere(transform.position, P.radius, ~0, QueryTriggerInteraction.Collide);
+        if (hits != null && hits.Length > 0)
+        {
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var bumper = hits[i].GetComponent<Bumper>() ?? hits[i].GetComponentInParent<Bumper>();
+                if (!bumper || !bumper.gameObject.activeInHierarchy || bumper.IsDead) continue;
+
+                float d = Vector3.Distance(transform.position, bumper.transform.position);
+                float nt = Mathf.Clamp01(d / Mathf.Max(0.0001f, P.radius));
+                float pct = Mathf.Lerp(P.maxPctAtCenter, P.minPctAtEdge, nt);
+
+                // CHANGED: 3x ball damage baseline, then apply falloff
+                float dmg = (currentDamage * 3f) * pct;
+
+                float xpFactor = currentFactor * 0.8f;
+
+                bumper.TakeDamage(dmg, elemDmg: false, damageFactor: xpFactor);
+
+                if (pm)
+                {
+                    int baseScore = bumper.type == BumperType.Small ? 50 : 100;
+                    int scaled = Mathf.RoundToInt(baseScore * 0.8f);
+                    pm.AddScore(Mathf.Max(1, scaled), 0, 0, xpFactor);
+                }
+            }
+        }
+
+        Destroy(gameObject);
+    }
+
+    private void SpawnRingVfx()
+    {
+        var ring = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ring.name = "GrenadeRingVFX";
+        ring.transform.position = transform.position;
+        var col = ring.GetComponent<Collider>(); if (col) col.isTrigger = true;
+
+        var rend = ring.GetComponent<MeshRenderer>();
+        if (rend)
+        {
+            var mat = new Material(Shader.Find("Standard"));
+            ConfigureStandardFade(mat, new Color(1f, 0.85f, 0.2f, 0.75f));
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", new Color(1f, 0.85f, 0.2f) * Mathf.LinearToGammaSpace(2f));
+            }
+            rend.sharedMaterial = mat;
+        }
+
+        ring.transform.localScale = Vector3.one * 0.4f;
+        var seq = DOTween.Sequence().SetUpdate(true);
+        seq.Join(ring.transform.DOScale(Vector3.one * (P.radius * 2f), 0.25f).SetEase(Ease.OutQuad));
+        if (rend) seq.Join(rend.material.DOFade(0f, 0.25f));
+        seq.OnComplete(() => Destroy(ring));
+    }
+
+    // NEW: temporary yellow light flash
+    private void SpawnExplosionLight()
+    {
+        var lightGO = new GameObject("GrenadeExplosionLight");
+        lightGO.transform.position = transform.position + Vector3.up * 0.25f;
+        var l = lightGO.AddComponent<Light>();
+        l.color = new Color(1f, 0.9f, 0.3f);
+        l.intensity = 0f;
+        l.range = P.radius * 2.2f;
+        l.shadows = LightShadows.None;
+
+        DOTween.Sequence().SetUpdate(true)
+            .Append(DOTween.To(() => l.intensity, v => l.intensity = v, 9f, 0.10f).SetEase(Ease.OutQuad))
+            .Append(DOTween.To(() => l.intensity, v => l.intensity = v, 0f, 0.30f).SetEase(Ease.InQuad))
+            .OnComplete(() => Destroy(lightGO));
+    }
+
+    private static void ConfigureStandardFade(Material m, Color c)
+    {
+        if (!m) return;
+        m.SetFloat("_Mode", 2f);
+        m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+        m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+        m.SetInt("_ZWrite", 0);
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.EnableKeyword("_ALPHABLEND_ON");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.renderQueue = 3000;
+        m.SetColor("_Color", c);
+    }
+}
+```
+
+## Assets/Scripts/GrenadeRewardRuntime.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class GrenadeRewardRuntime : MonoBehaviour
+{
+    [Header("Defaults")]
+    public float DefaultCooldown = 10f;
+    public float DefaultFuseSeconds = 2f;
+    public float DefaultRadius = 6f;
+    [Range(0.01f, 1f)] public float DefaultMaxPctAtCenter = 0.80f;
+    [Range(0.01f, 1f)] public float DefaultMinPctAtEdge = 0.60f;
+
+    [Header("Motion/Physics")]
+    [Range(0f, 1f)] public float InheritVelocityFactor = 0.75f;
+    [Range(0f, 1f)] public float LinearDrag = 0.28f;
+    [Range(0f, 1f)] public float AngularDrag = 0.15f;
+    [Range(0f, 1f)] public float Bounciness = 0.35f;
+    [Min(0f)] public float UpArcMin = 2.5f;
+    [Min(0f)] public float UpArcMax = 8.0f;
+    public float CustomGravityY = -14f;
+
+    private readonly Dictionary<Ball, GrenadeController> _controllers = new();
+
+    void OnEnable()
+    {
+        Ball.OnBallActivated += HandleBallActivated;
+        Ball.OnBallDeactivated += HandleBallDeactivated;
+        RebindAll();
+    }
+
+    void OnDisable()
+    {
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+        DestroyAllControllers();
+    }
+
+    public void RebindAll()
+    {
+        DestroyAllControllers();
+        var balls = FindObjectsByType<Ball>(FindObjectsSortMode.None);
+        for (int i = 0; i < balls.Length; i++)
+        {
+            var b = balls[i];
+            if (b && b.isActiveAndEnabled && b.IsActive)
+                AttachTo(b);
+        }
+    }
+
+    public void ForceGlobalCooldown(float seconds)
+    {
+        foreach (var kv in _controllers)
+            if (kv.Value) kv.Value.ForceCooldown(seconds);
+    }
+
+    private void HandleBallActivated(Ball b) => AttachTo(b);
+
+    private void HandleBallDeactivated(Ball b)
+    {
+        if (!b) return;
+        if (_controllers.TryGetValue(b, out var ctrl))
+        {
+            if (ctrl) Destroy(ctrl.gameObject);
+            _controllers.Remove(b);
+        }
+    }
+
+    private void AttachTo(Ball ball)
+    {
+        if (!ball || _controllers.ContainsKey(ball)) return;
+
+        var go = new GameObject("GrenadeController (Ball)");
+        go.transform.SetParent(ball.transform, false);
+        var ctrl = go.AddComponent<GrenadeController>();
+        ctrl.Bind(ball,
+            DefaultCooldown, DefaultFuseSeconds, DefaultRadius,
+            DefaultMaxPctAtCenter, DefaultMinPctAtEdge,
+            InheritVelocityFactor, UpArcMin, UpArcMax,
+            LinearDrag, AngularDrag, Bounciness, CustomGravityY);
+
+        _controllers[ball] = ctrl;
+    }
+
+    private void DestroyAllControllers()
+    {
+        foreach (var kv in _controllers)
+            if (kv.Value) Destroy(kv.Value.gameObject);
+        _controllers.Clear();
+    }
+}
+```
+
 ## Assets/Scripts/IDamageNumberSystem.cs
 
 ```csharp
@@ -6294,6 +8983,31 @@ public class Item
         c.RemoveAllModifiersFromSource(this);
     }
 
+}
+
+```
+
+## Assets/Scripts/IXPNumberSystem.cs
+
+```csharp
+using UnityEngine;
+
+public interface IXPNumberSystem
+{
+    void Spawn(int amount, Vector3 position, Color? overrideColor = null);
+    void SpawnFollow(int amount, Transform follow, Vector3 localOffset, Color? overrideColor = null); // NEW
+}
+
+public static class XPNumbers
+{
+    public static IXPNumberSystem System { get; set; }
+    public static bool IsReady => System != null;
+    public static void Register(IXPNumberSystem system) => System = system;
+    public static void Spawn(int amount, Vector3 position, Color? overrideColor = null)
+        => System?.Spawn(amount, position, overrideColor);
+    // NEW: follow a Transform (e.g., ball)
+    public static void Spawn(int amount, Transform follow, Vector3 localOffset, Color? overrideColor = null)
+        => System?.SpawnFollow(amount, follow, localOffset, overrideColor);
 }
 
 ```
@@ -6486,6 +9200,16 @@ public class EarthPaddleRewardSO : RewardSO
         isPaddleReward = true;
     }
 
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if(!base.IsEligible(ctx))
+            return false;
+
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+        return true;
+    }
+
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
         paddle.ApplyEarth(fissureDamage, crustedDuration, fissureHitScoreMultiplier, fissureHitXPMultiplier, bounceDuration, cursed);
@@ -6520,7 +9244,16 @@ public class ElectricPaddleRewardSO : RewardSO
 
 
     }
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if (!base.IsEligible(ctx))
+            return false;
 
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+
+        return true;
+    }
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
         Debug.Log("nice!");
@@ -6562,7 +9295,15 @@ public class FirePaddleRewardSO : RewardSO
 
 
     }
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if (!base.IsEligible(ctx))
+            return false;
 
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+        return true;
+    }
     public override void ApplyToPaddle(PaddleElementalState paddle)
     {
         Debug.Log("nice!");
@@ -6572,6 +9313,66 @@ public class FirePaddleRewardSO : RewardSO
 
 }
 
+```
+
+## Assets/Scripts/Level Up Rewards/GrenadeAbilityRewardSO.cs
+
+```csharp
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Grenade Ability")]
+public sealed class GrenadeAbilityRewardSO : RewardSO
+{
+    [Header("Defaults (tunable)")]
+    [SerializeField, Min(0.1f)] private float cooldownSeconds = 10f;
+    [SerializeField, Min(0.05f)] private float fuseSeconds = 2f;
+    [SerializeField, Min(0.1f)] private float radius = 6f;
+    [SerializeField, Range(0.01f, 1f)] private float maxPctAtCenter = 0.80f;
+    [SerializeField, Range(0.01f, 1f)] private float minPctAtEdge = 0.60f;
+    [SerializeField, Range(0.1f, 1f)] private float inheritVelFactor = 0.75f;
+    [SerializeField, Range(0f, 1f)] private float velocityDrag = 0.28f;
+    [SerializeField, Range(0f, 1f)] private float angularDrag = 0.15f;
+    [SerializeField, Range(0f, 1f)] private float bounciness = 0.35f;
+    [SerializeField, Min(0f)] private float upArcMin = 2.5f;
+    [SerializeField, Min(0f)] private float upArcMax = 8.0f;
+
+    [Header("Custom Gravity")]
+    [SerializeField] private float customGravityY = -14f; // stronger downward accel (affects grenade only)
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, true);
+
+        var pm = Pinball.Instance;
+        if (!pm) return;
+
+        var go = new GameObject("GrenadeRewardRuntime");
+        go.transform.SetParent(pm.transform, false);
+        var rt = go.AddComponent<GrenadeRewardRuntime>();
+        rt.DefaultCooldown = Mathf.Max(0.1f, cooldownSeconds);
+        rt.DefaultFuseSeconds = Mathf.Max(0.05f, fuseSeconds);
+        rt.DefaultRadius = Mathf.Max(0.05f, radius);
+        rt.DefaultMaxPctAtCenter = Mathf.Clamp01(maxPctAtCenter);
+        rt.DefaultMinPctAtEdge = Mathf.Clamp01(minPctAtEdge);
+        rt.InheritVelocityFactor = Mathf.Clamp01(inheritVelFactor);
+        rt.LinearDrag = Mathf.Clamp01(velocityDrag);
+        rt.AngularDrag = Mathf.Clamp01(angularDrag);
+        rt.Bounciness = Mathf.Clamp01(bounciness);
+        rt.UpArcMin = Mathf.Max(0f, upArcMin);
+        rt.UpArcMax = Mathf.Max(upArcMin, upArcMax);
+        rt.CustomGravityY = customGravityY;
+
+        rt.RebindAll();
+    }
+
+    public override bool IsEligible(IRunContext ctx)
+    {
+        if (!base.IsEligible(ctx)) return false;
+        return true;
+    }
+}
 ```
 
 ## Assets/Scripts/Level Up Rewards/LifeRewardSO.cs
@@ -6625,6 +9426,71 @@ public sealed class LifeRewardSO : RewardSO
     }
 }
 
+```
+
+## Assets/Scripts/Level Up Rewards/PortalWarpRewardSO.cs
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Rewards/Portal Warp")]
+public class PortalWarpRewardSO : RewardSO
+{
+    [Header("Portal Prefab")]
+    [Tooltip("Cube-like visual. Untilted, no rotation at runtime.")]
+    [SerializeField] private GameObject portalVisualPrefab;
+
+    [Header("Raycast Layers")]
+    [SerializeField] private LayerMask leftPlaneLayer;
+    [SerializeField] private LayerMask rightPlaneLayer;
+    [SerializeField] private LayerMask topPlaneLayer;
+
+    [Header("Distances")]
+    [SerializeField, Min(0.1f)] private float maxActiveDistance = 12f;
+    [SerializeField, Min(0.01f)] private float triggerDistance = 1.25f;
+    [SerializeField, Min(0.01f)] private float insideMargin = 0.35f;
+
+    [Header("Impulse")]
+    [SerializeField, Min(1f)] private float lateralImpulse = 28f;
+    [SerializeField, Min(1f)] private float topImpulse = 30f;
+
+    [Header("Cooldown (seconds)")]
+    [SerializeField, Min(0.1f)] private float cooldownSeconds = 20f;
+
+    public override void Apply(IRunContext ctx)
+    {
+        ctx.MarkOwned(Id);
+        ctx.SetActive(Id, true);
+        ctx.SetAvailable(Id, false);
+        ctx.SetExclusive(ExclusivityKey, true);
+
+        var pm = Pinball.Instance;
+
+        var go = new GameObject("PortalWarpRuntime");
+        go.transform.SetParent(pm.transform, false);
+        var runtime = go.AddComponent<PortalWarpRewardRuntime>();
+
+        runtime.PortalVisualPrefab = portalVisualPrefab;
+        runtime.LeftPlaneLayer = leftPlaneLayer;
+        runtime.RightPlaneLayer = rightPlaneLayer;
+        runtime.TopPlaneLayer = topPlaneLayer;
+
+        runtime.MaxActiveDistance = maxActiveDistance;
+        runtime.TriggerDistance = triggerDistance;
+        runtime.InsideMargin = insideMargin;
+
+        runtime.LateralImpulse = lateralImpulse;
+        runtime.TopImpulse = topImpulse;
+        runtime.postFX = pm.PostFX;
+
+        runtime.CooldownSeconds = cooldownSeconds;
+
+        // NEW: fix race with OnEnable by rebuilding controllers after config is set
+        runtime.RebindAll();
+    }
+}
 ```
 
 ## Assets/Scripts/Level Up Rewards/ScoreMultiplierRewardSO.cs
@@ -6687,9 +9553,14 @@ public class WaterPaddleRewardSO : RewardSO
 
     }
 
-    public override void IsEligible(IRunContext ctx)
+    public override bool IsEligible(IRunContext ctx)
     {
-        base.IsEligible(ctx);
+        if (!base.IsEligible(ctx))
+            return false;
+
+        if (ctx is Pinball pb && pb.AreBothPaddlesElemental())
+            return false;
+        return true;
     }
 
     public override void ApplyToPaddle(PaddleElementalState paddle)
@@ -7213,6 +10084,40 @@ public enum PaddleState
 }
 ```
 
+## Assets/Scripts/PadLightFX.cs
+
+```csharp
+using UnityEngine;
+using DG.Tweening;
+
+/// <summary>
+/// Optional light pulse helper for pads (can be removed if unused).
+/// </summary>
+[DisallowMultipleComponent]
+public class PadLightFX : MonoBehaviour
+{
+    public Light targetLight;
+    public float pulsePeak = 4f;
+    public float upTime = 0.15f;
+    public float downTime = 0.35f;
+
+    void Reset()
+    {
+        targetLight = GetComponentInChildren<Light>();
+    }
+
+    public void Pulse()
+    {
+        if (!targetLight) return;
+        DOTween.Kill(targetLight);
+        var seq = DOTween.Sequence()
+            .Append(DOTween.To(() => targetLight.intensity, v => targetLight.intensity = v, pulsePeak, upTime).SetEase(Ease.OutQuad))
+            .Append(DOTween.To(() => targetLight.intensity, v => targetLight.intensity = v, 1f, downTime).SetEase(Ease.InQuad));
+        seq.SetTarget(targetLight);
+    }
+}
+```
+
 ## Assets/Scripts/Pinball.cs
 
 ```csharp
@@ -7221,6 +10126,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
 
@@ -7228,29 +10134,27 @@ using UnityEngine.SceneManagement;
 public enum PinballState
 {
     None,
-    Charging,   // player holds to charge the initial launch
-    Push,       // short pre-launch "push" window inside the tube
-    Play,       // normal play
-    LevelUp,    // reward selection
+    Charging,
+    Push,
+    Play,
+    LevelUp,
     PaddleSelect,
-    ResetBall,  // lose a ball, respawn or end
+    SkillAim,
+    ResetBall,
     GameOver
 }
 
-/// Central runtime manager for the pinball minigame.
-/// Responsibilities:
-/// - State machine (charging/push/play/level-up/respawn)
-/// - Player input for paddles and launch
-/// - Lives/score/xp and reward application
-/// - Ball registry and duplication
-/// - Camera shake and basic FX
 [DisallowMultipleComponent]
 public class Pinball : MonoBehaviour, IRunContext
 {
     public static Pinball Instance { get; private set; }
 
-    #region Reward/RunContext state (ownership, activation, exclusivity)
+    [Header("XP Forcefield")]
+    [SerializeField, Tooltip("Global base scale applied to each ball's XP forcefield baseline.")]
+    private float xpBaseRadiusScale = 1f;
+    public float XPBaseRadiusScale => xpBaseRadiusScale;
 
+    #region Reward / RunContext
     private readonly HashSet<string> owned = new();
     private readonly HashSet<string> active = new();
     private readonly HashSet<string> available = new();
@@ -7285,7 +10189,6 @@ public class Pinball : MonoBehaviour, IRunContext
     #endregion
 
     #region Serialized configuration
-
     [Header("Input")]
     [SerializeField] private KeyCode chargeKey = KeyCode.Space;
     [SerializeField] private KeyCode leftPaddleKey = KeyCode.A;
@@ -7295,9 +10198,60 @@ public class Pinball : MonoBehaviour, IRunContext
     [Min(0)] public float curXP = 0;
     [Min(1)] public float maxXP;
     public int level { get; private set; } = 1;
+    private float lastBaseXPMultApplied = 1f;
+    private float lastBaseScoreMultApplied = 1f;
+
+    private Tween _timeScaleTween, _fovTween;
+
+    [Header("Debug / Portal Reset")]
+    [SerializeField, Min(0f)] private float portalResetDebugCooldown = 0.75f;
+
+    [Header("Skill Aim (Green Pad)")]
+    [SerializeField] private LineRenderer aimLine;
+    [SerializeField] private float camAimFov = 38f;
+    [SerializeField] private float camFovTween = 0.12f;
+    [SerializeField] private CameraFollowSimple camFollow;
+    private readonly object _skillAimSlowmoToken = new object();
+
+    private Ball _aimBall;
+    private Transform _aimFocus;
+    private float _aimWindowDur;
+    private float _aimTimeLeft;
+    private float _aimMinSpeed, _aimMaxSpeed;
+    private float _preAimFov;
+    private float _preAimTimeScale = 1f;
+    private float _targetSlowMo = 0.15f;
+    private float _nextHitFactor = 2f;
+    private int _nextHitBounces = 1;
+
+    private const float SkillAimUncapDuration = .5f;
+    private const float SkillAimUncapMaxSpeed = 100f;
+
+    [SerializeField] private float aimFollowDistance = 8f;
+    [SerializeField] private float aimFollowTween = 0.12f;
+    [SerializeField] private float aimLineMaxLen = 0.5f;
+
+    private Vector3 _lastAimDir = Vector3.forward;
+    private Transform _camDefaultTarget;
+    private float _camDefaultFollowDist;
+    private float _camDefaultHeight;
+    private float _camDefaultFov;
+    private Vector3 _camDefaultCamPos;
+    private Quaternion _camDefaultCamRot;
+    private Vector3 _preAimCamPos;
+    private Quaternion _preAimCamRot;
+    private Tween _camDistTween, _camPosTween, _camRotTween;
+    private Transform _preAimCamTarget;
+    private float _preAimFollowDist;
+    private Transform _aimCamTarget;
+
+    [Header("Skill Aim PostFX")]
+    [SerializeField] private PostFXController postFX;
+    public PostFXController PostFX => postFX;
+    [SerializeField, Range(0f, 1f)] private float vignetteMax = 0.55f;
 
     [Header("References")]
-    [SerializeField] public Ball ball;           // primary ball anchor (kept alive across respawns)
+    [SerializeField] public Ball ball;
     [SerializeField] private PinballUIM ui;
     [SerializeField] private GameObject ballClonePrefab;
     [SerializeField] private GameObject invisWalls;
@@ -7305,13 +10259,9 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private PinballFlipper rightPaddle;
 
     [Header("Charge/Push Tuning")]
-    [Tooltip("Max seconds of charge time for initial launch")]
     [SerializeField, Min(0.05f)] private float chargeMaxCharging = 1.5f;
-    [Tooltip("Max seconds for secondary push window while in the tube")]
     [SerializeField, Min(0.05f)] private float chargeMaxPush = 1.0f;
-    [Tooltip("Minimum fraction (0..1) of charge required to commit a launch")]
     [SerializeField, Range(0f, 1f)] private float minChargeToLaunch = 0.10f;
-    [Tooltip("Threshold fraction (0..1) to transition into Push window after launch")]
     [SerializeField, Range(0f, 1f)] private float chargeToEnterPush = 0.65f;
 
     [Header("Balls / Lives")]
@@ -7346,25 +10296,36 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private float explosionRadius = 3f;
 
     [Header("Global Physics")]
-    [Tooltip("If true, sets global Physics.gravity to a pinball-friendly value on Awake.")]
     [SerializeField] private bool overrideGlobalGravity = true;
-    [Tooltip("Gravity used if 'overrideGlobalGravity' is enabled.")]
     [SerializeField] private Vector3 gravityOverride = new Vector3(0f, 0f, -19.62f);
-
     #endregion
 
     #region Runtime state
-
     private PinballState currentState;
     public PinballState CurrentState => currentState;
 
-    // Charge state (transient)
     private bool isHoldingCharge;
     private float chargeTimer;
-    public float chargePercentage { get; private set; } // exposed for UI meter
-    private float chargeMax; // per-state (Charging/Push)
+    public float chargePercentage { get; private set; }
+    private float chargeMax;
 
-    // Score/XP & flow
+    private readonly Queue<SkillAimRequest> _aimQueue = new();
+    private struct SkillAimRequest
+    {
+        public Ball ball;
+        public Transform focus;
+        public float slowMo;
+        public float windowUnscaled;
+        public float minSpeed;
+        public float maxSpeed;
+        public float nextHitFactor;
+        public int nextHitBounces;
+        public SkillAimRequest(Ball b, Transform f, float s, float w, float minV, float maxV, float nf, int nb)
+        {
+            ball = b; focus = f; slowMo = s; windowUnscaled = w; minSpeed = minV; maxSpeed = maxV; nextHitFactor = nf; nextHitBounces = nb;
+        }
+    }
+
     private int score;
     private int mult;
     private float scoreMultiplier = 1f;
@@ -7379,41 +10340,36 @@ public class Pinball : MonoBehaviour, IRunContext
     public float XPMultiplier => xpMultiplier;
     public bool IsXPMultiplierActive => xpMultiplier > 1f;
     public float XPBonusTimeRemaining => xpBonusTimer;
+    private float finalXPCalculated;
 
-    // Paddles elemental window
+    public float FinalXPCalculated => finalXPCalculated;
+
     private bool canHitL, canHitR, hasBeenHitL, hasBeenHitR;
 
-    // Ball tracking
     private readonly List<Ball> liveBalls = new();
     private int _primaryBallId;
     public int ballCount { get; private set; }
     private int lives;
 
-    // "No ball" debounce in Play
     [SerializeField, Min(0f)] private float noBallResetGrace = 0.20f;
     private float _noBallTimer;
 
-    // Respawn positioning
     private Vector3 _ballStartPos;
     private Quaternion _ballStartRot;
-
-    // Camera shake reset
-    private Vector3 _camDefaultLocalPos;
-    private Quaternion _camDefaultLocalRot;
-
-    // Reward/Level-up
     private int pendingLevelUps = 0;
     private RewardSO pendingPaddleReward;
     private readonly List<RewardSO> rewardPool = new();
 
-    // Misc gameplay
     public bool destroyedBumperBonusActive;
     private float destroyedBumperScoreMult = 2f;
     private int xpCount = 3;
     private bool wallTimerStart;
     private float wallTimer;
+    private float _defaultFixedDeltaTime;
+    public float DefaultFixedDeltaTime => _defaultFixedDeltaTime;
 
-    // Extra “bonus hits” (from rewards)
+    private float _lastTimeScaleCheck;
+
     private int bumperBouncesS;
     private int bumperBouncesG;
     private bool extraHitsS;
@@ -7423,26 +10379,26 @@ public class Pinball : MonoBehaviour, IRunContext
     private int bouncesForBonusS;
     private int bouncesForBonusG;
 
-    // Constants used by some rewards as magic values
     private const float X2_MULT_MAGIC = 100f;
     private const float X4_MULT_MAGIC = 200f;
 
     public float Damage = 5f;
+    #endregion
 
+    #region Helper (rounding)
+    private static float Round2(float v) => Mathf.Round(v * 100f) / 100f;
     #endregion
 
     #region Unity lifecycle
-
     private void Awake()
     {
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-
+        _defaultFixedDeltaTime = Time.fixedDeltaTime;
+        TimeScaleHub.EnsureInitialized(_defaultFixedDeltaTime);
         if (overrideGlobalGravity)
             Physics.gravity = gravityOverride;
-
         DOTween.SetTweensCapacity(500, 50);
-
         if (ball != null)
         {
             RegisterBall(ball);
@@ -7450,22 +10406,31 @@ public class Pinball : MonoBehaviour, IRunContext
             _ballStartRot = ball.transform.rotation;
             _primaryBallId = ball.GetInstanceID();
         }
-
         maxXP = XPFormula.XpReq(level);
         maxLives = Mathf.Max(1, maxLives);
         startingLives = Mathf.Clamp(startingLives, 0, maxLives);
         lives = startingLives;
+        lastBaseXPMultApplied = baseXPMult;
+        lastBaseScoreMultApplied = baseScoreMult;
 
-        if (mainCam != null)
+        xpBaseRadiusScale = Mathf.Max(0.0001f, xpBaseRadiusScale);
+
+        if (camFollow)
         {
-            _camDefaultLocalPos = mainCam.transform.localPosition;
-            _camDefaultLocalRot = mainCam.transform.localRotation;
+            _camDefaultTarget = camFollow.Target;
+            _camDefaultFollowDist = camFollow.FollowDistance;
+            _camDefaultHeight = camFollow.Height;
+        }
+        if (mainCam)
+        {
+            _camDefaultFov = mainCam.fieldOfView;
+            _camDefaultCamPos = mainCam.transform.position;
+            _camDefaultCamRot = mainCam.transform.rotation;
         }
     }
 
     private async void Start()
     {
-        // Load all reward assets (label: "Rewards")
         var loader = Addressables.LoadAssetsAsync<RewardSO>("Rewards", rewardPool.Add);
         await loader.Task;
 
@@ -7484,7 +10449,9 @@ public class Pinball : MonoBehaviour, IRunContext
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        ResetCameraShakeState();
+        RestoreFromSkillAim(false);
+        Time.timeScale = 1f;
+        Time.fixedDeltaTime = _defaultFixedDeltaTime;
     }
 
     private void OnValidate()
@@ -7500,7 +10467,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
     private void Update()
     {
-        // Global tick
         HandlePendingLevelUps();
         HandlePaddles();
         ClampBaseMultipliers();
@@ -7508,7 +10474,6 @@ public class Pinball : MonoBehaviour, IRunContext
         HandleGameOverRestart();
         UpdateMultipliersTimers();
 
-        // State ticks
         switch (currentState)
         {
             case PinballState.Play:
@@ -7520,13 +10485,35 @@ public class Pinball : MonoBehaviour, IRunContext
                 break;
         }
 
-        TickChargeTimer();
-    }
+        if (CurrentState == PinballState.SkillAim)
+        {
+            UpdateSkillAim();
+            return;
+        }
 
+        if (Input.GetKeyDown("p"))
+            AddXP(50f);
+
+        TickChargeTimer();
+
+        if (Time.timeScale < 0.99f &&
+            (currentState == PinballState.Play || currentState == PinballState.Charging || currentState == PinballState.Push) &&
+            !TimeScaleHub.IsAnyActive &&
+            currentState != PinballState.SkillAim &&
+            currentState != PinballState.LevelUp &&
+            currentState != PinballState.PaddleSelect)
+        {
+            if (Time.unscaledTime - _lastTimeScaleCheck > 0.25f)
+            {
+                _lastTimeScaleCheck = Time.unscaledTime;
+                NormalizeTimeScaleIfNeeded();
+            }
+        }
+        EnsureNormalTimescaleIfNotAiming();
+    }
     #endregion
 
     #region State machine
-
     public void ChangeState(PinballState newState)
     {
         if (currentState == newState) return;
@@ -7541,41 +10528,47 @@ public class Pinball : MonoBehaviour, IRunContext
         {
             case PinballState.Charging:
                 ResetChargeState(max: chargeMaxCharging);
+                NormalizeTimeScaleIfNeeded();
                 break;
-
             case PinballState.Push:
                 ResetChargeState(max: chargeMaxPush);
+                NormalizeTimeScaleIfNeeded();
                 break;
-
             case PinballState.Play:
                 ui?.DefaultUI();
                 chargePercentage = 0;
                 chargeTimer = 0;
                 Time.timeScale = 1f;
+                Time.fixedDeltaTime = _defaultFixedDeltaTime;
                 wallTimerStart = true;
                 break;
-
             case PinballState.LevelUp:
+                CancelAllPortalSlowmo();
+                TimeScaleHub.BeginPause(this);
                 LevelUp();
                 var choices = GetRewardChoices();
                 ui?.ShowRewardPopup(choices);
                 Time.timeScale = 0f;
+                Time.fixedDeltaTime = _defaultFixedDeltaTime;
                 break;
-
             case PinballState.PaddleSelect:
+                CancelAllPortalSlowmo();
+                TimeScaleHub.BeginPause(this);
                 ui?.PaddleSelect();
                 Time.timeScale = 0f;
+                Time.fixedDeltaTime = _defaultFixedDeltaTime;
                 break;
-
+            case PinballState.SkillAim:
+                break;
             case PinballState.ResetBall:
                 lives = Mathf.Max(0, lives - 1);
                 OnLivesChanged();
                 ResetBallAndFlow();
                 break;
-
             case PinballState.GameOver:
                 leftPaddle = null;
                 rightPaddle = null;
+                NormalizeTimeScaleIfNeeded();
                 break;
         }
     }
@@ -7586,7 +10579,12 @@ public class Pinball : MonoBehaviour, IRunContext
         {
             case PinballState.LevelUp:
             case PinballState.PaddleSelect:
-                Time.timeScale = 1f;
+                TimeScaleHub.EndPause(this);
+                NormalizeTimeScaleIfNeeded();
+                break;
+            case PinballState.SkillAim:
+                RestoreFromSkillAim();
+                NormalizeTimeScaleIfNeeded();
                 break;
         }
     }
@@ -7598,20 +10596,16 @@ public class Pinball : MonoBehaviour, IRunContext
         chargeTimer = 0f;
         chargeMax = Mathf.Max(0.05f, max);
     }
-
     #endregion
 
     #region UI & Lives
-
     private void OnLivesChanged()
     {
         ui?.UpdateLives(lives, maxLives);
     }
-
     #endregion
 
-    #region Input/state helpers
-
+    #region Input / helpers
     private void HandlePendingLevelUps()
     {
         while (curXP >= maxXP)
@@ -7667,14 +10661,38 @@ public class Pinball : MonoBehaviour, IRunContext
 
     private void ClampBaseMultipliers()
     {
-        if (xpMultiplier < baseXPMult) xpMultiplier = baseXPMult;
-        if (scoreMultiplier < baseScoreMult) scoreMultiplier = baseScoreMult;
+        if (!Mathf.Approximately(baseXPMult, lastBaseXPMultApplied))
+        {
+            float gap = xpMultiplier - lastBaseXPMultApplied;
+            xpMultiplier = Mathf.Max(baseXPMult, baseXPMult + gap);
+            lastBaseXPMultApplied = baseXPMult;
+        }
+        else if (xpMultiplier < baseXPMult)
+        {
+            xpMultiplier = baseXPMult;
+        }
+
+        if (!Mathf.Approximately(baseScoreMult, lastBaseScoreMultApplied))
+        {
+            float gapS = scoreMultiplier - lastBaseScoreMultApplied;
+            scoreMultiplier = Mathf.Max(baseScoreMult, baseScoreMult + gapS);
+            lastBaseScoreMultApplied = baseScoreMult;
+        }
+        else if (scoreMultiplier < baseScoreMult)
+        {
+            scoreMultiplier = baseScoreMult;
+        }
+
+        // Round floors and active multipliers (global rounding control)
+        baseXPMult = Round2(baseXPMult);
+        baseScoreMult = Round2(baseScoreMult);
+        xpMultiplier = Round2(xpMultiplier);
+        scoreMultiplier = Round2(scoreMultiplier);
     }
 
     private void MaybeEnableInvisibleWalls()
     {
         if (!wallTimerStart) return;
-
         wallTimer += Time.deltaTime;
         if (wallTimer >= 0.2f)
             EnableInvisibleWalls();
@@ -7688,33 +10706,21 @@ public class Pinball : MonoBehaviour, IRunContext
 
     private void UpdateMultipliersTimers()
     {
-        // Score mult
         if (IsScoreMultiplierActive && scoreBonusTimer > 0f)
         {
             scoreBonusTimer -= Time.unscaledDeltaTime;
             if (scoreBonusTimer <= 0f)
-            {
                 scoreBonusTimer = 0f;
-                scoreMultiplier = baseScoreMult;
-            }
         }
 
-        // XP mult
         if (IsXPMultiplierActive && xpBonusTimer > 0f)
         {
             xpBonusTimer -= Time.unscaledDeltaTime;
             if (xpBonusTimer <= 0f)
-            {
                 xpBonusTimer = 0f;
-                xpMultiplier = baseXPMult;
-            }
         }
     }
 
-    /// Charging/Push mechanic:
-    /// - Player holds to charge in Charging/Push states.
-    /// - On release, if charge is above threshold, launch/push the ball.
-    /// - Push is valid only while the ball is still in the launch tube.
     private void HandleChargingAndPush()
     {
         if (Input.GetKey(chargeKey))
@@ -7722,7 +10728,6 @@ public class Pinball : MonoBehaviour, IRunContext
 
         chargePercentage = Mathf.Min(1f, chargeMax > 0f ? (chargeTimer / chargeMax) : 0f);
 
-        // On release, attempt to launch/push
         if (Input.GetKeyUp(chargeKey))
         {
             isHoldingCharge = false;
@@ -7732,7 +10737,6 @@ public class Pinball : MonoBehaviour, IRunContext
                 if (currentState == PinballState.Charging)
                 {
                     ball?.Launch(chargePercentage);
-
                     if (chargePercentage > chargeToEnterPush)
                         ChangeState(PinballState.Push);
                 }
@@ -7747,7 +10751,6 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
-        // If we’re in Push but ball has left the tube and is turning back, reset to Charging
         if (currentState == PinballState.Push && (ball == null || (!ball.IsInLaunchTube && ball.GetComponent<Rigidbody>()?.velocity.z < 0f)))
         {
             ChangeState(PinballState.Charging);
@@ -7768,7 +10771,6 @@ public class Pinball : MonoBehaviour, IRunContext
         }
     }
 
-    /// Debounced "no-ball" detector while in Play.
     private void HandlePlayStateDrain()
     {
         bool any = HasAnyUsableBalls() || IsBallUsable(ball);
@@ -7793,11 +10795,9 @@ public class Pinball : MonoBehaviour, IRunContext
         go.SetActive(false);
         ballCount--;
     }
-
     #endregion
 
     #region Ball registry
-
     public void RegisterBall(Ball b)
     {
         if (b != null && !liveBalls.Contains(b))
@@ -7887,7 +10887,7 @@ public class Pinball : MonoBehaviour, IRunContext
         var t = target.transform;
         var rb = target.GetComponent<Rigidbody>();
 
-        DOTween.Kill(t, complete: false);
+        DOTween.Kill(t, false);
 
         if (rb != null)
         {
@@ -7905,11 +10905,9 @@ public class Pinball : MonoBehaviour, IRunContext
         }
         target.ResetRb();
     }
-
     #endregion
 
     #region Walls
-
     public void EnableInvisibleWalls()
     {
         if (invisWalls) invisWalls.SetActive(true);
@@ -7921,11 +10919,9 @@ public class Pinball : MonoBehaviour, IRunContext
         wallTimer = 0f;
         wallTimerStart = false;
     }
-
     #endregion
 
     #region Ball duplication
-
     public void DupeBall()
     {
         if (!TryGetAnchorBall(out var anchor))
@@ -7939,29 +10935,38 @@ public class Pinball : MonoBehaviour, IRunContext
         var dupedBall = dupedBallGO.GetComponent<Ball>();
         if (dupedBall != null)
         {
-            dupedBall.BaseDamage = anchor.BaseDamage;
-            dupedBall.maxSpeed = anchor.maxSpeed;
-            dupedBall.transform.localScale = anchor.transform.localScale;
-
             var anchorCol = anchor.GetComponent<Collider>();
             var dupedCol = dupedBall.GetComponent<Collider>();
             if (anchorCol != null && dupedCol != null && anchorCol.material != null)
                 dupedCol.material = Instantiate(anchorCol.material);
 
+            dupedBall.CopyFrom(anchor);
             dupedBall.ResetRb();
-
             dupedBall.RandomizeGlowColor();
         }
         ballCount++;
     }
 
+    private void MergeAnchorFromActiveClone()
+    {
+        if (ball == null) return;
+        foreach (var b in GetUsableBalls())
+        {
+            if (b != null && b != ball)
+            {
+                ball.CopyFrom(b);
+                break;
+            }
+        }
+    }
     #endregion
 
-    #region Score/XP
-
-    public void AddScore(int gameScore, int bumpCount, int bumpCountConsec, float damageFactor)
+    #region Score / XP
+    public void AddScore(int gameScore, int bumpCount, int bumpCountConsec, float damageFactor, int ScoreMultPortal = 1)
     {
-        int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier * Mathf.Max(1f, damageFactor));
+        // Multipliers already rounded to 2 decimals; final points consistent.
+        int finalPoints = Mathf.RoundToInt(gameScore * scoreMultiplier);
+        finalPoints = Mathf.RoundToInt(finalPoints * ScoreMultPortal);
 
         if (extraHitsS)
         {
@@ -7997,7 +11002,6 @@ public class Pinball : MonoBehaviour, IRunContext
     private bool HasAnyUsableBalls()
     {
         foreach (var _ in GetUsableBalls()) return true;
-
         if (IsBallUsable(ball))
         {
             if (!liveBalls.Contains(ball))
@@ -8007,18 +11011,13 @@ public class Pinball : MonoBehaviour, IRunContext
         return false;
     }
 
-    /// Core respawn flow:
-    /// - Keep progression/rewards intact; only reset the ball stack.
-    /// - Remove clones, re-seat main ball to launcher, go to Charging or GameOver.
     private void ResetBallAndFlow()
     {
         EnsurePrimaryBallRef();
         _noBallTimer = 0f;
-
+        MergeAnchorFromActiveClone();
         DisableInvisibleWalls();
-        ResetCameraShakeState();
 
-        // Remove clones, keep main ball
         for (int i = liveBalls.Count - 1; i >= 0; i--)
         {
             var b = liveBalls[i];
@@ -8030,10 +11029,8 @@ public class Pinball : MonoBehaviour, IRunContext
             }
         }
 
-        // Restore main ball
         if (ball != null)
         {
-            // IsActive will be updated by OnEnable when we activate the GO
             ball.gameObject.SetActive(true);
             var rb = ball.GetComponent<Rigidbody>();
             if (rb != null)
@@ -8045,7 +11042,14 @@ public class Pinball : MonoBehaviour, IRunContext
             if (!liveBalls.Contains(ball)) RegisterBall(ball);
         }
 
-        // Reset charge flow values
+        if (portalResetDebugCooldown > 0f)
+        {
+            var portalRuntime = FindFirstObjectByType<PortalWarpRewardRuntime>();
+            portalRuntime?.ForceGlobalCooldown(portalResetDebugCooldown);
+            var grenadeRuntime = FindFirstObjectByType<GrenadeRewardRuntime>();
+            grenadeRuntime?.ForceGlobalCooldown(portalResetDebugCooldown);
+        }
+
         isHoldingCharge = false;
         chargeTimer = 0f;
         chargePercentage = 0f;
@@ -8057,51 +11061,57 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void AddXP(float xp)
     {
-        float finalXP = xp * xpMultiplier;
-        curXP += finalXP;
+        finalXPCalculated = xp * xpMultiplier;
+        curXP += finalXPCalculated;
         ballXPScript?.UpdateXP(Mathf.RoundToInt(curXP), Mathf.RoundToInt(maxXP), level);
     }
 
-    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage, float damageFactor)
+    public void SpawnXP(Vector3 pos, bool isDead, bool isTakingElemDamage, float damageFactor, int mult = 1)
     {
         if (!xpFXPrefab) return;
 
         int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
-
+        finalXP *= Mathf.Max(1, mult);
 
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
 
-        if (isDead) xpFX.Emit(finalXP * 2);
-        else if (isTakingElemDamage) xpFX.Emit(Mathf.RoundToInt(finalXP / 3f));
-        else xpFX.Emit(finalXP);
+        int emitted;
+        if (isDead) emitted = finalXP * 2;
+        else if (isTakingElemDamage) emitted = Mathf.RoundToInt(finalXP / 3f);
+        else emitted = finalXP;
+
+        xpFX.Emit(emitted);
     }
 
-    public void SpawnBonusWaterXP(Vector3 pos, float waterBonusXP, float damageFactor)
+    public void SpawnBonusWaterXP(Vector3 pos, float waterBonusXP, float damageFactor, int mult = 1)
     {
         if (!xpFXPrefab) return;
 
-        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
-
+        int baseXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
+        baseXP *= Mathf.Max(1, mult);
 
         float bonus = Mathf.Max(0f, waterBonusXP) / 100f;
+        int emitted = Mathf.RoundToInt(baseXP * (1f + bonus));
+
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(Mathf.RoundToInt(finalXP * (1f + bonus)));
+        xpFX.Emit(emitted);
     }
 
-    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP, float damageFactor)
+    public void SpawnBonusEarthXP(Vector3 pos, float earthBonusXP, float damageFactor, int mult = 1)
     {
         if (!xpFXPrefab) return;
 
-
-        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
-
+        int baseXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
+        baseXP *= Mathf.Max(1, mult);
 
         float bonus = Mathf.Max(0f, earthBonusXP) / 100f;
+        int emitted = Mathf.RoundToInt(baseXP * (1f + bonus));
+
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
         var xpFX = Instantiate(xpFXPrefab, position, xpFXPrefab.transform.rotation);
-        xpFX.Emit(Mathf.RoundToInt(finalXP * (1f + bonus)));
+        xpFX.Emit(emitted);
     }
 
     private void StartNextLevelUp()
@@ -8118,6 +11128,21 @@ public class Pinball : MonoBehaviour, IRunContext
         ApplyLevelBonuses();
     }
 
+    private void ShowNextLevelUpOrResume()
+    {
+        if (pendingLevelUps > 0)
+        {
+            LevelUp();
+            var choices = GetRewardChoices();
+            ui?.ShowRewardPopup(choices);
+            Time.timeScale = 0f;
+        }
+        else
+        {
+            ChangeState(PinballState.Play);
+        }
+    }
+
     public void ApplyLevelBonuses()
     {
         if (level % 5 == 0)
@@ -8130,11 +11155,254 @@ public class Pinball : MonoBehaviour, IRunContext
             baseScoreMult += 0.15f;
             baseXPMult += 0.15f;
         }
+        baseScoreMult = Round2(baseScoreMult);
+        baseXPMult = Round2(baseXPMult);
+        lastBaseScoreMultApplied = baseScoreMult;
+        lastBaseXPMultApplied = baseXPMult;
+        // Keep active multipliers >= floors and rounded
+        scoreMultiplier = Round2(Mathf.Max(scoreMultiplier, baseScoreMult));
+        xpMultiplier = Round2(Mathf.Max(xpMultiplier, baseXPMult));
     }
-
     #endregion
 
-    #region Paddle single-shot elemental hit window
+    #region Green Pad Skill Aim
+    public void EnterGreenPadAim(Ball ball, Transform focus, float slowMo, float windowUnscaled, float minSpeed, float maxSpeed, float nextHitFactor, int nextHitBounces)
+    {
+        var req = new SkillAimRequest(
+            ball,
+            focus,
+            Mathf.Clamp(slowMo, 0.05f, 0.5f),
+            Mathf.Max(0.15f, windowUnscaled),
+            Mathf.Max(1f, minSpeed),
+            Mathf.Max(Mathf.Max(1f, minSpeed), maxSpeed),
+            Mathf.Max(1f, nextHitFactor),
+            Mathf.Max(1, nextHitBounces)
+        );
+
+        if (CurrentState == PinballState.SkillAim || _aimQueue.Count > 0)
+        {
+            if (_aimBall == ball) return;
+            if (_aimQueue.Any(r => r.ball == ball)) return;
+            _aimQueue.Enqueue(req);
+            return;
+        }
+
+        StartSkillAim(req);
+    }
+
+    private void StartSkillAim(SkillAimRequest req)
+    {
+        if (!req.ball) return;
+
+        // NEW: cancel any portal slow-mo so Skill Aim owns time scale cleanly
+        CancelAllPortalSlowmo();
+
+        // (existing)
+        HardResetCameraToDefaults(true);
+        currentState = PinballState.SkillAim;
+
+        _aimBall = req.ball;
+        _aimFocus = req.focus;
+        _aimWindowDur = req.windowUnscaled;
+        _aimTimeLeft = _aimWindowDur;
+        _aimMinSpeed = req.minSpeed;
+        _aimMaxSpeed = req.maxSpeed;
+        _targetSlowMo = req.slowMo;
+        _nextHitFactor = req.nextHitFactor;
+        _nextHitBounces = req.nextHitBounces;
+        _lastAimDir = _aimBall ? _aimBall.transform.forward : Vector3.forward;
+
+        // NEW: keep portals on cooldown for the duration of the aim window (prevents edge cases)
+        var portalRuntime = FindFirstObjectByType<PortalWarpRewardRuntime>();
+        if (portalRuntime)
+            portalRuntime.ForceGlobalCooldown(_aimWindowDur + 0.10f);
+
+        if (!mainCam) mainCam = Camera.main;
+
+        _camDistTween?.Kill(false);
+        _camPosTween?.Kill(false);
+        _camRotTween?.Kill(false);
+
+        _preAimCamPos = mainCam ? mainCam.transform.position : _preAimCamPos;
+        _preAimCamRot = mainCam ? mainCam.transform.rotation : _preAimCamRot;
+
+        TimeScaleHub.Begin(_skillAimSlowmoToken, _targetSlowMo, true);
+
+        if (mainCam)
+        {
+            _fovTween?.Kill(false);
+            _preAimFov = mainCam.fieldOfView;
+            _fovTween = DOTween.To(() => mainCam.fieldOfView, v => mainCam.fieldOfView = v, camAimFov, camFovTween).SetUpdate(true);
+        }
+
+        if (camFollow && _aimBall)
+        {
+            _preAimCamTarget = camFollow.Target;
+            _preAimFollowDist = camFollow.FollowDistance;
+
+            if (_aimCamTarget == null) _aimCamTarget = new GameObject("AimCamTarget").transform;
+            _aimCamTarget.SetParent(_aimBall.transform, false);
+            _aimCamTarget.localPosition = new Vector3(0f, 0.4f, 0f);
+            _aimCamTarget.localRotation = Quaternion.identity;
+
+            camFollow.Target = _aimCamTarget;
+            camFollow.SnapToTarget();
+            _camDistTween = DOTween
+                .To(() => camFollow.FollowDistance, v => camFollow.FollowDistance = v, aimFollowDistance, aimFollowTween)
+                .SetUpdate(true);
+        }
+
+        if (postFX)
+        {
+            postFX.VignetteMax = vignetteMax;
+            postFX.SetVignette(0f);
+            postFX.FadeVignette(0.25f, 0.08f);
+        }
+
+        var rb = _aimBall.GetComponent<Rigidbody>();
+        if (rb) rb.velocity *= .5f;
+
+        if (aimLine)
+        {
+            aimLine.enabled = true;
+            aimLine.positionCount = 2;
+            var p = _aimBall.transform.position;
+            aimLine.SetPosition(0, p);
+            aimLine.SetPosition(1, p);
+        }
+    }
+
+    private void UpdateSkillAim()
+    {
+        if (CurrentState != PinballState.SkillAim || _aimBall == null) return;
+
+        _aimTimeLeft -= Time.unscaledDeltaTime;
+        var rb = _aimBall.GetComponent<Rigidbody>();
+        Vector3 ballPos = _aimBall.transform.position;
+
+        Vector3 aimDir = Vector3.zero;
+
+        if (mainCam)
+        {
+            Ray ray = mainCam.ScreenPointToRay(Input.mousePosition);
+            var plane = new Plane(Vector3.up, new Vector3(0, ballPos.y, 0));
+            if (plane.Raycast(ray, out float dist))
+            {
+                Vector3 hit = ray.GetPoint(dist);
+                Vector3 delta = (hit - ballPos);
+                delta.y = 0f;
+                if (delta.sqrMagnitude > 0.0001f) aimDir = delta.normalized;
+            }
+        }
+
+        Vector3 dir = (aimDir.sqrMagnitude > 1e-4f ? aimDir : _lastAimDir).normalized;
+        _lastAimDir = dir;
+
+        float x = Input.GetAxisRaw("Horizontal");
+        float z = Input.GetAxisRaw("Vertical");
+        Vector3 stick = new Vector3(x, 0f, z);
+        if (stick.sqrMagnitude > 0.0001f) aimDir = stick.normalized;
+
+        bool charging = Input.GetMouseButton(0) || Input.GetKey(KeyCode.JoystickButton0);
+        float held = Mathf.Clamp01(1f - (_aimTimeLeft / Mathf.Max(0.0001f, _aimWindowDur)));
+        float power = charging ? held : held * 0.75f;
+
+        if (postFX)
+        {
+            float frac = 1f - Mathf.Clamp01(_aimTimeLeft / Mathf.Max(0.0001f, _aimWindowDur));
+            postFX.SetVignette(Mathf.SmoothStep(0f, 1f, frac));
+        }
+
+        float projectedSpeed = Mathf.Lerp(_aimMinSpeed, _aimMaxSpeed, power);
+        float desiredLen = projectedSpeed * 0.05f * Mathf.Clamp01(power);
+        float length = Mathf.Min(aimLineMaxLen, desiredLen);
+        length = Mathf.Max(length, 0.05f * aimLineMaxLen);
+
+        Vector3 origin = ballPos;
+        Vector3 tip = origin + dir * length;
+
+        if (aimLine)
+        {
+            aimLine.positionCount = 2;
+            aimLine.SetPosition(0, origin);
+            aimLine.SetPosition(1, tip);
+        }
+
+        bool release = Input.GetMouseButtonUp(0) || Input.GetKeyUp(KeyCode.JoystickButton0);
+        bool timedOut = _aimTimeLeft <= 0f;
+
+        if (release || timedOut)
+        {
+            if (aimDir.sqrMagnitude < 0.001f)
+                aimDir = (_aimFocus ? (_aimBall.transform.position - _aimFocus.position) : _aimBall.transform.forward);
+            aimDir.y = 0f;
+            if (aimDir.sqrMagnitude < 0.001f) aimDir = Vector3.forward;
+            aimDir.Normalize();
+
+            float speed = Mathf.Lerp(_aimMinSpeed, _aimMaxSpeed, power);
+            _aimBall.AddTempDamageForBounce(_nextHitFactor, _nextHitBounces);
+
+            if (rb)
+            {
+                rb.velocity = Vector3.zero;
+                rb.AddForce(aimDir * speed, ForceMode.VelocityChange);
+            }
+
+            if (postFX) postFX.ChromaticPulse(0.25f, 0.06f, 0.14f);
+            ScreenShake();
+
+            if (_aimBall)
+                _aimBall.TemporarilyUncapMaxSpeed(SkillAimUncapDuration, SkillAimUncapMaxSpeed, true);
+
+            ExitGreenPadAim();
+        }
+    }
+
+    private void ExitGreenPadAim()
+    {
+        RestoreFromSkillAim();
+
+        while (_aimQueue.Count > 0)
+        {
+            var next = _aimQueue.Dequeue();
+            if (next.ball && next.ball.isActiveAndEnabled && next.ball.IsActive)
+            {
+                StartSkillAim(next);
+                return;
+            }
+        }
+
+        currentState = PinballState.Play;
+    }
+
+    private void RestoreFromSkillAim(bool tweenCamFollowDist = true)
+    {
+        TimeScaleHub.End(_skillAimSlowmoToken);
+        HardResetCameraToDefaults(true);
+
+        if (aimLine)
+        {
+            aimLine.enabled = false;
+            aimLine.positionCount = 0;
+        }
+
+        _aimBall = null;
+        _aimFocus = null;
+        _aimTimeLeft = 0f;
+        Time.fixedDeltaTime = _defaultFixedDeltaTime;
+    }
+    #endregion
+
+    #region Paddle elemental windows
+    public bool AreBothPaddlesElemental()
+    {
+        var leftElem = leftPaddle ? leftPaddle.GetComponent<PaddleElementalState>() : null;
+        var rightElem = rightPaddle ? rightPaddle.GetComponent<PaddleElementalState>() : null;
+
+        bool leftHas = leftElem != null && leftElem.CurrentState != PaddleState.None;
+        bool rightHas = rightElem != null && rightElem.CurrentState != PaddleState.None;
+        return leftHas && rightHas;
+    }
 
     private void HitCheck(KeyCode paddle)
     {
@@ -8151,44 +11419,27 @@ public class Pinball : MonoBehaviour, IRunContext
 
     private IEnumerator ResetLBumper(float cd) { yield return new WaitForSeconds(cd); hasBeenHitL = false; }
     private IEnumerator ResetRBumper(float cd) { yield return new WaitForSeconds(cd); hasBeenHitR = false; }
-
     #endregion
 
     #region Camera shake
-
-    public void ResetCameraShakeState()
-    {
-        if (mainCam == null) return;
-        var t = mainCam.transform;
-        t.DOKill(false);
-        t.localPosition = _camDefaultLocalPos;
-        t.localRotation = _camDefaultLocalRot;
-    }
-
     public void ScreenShake()
     {
-        if (!mainCam) return;
-
-        ResetCameraShakeState();
-
-        mainCam.transform
-            .DOShakePosition(
-                shakeDuration,
-                shakeStrength,
-                shakeVibrato,
-                shakeRandomness,
-                snapping: false,
-                fadeOut: true
-            )
-            .SetEase(Ease.OutQuad)
-            .SetUpdate(false);
+        if (mainCam == null) return;
+        if (camFollow != null)
+            camFollow.StartShake(shakeDuration, shakeStrength, shakeVibrato, shakeRandomness);
     }
 
-    #endregion
+        public void ScreenShakeGrenade()
+    {
+        if (mainCam == null || camFollow == null) return;
+        // Roughly 1.6x strength/duration, tighter vibrato
+        camFollow.StartShake(shakeDuration* 1.6f, shakeStrength* 1.75f, Mathf.Max(8, shakeVibrato - 2), shakeRandomness);
+    }
 
-    #region Bumper respawn/explosion
+#endregion
 
-    public IEnumerator RespawnRoutine(Bumper bumper)
+#region Bumper respawn
+public IEnumerator RespawnRoutine(Bumper bumper)
     {
         if (!bumper || !ball) yield break;
 
@@ -8208,26 +11459,28 @@ public class Pinball : MonoBehaviour, IRunContext
 
         yield return new WaitForSeconds(bumper.cooldown);
 
-        bumper.curHealth = bumper.maxHealth;
+        bumper.Revive();
         bumper.gameObject.SetActive(true);
         if (col) col.enabled = true;
         if (mr) mr.enabled = true;
     }
-
     #endregion
 
-    #region Reward application (IRunContext impl)
-
+    #region Reward application (IRunContext)
     public void ApplyXPMultiplier(float multiplier, bool cursed)
     {
-        float Multiplier = multiplier * .01f;
         if (cursed)
         {
             xpCount += 1;
             if (xpBonusTimer > 5) xpBonusTimer = 5;
-            xpMultiplier *= 2;
+            xpMultiplier *= 2f;
         }
-        else xpMultiplier += Multiplier;
+        else
+        {
+            float pct = multiplier >= 1f ? multiplier * 0.01f : multiplier;
+            xpMultiplier *= (1f + pct);
+        }
+        xpMultiplier = Round2(xpMultiplier);
     }
 
     public void ApplyXPBonusTime(float time, bool cursed)
@@ -8243,9 +11496,20 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyScoreMultiplier(float multiplier, bool cursed)
     {
-        if (Mathf.Approximately(multiplier, X2_MULT_MAGIC)) scoreMultiplier *= 2f;
-        else if (cursed) scoreMultiplier *= 4f;
-        else scoreMultiplier += multiplier;
+        if (Mathf.Approximately(multiplier, X2_MULT_MAGIC))
+        {
+            scoreMultiplier *= 2f;
+        }
+        else if (cursed)
+        {
+            scoreMultiplier *= 4f;
+        }
+        else
+        {
+            float pct = multiplier >= 1f ? multiplier * 0.01f : multiplier;
+            scoreMultiplier *= (1f + pct);
+        }
+        scoreMultiplier = Round2(scoreMultiplier);
     }
 
     public void ApplyScoreBonusTime(float time, bool cursed)
@@ -8262,7 +11526,12 @@ public class Pinball : MonoBehaviour, IRunContext
         float Mult = (100f + scoreMult) / 100f;
         float Bounciness = ((100f * bounciness) / 10000f);
 
-        if (scoreMult != 0) baseScoreMult *= Mult;
+        if (scoreMult != 0)
+        {
+            baseScoreMult *= Mult;
+            baseScoreMult = Round2(baseScoreMult);
+            scoreMultiplier = Round2(scoreMultiplier);
+        }
 
         if (bonus)
         {
@@ -8286,7 +11555,12 @@ public class Pinball : MonoBehaviour, IRunContext
         float Mult = (100f + xpMult) / 100f;
         float Bounciness = ((100f * bounciness) / 10000f);
 
-        if (xpMult != 0) baseXPMult *= Mult;
+        if (xpMult != 0)
+        {
+            baseXPMult *= Mult;
+            baseXPMult = Round2(baseXPMult);
+            xpMultiplier = Round2(xpMultiplier);
+        }
 
         if (bonus)
         {
@@ -8305,8 +11579,14 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyXPForcefield(float amount)
     {
-        float Amount = (100f + amount) / 100f;
-        ForEachUsableBall(b => b.UpdateForcefield(Amount));
+        float deltaScale = (100f + amount) / 100f;
+        xpBaseRadiusScale *= Mathf.Max(0.0001f, deltaScale);
+        RefreshAllBallForcefields();
+    }
+
+    public void RefreshAllBallForcefields()
+    {
+        ForEachUsableBall(b => b.RefreshForcefieldFromContext());
     }
 
     public void ApplyAdditionalBalls(int additionalBalls)
@@ -8336,7 +11616,7 @@ public class Pinball : MonoBehaviour, IRunContext
 
     public void ApplyDmgPerBounceFX(float amount, int bounces)
     {
-        float Amount = (100f + amount) / 100f;
+        float Amount = 0.01f * amount;
         ForEachUsableBall(b => b.AddTempDamageMultiplier(Amount, bounces));
     }
 
@@ -8376,11 +11656,9 @@ public class Pinball : MonoBehaviour, IRunContext
             ChangeState(PinballState.Play);
         }
     }
-
     #endregion
 
     #region Reward selection flow
-
     public void OnRewardChosen(RewardSO reward)
     {
         if (reward == null) { ChangeState(PinballState.Play); return; }
@@ -8395,8 +11673,8 @@ public class Pinball : MonoBehaviour, IRunContext
 
             pendingPaddleReward = reward;
 
-            if (leftHasElem && !rightHasElem) { SetPaddleState(false); return; }
-            if (!leftHasElem && rightHasElem) { SetPaddleState(true); return; }
+            if (leftHasElem && !rightHasElem) { pendingLevelUps--; SetPaddleState(false); reward.Apply(this); return; }
+            if (!leftHasElem && rightHasElem) { pendingLevelUps--; SetPaddleState(true); reward.Apply(this); return; }
 
             reward.Apply(this);
             pendingLevelUps--;
@@ -8414,14 +11692,13 @@ public class Pinball : MonoBehaviour, IRunContext
 
                 reward.Apply(this);
                 pendingLevelUps--;
-                ChangeState(pendingLevelUps > 0 ? PinballState.LevelUp : PinballState.Play);
-                return;
+                ShowNextLevelUpOrResume(); return;
             }
         }
 
         reward.Apply(this);
         pendingLevelUps--;
-        ChangeState(pendingLevelUps > 0 || currentState == PinballState.PaddleSelect ? PinballState.LevelUp : PinballState.Play);
+        ShowNextLevelUpOrResume();
     }
 
     private RewardSO PickOneWeighted(List<RewardSO> pool, RewardRarity rarity)
@@ -8469,7 +11746,80 @@ public class Pinball : MonoBehaviour, IRunContext
         }
         return picks;
     }
+    #endregion
 
+    #region Timescale / camera utilities
+    private void NormalizeTimeScaleIfNeeded()
+    {
+        if (Time.timeScale < 0.99f)
+        {
+            Time.timeScale = 1f;
+            Time.fixedDeltaTime = _defaultFixedDeltaTime;
+        }
+    }
+
+    private void HardResetCameraToDefaults(bool snapPositionRotation = true)
+    {
+        _camDistTween?.Kill(false); _camDistTween = null;
+        _camPosTween?.Kill(false); _camPosTween = null;
+        _camRotTween?.Kill(false); _camRotTween = null;
+        _fovTween?.Kill(false); _fovTween = null;
+
+        if (_aimCamTarget != null)
+        {
+            Destroy(_aimCamTarget.gameObject);
+            _aimCamTarget = null;
+        }
+
+        if (camFollow)
+        {
+            camFollow.Target = _camDefaultTarget;
+            camFollow.FollowDistance = _camDefaultFollowDist;
+            camFollow.Height = _camDefaultHeight;
+
+            if (snapPositionRotation)
+            {
+                if (camFollow.Target != null)
+                {
+                    camFollow.SnapToTarget();
+                }
+                else if (mainCam)
+                {
+                    mainCam.transform.SetPositionAndRotation(_camDefaultCamPos, _camDefaultCamRot);
+                }
+            }
+        }
+
+        if (mainCam) mainCam.fieldOfView = _camDefaultFov;
+        postFX?.ClearVignette(0f);
+    }
+
+    private void CancelAllPortalSlowmo()
+    {
+        var runtime = FindFirstObjectByType<PortalWarpRewardRuntime>();
+        runtime?.CancelAllSlowmo();
+        NormalizeTimeScaleIfNeeded();
+    }
+
+    private void EnsureNormalTimescaleIfNotAiming()
+    {
+        if (currentState == PinballState.SkillAim ||
+            currentState == PinballState.LevelUp ||
+            currentState == PinballState.PaddleSelect)
+            return;
+
+        if (TimeScaleHub.IsPaused)
+            return;
+
+        if (TimeScaleHub.IsAnyActive)
+            return;
+
+        if (Time.timeScale < 0.999f)
+        {
+            Time.timeScale = 1f;
+            Time.fixedDeltaTime = _defaultFixedDeltaTime;
+        }
+    }
     #endregion
 }
 ```
@@ -8613,7 +11963,6 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 
-
 public class PinballUIM : MonoBehaviour
 {
     [System.Serializable]
@@ -8625,21 +11974,31 @@ public class PinballUIM : MonoBehaviour
     }
 
     [Header("Per-Ball Combo Row")]
-    [SerializeField] private Transform ballRowParent; // Horizontal group in your UI
-    [SerializeField] private GameObject ballEntryPrefab; // Prefab with BallUIEntry (see new script below)
+    [SerializeField] private Transform ballRowParent;
+    [SerializeField] private GameObject ballEntryPrefab;
 
-    // Runtime mapping Ball -> entry
     private readonly Dictionary<Ball, BallUIEntry> _ballEntries = new();
 
     [Header("UI Slots(6 buttons)")]
     [SerializeField] private List<RewardSlot> slots = new();
 
-    // Add these fields near the top
     [Header("Lives UI")]
-    [SerializeField] private List<Image> lifeIcons = new(); // assign 5 placeholder Images in order (left->right)
+    [SerializeField] private List<Image> lifeIcons = new();
     [SerializeField] private Color32 lifeOnColor = new Color32(75, 202, 107, 255);
     [SerializeField] private Color32 lifeOffColor = new Color32(75, 202, 107, 11);
 
+    [Header("Ability: Portal Cooldown")]
+    [SerializeField] private Transform portalCooldownGroup;
+    [SerializeField] private Image portalCooldownTemplate;
+    [SerializeField] private Color32 portalReadyFallback = new Color32(170, 85, 255, 255);
+    [SerializeField] private Color32 portalCooldownColor = new Color32(255, 255, 255, 255); // retained in case other UI needs it
+
+    [Header("Ability: Grenade Cooldown")]
+    [SerializeField] private Transform grenadeCooldownGroup;
+    [SerializeField] private Image grenadeCooldownTemplate;
+    private readonly Dictionary<Ball, Image> _grenadeIconByBall = new();
+
+    private readonly Dictionary<Ball, Image> _portalIconByBall = new();
 
     public Image ChargingSlider;
 
@@ -8655,106 +12014,88 @@ public class PinballUIM : MonoBehaviour
     private Pinball pm;
     private List<RewardSO> currentRewards = new();
 
-    // Start is called before the first frame update
     void Start()
     {
         levelUpPanel.SetActive(false);
         paddleSelectPanel.SetActive(false);
-
         gamePanel.SetActive(true);
 
+        // Fallbacks: if grenade row not set, reuse portal row/template
+        if (!grenadeCooldownTemplate && portalCooldownTemplate)
+            grenadeCooldownTemplate = portalCooldownTemplate;
+        if (!grenadeCooldownGroup && portalCooldownGroup)
+            grenadeCooldownGroup = portalCooldownGroup;
     }
 
-    // Update is called once per frame
     void Update()
     {
-        if(pm != null)
+        if (pm != null)
         {
             ChargingSlider.fillAmount = pm.chargePercentage;
-            bc.text = $"Score Mult: {pm.ScoreMultiplier.ToString()} | Timer: {pm.ScoreBonusTimeRemaining}";
-            bcc.text = $"XP Mult: {pm.XPMultiplier.ToString()} | Timer: {pm.XPBonusTimeRemaining}";
+            bc.text = $"Score Mult: {pm.ScoreMultiplier:F2} | Timer: {pm.ScoreBonusTimeRemaining:F2}";
+            bcc.text = $"XP Mult: {pm.XPMultiplier:F2} | Timer: {pm.XPBonusTimeRemaining:F2}";
             if (Mathf.RoundToInt(pm.curXP) >= Mathf.RoundToInt(pm.maxXP))
-            {
                 xpText.text = $"{Mathf.RoundToInt(pm.curXP - 1)} / {pm.maxXP}";
-            }
             else
                 xpText.text = $"{Mathf.RoundToInt(pm.curXP)} / {pm.maxXP}";
         }
-
-
     }
 
     public void Init(Pinball manager)
     {
         pm = manager;
-
-        // Listen to active balls coming and going
         Ball.OnBallActivated -= HandleBallActivated;
         Ball.OnBallActivated += HandleBallActivated;
         Ball.OnBallDeactivated -= HandleBallDeactivated;
         Ball.OnBallDeactivated += HandleBallDeactivated;
 
-        // Bootstrap any already-active balls
         var existing = GameObject.FindObjectsOfType<Ball>();
         for (int i = 0; i < existing.Length; i++)
             if (existing[i].isActiveAndEnabled && existing[i].IsActive)
                 HandleBallActivated(existing[i]);
-
     }
 
     public void InitLives(int maxLives)
     {
-        // Activate only the first `maxLives` icons; hide the rest if more were assigned
         for (int i = 0; i < lifeIcons.Count; i++)
             lifeIcons[i].gameObject.SetActive(i < maxLives);
     }
 
     public void UpdateLives(int lives, int maxLives)
     {
-        // Ensure slot visibility matches maxLives
         InitLives(maxLives);
-
-        // Fill first `lives` icons, dim the rest
         for (int i = 0; i < lifeIcons.Count && i < maxLives; i++)
             lifeIcons[i].color = i < lives ? lifeOnColor : lifeOffColor;
     }
 
-
     public void ShowRewardPopup(List<RewardSO> rewards)
     {
         gamePanel.SetActive(false);
-
         levelUpPanel.SetActive(true);
         currentRewards = rewards ?? new List<RewardSO>();
 
-        for(int i = 0; i < slots.Count; i++)
+        for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
-
             slot.button.onClick.RemoveAllListeners();
 
-            if(i < currentRewards.Count && currentRewards[i] != null)
+            if (i < currentRewards.Count && currentRewards[i] != null)
             {
                 var reward = currentRewards[i];
-
-
                 slot.titleText.text = reward.Name;
+                slot.titleText.color = RewardSO.GetRarityColor(reward.Rarity);
                 slot.descText.text = reward.Description;
-
                 slot.button.interactable = true;
                 slot.button.gameObject.SetActive(true);
-
-
                 slot.button.onClick.AddListener(() => OnRewardClicked(reward));
             }
             else
             {
                 slot.titleText.text = string.Empty;
+                slot.titleText.color = Color.white;
                 slot.descText.text = string.Empty;
                 slot.button.gameObject.SetActive(false);
             }
-
-
         }
     }
 
@@ -8767,10 +12108,6 @@ public class PinballUIM : MonoBehaviour
     {
         levelUpPanel.SetActive(false);
         paddleSelectPanel.SetActive(false);
-
-        Debug.Log("Succcfion");
-
-
         gamePanel.SetActive(true);
     }
 
@@ -8789,10 +12126,7 @@ public class PinballUIM : MonoBehaviour
             slot.button.interactable = false;
         }
         paddleSelectPanel.SetActive(true);
-
     }
-
-
 
     public void ClosePaddleSelect(bool hasMoreLevels)
     {
@@ -8802,16 +12136,97 @@ public class PinballUIM : MonoBehaviour
             var slot = slots[i];
             slot.button.interactable = true;
         }
-        Debug.Log("Succc!!");
-
 
         if (hasMoreLevels)
-        {
-            Debug.Log("1Succc!!");
             levelUpPanel.SetActive(true);
-
-        }
     }
+
+    // ================= PORTAL WARP UI (TEMPLATE-BASED) =================
+    // These methods now operate on the main ball's per-ball icon instead of a single Image field.
+    public void SetPortalWarpReady(bool ready)
+    {
+        var mainBall = Pinball.Instance ? Pinball.Instance.ball : null;
+        if (!mainBall) return;
+
+        EnsurePortalIcon(mainBall);
+        var img = _portalIconByBall[mainBall];
+        img.enabled = true;
+        img.color = Boost(mainBall.GlowColor, mainBall.EmissionIntensityUI);
+        img.type = Image.Type.Filled;
+        img.fillMethod = Image.FillMethod.Radial360;
+        img.fillOrigin = 2;
+        img.fillClockwise = true;
+        img.fillAmount = 1f; // filled when ready
+    }
+
+    public void SetPortalWarpCooldown(float normalizedRemaining)
+    {
+        var mainBall = Pinball.Instance ? Pinball.Instance.ball : null;
+        if (!mainBall) return;
+
+        EnsurePortalIcon(mainBall);
+        var img = _portalIconByBall[mainBall];
+        img.enabled = true;
+        img.color = Boost(mainBall.GlowColor, mainBall.EmissionIntensityUI);
+        img.type = Image.Type.Filled;
+        img.fillMethod = Image.FillMethod.Radial360;
+        img.fillOrigin = 2;
+        img.fillClockwise = true;
+        img.fillAmount = Mathf.Clamp01(normalizedRemaining);
+    }
+
+    public void RegisterPortalIcon(Ball b)
+    {
+        if (!b || _portalIconByBall.ContainsKey(b)) return;
+        if (!portalCooldownTemplate || !portalCooldownGroup) return;
+
+        var clone = Instantiate(portalCooldownTemplate, portalCooldownGroup);
+        clone.gameObject.name = $"PortalCooldown_{b.name}";
+        clone.enabled = true;
+        clone.color = Boost(b.GlowColor, b.EmissionIntensityUI); // emission color from start
+        clone.type = Image.Type.Filled;
+        clone.fillMethod = Image.FillMethod.Radial360;
+        clone.fillOrigin = 2;
+        clone.fillClockwise = true;
+        clone.fillAmount = 1f; // start as filled (ready)
+        _portalIconByBall[b] = clone;
+    }
+
+    public void UnregisterPortalIcon(Ball b)
+    {
+        if (!b) return;
+        if (_portalIconByBall.TryGetValue(b, out var img))
+        {
+            if (img) Destroy(img.gameObject);
+        }
+        _portalIconByBall.Remove(b);
+    }
+
+    public void SetBallPortalReady(Ball b, bool ready)
+    {
+        EnsurePortalIcon(b);
+        var img = _portalIconByBall[b];
+        img.enabled = true;
+        img.color = Boost(b.GlowColor, b.EmissionIntensityUI);
+        img.fillAmount = 1f; // filled when ready
+    }
+
+    public void SetBallPortalCooldown(Ball b, float normalizedRemaining)
+    {
+        EnsurePortalIcon(b);
+        var img = _portalIconByBall[b];
+        img.enabled = true;
+        img.color = Boost(b.GlowColor, b.EmissionIntensityUI);
+        img.fillAmount = Mathf.Clamp01(normalizedRemaining);
+    }
+
+    private void EnsurePortalIcon(Ball b)
+    {
+        if (!b) return;
+        if (!_portalIconByBall.ContainsKey(b))
+            RegisterPortalIcon(b);
+    }
+    // ================================================================
 
     private void HandleBallActivated(Ball b)
     {
@@ -8828,7 +12243,6 @@ public class PinballUIM : MonoBehaviour
         b.OnComboChanged -= OnBallComboChanged;
         b.OnComboChanged += OnBallComboChanged;
 
-        // Initial sync
         entry.Refresh(b);
     }
 
@@ -8843,6 +12257,9 @@ public class PinballUIM : MonoBehaviour
             if (entry) Destroy(entry.gameObject);
             _ballEntries.Remove(b);
         }
+
+        UnregisterPortalIcon(b);
+        UnregisterGrenadeIcon(b); // also clean grenade icon
     }
 
     private void OnBallComboChanged(Ball b)
@@ -8851,7 +12268,6 @@ public class PinballUIM : MonoBehaviour
             entry.Refresh(b);
     }
 
-    // Small runtime fallback if no prefab was assigned
     private GameObject CreateFallbackEntry(Transform parent)
     {
         var root = new GameObject("BallEntry", typeof(RectTransform));
@@ -8868,6 +12284,68 @@ public class PinballUIM : MonoBehaviour
         return root;
     }
 
+    // ===== Grenade row =====
+    public void RegisterGrenadeIcon(Ball b)
+    {
+        if (!b || _grenadeIconByBall.ContainsKey(b)) return;
+        if (!grenadeCooldownTemplate || !grenadeCooldownGroup) return;
+
+        var clone = Instantiate(grenadeCooldownTemplate, grenadeCooldownGroup);
+        clone.gameObject.name = $"GrenadeCooldown_{b.name}";
+        clone.enabled = true;
+        clone.type = Image.Type.Filled;
+        clone.fillMethod = Image.FillMethod.Radial360;
+        clone.fillOrigin = 2;
+        clone.fillClockwise = true;
+        clone.color = Boost(b.GlowColor, b.EmissionIntensityUI);
+        clone.fillAmount = 0f;
+        _grenadeIconByBall[b] = clone;
+    }
+
+    public void UnregisterGrenadeIcon(Ball b)
+    {
+        if (!b) return;
+        if (_grenadeIconByBall.TryGetValue(b, out var img))
+        {
+            if (img) Destroy(img.gameObject);
+        }
+        _grenadeIconByBall.Remove(b);
+    }
+
+    public void SetBallGrenadeReady(Ball b, bool ready)
+    {
+        EnsureGrenadeIcon(b);
+        var img = _grenadeIconByBall[b];
+        img.enabled = true;
+        img.color = Boost(b.GlowColor, b.EmissionIntensityUI);
+        img.fillAmount = ready ? 1f : 0f; // filled when ready
+    }
+
+    public void SetBallGrenadeCooldown(Ball b, float normalizedRemaining)
+    {
+        EnsureGrenadeIcon(b);
+        var img = _grenadeIconByBall[b];
+        img.enabled = true;
+        img.color = Boost(b.GlowColor, b.EmissionIntensityUI);
+        img.fillAmount = Mathf.Clamp01(normalizedRemaining);
+    }
+
+    private void EnsureGrenadeIcon(Ball b)
+    {
+        if (!b) return;
+        if (!_grenadeIconByBall.ContainsKey(b))
+            RegisterGrenadeIcon(b);
+    }
+
+    private static Color Boost(Color c, float intensity)
+    {
+        float k = Mathf.Clamp(intensity, 0.5f, 2.5f);
+        return new Color(
+            Mathf.Clamp01(c.r * k),
+            Mathf.Clamp01(c.g * k),
+            Mathf.Clamp01(c.b * k),
+            1f);
+    }
 
     void OnDestroy()
     {
@@ -8877,9 +12355,777 @@ public class PinballUIM : MonoBehaviour
         foreach (var kv in _ballEntries)
             if (kv.Key != null)
                 kv.Key.OnComboChanged -= OnBallComboChanged;
+
+        foreach (var kv in _portalIconByBall)
+            if (kv.Value) Destroy(kv.Value.gameObject);
+        _portalIconByBall.Clear();
+
+        foreach (var kv in _grenadeIconByBall)
+            if (kv.Value) Destroy(kv.Value.gameObject);
+        _grenadeIconByBall.Clear();
     }
 }
+```
 
+## Assets/Scripts/PortalWarpController.cs
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using DG.Tweening;
+
+public class PortalWarpController : MonoBehaviour
+{
+    [Header("Prefabs")]
+    public GameObject PortalVisualPrefab;
+
+    [Header("Raycast Layers")]
+    public LayerMask LeftPlaneLayer;
+    public LayerMask RightPlaneLayer;
+    public LayerMask TopPlaneLayer;
+
+    [Header("Distances")]
+    [Min(0.1f)] public float MaxActiveDistance = 12f;
+    [Min(0.01f)] public float TriggerDistance = 1.25f;
+    [Min(0.01f)] public float InsideMargin = 0.35f;
+
+    [Header("Impulse")]
+    [Min(1f)] public float LateralImpulse = 28f;
+    [Min(1f)] public float TopImpulse = 30f;
+
+    private static int s_activeSlowmo;
+    public static bool IsAnySlowmoActive => s_activeSlowmo > 0;
+
+    [Header("Cooldown")]
+    [Min(0.1f)] public float CooldownSeconds = 20f;
+
+    private Pinball _pm;
+    private Ball _ball;
+    private Rigidbody _rb;
+    [SerializeField] private Ball targetOverride;
+
+    private GameObject _leftPortal;
+    private GameObject _rightPortal;
+    private GameObject _topPortal;
+
+    private Coroutine _slowmoCR;
+
+    private float _preScale = 1f;
+    private float _preFixed = 0.02f;
+    private bool _ownsSlowmo;
+
+    [Header("Post FX (PPSv2)")]
+    [SerializeField] public PostFXController postFX;
+
+    private float _cooldownRemain;
+    private bool _isReady = true;
+    private float _debugCooldownTotal;
+
+    private PinballUIM _ui;
+    [SerializeField] public bool UseUi = false;
+
+    void Awake()
+    {
+        _pm = Pinball.Instance;
+        _ui = FindFirstObjectByType<PinballUIM>();
+    }
+
+    public void SetTarget(Ball ball)
+    {
+        targetOverride = ball;
+        _ball = targetOverride;
+        _rb = _ball ? _ball.GetComponent<Rigidbody>() : null;
+        if (_ball)
+            transform.SetParent(_ball.transform, false);
+    }
+
+    void OnEnable()
+    {
+        if (!_ball && targetOverride) SetTarget(targetOverride);
+        if (!_ball)
+        {
+            var parentBall = GetComponentInParent<Ball>();
+            if (parentBall) SetTarget(parentBall);
+        }
+        if (_ball) transform.SetParent(_ball.transform, false);
+
+        if (_ui && !UseUi && _ball)
+            _ui.RegisterPortalIcon(_ball);
+
+        SetUiReady(true);
+    }
+
+    void OnDisable()
+    {
+        DestroyPortals();
+        SetUiReady(false);
+
+        if (_slowmoCR != null)
+        {
+            StopCoroutine(_slowmoCR);
+            _slowmoCR = null;
+        }
+
+        // Restore timescale if this controller owns a slowmo
+        if (_ownsSlowmo)
+        {
+            _ownsSlowmo = false;
+            TimeScaleHub.End(this);            // was: manual Time.timeScale / fixedDelta restore
+        }
+
+        if (_ui && !UseUi && _ball)
+            _ui.UnregisterPortalIcon(_ball);
+    }
+
+    void Update()
+    {
+        // BLOCK teleport logic unless actively playing (prevents reward-select overlap)
+        if (_pm != null && _pm.CurrentState != PinballState.Play)
+            return;
+
+        if (_ball == null || !_ball.isActiveAndEnabled || !_ball.IsActive || _rb == null)
+            return;
+
+        transform.position = _ball.transform.position;
+        transform.rotation = Quaternion.identity;
+
+        TickCooldownUI();
+
+        if (!_isReady)
+            return;
+
+        var pos = transform.position;
+
+        if (Physics.Raycast(pos, Vector3.left, out var hitL, MaxActiveDistance, LeftPlaneLayer, QueryTriggerInteraction.Collide))
+        {
+            HandlePortalVisual(ref _leftPortal, hitL, AxisSide.Left);
+            if (hitL.distance <= TriggerDistance)
+                TryTeleportLeftToRight(pos, hitL);
+        }
+        else DestroyPortal(ref _leftPortal);
+
+        if (Physics.Raycast(pos, Vector3.right, out var hitR, MaxActiveDistance, RightPlaneLayer, QueryTriggerInteraction.Collide))
+        {
+            HandlePortalVisual(ref _rightPortal, hitR, AxisSide.Right);
+            if (hitR.distance <= TriggerDistance)
+                TryTeleportRightToLeft(pos, hitR);
+        }
+        else DestroyPortal(ref _rightPortal);
+
+        if (Physics.Raycast(pos, Vector3.forward, out var hitT, MaxActiveDistance, TopPlaneLayer, QueryTriggerInteraction.Collide))
+        {
+            HandlePortalVisual(ref _topPortal, hitT, AxisSide.Top);
+            if (hitT.distance <= TriggerDistance)
+                TryTeleportTopMirrorX(hitT);
+        }
+        else DestroyPortal(ref _topPortal);
+    }
+
+    private enum AxisSide { Left, Right, Top }
+
+    private void HandlePortalVisual(ref GameObject portal, RaycastHit hit, AxisSide side)
+    {
+        if (!PortalVisualPrefab) return;
+        float t = Mathf.InverseLerp(MaxActiveDistance, TriggerDistance, hit.distance);
+        if (t <= 0f)
+        {
+            DestroyPortal(ref portal);
+            return;
+        }
+        if (!portal) portal = Instantiate(PortalVisualPrefab);
+        portal.transform.position = hit.point;
+        portal.transform.rotation = Quaternion.identity;
+        float s = Mathf.Lerp(.25f, 1.75f, t);
+        Vector3 baseScale = side == AxisSide.Top ? new Vector3(1.6f, 1.6f, 0.12f) : new Vector3(0.12f, 1.6f, 1.6f);
+        portal.transform.localScale = baseScale * s;
+        if (_ball != null) TintPortalToGlowColor(portal, _ball.GlowColor);
+    }
+
+    private static readonly int _Color_PROP = Shader.PropertyToID("_Color");
+    private static readonly int _BaseColor_PROP = Shader.PropertyToID("_BaseColor");
+    private static readonly int _EmissionColor_PROP = Shader.PropertyToID("_EmissionColor");
+
+    private void TintPortalToGlowColor(GameObject portal, Color c)
+    {
+        var rends = portal.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < rends.Length; i++)
+        {
+            var r = rends[i];
+            if (!r) continue;
+            var mpb = new MaterialPropertyBlock();
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor(_Color_PROP, c);
+            mpb.SetColor(_BaseColor_PROP, c);
+            var emissive = (Color)(c * Mathf.LinearToGammaSpace(1.2f));
+            mpb.SetColor(_EmissionColor_PROP, emissive);
+            r.SetPropertyBlock(mpb);
+        }
+    }
+
+    private void DestroyPortal(ref GameObject portal)
+    {
+        if (portal) Destroy(portal);
+        portal = null;
+    }
+
+    private void DestroyPortals()
+    {
+        DestroyPortal(ref _leftPortal);
+        DestroyPortal(ref _rightPortal);
+        DestroyPortal(ref _topPortal);
+    }
+
+    private void StartCooldown()
+    {
+        _debugCooldownTotal = 0f;
+        _cooldownRemain = CooldownSeconds;
+        _isReady = false;
+        SetUiReady(false);
+        SetUiCooldown(1f);
+    }
+
+    public void ForceCooldown(float seconds)
+    {
+        seconds = Mathf.Max(0.01f, seconds);
+        _debugCooldownTotal = seconds;
+        _cooldownRemain = seconds;
+        _isReady = false;
+        SetUiReady(false);
+        SetUiCooldown(1f);
+    }
+
+    private void TickCooldownUI()
+    {
+        if (_isReady) return;
+        if (_cooldownRemain > 0f)
+        {
+            _cooldownRemain -= Time.deltaTime;
+            if (_cooldownRemain <= 0f)
+                _cooldownRemain = 0f;
+
+            float denom = _debugCooldownTotal > 0f ? _debugCooldownTotal : CooldownSeconds;
+            float norm = denom > 0f ? (_cooldownRemain / denom) : 0f;
+            SetUiCooldown(norm);
+
+            if (_cooldownRemain <= 0f)
+            {
+                _isReady = true;
+                _debugCooldownTotal = 0f;
+                SetUiReady(true);
+            }
+        }
+    }
+
+    private void SetUiReady(bool ready)
+    {
+        if (!_ui) return;
+        if (UseUi) _ui.SetPortalWarpReady(ready);
+        else if (_ball) _ui.SetBallPortalReady(_ball, ready);
+    }
+
+    private void SetUiCooldown(float normalizedRemaining)
+    {
+        if (!_ui) return;
+        if (UseUi) _ui.SetPortalWarpCooldown(normalizedRemaining);
+        else if (_ball) _ui.SetBallPortalCooldown(_ball, normalizedRemaining);
+    }
+
+    private void TryTeleportLeftToRight(Vector3 origin, RaycastHit hitL)
+    {
+        if (Physics.Raycast(origin, Vector3.right, out var hitR, Mathf.Infinity, RightPlaneLayer, QueryTriggerInteraction.Collide))
+        {
+            var destR = hitR.point - Vector3.right * InsideMargin;
+            DoTeleport(destR, Vector3.right, LateralImpulse);
+        }
+    }
+    private void TryTeleportRightToLeft(Vector3 origin, RaycastHit hitR)
+    {
+        if (Physics.Raycast(origin, Vector3.left, out var hitL, Mathf.Infinity, LeftPlaneLayer, QueryTriggerInteraction.Collide))
+        {
+            var destL = hitL.point + Vector3.right * InsideMargin;
+            DoTeleport(destL, Vector3.left, LateralImpulse);
+        }
+    }
+    private void TryTeleportTopMirrorX(RaycastHit hitT)
+    {
+        var col = hitT.collider;
+        if (!col) return;
+        var center = col.bounds.center;
+        float dx = hitT.point.x - center.x;
+        float mirroredX = center.x - dx;
+        Vector3 dest = new Vector3(mirroredX, _ball.transform.position.y, hitT.point.z);
+        dest -= hitT.normal * InsideMargin;
+        DoTeleport(dest, Vector3.back, TopImpulse);
+    }
+
+    private void DoTeleport(Vector3 destPosition, Vector3 exitDir, float exitImpulse)
+    {
+        if (_ball == null || _rb == null) return;
+        StartCooldown();
+        DestroyPortals();
+
+        Vector3 prevVel = _rb.velocity; prevVel.y = 0f;
+        Vector3 inward = exitDir.sqrMagnitude > 1e-6f ? exitDir.normalized : Vector3.forward;
+        inward.y = 0f;
+        float ballR = GetBallRadius();
+        float need = (ballR + 0.05f) - InsideMargin;
+        float extra = need > 0f ? need : 0f;
+        Vector3 proposed = destPosition + inward * extra;
+        Vector3 safePos = ResolvePenetrationXZ(proposed, 5, 0.003f);
+        _rb.position = safePos;
+        Physics.SyncTransforms();
+
+        bool isLateral = Mathf.Abs(inward.x) > 0.5f;
+        Vector3 preferredDir;
+        float targetMinSpeed;
+        float preserveXAbs = -1f;
+        float xSign = 0f;
+
+        if (isLateral)
+        {
+            const float axisEps = 0.05f;
+            float zAbs = Mathf.Abs(prevVel.z);
+            float xAbs = Mathf.Abs(prevVel.x);
+            if (zAbs > axisEps)
+            {
+                float zSign = Mathf.Sign(prevVel.z);
+                targetMinSpeed = zAbs + Mathf.Max(0f, exitImpulse);
+                preferredDir = (zSign >= 0f) ? Vector3.forward : Vector3.back;
+                _rb.velocity = new Vector3(prevVel.x, 0f, zSign * targetMinSpeed);
+            }
+            else
+            {
+                float xSgn = (xAbs > 0.0001f) ? Mathf.Sign(prevVel.x) : 1f;
+                targetMinSpeed = xAbs + Mathf.Max(0f, exitImpulse);
+                preferredDir = (xSgn >= 0f) ? Vector3.right : Vector3.left;
+                _rb.velocity = new Vector3(xSgn * targetMinSpeed, 0f, prevVel.z);
+            }
+        }
+        else
+        {
+            float prevZAbs = Mathf.Abs(prevVel.z);
+            float targetDown = prevZAbs + Mathf.Max(0f, exitImpulse);
+            _rb.velocity = new Vector3(prevVel.x, 0f, -targetDown);
+            preferredDir = Vector3.back;
+            targetMinSpeed = targetDown;
+            preserveXAbs = Mathf.Abs(prevVel.x);
+            xSign = Mathf.Sign(prevVel.x);
+        }
+
+        StartCoroutine(TempIgnorePortalWalls(0.12f));
+        _pm?.ScreenShake();
+        _ball.ActivatePortalBoost();
+
+        float targetScale = 0.05f, pulseHold = 0.55f, easeOut = 0.04f;
+        if (_slowmoCR != null) StopCoroutine(_slowmoCR);
+        _slowmoCR = StartCoroutine(SlowMoPulseRealtime(
+            targetScale, pulseHold, easeOut,
+            targetMinSpeed, preferredDir,
+            preserveXAbs, xSign
+        ));
+
+        if (postFX)
+        {
+            postFX.VignetteMax = 0.55f;
+            postFX.SetVignette(0f);
+            postFX.FadeVignette(0.28f, 0.06f);
+            postFX.ChromaticPulse(0.30f, 0.06f, 0.14f);
+        }
+    }
+
+    private Vector3 ResolvePenetrationXZ(Vector3 proposed, int maxIterations, float skin)
+    {
+        var ballCol = _ball.GetComponent<Collider>();
+        if (!ballCol) return proposed;
+
+        Vector3 pos = proposed;
+        for (int iter = 0; iter < maxIterations; iter++)
+        {
+            bool penetrated = false;
+            float r = GetBallRadius() * 1.02f;
+            var hits = Physics.OverlapSphere(pos, r, ~0, QueryTriggerInteraction.Ignore);
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var other = hits[i];
+                if (!other || other.transform == _ball.transform) continue;
+
+                if (Physics.ComputePenetration(
+                    ballCol, pos, _ball.transform.rotation,
+                    other, other.transform.position, other.transform.rotation,
+                    out Vector3 depenDir, out float depenDist))
+                {
+                    depenDir.y = 0f;
+                    if (depenDir.sqrMagnitude < 1e-6f) continue;
+                    depenDir.Normalize();
+                    pos += depenDir * (depenDist + skin);
+                    penetrated = true;
+                }
+            }
+
+            if (!penetrated) break;
+        }
+        return pos;
+    }
+
+    private float GetBallRadius()
+    {
+        var col = _ball.GetComponent<Collider>();
+        if (!col) return 0.25f;
+        var e = col.bounds.extents;
+        return Mathf.Max(e.x, e.z);
+    }
+
+    private IEnumerator TempIgnorePortalWalls(float seconds)
+    {
+        int ballLayer = _ball.gameObject.layer;
+        for (int i = 0; i < 32; i++)
+        {
+            bool isPortalLayer =
+                ((LeftPlaneLayer.value & (1 << i)) != 0) ||
+                ((RightPlaneLayer.value & (1 << i)) != 0) ||
+                ((TopPlaneLayer.value & (1 << i)) != 0);
+            if (isPortalLayer)
+                Physics.IgnoreLayerCollision(ballLayer, i, true);
+        }
+
+        yield return new WaitForSeconds(seconds);
+
+        for (int i = 0; i < 32; i++)
+        {
+            bool isPortalLayer =
+                ((LeftPlaneLayer.value & (1 << i)) != 0) ||
+                ((RightPlaneLayer.value & (1 << i)) != 0) ||
+                ((TopPlaneLayer.value & (1 << i)) != 0);
+            if (isPortalLayer)
+                Physics.IgnoreLayerCollision(ballLayer, i, false);
+        }
+    }
+
+    private IEnumerator SlowMoPulseRealtime(float targetScale, float holdRealtime, float easeOutRealtime,
+                                            float targetMinSpeed, Vector3 preferredDir,
+                                            float preserveXAbs, float xSign)
+    {
+        targetScale = Mathf.Clamp(targetScale, 0.05f, 1f);
+        holdRealtime = Mathf.Max(0f, holdRealtime);
+        easeOutRealtime = Mathf.Max(0.01f, easeOutRealtime);
+
+        // Acquire hub slow-mo (handles fixedDelta)
+        _ownsSlowmo = true;
+        TimeScaleHub.Begin(this, targetScale, affectFixedDelta: true);
+
+        float end = Time.realtimeSinceStartup + holdRealtime;
+        while (Time.realtimeSinceStartup < end)
+        {
+            if (_pm != null && _pm.CurrentState != PinballState.Play)
+                break; // abort if state changed
+            yield return null;
+        }
+
+        // Simple wait for ease-out duration (cosmetic, not tweening back manually)
+        yield return new WaitForSecondsRealtime(easeOutRealtime);
+
+        // Release slow-mo
+        _ownsSlowmo = false;
+        TimeScaleHub.End(this);
+
+        // Post-teleport velocity normalization (unchanged)
+        if (_rb != null && _ball != null && _ball.isActiveAndEnabled)
+        {
+            Vector3 v = _rb.velocity; v.y = 0f;
+            Vector3 dirN = preferredDir.sqrMagnitude > 1e-6f ? preferredDir.normalized : Vector3.forward;
+            float curAlong = Vector3.Dot(v, dirN);
+            float curAlongAbs = Mathf.Abs(curAlong);
+            if (curAlongAbs < targetMinSpeed)
+            {
+                float delta = targetMinSpeed - curAlongAbs;
+                _rb.AddForce(dirN * delta, ForceMode.VelocityChange);
+            }
+            if (preserveXAbs >= 0.0f && Mathf.Abs(v.x) < preserveXAbs && xSign != 0f)
+            {
+                float deltaX = preserveXAbs - Mathf.Abs(v.x);
+                _rb.AddForce(new Vector3(xSign * deltaX, 0f, 0f), ForceMode.VelocityChange);
+            }
+        }
+
+        _slowmoCR = null;
+    }
+
+    // ForceStopSlowmo(): simplified
+    public void ForceStopSlowmo()
+    {
+        if (_slowmoCR != null)
+        {
+            StopCoroutine(_slowmoCR);
+            _slowmoCR = null;
+        }
+        if (_ownsSlowmo)
+        {
+            _ownsSlowmo = false;
+            TimeScaleHub.End(this);           // was: decrement s_activeSlowmo & manual restore
+        }
+    }
+}
+```
+
+## Assets/Scripts/PortalWarpRewardRuntime.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class PortalWarpRewardRuntime : MonoBehaviour
+{
+    [Header("Prefabs")]
+    public GameObject PortalVisualPrefab;
+
+    [Header("Raycast Layers")]
+    public LayerMask LeftPlaneLayer;
+    public LayerMask RightPlaneLayer;
+    public LayerMask TopPlaneLayer;
+
+    [Header("Distances")]
+    [Min(0.1f)] public float MaxActiveDistance = 12f;
+    [Min(0.01f)] public float TriggerDistance = 1.25f;
+    [Min(0.01f)] public float InsideMargin = 0.35f;
+
+    [Header("Impulse")]
+    [Min(1f)] public float LateralImpulse = 28f;
+    [Min(1f)] public float TopImpulse = 30f;
+
+    [Header("Cooldown")]
+    [Min(0.1f)] public float CooldownSeconds = 20f;
+
+    [Header("Post FX (PPSv2)")]
+    public PostFXController postFX;
+
+    private readonly Dictionary<Ball, PortalWarpController> _controllers = new();
+    private Pinball _pm;
+
+    void Awake() => _pm = Pinball.Instance;
+
+    void OnEnable()
+    {
+        Ball.OnBallActivated += HandleBallActivated;
+        Ball.OnBallDeactivated += HandleBallDeactivated;
+        EnsureControllersForExistingBalls();
+    }
+
+    void OnDisable()
+    {
+        Ball.OnBallActivated -= HandleBallActivated;
+        Ball.OnBallDeactivated -= HandleBallDeactivated;
+        DestroyAllControllers();
+    }
+
+    public void RebindAll()
+    {
+        DestroyAllControllers();
+        EnsureControllersForExistingBalls();
+    }
+
+    private void EnsureControllersForExistingBalls()
+    {
+        var balls = FindObjectsByType<Ball>(FindObjectsSortMode.None);
+        for (int i = 0; i < balls.Length; i++)
+            if (balls[i] && balls[i].isActiveAndEnabled && balls[i].IsActive)
+                TryAddController(balls[i]);
+    }
+
+    private void HandleBallActivated(Ball b)
+    {
+        if (!b) return;
+        TryAddController(b);
+    }
+
+    private void HandleBallDeactivated(Ball b)
+    {
+        if (!b) return;
+        TryRemoveController(b);
+    }
+
+    private void TryAddController(Ball ball)
+    {
+        if (!ball || _controllers.ContainsKey(ball)) return;
+
+        var go = new GameObject("PortalWarpController (Ball)");
+        go.transform.SetParent(ball.transform, false);
+        var ctrl = go.AddComponent<PortalWarpController>();
+
+        ctrl.PortalVisualPrefab = PortalVisualPrefab;
+        ctrl.LeftPlaneLayer = LeftPlaneLayer;
+        ctrl.RightPlaneLayer = RightPlaneLayer;
+        ctrl.TopPlaneLayer = TopPlaneLayer;
+        ctrl.MaxActiveDistance = MaxActiveDistance;
+        ctrl.TriggerDistance = TriggerDistance;
+        ctrl.InsideMargin = InsideMargin;
+        ctrl.LateralImpulse = LateralImpulse;
+        ctrl.TopImpulse = TopImpulse;
+        ctrl.CooldownSeconds = CooldownSeconds;
+        ctrl.postFX = postFX;
+        ctrl.SetTarget(ball);
+
+        // Only main ball uses anchor HUD
+        ctrl.UseUi = (_pm != null && _pm.ball == ball);
+
+        _controllers[ball] = ctrl;
+    }
+
+    private void TryRemoveController(Ball ball)
+    {
+        if (!ball) return;
+        if (_controllers.TryGetValue(ball, out var ctrl))
+        {
+            if (ctrl) Destroy(ctrl.gameObject);
+            _controllers.Remove(ball);
+        }
+    }
+
+    public void ForceGlobalCooldown(float seconds)
+    {
+        foreach (var kv in _controllers)
+            if (kv.Value) kv.Value.ForceCooldown(seconds);
+    }
+
+    public void CancelAllSlowmo() // NEW: used when entering paused states
+    {
+        foreach (var kv in _controllers)
+            if (kv.Value) kv.Value.ForceStopSlowmo();
+    }
+
+    private void DestroyAllControllers()
+    {
+        foreach (var kv in _controllers)
+            if (kv.Value) Destroy(kv.Value.gameObject);
+        _controllers.Clear();
+    }
+}
+```
+
+## Assets/Scripts/PostFXController.cs
+
+```csharp
+using UnityEngine;
+using DG.Tweening;
+using UnityEngine.Rendering.PostProcessing; // PPSv2
+
+[DisallowMultipleComponent]
+public class PostFXController : MonoBehaviour
+{
+    [Header("Volume / Profile")]
+    [SerializeField] private PostProcessVolume volume;
+
+    [Header("Vignette")]
+    [SerializeField, Range(0f, 1f)] private float vignetteMax = 0.55f;
+    [SerializeField] private float vignetteSmoothness = 0.65f;
+    [SerializeField] private bool vignetteRounded = false;
+
+    [Header("Chromatic Aberration")]
+    [SerializeField, Range(0f, 1f)] private float chromaMax = 0.35f;
+
+    [Header("Bloom (Explosion Pulse)")]
+    [SerializeField, Range(0f, 15f)] private float bloomMax = 6f;
+    [SerializeField] private float bloomBaseIntensity = 0f;
+
+    private Vignette _vig;
+    private ChromaticAberration _ca;
+    private Bloom _bloom;                     // NEW
+
+    private float _vigLogical;                // 0..1 logical vignette
+    private Tween _vigTween, _caTween, _bloomTween;
+
+    void Awake()
+    {
+        if (!volume) volume = GetComponent < PostProcessVolume>();
+        if (!volume || !volume.profile)
+        {
+            Debug.LogWarning("[PostFXController_PPSv2] Assign a PostProcessVolume with a profile.");
+            return;
+        }
+
+        volume.profile.TryGetSettings(out _vig);
+        volume.profile.TryGetSettings(out _ca);
+        volume.profile.TryGetSettings(out _bloom); // NEW
+
+        if (_vig != null)
+        {
+            _vig.intensity.overrideState = true;
+            _vig.smoothness.overrideState = true;
+            _vig.rounded.overrideState = true;
+            _vig.smoothness.value = vignetteSmoothness;
+            _vig.rounded.value = vignetteRounded;
+            SetVignette(0f);
+        }
+
+        if (_ca != null)
+        {
+            _ca.intensity.overrideState = true;
+            _ca.intensity.value = 0f;
+        }
+
+        if (_bloom != null)
+        {
+            _bloom.intensity.overrideState = true;
+            _bloom.intensity.value = bloomBaseIntensity;
+        }
+    }
+
+    public void SetVignette(float logical01)
+    {
+        _vigLogical = Mathf.Clamp01(logical01);
+        if (_vig != null) _vig.intensity.value = _vigLogical * vignetteMax;
+    }
+
+    public void FadeVignette(float logical01, float seconds)
+    {
+        logical01 = Mathf.Clamp01(logical01);
+        _vigTween?.Kill(false);
+        float start = _vigLogical;
+        _vigTween = DOTween.To(() => start, v => { start = v; SetVignette(v); },
+                               logical01, seconds).SetEase(Ease.OutQuad).SetUpdate(true);
+    }
+
+    public void ClearVignette(float seconds = 0.12f) => FadeVignette(0f, seconds);
+
+    public void ChromaticPulse(float peak = 1.25f, float up = 0.06f, float down = 0.14f)
+    {
+        if (_ca == null) return;
+        peak = Mathf.Clamp(peak, 0f, chromaMax);
+        _caTween?.Kill(false);
+
+        _caTween = DOTween.To(() => _ca.intensity.value, v => _ca.intensity.value = v,
+                              peak, up).SetEase(Ease.OutQuad).SetUpdate(true)
+            .OnComplete(() =>
+            {
+                _caTween = DOTween.To(() => _ca.intensity.value, v => _ca.intensity.value = v,
+                                      0f, down).SetEase(Ease.InQuad).SetUpdate(true);
+            });
+    }
+
+    // NEW: bloom pulse for explosions
+    public void BloomPulse(float peakFraction, float upTime, float downTime)
+    {
+        if (_bloom == null) return;
+        peakFraction = Mathf.Clamp01(peakFraction);
+        float peak = bloomBaseIntensity + bloomMax * peakFraction;
+
+        _bloomTween?.Kill(false);
+        _bloomTween = DOTween.Sequence()
+            .Append(DOTween.To(() => _bloom.intensity.value, v => _bloom.intensity.value = v,
+                               peak, upTime).SetEase(Ease.OutQuad))
+            .Append(DOTween.To(() => _bloom.intensity.value, v => _bloom.intensity.value = v,
+                               bloomBaseIntensity, downTime).SetEase(Ease.InQuad))
+            .SetUpdate(true);
+    }
+
+    // Exposed tweakables
+    public float VignetteMax { get => vignetteMax; set => vignetteMax = Mathf.Clamp01(value); }
+    public float ChromaMax { get => chromaMax; set => chromaMax = Mathf.Clamp01(value); }
+    public float BloomMax { get => bloomMax; set => bloomMax = Mathf.Max(0f, value); }
+    public float BloomBaseIntensity { get => bloomBaseIntensity; set => bloomBaseIntensity = Mathf.Max(0f, value); }
+}
 ```
 
 ## Assets/Scripts/PowerupPickup.cs
@@ -9173,49 +13419,6 @@ public static class PowerupSystem
 }
 ```
 
-## Assets/Scripts/RandomFlingPowerup.cs
-
-```csharp
-using UnityEngine;
-
-[DisallowMultipleComponent]
-public sealed class RandomFlingPowerup : IPowerup
-{
-    public string Id => "random-fling";
-    public float Weight => 0.8f;
-    public string DebugLabel => "Random Fling";
-
-    // Always eligible; pickup roll ensures pacing.
-    public bool CanTrigger(IRunContext ctx) => true;
-
-    // Applies a random horizontal impulse to each active ball for chaotic repositioning.
-    public void Execute(Pinball pinball, Vector3 triggerPos)
-    {
-        if (!pinball) return;
-
-        var balls = Object.FindObjectsOfType<Ball>();
-        for (int i = 0; i < balls.Length; i++)
-        {
-            var b = balls[i];
-            if (!b || !b.isActiveAndEnabled || !b.IsActive) continue;
-
-            var rb = b.GetComponent<Rigidbody>();
-            if (!rb) continue;
-
-            Vector3 dir = Random.onUnitSphere;
-            dir.y = 0f;
-            if (dir.sqrMagnitude < 0.001f) dir = Vector3.forward;
-            dir.Normalize();
-
-            float strength = Random.Range(100f, 250f);
-            rb.AddForce(dir * strength, ForceMode.Impulse);
-        }
-
-        pinball.ScreenShake();
-    }
-}
-```
-
 ## Assets/Scripts/RewardCatalogSO.cs
 
 ```csharp
@@ -9309,16 +13512,30 @@ public abstract class RewardSO : ScriptableObject
     public bool Scalable => scalable;
     public RewardSO ReplacesReward => replacesReward;
 
+    // Rarity color map (kept simple & centralized)
+    public static Color GetRarityColor(RewardRarity r)
+    {
+        // Common gray, Uncommon green, Rare blue, Epic magenta-purple,
+        // Legendary orange, Artifact pink, Cursed dark purple.
+        return r switch
+        {
+            RewardRarity.Common => new Color32(160, 160, 160, 255),
+            RewardRarity.Uncommon => new Color32(80, 200, 120, 255),
+            RewardRarity.Rare => new Color32(80, 120, 255, 255),
+            RewardRarity.Epic => new Color32(180, 0, 200, 255),
+            RewardRarity.Legendary => new Color32(255, 140, 0, 255),
+            RewardRarity.Artifact => new Color32(255, 105, 180, 255),
+            RewardRarity.Cursed => new Color32(80, 0, 120, 255),
+            _ => Color.white
+        };
+    }
 
     public virtual bool IsEligible(IRunContext ctx)
     {
-        //block if already active and this reward says to block
-        if(!Scalable)
+        if (!Scalable)
         {
             if (BlockWhenActive && ctx.IsActive(Id))
                 return false;
-
-            //block if its available but cant stack
             if (ctx.IsAvailable(Id) && !CanStack)
                 return false;
         }
@@ -9326,21 +13543,16 @@ public abstract class RewardSO : ScriptableObject
         if (Scalable && ReplacesReward != null && !ctx.Owns(ReplacesReward.Id))
             return false;
 
-        if(Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
+        if (Scalable && Rarity == RewardRarity.Common && ctx.Owns(Id))
             return false;
 
-
-        //if rewards can be blocked, 
         if (blockedKeys != null && blockedKeys.Count > 0)
         {
-            foreach(var activeKey in ctx.ActiveKeys)
-            {
-                if(blockedKeys.Contains(activeKey)) return false;
-            }
+            foreach (var activeKey in ctx.ActiveKeys)
+                if (blockedKeys.Contains(activeKey)) return false;
         }
 
-        //block if exclusivity key clashes
-        if(!string.IsNullOrEmpty(ExclusivityKey) && ctx.HasExclusiveKeyActive(ExclusivityKey))
+        if (!string.IsNullOrEmpty(ExclusivityKey) && ctx.HasExclusiveKeyActive(ExclusivityKey))
             return false;
 
         return true;
@@ -9349,11 +13561,551 @@ public abstract class RewardSO : ScriptableObject
     public abstract void Apply(IRunContext ctx);
 
     public virtual void ApplyToPaddle(PaddleElementalState state) { }
+}
+```
 
+## Assets/Scripts/RicochetPowerup.cs
 
+```csharp
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
 
+[DisallowMultipleComponent]
+public sealed class RicochetPowerup : IPowerup
+{
+    public string Id => "ricochet";
+    public float Weight => 1f;
+    public string DebugLabel => "Ricochet";
+    public bool CanTrigger(IRunContext ctx) => true;
+
+    public void Execute(Pinball pinball, Vector3 triggerPos)
+    {
+        if (!pinball) return;
+
+        var balls = Object.FindObjectsOfType<Ball>();
+        Ball picked = null;
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < balls.Length; i++)
+        {
+            var b = balls[i];
+            if (!b || !b.isActiveAndEnabled || !b.IsActive) continue;
+            float d2 = (b.transform.position - triggerPos).sqrMagnitude;
+            if (d2 < best) { best = d2; picked = b; }
+        }
+
+        if (!picked) return;
+
+        var assist = picked.GetComponent<RicochetAssist>();
+        if (!assist) assist = picked.gameObject.AddComponent<RicochetAssist>();
+
+        assist.Arm();
+        pinball.ScreenShake();
+    }
 }
 
+[DisallowMultipleComponent]
+public sealed class RicochetAssist : MonoBehaviour
+{
+    [Header("Ricochet Timing")]
+    [SerializeField] private float windowSeconds = 1.2f;
+
+    [Header("Speed")]
+    [SerializeField] private float initialRicochetSpeed = 20f;
+    [SerializeField] private float speedIncrementPerHit = 2f;
+    [SerializeField] private float redirectMaxSpeed = 40f;
+    [SerializeField] private bool smoothAcceleration = true;
+    [SerializeField, Range(0f, 1f)] private float accelerationLerp = 0.35f;
+    [SerializeField] private bool clampEveryFrame = true;
+
+    [Header("Directional / Safety")]
+    [SerializeField] private float postRedirectNudge = 0.18f;
+    [SerializeField] private float ignorePrevColliderSeconds = 0.10f;
+    [SerializeField] private float realignAngleThreshold = 25f;
+
+    private Rigidbody _rb;
+    private Collider _ballCol;
+
+    private bool _armed;
+    private float _activeUntil;
+
+    private readonly HashSet<Bumper> _affected = new();
+    private Coroutine _windowCR;
+
+    private int _ricochetHitCount;
+    private float _desiredSpeed;
+
+    // Deferred redirect
+    private bool _redirectPending;
+    private Bumper _pendingTarget;
+    private Vector3 _pendingDir;
+    private float _pendingSpeed;
+
+    // All bumpers physically hit during window (NEVER revisit)
+    private readonly HashSet<Bumper> _visited = new();
+
+    public bool IsActive => !_armed && Time.time < _activeUntil;
+
+    void Awake()
+    {
+        _rb = GetComponent<Rigidbody>();
+        _ballCol = GetComponent<Collider>();
+    }
+
+    public void Arm()
+    {
+        _armed = true;
+        _activeUntil = 0f;
+        _ricochetHitCount = 0;
+        _desiredSpeed = initialRicochetSpeed;
+        _redirectPending = false;
+        _pendingTarget = null;
+        _visited.Clear();
+        if (_windowCR != null) { StopCoroutine(_windowCR); _windowCR = null; }
+        _affected.Clear();
+    }
+
+    public void EndRicochet()
+    {
+        if (!IsActive && !_armed && _affected.Count == 0) return;
+        _activeUntil = 0f;
+        EndAllRicochetLights();
+        _redirectPending = false;
+        if (_windowCR != null) { StopCoroutine(_windowCR); _windowCR = null; }
+    }
+
+    void OnDisable() => EndRicochet();
+
+    private void EndAllRicochetLights()
+    {
+        foreach (var b in _affected)
+            if (b) b.EndRicochetLight();
+        _affected.Clear();
+    }
+
+    void OnCollisionEnter(Collision c)
+    {
+        var bumper = c.collider ? c.collider.GetComponentInParent<Bumper>() : null;
+        if (!bumper) return;
+
+        // First hit arms ricochet
+        if (_armed)
+        {
+            _armed = false;
+            _activeUntil = Time.time + Mathf.Max(0.05f, windowSeconds);
+            _windowCR = StartCoroutine(WindowWatcher());
+            _ricochetHitCount = 0;
+            _desiredSpeed = initialRicochetSpeed;
+        }
+
+        if (!IsActive) return;
+
+        // Record visited bumper (never return to it)
+        _visited.Add(bumper);
+        _affected.Add(bumper);
+
+        PrepareRedirect(bumper);
+    }
+
+    private void PrepareRedirect(Bumper justHit)
+    {
+        if (_rb == null || !justHit) return;
+
+        // Select next unique, alive bumper not yet visited
+        Bumper target = FindNextUniqueTarget(excludeCurrent: justHit);
+
+        // If none left -> end ricochet immediately
+        if (!target)
+        {
+            EndRicochet();
+            return;
+        }
+
+        Vector3 pos = transform.position;
+        Vector3 dir = (target.transform.position - pos);
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.0004f) dir = Vector3.forward;
+        dir.Normalize();
+
+        _ricochetHitCount++;
+        _desiredSpeed = initialRicochetSpeed + _ricochetHitCount * speedIncrementPerHit;
+
+        float current = _rb.velocity.magnitude;
+        float nextSpeed = _desiredSpeed;
+        if (smoothAcceleration && current < _desiredSpeed)
+            nextSpeed = Mathf.Lerp(current, _desiredSpeed, accelerationLerp);
+        if (redirectMaxSpeed > 0f && nextSpeed > redirectMaxSpeed)
+            nextSpeed = redirectMaxSpeed;
+
+        _pendingTarget = target;
+        _pendingDir = dir;
+        _pendingSpeed = nextSpeed;
+        _redirectPending = true;
+
+        // Ignore collider just hit briefly to prevent deflection back into it
+        if (_ballCol)
+        {
+            var justCol = justHit.GetComponent<Collider>();
+            if (justCol)
+            {
+                Physics.IgnoreCollision(_ballCol, justCol, true);
+                StartCoroutine(RestoreCollision(_ballCol, justCol, ignorePrevColliderSeconds));
+            }
+        }
+    }
+
+    private Bumper FindNextUniqueTarget(Bumper excludeCurrent)
+    {
+        Vector3 pos = transform.position;
+        Bumper chosen = null;
+        float best = float.PositiveInfinity;
+
+        foreach (var b in Bumper.EnumerateAll())
+        {
+            if (b == null || b.IsDead) continue;
+            if (b == excludeCurrent) continue;
+            if (_visited.Contains(b)) continue; // NEVER revisit
+
+            float d2 = (b.transform.position - pos).sqrMagnitude;
+            if (d2 < best)
+            {
+                best = d2;
+                chosen = b;
+            }
+        }
+
+        return chosen;
+    }
+
+    private IEnumerator WindowWatcher()
+    {
+        while (Time.time < _activeUntil)
+            yield return null;
+        EndRicochet();
+        _windowCR = null;
+    }
+
+    private IEnumerator RestoreCollision(Collider a, Collider b, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (a && b) Physics.IgnoreCollision(a, b, false);
+    }
+
+    void FixedUpdate()
+    {
+        if (_redirectPending && IsActive)
+        {
+            // Target died or despawned -> recalc
+            if (_pendingTarget == null || _pendingTarget.IsDead || !_pendingTarget.isActiveAndEnabled)
+            {
+                _pendingTarget = FindNextUniqueTarget(excludeCurrent: null);
+                if (!_pendingTarget)
+                {
+                    EndRicochet();
+                    _redirectPending = false;
+                    return;
+                }
+
+                Vector3 pos = transform.position;
+                _pendingDir = (_pendingTarget.transform.position - pos);
+                _pendingDir.y = 0f;
+                if (_pendingDir.sqrMagnitude < 0.0004f) _pendingDir = Vector3.forward;
+                _pendingDir.Normalize();
+            }
+
+            if (_pendingDir != Vector3.zero)
+            {
+                _rb.velocity = _pendingDir * _pendingSpeed;
+                _rb.position += _pendingDir * postRedirectNudge;
+            }
+            _redirectPending = false;
+        }
+
+        if (IsActive && clampEveryFrame && redirectMaxSpeed > 0f && _rb != null)
+        {
+            var v = _rb.velocity;
+            float s = v.magnitude;
+            if (s > redirectMaxSpeed)
+                _rb.velocity = v.normalized * redirectMaxSpeed;
+
+            // Realign mid-flight if drifting off the pending target
+            if (_pendingTarget != null && !_redirectPending)
+            {
+                Vector3 toTarget = (_pendingTarget.transform.position - transform.position);
+                toTarget.y = 0f;
+                if (toTarget.sqrMagnitude > 0.0004f)
+                {
+                    toTarget.Normalize();
+                    float angle = Vector3.Angle(_rb.velocity.normalized, toTarget);
+                    if (angle > realignAngleThreshold)
+                    {
+                        float speed = _rb.velocity.magnitude;
+                        _rb.velocity = toTarget * Mathf.Min(speed, redirectMaxSpeed > 0f ? redirectMaxSpeed : speed);
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Assets/Scripts/SpeedTrailFollower.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class SpeedTrailFollower : MonoBehaviour
+{
+    [Header("Targets")]
+    [SerializeField] private Rigidbody targetRb;      // Ball rigidbody
+    [SerializeField] private Transform target;        // Ball transform (optional)
+    private Ball _ball;                               // Cached Ball component (for glow/ emission)
+
+    [Header("Line Renderer")]
+    [SerializeField] private LineRenderer line;       // Assign in inspector or we will auto-create
+    [Tooltip("Template material (will be instanced at runtime so emission changes don't affect shared asset).")]
+    [SerializeField] private Material lineTemplateMaterial;
+
+    [Header("Placement")]
+    [SerializeField] private Vector3 startOffset = new(0f, 0.05f, 0f); // small lift for visibility
+    [SerializeField] private float backwardLift = 0f;                  // additional Y offset for tail segment
+    [SerializeField] private bool usePlanarXZ = true;                  // ignore Y component (pinball table axis)
+
+    [Header("Speed Mapping")]
+    [SerializeField] private float minSpeedToShow = 0.5f;
+    [SerializeField] private float maxSpeedForMax = 50f;
+    [SerializeField] private float minLength = 0.08f;
+    [SerializeField] private float maxLength = 1.6f;
+    [SerializeField] private float minWidth = 0.02f;
+    [SerializeField] private float maxWidth = 0.20f;
+
+    [Header("Smoothing")]
+    [SerializeField, Tooltip("Higher = snappier response.")] private float lengthRiseRate = 8f;
+    [SerializeField, Tooltip("Smooth time for length decay.")] private float lengthFallSmooth = 0.18f;
+    [SerializeField, Tooltip("Higher = snappier yaw alignment.")] private float yawSmoothing = 20f;
+    [SerializeField, Tooltip("Higher = snappier width adaptation.")] private float widthRiseRate = 10f;
+    [SerializeField, Tooltip("Smooth time for width decay.")] private float widthFallSmooth = 0.15f;
+
+    [Header("Emission Sync")]
+    [Tooltip("Multiplier applied to ball emission intensity when mapping to line emission.")]
+    [SerializeField] private float emissionIntensityScale = 1.0f;
+    [Tooltip("Update color/emission only when change exceeds this delta (reduces material set calls).")]
+    [SerializeField] private float colorUpdateThreshold = 0.02f;
+
+    private Vector3 _lastDir = Vector3.forward;
+    private float _curLength;
+    private float _velLength;
+    private float _curWidth;
+    private float _velWidth;
+    private bool _wasVisible;
+
+    // Runtime material instance
+    private Material _runtimeMat;
+    private static readonly int EmissionColorID = Shader.PropertyToID("_EmissionColor");
+    private static readonly int BaseColorID = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorID = Shader.PropertyToID("_Color");
+
+    private Color _lastBallGlowColor;
+    private float _lastBallEmission;
+
+    void Awake()
+    {
+        if (!target && targetRb) target = targetRb.transform;
+        if (!targetRb && target) targetRb = target.GetComponent<Rigidbody>();
+        if (!targetRb && !target)
+        {
+            Debug.LogWarning("[SpeedTrailFollower] No target assigned.");
+            enabled = false;
+            return;
+        }
+
+        _ball = targetRb ? targetRb.GetComponent<Ball>() : null;
+
+        EnsureLine();
+
+        if (_ball != null)
+        {
+            _lastBallGlowColor = _ball.GlowColor;
+            _lastBallEmission = _ball.EmissionIntensityUI;
+            ApplyEmissionToMaterial(force: true);
+        }
+    }
+
+    void EnsureLine()
+    {
+        if (!line)
+        {
+            line = GetComponent<LineRenderer>();
+            if (!line) line = gameObject.AddComponent<LineRenderer>();
+        }
+
+        line.positionCount = 2;
+        line.useWorldSpace = true;
+        line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        line.textureMode = LineTextureMode.Stretch;
+        line.alignment = LineAlignment.View;
+
+        if (lineTemplateMaterial)
+        {
+            _runtimeMat = Instantiate(lineTemplateMaterial);
+            _runtimeMat.name = lineTemplateMaterial.name + " (Runtime Trail)";
+        }
+        else
+        {
+            // fallback simple material
+            _runtimeMat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            _runtimeMat.enableInstancing = true;
+        }
+        line.sharedMaterial = _runtimeMat;
+    }
+
+    private void LateUpdate()
+    {
+        if (!targetRb || !target)
+        {
+            if (line) line.enabled = false;
+            _wasVisible = false;
+            return;
+        }
+
+        if (!line) return;
+        line.enabled = true; // keep renderer on so positions stay in sync even when hidden
+
+        Vector3 v = targetRb.velocity;
+        Vector3 planar = usePlanarXZ ? new Vector3(v.x, 0f, v.z) : v;
+        float speed = planar.magnitude;
+
+        // Direction (retain previous if near zero to avoid jitter)
+        if (planar.sqrMagnitude > 0.0004f)
+            _lastDir = planar.normalized;
+
+        // Normalized speed
+        float max = Mathf.Max(0.01f, maxSpeedForMax);
+        float t = Mathf.Clamp01(speed / max);
+
+        // Target length & width
+        float targetLength = Mathf.Lerp(minLength, maxLength, t);
+        float targetWidth = Mathf.Lerp(minWidth, maxWidth, t);
+
+        // Compute head position
+        Vector3 head = target.position + startOffset;
+
+        bool visibleNow = speed >= minSpeedToShow;
+
+        if (!visibleNow)
+        {
+            // Hidden state: keep the line snapped to the head and width zero
+            _curLength = 0f;
+            _curWidth = 0f;
+            line.widthMultiplier = 0f;
+
+            line.SetPosition(0, head);
+            line.SetPosition(1, head);
+
+            _wasVisible = false;
+
+            // Still keep emission in sync to avoid a pop when reappearing
+            if (_ball != null) MaybeUpdateEmission();
+            return;
+        }
+
+        // Visible: smooth length & width (fast rise, smooth fall)
+        if (targetLength >= _curLength)
+            _curLength = Mathf.MoveTowards(_curLength, targetLength, lengthRiseRate * Time.deltaTime);
+        else
+            _curLength = Mathf.SmoothDamp(_curLength, targetLength, ref _velLength, lengthFallSmooth, Mathf.Infinity, Time.deltaTime);
+
+        if (targetWidth >= _curWidth)
+            _curWidth = Mathf.MoveTowards(_curWidth, targetWidth, widthRiseRate * Time.deltaTime);
+        else
+            _curWidth = Mathf.SmoothDamp(_curWidth, targetWidth, ref _velWidth, widthFallSmooth, Mathf.Infinity, Time.deltaTime);
+
+        line.widthMultiplier = _curWidth;
+
+        // Compute tail and apply optional yaw smoothing
+        Vector3 targetTail = head - _lastDir * _curLength;
+        targetTail.y += backwardLift;
+
+        // If we were hidden last frame, snap immediately (no smoothing from stale tail)
+        Vector3 prevTail = _wasVisible ? line.GetPosition(line.positionCount - 1) : head;
+        float yawLerp = _wasVisible ? 1f - Mathf.Exp(-yawSmoothing * Time.deltaTime) : 1f;
+        Vector3 tail = Vector3.Lerp(prevTail, targetTail, yawLerp);
+
+        line.SetPosition(0, head);
+        line.SetPosition(1, tail);
+
+        if (_ball != null) MaybeUpdateEmission();
+
+        _wasVisible = true;
+    }
+
+    private void MaybeUpdateEmission()
+    {
+        // Ball provides GlowColor & EmissionIntensityUI
+        var glowColor = _ball.GlowColor;
+        var intensity = _ball.EmissionIntensityUI * emissionIntensityScale;
+
+        // Only update if change exceeds threshold
+        if (_runtimeMat != null &&
+            (Mathf.Abs(intensity - _lastBallEmission) > colorUpdateThreshold
+             || ColorDistance(glowColor, _lastBallGlowColor) > colorUpdateThreshold))
+        {
+            ApplyEmission(glowColor, intensity);
+            _lastBallGlowColor = glowColor;
+            _lastBallEmission = intensity;
+        }
+    }
+
+    private void ApplyEmissionToMaterial(bool force = false)
+    {
+        if (_ball == null || _runtimeMat == null) return;
+        ApplyEmission(_ball.GlowColor, _ball.EmissionIntensityUI * emissionIntensityScale, force);
+    }
+
+    private void ApplyEmission(Color baseColor, float intensity, bool force = false)
+    {
+        intensity = Mathf.Clamp(intensity, 0f, 8f);
+        // Convert to gamma-corrected emissive
+        Color emissive = baseColor * Mathf.LinearToGammaSpace(intensity);
+
+        if (force)
+        {
+            _runtimeMat.EnableKeyword("_EMISSION");
+        }
+
+        if (_runtimeMat.HasProperty(EmissionColorID))
+            _runtimeMat.SetColor(EmissionColorID, emissive);
+        if (_runtimeMat.HasProperty(BaseColorID))
+            _runtimeMat.SetColor(BaseColorID, baseColor);
+        if (_runtimeMat.HasProperty(ColorID))
+            _runtimeMat.SetColor(ColorID, baseColor);
+    }
+
+    private static float ColorDistance(Color a, Color b)
+    {
+        float dr = a.r - b.r;
+        float dg = a.g - b.g;
+        float db = a.b - b.b;
+        return Mathf.Abs(dr) + Mathf.Abs(dg) + Mathf.Abs(db);
+    }
+
+    // Public API if you want to swap target at runtime
+    public void SetTarget(Rigidbody rb)
+    {
+        targetRb = rb;
+        target = rb ? rb.transform : null;
+        _ball = rb ? rb.GetComponent<Ball>() : null;
+    }
+
+    public void SetLineRenderer(LineRenderer lr)
+    {
+        line = lr;
+        EnsureLine();
+        ApplyEmissionToMaterial(force: true);
+    }
+}
 ```
 
 ## Assets/Scripts/StatModifier.cs
@@ -9526,6 +14278,140 @@ public class Test : MonoBehaviour
 
 ```
 
+## Assets/Scripts/TimeScaleHub.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[DefaultExecutionOrder(-10000)]
+public sealed class TimeScaleHub : MonoBehaviour
+{
+    public static TimeScaleHub I { get; private set; }
+
+    // If any active → IsAnyActive = true (used by Pinball guards)
+    public static bool IsAnyActive => I != null && I._active.Count > 0;
+    // NEW: if any pause lock is active, timeScale is forced to 0
+    public static bool IsPaused => I != null && I._pauseOwners.Count > 0;
+
+    // Default fixed delta used when scale = 1 (Pinball sets this on Awake)
+    private float _defaultFixedDelta = 0.02f;
+
+    // Owner -> request
+    private readonly Dictionary<object, Req> _active = new();
+
+    // NEW: owners that hold a hard pause (timeScale = 0)
+    private readonly HashSet<object> _pauseOwners = new();
+
+    private struct Req
+    {
+        public float scale;
+        public bool affectFixedDelta;
+    }
+
+    void Awake()
+    {
+        if (I && I != this) { Destroy(gameObject); return; }
+        I = this;
+        DontDestroyOnLoad(gameObject);
+        // Use current engine baseline until Pinball provides its baseline
+        _defaultFixedDelta = Time.fixedDeltaTime;
+        Recompute();
+    }
+
+    public static void EnsureInitialized(float defaultFixedDelta)
+    {
+        if (!I)
+        {
+            var go = new GameObject("TimeScaleHub");
+            I = go.AddComponent<TimeScaleHub>();
+        }
+        I._defaultFixedDelta = Mathf.Max(0.0005f, defaultFixedDelta);
+        I.Recompute();
+    }
+
+    // Begin or update a slow‑mo request
+    public static void Begin(object owner, float scale, bool affectFixedDelta = true)
+    {
+        if (!I) EnsureInitialized(Time.fixedDeltaTime);
+        scale = Mathf.Clamp(scale, 0.05f, 1f);
+        I._active[owner ?? I] = new Req { scale = scale, affectFixedDelta = affectFixedDelta };
+        I.Recompute();
+    }
+
+    // End a slow‑mo request
+    public static void End(object owner)
+    {
+        if (!I) return;
+        I._active.Remove(owner ?? I);
+        I.Recompute();
+    }
+
+    // NEW: begin a hard pause (timeScale = 0, physics frozen)
+    public static void BeginPause(object owner)
+    {
+        if (!I) EnsureInitialized(Time.fixedDeltaTime);
+        I._pauseOwners.Add(owner ?? I);
+        I.Recompute();
+    }
+
+    // NEW: end a hard pause
+    public static void EndPause(object owner)
+    {
+        if (!I) return;
+        I._pauseOwners.Remove(owner ?? I);
+        I.Recompute();
+    }
+
+    // Nuke everything: resets slow‑mo to normal immediately (does not clear pauses)
+    public static void ForceClearAll()
+    {
+        if (!I) return;
+        I._active.Clear();
+        I.Recompute();
+    }
+
+    // NEW: if you ever need to clear all pause locks (rare)
+    public static void ForceClearAllPauses()
+    {
+        if (!I) return;
+        I._pauseOwners.Clear();
+        I.Recompute();
+    }
+
+    // When you suspect drift, re-apply computed timescale
+    public static void ForceRecompute() => I?.Recompute();
+
+    private void Recompute()
+    {
+        // Hard freeze takes priority over any slow‑mo requests
+        if (_pauseOwners.Count > 0)
+        {
+            Time.timeScale = 0f;
+            // Physics stays frozen at ts=0; keep fixedDelta at default for when we unpause
+            Time.fixedDeltaTime = _defaultFixedDelta;
+            return;
+        }
+
+        // Resolve effective scale: slowest wins
+        float scale = 1f;
+        bool anyAffectFixed = false;
+
+        foreach (var kv in _active)
+        {
+            scale = Mathf.Min(scale, kv.Value.scale);
+            anyAffectFixed |= kv.Value.affectFixedDelta;
+        }
+
+        Time.timeScale = scale;
+
+        // Keep physics consistent with visual time when any request wants that
+        if (anyAffectFixed || _active.Count == 0)
+            Time.fixedDeltaTime = _defaultFixedDelta * scale;
+    }
+}
+```
+
 ## Assets/Scripts/TweenDamageNumberSystem.cs
 
 ```csharp
@@ -9538,7 +14424,6 @@ using UnityEngine.Pool;
 
 public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
 {
-
     [Header("Basics")]
     [SerializeField] private Camera targetCamera;
     [SerializeField] private float duration = 0.9f;
@@ -9557,6 +14442,17 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
     [Header("Rendering")]
     [SerializeField] private string sortingLayerName = "Default";
     [SerializeField] private int sortingOrder = 500;
+    [Tooltip("Increase sorting order each spawn so newest is always on top.")]
+    [SerializeField] private bool incrementalSorting = true;
+    [Tooltip("Maximum extra ordering range before wrapping back to base order.")]
+    [SerializeField] private int sortingOrderWrapRange = 5000;
+    private int _nextSortingOrder;
+
+    [Header("Outline")]
+    [SerializeField] private bool enableOutline = true;
+    [SerializeField, Range(0f, 1f)] private float outlineWidth = 0.35f;
+    [SerializeField] private Color outlineColor = Color.black;
+    [SerializeField, Range(0f, 1f)] private float faceDilate = 0.05f;
 
     [Header("Damage -> Size Mapping")]
     [SerializeField] private float minDamageForScale = 1f;
@@ -9567,43 +14463,36 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
     [SerializeField] private float logBase = 10f;
     [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
+    [Header("Pop & Shrink Behaviour")]
+    [Tooltip("Seconds to wait before doing the fast pop (so number is visible first).")]
+    [SerializeField, Range(0f, 0.25f)] private float popDelaySeconds = 0.08f;
+    [Tooltip("Fraction of total duration used for the pop tween itself (fast scale up).")]
+    [SerializeField, Range(0.05f, 0.5f)] private float popDurationFraction = 0.15f;
+    [Tooltip("Final scale multiplier (relative to popped max scale) the number shrinks to. 1 = no shrink.")]
+    [SerializeField, Range(0.1f, 1f)] private float endShrinkScaleMultiplier = 0.75f;
 
+    [Header("Z Axis Shake")]
+    [Tooltip("Z axis tilt angle during pop (visual shake).")]
+    [SerializeField, Range(0f, 45f)] private float tiltAngle = 12f;
+    [Tooltip("Fraction of total duration used for tilt shake (starts at pop).")]
+    [SerializeField, Range(0.02f, 0.6f)] private float tiltDurationFraction = 0.15f;
+    [SerializeField] private bool enableTilt = true;
+
+    [Header("Pool")]
     [SerializeField] private int defaultCapacity = 32;
     [SerializeField] private int maxSize = 256;
 
     private IObjectPool<GameObject> pool;
 
-
-    private float ComputeScale(float damage)
-    {
-        float d = Mathf.Max(damage, 0f);
-
-
-        if(useLogScale)
-        {
-            float minL = Mathf.Log(minDamageForScale + 1f, logBase);
-            float maxL = Mathf.Log(maxDamageForScale + 1f, logBase);
-            float valL = Mathf.Log(d + 1f, logBase);
-            float tL = Mathf.InverseLerp(minL, maxL, valL);
-            return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(tL));
-        }
-        float t = Mathf.InverseLerp(minDamageForScale, maxDamageForScale, d);
-        return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(t));
-    }
-
     void Awake()
     {
-        if(targetCamera == null)
-        {
-            targetCamera = Camera.main;
-        }
+        if (!targetCamera) targetCamera = Camera.main;
         DamageNumbers.Register(this);
-
+        _nextSortingOrder = style ? style.sortingOrder : sortingOrder;
         pool = new ObjectPool<GameObject>(Create, OnGet, OnRelease, OnDestroyPooled, true, defaultCapacity, maxSize);
         Prewarm(48);
         DOTween.SetTweensCapacity(200, 50);
     }
-
 
     public void Prewarm(int count)
     {
@@ -9617,107 +14506,533 @@ public class TweenDamageNumberSystem : MonoBehaviour, IDamageNumberSystem
     {
         var go = new GameObject("DamageNumber", typeof(TextMeshPro));
         go.transform.SetParent(transform, false);
-
         var tmp = go.GetComponent<TextMeshPro>();
         tmp.enableWordWrapping = false;
         tmp.alignment = TextAlignmentOptions.Center;
+        tmp.enableAutoSizing = false;
+        tmp.extraPadding = true;
 
-        var useFont = style != null ? style.font : font;
-        var useMat = style != null ? style.fontMaterial : fontMaterial;
-        var useSize = style != null ? style.baseFontSize : baseFontSize;
-        var useColor = style != null ? style.defaultColor : defaultColor;
+        var useFont = style ? style.font : font;
+        var useMat = style ? style.fontMaterial : fontMaterial;
+        var useSize = style ? style.baseFontSize : baseFontSize;
+        var useColor = style ? style.defaultColor : defaultColor;
+        if (useFont) tmp.font = useFont;
 
-        if (useFont != null) tmp.font = useFont;
-        if (useMat != null) tmp.fontSharedMaterial = useMat;
+        Material baseMat = null;
+        if (IsTMPMaterial(useMat)) baseMat = useMat;
+        else if (tmp.font) baseMat = tmp.font.material;
+        if (baseMat) tmp.fontSharedMaterial = baseMat;
+
+        tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+        ApplyOutlineAndRefresh(tmp);
+
         tmp.fontSize = useSize;
-
         var mr = go.GetComponent<MeshRenderer>();
-        var layerName = style != null ? style.sortingLayerName : sortingLayerName;
-        var order = style != null ? style.sortingOrder : sortingOrder;
-        if (mr != null) { mr.sortingLayerName = layerName; mr.sortingOrder = order; }
-        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
+        var layerName = style ? style.sortingLayerName : sortingLayerName;
+        var baseOrder = style ? style.sortingOrder : sortingOrder;
+        if (mr)
+        {
+            mr.sortingLayerName = layerName;
+            mr.sortingOrder = baseOrder;
+        }
 
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
         go.SetActive(false);
         return go;
     }
 
-    private void OnGet(GameObject go) => go.SetActive(true);
+    private static bool IsTMPMaterial(Material m) => m && m.shader && m.shader.name.StartsWith("TextMeshPro/");
 
+    private void ApplyOutlineAndRefresh(TextMeshPro tmp)
+    {
+        if (!tmp || !enableOutline) return;
+        if (!IsTMPMaterial(tmp.fontMaterial) && tmp.font && IsTMPMaterial(tmp.font.material))
+        {
+            tmp.fontSharedMaterial = tmp.font.material;
+            tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+        }
+        var mat = tmp.fontMaterial;
+        if (!mat) return;
+        mat.EnableKeyword("OUTLINE_ON");
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineWidth))
+            mat.SetFloat(ShaderUtilities.ID_OutlineWidth, outlineWidth);
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineColor))
+        {
+            var col = outlineColor; if (col.a <= 0f) col.a = 1f;
+            mat.SetColor(ShaderUtilities.ID_OutlineColor, col);
+        }
+        if (mat.HasProperty(ShaderUtilities.ID_FaceDilate))
+            mat.SetFloat(ShaderUtilities.ID_FaceDilate, faceDilate);
+        tmp.extraPadding = true;
+        tmp.UpdateMeshPadding();
+        tmp.SetMaterialDirty();
+    }
+
+    private float ComputeScale(float damage)
+    {
+        float d = Mathf.Max(damage, 0f);
+        if (useLogScale)
+        {
+            float minL = Mathf.Log(minDamageForScale + 1f, logBase);
+            float maxL = Mathf.Log(maxDamageForScale + 1f, logBase);
+            float valL = Mathf.Log(d + 1f, logBase);
+            float tL = Mathf.InverseLerp(minL, maxL, valL);
+            return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(tL));
+        }
+        float t = Mathf.InverseLerp(minDamageForScale, maxDamageForScale, d);
+        return Mathf.Lerp(minScale, maxScale, sizeCurve.Evaluate(t));
+    }
+
+    public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+    {
+        var go = pool.Get();
+        DOTween.Kill(go.transform, false);
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, false);
+        ApplyOutlineAndRefresh(tmp);
+
+        tmp.text = amount.ToString("0.#");
+        var fallbackColor = style ? style.defaultColor : defaultColor;
+        var col = overrideColor ?? fallbackColor;
+        tmp.color = new Color(col.r, col.g, col.b, 0f);
+
+        float baseSize = style ? style.baseFontSize : baseFontSize;
+        float sizeScale = ComputeScale(amount);
+        tmp.fontSize = baseSize * sizeScale;
+
+        if (incrementalSorting)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr)
+            {
+                int baseOrder = style ? style.sortingOrder : sortingOrder;
+                if (_nextSortingOrder < baseOrder) _nextSortingOrder = baseOrder;
+                mr.sortingOrder = _nextSortingOrder++;
+                if (_nextSortingOrder - baseOrder > sortingOrderWrapRange)
+                    _nextSortingOrder = baseOrder;
+            }
+        }
+
+        var cam = targetCamera;
+        var basePos = position;
+        if (cam) basePos -= cam.transform.forward * cameraForwardOffset;
+        go.transform.position = position;
+
+        var dur = Mathf.Max(0.05f, style ? style.duration : duration);
+        var rise = style ? style.riseDistance : riseDistance;
+        var fadeIn = Mathf.Clamp01(style ? style.fadeInFraction : 0.2f) * dur;
+        var fadeOut = Mathf.Clamp01(style ? style.fadeOutFraction : 0.25f) * dur;
+        var popFrom = style ? style.popFromScale : 0.6f;
+        var popTo = style ? style.popToScale : 1.1f;
+        var useUnscaled = style ? style.useUnscaledTime : useUnscaledTime;
+
+        float popTime = Mathf.Clamp(popDurationFraction, 0.05f, 0.5f) * dur;
+        float delay = Mathf.Min(popDelaySeconds, dur - 0.05f);
+        float shrinkTime = Mathf.Max(0.0001f, dur - (delay + popTime));
+        float endScale = popTo * endShrinkScaleMultiplier;
+
+        float tiltZ = 0f;
+        go.transform.localScale = Vector3.one * (popFrom * sizeScale);
+
+        var seq = DOTween.Sequence().SetUpdate(useUnscaled).SetRecyclable(true);
+        seq.Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic));
+        seq.Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic));
+        seq.Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic));
+
+        // POP after delay
+        seq.Insert(delay, go.transform.DOScale(popTo * sizeScale, popTime).SetEase(Ease.OutCubic));
+
+        // Shrink only if endShrink < 1
+        if (endShrinkScaleMultiplier < 0.999f)
+            seq.Insert(delay + popTime, go.transform.DOScale(endScale * sizeScale, shrinkTime).SetEase(Ease.InQuad));
+
+        // Z-axis shake (starts with pop)
+        if (enableTilt && tiltAngle > 0f)
+        {
+            float tiltTime = Mathf.Clamp(tiltDurationFraction, 0.02f, 0.9f) * dur;
+            float effectiveTiltTime = Mathf.Min(tiltTime, dur - delay);
+            var tiltSeq = DOTween.Sequence().SetUpdate(useUnscaled);
+            tiltSeq.Append(DOVirtual.Float(0f, tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.OutCubic));
+            tiltSeq.Append(DOVirtual.Float(tiltAngle, -tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.InOutCubic));
+            tiltSeq.Append(DOVirtual.Float(-tiltAngle, 0f, effectiveTiltTime * 0.34f, v => tiltZ = v).SetEase(Ease.InCubic));
+            seq.Insert(delay, tiltSeq);
+        }
+
+        seq.OnUpdate(() =>
+        {
+            if (!targetCamera) return;
+            var face = Quaternion.LookRotation(targetCamera.transform.forward, Vector3.up);
+            go.transform.rotation = face * Quaternion.Euler(0f, 0f, tiltZ);
+        });
+
+        seq.OnComplete(() =>
+        {
+            ResetVisual(go);
+            pool.Release(go);
+        });
+    }
+
+    private void OnGet(GameObject go) => go.SetActive(true);
     private void OnRelease(GameObject go)
     {
         ResetVisual(go);
         go.SetActive(false);
     }
-
     private void OnDestroyPooled(GameObject go)
     {
-        if(go != null) Destroy(go);
+        if (go) Destroy(go);
     }
 
     private void ResetVisual(GameObject go)
     {
         var tmp = go.GetComponent<TextMeshPro>();
-
-        float baseSize = style != null ? style.baseFontSize : baseFontSize;
+        float baseSize = style ? style.baseFontSize : baseFontSize;
         tmp.fontSize = baseSize;
-
+        tmp.enableAutoSizing = false;
         tmp.text = string.Empty;
         var c = tmp.color; c.a = 0f; tmp.color = c;
-
         go.transform.localScale = Vector3.one;
+        go.transform.localRotation = Quaternion.identity;
+    }
+}
+```
+
+## Assets/Scripts/TweenXPNumberSystem.cs
+
+```csharp
+using UnityEngine;
+using TMPro;
+using DG.Tweening;
+using UnityEngine.Pool;
+
+public class TweenXPNumberSystem : MonoBehaviour, IXPNumberSystem
+{
+    [Header("Basics")]
+    [SerializeField] private Camera targetCamera;
+    [SerializeField] private XPNumberStyleSO style;
+    [SerializeField] private float cameraForwardOffset = 0.02f;
+
+    [Header("Fallbacks")]
+    [SerializeField] private TMP_FontAsset font;
+    [SerializeField] private Material fontMaterial;
+    [SerializeField] private float baseFontSize = 3.5f;
+    [SerializeField] private Color defaultColor = new Color(0.4f, 0.9f, 1f, 1f);
+
+    [Header("Render")]
+    [SerializeField] private string sortingLayerName = "Default";
+    [SerializeField] private int sortingOrder = 600;
+    [SerializeField] private bool incrementalSorting = true;
+    [SerializeField] private int sortingOrderWrapRange = 5000;
+    private int _nextSortingOrder;
+
+    [Header("Outline")]
+    [SerializeField] private bool enableOutline = true;
+    [SerializeField, Range(0f, 1f)] private float outlineWidth = 0.35f;
+    [SerializeField] private Color outlineColor = Color.black;
+    [SerializeField, Range(0f, 1f)] private float faceDilate = 0.05f;
+
+    [Header("Pop & Shrink Behaviour")]
+    [Tooltip("Seconds to wait before doing the fast pop.")]
+    [SerializeField, Range(0f, 0.25f)] private float popDelaySeconds = 0.08f;
+    [Tooltip("Fraction of total duration used for the pop tween.")]
+    [SerializeField, Range(0.05f, 0.5f)] private float popDurationFraction = 0.15f;
+    [Tooltip("End scale multiplier relative to popped size (1 = hold).")]
+    [SerializeField, Range(0.1f, 1f)] private float endShrinkScaleMultiplier = 0.75f;
+
+    [Header("Z Axis Shake")]
+    [SerializeField, Range(0f, 45f)] private float tiltAngle = 10f;
+    [SerializeField, Range(0.02f, 0.6f)] private float tiltDurationFraction = 0.15f;
+    [SerializeField] private bool enableTilt = true;
+
+    [Header("Pool")]
+    [SerializeField] private int defaultCapacity = 24;
+    [SerializeField] private int maxSize = 128;
+
+    private IObjectPool<GameObject> pool;
+
+    void Awake()
+    {
+        if (!targetCamera) targetCamera = Camera.main;
+        XPNumbers.Register(this);
+        _nextSortingOrder = style ? style.sortingOrder : sortingOrder;
+        pool = new ObjectPool<GameObject>(Create, OnGet, OnRelease, OnDestroyPooled, true, defaultCapacity, maxSize);
+        Prewarm(24);
     }
 
-
-    public void Spawn(float amount, Vector3 position, Color? overrideColor = null)
+    public void Spawn(int amount, Vector3 position, Color? overrideColor = null)
     {
         var go = pool.Get();
-        DOTween.Kill(go.transform, complete: false);
+        DOTween.Kill(go.transform, false);
         var tmp = go.GetComponent<TextMeshPro>();
-        DOTween.Kill(tmp, complete: false);
+        DOTween.Kill(tmp, false);
+        EnsureTMPOutline(tmp);
 
-        tmp.text = amount.ToString("0.#");
-        var fallbackColor = style != null ? style.defaultColor : defaultColor;
-        var col = overrideColor ?? fallbackColor;
-        tmp.color = new Color(col.r, col.g, col.b, 0f);
+        tmp.text = $"+{amount} XP";
+        Color useColor = overrideColor ?? (style ? style.defaultColor : defaultColor);
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
 
-        float baseSize = style != null ? style.baseFontSize : baseFontSize;
-        float sizeScale = ComputeScale(amount);
-        tmp.fontSize = baseSize * sizeScale;
+        float size = style ? style.baseFontSize : baseFontSize;
+        tmp.fontSize = size;
 
-
-
+        if (incrementalSorting)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr)
+            {
+                int baseOrder = style ? style.sortingOrder : sortingOrder;
+                if (_nextSortingOrder < baseOrder) _nextSortingOrder = baseOrder;
+                mr.sortingLayerName = style ? style.sortingLayerName : sortingLayerName;
+                mr.sortingOrder = _nextSortingOrder++;
+                if (_nextSortingOrder - baseOrder > sortingOrderWrapRange)
+                    _nextSortingOrder = baseOrder;
+            }
+        }
 
         var cam = targetCamera;
-
-
-
-
         var basePos = position;
-        if(cam != null) basePos -= cam.transform.forward * cameraForwardOffset;
-        go.transform.position = position;
-        if(cam != null) go.transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+        if (cam) basePos -= cam.transform.forward * cameraForwardOffset;
+        go.transform.position = basePos;
 
-        var dur = Mathf.Max(0.05f, (style != null ? style.duration : duration));
-        var rise = (style != null ? style.riseDistance : riseDistance);
-        var fadeIn = Mathf.Clamp01(style != null ? style.fadeInFraction : 0.08f) * dur;
-        var fadeOut = Mathf.Clamp01(style != null ? style.fadeOutFraction : 0.25f) * dur;
-        var popFrom = (style != null ? style.popFromScale : 0.6f);
-        var popTo = (style != null ? style.popToScale : 1.1f);
-        var useUnscaled = (style != null ? style.useUnscaledTime : useUnscaledTime);
+        float dur = Mathf.Max(0.05f, style ? style.duration : 0.8f);
+        float fadeIn = Mathf.Clamp01(style ? style.fadeInFraction : 0.08f) * dur;
+        float fadeOut = Mathf.Clamp01(style ? style.fadeOutFraction : 0.22f) * dur;
+        float rise = style ? style.riseDistance : 1.0f;
+        float fromS = style ? style.popFromScale : 0.6f;
+        float toS = style ? style.popToScale : 1.05f;
+        bool unscaled = style ? style.useUnscaledTime : false;
 
-        DOTween.Sequence()
-            .SetUpdate(useUnscaled)
-            .SetRecyclable(true)
-            .Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic))
-            .Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic))
-            .Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic))
-            .Join(go.transform.DOScale(popTo, fadeIn).From(popFrom).SetEase(Ease.OutBack, 2f))
-            .OnComplete(() => pool.Release(go));
+        float popTime = Mathf.Clamp(popDurationFraction, 0.05f, 0.5f) * dur;
+        float delay = Mathf.Min(popDelaySeconds, dur - 0.05f);
+        float shrinkTime = Mathf.Max(0.0001f, dur - (delay + popTime));
+        float endScale = toS * endShrinkScaleMultiplier;
 
+        float tiltZ = 0f;
+        go.transform.localScale = Vector3.one * fromS;
+
+        var seq = DOTween.Sequence().SetUpdate(unscaled).SetRecyclable(true);
+        seq.Join(go.transform.DOMoveY(basePos.y + rise, dur).SetEase(Ease.OutCubic));
+        seq.Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic));
+        seq.Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic));
+
+        seq.Insert(delay, go.transform.DOScale(toS, popTime).SetEase(Ease.OutCubic));
+        if (endShrinkScaleMultiplier < 0.999f)
+            seq.Insert(delay + popTime, go.transform.DOScale(endScale, shrinkTime).SetEase(Ease.InQuad));
+
+        if (enableTilt && tiltAngle > 0f)
+        {
+            float tiltTime = Mathf.Clamp(tiltDurationFraction, 0.02f, 0.9f) * dur;
+            float effectiveTiltTime = Mathf.Min(tiltTime, dur - delay);
+            var tiltSeq = DOTween.Sequence().SetUpdate(unscaled);
+            tiltSeq.Append(DOVirtual.Float(0f, tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.OutCubic));
+            tiltSeq.Append(DOVirtual.Float(tiltAngle, -tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.InOutCubic));
+            tiltSeq.Append(DOVirtual.Float(-tiltAngle, 0f, effectiveTiltTime * 0.34f, v => tiltZ = v).SetEase(Ease.InCubic));
+            seq.Insert(delay, tiltSeq);
+        }
+
+        seq.OnUpdate(() =>
+        {
+            if (!targetCamera) return;
+            var face = Quaternion.LookRotation(targetCamera.transform.forward, Vector3.up);
+            go.transform.rotation = face * Quaternion.Euler(0f, 0f, tiltZ);
+        });
+
+        seq.OnComplete(() =>
+        {
+            OnRelease(go);
+            pool.Release(go);
+        });
     }
 
-}
+    public void SpawnFollow(int amount, Transform follow, Vector3 worldOffset, Color? overrideColor = null)
+    {
+        if (!follow) { Spawn(amount, Vector3.zero, overrideColor); return; }
 
+        var go = pool.Get();
+        DOTween.Kill(go.transform, false);
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, false);
+        EnsureTMPOutline(tmp);
+
+        tmp.text = $"+{amount}";
+        Color useColor = overrideColor ?? (style ? style.defaultColor : defaultColor);
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
+
+        float size = style ? style.baseFontSize : baseFontSize;
+        tmp.fontSize = size;
+
+        if (incrementalSorting)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr)
+            {
+                int baseOrder = style ? style.sortingOrder : sortingOrder;
+                if (_nextSortingOrder < baseOrder) _nextSortingOrder = baseOrder;
+                mr.sortingLayerName = style ? style.sortingLayerName : sortingLayerName;
+                mr.sortingOrder = _nextSortingOrder++;
+                if (_nextSortingOrder - baseOrder > sortingOrderWrapRange)
+                    _nextSortingOrder = baseOrder;
+            }
+        }
+
+        var cam = targetCamera;
+        float dur = Mathf.Max(0.05f, style ? style.duration : 0.8f);
+        float fadeIn = Mathf.Clamp01(style ? style.fadeInFraction : 0.08f) * dur;
+        float fadeOut = Mathf.Clamp01(style ? style.fadeOutFraction : 0.22f) * dur;
+        float rise = style ? style.riseDistance : 1.0f;
+        float fromS = style ? style.popFromScale : 0.6f;
+        float toS = style ? style.popToScale : 1.05f;
+        bool unscaled = style ? style.useUnscaledTime : false;
+
+        float popTime = Mathf.Clamp(popDurationFraction, 0.05f, 0.5f) * dur;
+        float delay = Mathf.Min(popDelaySeconds, dur - 0.05f);
+        float shrinkTime = Mathf.Max(0.0001f, dur - (delay + popTime));
+        float endScale = toS * endShrinkScaleMultiplier;
+
+        Vector3 baseOrigin = follow.position + worldOffset;
+        float followWeight = 1f;
+        float riseAmt = 0f;
+        float tiltZ = 0f;
+
+        Vector3 basePos = follow.position + worldOffset;
+        if (cam) basePos -= cam.transform.forward * cameraForwardOffset;
+        go.transform.position = basePos;
+        go.transform.localScale = Vector3.one * fromS;
+
+        var seq = DOTween.Sequence().SetUpdate(unscaled).SetRecyclable(true);
+        seq.Join(DOVirtual.Float(0f, rise, dur, v => riseAmt = v).SetEase(Ease.OutCubic));
+        seq.Join(DOVirtual.Float(1f, 0f, dur, v => followWeight = v).SetEase(Ease.InCubic));
+
+        seq.Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic));
+        seq.Insert(dur - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic));
+
+        seq.Insert(delay, go.transform.DOScale(toS, popTime).SetEase(Ease.OutCubic));
+        if (endShrinkScaleMultiplier < 0.999f)
+            seq.Insert(delay + popTime, go.transform.DOScale(endScale, shrinkTime).SetEase(Ease.InQuad));
+
+        if (enableTilt && tiltAngle > 0f)
+        {
+            float tiltTime = Mathf.Clamp(tiltDurationFraction, 0.02f, 0.9f) * dur;
+            float effectiveTiltTime = Mathf.Min(tiltTime, dur - delay);
+            var tiltSeq = DOTween.Sequence().SetUpdate(unscaled);
+            tiltSeq.Append(DOVirtual.Float(0f, tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.OutCubic));
+            tiltSeq.Append(DOVirtual.Float(tiltAngle, -tiltAngle, effectiveTiltTime * 0.33f, v => tiltZ = v).SetEase(Ease.InOutCubic));
+            tiltSeq.Append(DOVirtual.Float(-tiltAngle, 0f, effectiveTiltTime * 0.34f, v => tiltZ = v).SetEase(Ease.InCubic));
+            seq.Insert(delay, tiltSeq);
+        }
+
+        seq.OnUpdate(() =>
+        {
+            var unfollowPos = baseOrigin + Vector3.up * riseAmt;
+            var targetFollowPos = follow.position + worldOffset + Vector3.up * riseAmt;
+            var pos = Vector3.Lerp(unfollowPos, targetFollowPos, followWeight);
+            if (targetCamera) pos -= targetCamera.transform.forward * cameraForwardOffset;
+            go.transform.position = pos;
+
+            if (targetCamera)
+            {
+                var face = Quaternion.LookRotation(targetCamera.transform.forward, Vector3.up);
+                go.transform.rotation = face * Quaternion.Euler(0f, 0f, tiltZ);
+            }
+        })
+        .OnComplete(() =>
+        {
+            OnRelease(go);
+            pool.Release(go);
+        });
+    }
+
+    void Prewarm(int count)
+    {
+        var arr = new GameObject[count];
+        for (int i = 0; i < count; i++) arr[i] = pool.Get();
+        for (int i = 0; i < count; i++) pool.Release(arr[i]);
+    }
+
+    GameObject Create()
+    {
+        var go = new GameObject("XPNumber", typeof(TextMeshPro));
+        go.transform.SetParent(transform, false);
+        var tmp = go.GetComponent<TextMeshPro>();
+        tmp.enableWordWrapping = false;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.enableAutoSizing = false;
+        tmp.extraPadding = true;
+
+        var useFont = style ? style.font : font;
+        var useMat = style ? style.fontMaterial : fontMaterial;
+        var useSize = style ? style.baseFontSize : baseFontSize;
+        var useColor = style ? style.defaultColor : defaultColor;
+        if (useFont) tmp.font = useFont;
+
+        Material baseMat = null;
+        if (IsTMPMaterial(useMat)) baseMat = useMat;
+        else if (tmp.font) baseMat = tmp.font.material;
+        if (baseMat) tmp.fontSharedMaterial = baseMat;
+
+        tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+        ApplyOutlineAndRefresh(tmp);
+
+        tmp.fontSize = useSize;
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
+
+        var mr = go.GetComponent<MeshRenderer>();
+        var layer = style ? style.sortingLayerName : sortingLayerName;
+        var order = style ? style.sortingOrder : sortingOrder;
+        if (mr)
+        {
+            mr.sortingLayerName = layer;
+            mr.sortingOrder = order;
+        }
+
+        go.SetActive(false);
+        return go;
+    }
+
+    private static bool IsTMPMaterial(Material m) => m && m.shader && m.shader.name.StartsWith("TextMeshPro/");
+    private void EnsureTMPOutline(TextMeshPro tmp)
+    {
+        if (!tmp) return;
+        if (!IsTMPMaterial(tmp.fontMaterial))
+        {
+            if (tmp.font && IsTMPMaterial(tmp.font.material))
+                tmp.fontSharedMaterial = tmp.font.material;
+            tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+        }
+        ApplyOutlineAndRefresh(tmp);
+    }
+    private void ApplyOutlineAndRefresh(TextMeshPro tmp)
+    {
+        if (!enableOutline) return;
+        var mat = tmp.fontMaterial;
+        if (!mat) return;
+        mat.EnableKeyword("OUTLINE_ON");
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineWidth))
+            mat.SetFloat(ShaderUtilities.ID_OutlineWidth, outlineWidth);
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineColor))
+        {
+            var col = outlineColor; if (col.a <= 0f) col.a = 1f;
+            mat.SetColor(ShaderUtilities.ID_OutlineColor, col);
+        }
+        if (mat.HasProperty(ShaderUtilities.ID_FaceDilate))
+            mat.SetFloat(ShaderUtilities.ID_FaceDilate, faceDilate);
+        tmp.extraPadding = true;
+        tmp.UpdateMeshPadding();
+        tmp.SetMaterialDirty();
+    }
+
+    void OnGet(GameObject go) => go.SetActive(true);
+    void OnRelease(GameObject go)
+    {
+        var tmp = go.GetComponent<TextMeshPro>();
+        tmp.text = string.Empty;
+        var c = tmp.color; c.a = 0f; tmp.color = c;
+        go.transform.localScale = Vector3.one;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.SetParent(transform, false);
+        go.SetActive(false);
+    }
+    void OnDestroyPooled(GameObject go) { if (go) Destroy(go); }
+}
 ```
 
 ## Assets/Scripts/Warrior.cs
@@ -9802,25 +15117,31 @@ using UnityEngine;
 [DefaultExecutionOrder(-1000)]
 public class XPCollectorRegistry : MonoBehaviour
 {
-
-    public static XPCollectorRegistry I {  get; private set; }
+    public static XPCollectorRegistry I { get; private set; }
     public readonly List<Collider> collectors = new();
 
     public static event Action OnChanged;
 
     void Awake() => I = this;
 
-    public void Register(Collider c) 
+    public void Register(Collider c)
     {
-        if(c && !collectors.Contains(c)) collectors.Add(c);
+        if (c && !collectors.Contains(c))
+        {
+            collectors.Add(c);
+            OnChanged?.Invoke();
+        }
     }
 
     public void Unregister(Collider c)
     {
-        if(c) collectors.Remove(c);
+        if (c && collectors.Remove(c))
+            OnChanged?.Invoke();
     }
-}
 
+    // NEW: safe external notification hook (powerups restore registry)
+    public void NotifyChanged() => OnChanged?.Invoke();
+}
 ```
 
 ## Assets/Scripts/XPFormula.cs
@@ -9867,6 +15188,42 @@ public static class XPFormula
         // Round to integer for final result
         return Mathf.Max(1, (int)Math.Round(baseReq * mul));
     }
+}
+```
+
+## Assets/Scripts/XPNumberStyleSO.cs
+
+```csharp
+using UnityEngine;
+using TMPro;
+
+[CreateAssetMenu(menuName = "UI/XP Numbers/Style", fileName = "XPNumberStyle")]
+public class XPNumberStyleSO : ScriptableObject
+{
+    [Header("Typography")]
+    public TMP_FontAsset font;
+    public Material fontMaterial;
+    public float baseFontSize = 3.5f;
+    public Color defaultColor = new Color(0.4f, 0.9f, 1f, 1f); // cyan-ish
+
+    [Header("Timing")]
+    public float duration = 0.8f;
+    [Range(0.01f, 0.3f)] public float fadeInFraction = 0.08f;
+    [Range(0.1f, 0.6f)] public float fadeOutFraction = 0.22f;
+
+    [Header("Motion")]
+    public float riseDistance = 1.0f;
+
+    [Header("Scale Pop")]
+    public float popFromScale = 0.6f;
+    public float popToScale = 1.05f;
+
+    [Header("Rendering")]
+    public string sortingLayerName = "Default";
+    public int sortingOrder = 600;
+
+    [Header("Update")]
+    public bool useUnscaledTime = false;
 }
 ```
 

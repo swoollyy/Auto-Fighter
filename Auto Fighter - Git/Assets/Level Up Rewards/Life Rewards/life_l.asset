@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rewardID: life_l
   displayName: Restoration++ (Legendary)
-  description: +3 Life
+  description: +2 Life
   category: 6
   rarity: 4
   isPaddleReward: 0
@@ -24,4 +24,4 @@ MonoBehaviour:
   replacesReward: {fileID: 0}
   exclusivityKey: 
   blockedKeys: []
-  overrideAmount: 0
+  overrideAmount: 2

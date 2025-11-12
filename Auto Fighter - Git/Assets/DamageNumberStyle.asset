@@ -17,11 +17,11 @@ MonoBehaviour:
   baseFontSize: 15
   defaultColor: {r: 0.5188679, g: 0.5188679, b: 0.5188679, a: 1}
   duration: 0.8
-  fadeInFraction: 0.236
+  fadeInFraction: 0.3
   fadeOutFraction: 0.386
   riseDistance: 1.1
-  popFromScale: 1.4
-  popToScale: 2
+  popFromScale: 0.6
+  popToScale: 0.9
   sortingLayerName: UI
   sortingOrder: 500
   useUnscaledTime: 0

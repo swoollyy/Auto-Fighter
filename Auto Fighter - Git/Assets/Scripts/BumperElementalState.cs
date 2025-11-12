@@ -6,7 +6,7 @@ public class BumperElementalState : MonoBehaviour
 {
 
     private Bumper bumper;
-    public BumperState CurrentState  = BumperState.None;
+    public BumperState CurrentState = BumperState.None;
 
     private float fireBurnExpireAt;
     private float fireBurnNextTickAt;
@@ -35,6 +35,9 @@ public class BumperElementalState : MonoBehaviour
     public float ElectricBonusXP => electricBonusXP;
     public float ElectricBonusScore => electricBonusScore;
 
+    // NEW: accumulation for Earth fissure
+    private float earthAccumulatedDamage;
+    private Ball lastBallDuringCrust; // last ball that dealt damage while crusted
 
 
     void Awake()
@@ -42,19 +45,12 @@ public class BumperElementalState : MonoBehaviour
         bumper = GetComponent<Bumper>();
     }
 
+    void Start() { }
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
     void Update()
     {
-
-        switch(CurrentState)
-{
+        switch (CurrentState)
+        {
             case BumperState.None:
                 break;
             case BumperState.Burning:
@@ -72,13 +68,11 @@ public class BumperElementalState : MonoBehaviour
             default:
                 break;
         }
-
     }
 
     public void ApplyBurn(float dps, float duration)
     {
         CurrentState = BumperState.Burning;
-        Debug.Log("Bumper Burn Applied");
         fireBurnExpireAt = Time.time + duration;
         fireBurnNextTickAt = Time.time + fireBurnTickInterval;
         fireBurnDamagePerTick = dps * fireBurnTickInterval;
@@ -103,13 +97,13 @@ public class BumperElementalState : MonoBehaviour
         fireBurnExpireAt = 0f;
         fireBurnNextTickAt = 0f;
         fireBurnDamagePerTick = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Burning)
+            CurrentState = BumperState.None;
     }
 
     public void ApplyDrenched(float duration, float bonusXP)
     {
         CurrentState = BumperState.Drenched;
-        Debug.Log("Bumper Drenched Applied");
         waterDrenchExpireAt = Time.time + duration;
         waterBonusXP = bonusXP;
     }
@@ -126,26 +120,54 @@ public class BumperElementalState : MonoBehaviour
     {
         waterDrenchExpireAt = 0f;
         waterBonusXP = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Drenched)
+            CurrentState = BumperState.None;
     }
 
-    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore, float bonusUnused, float bonusUnused2)
     {
+        // NOTE: parameters kept for compatibility (reward code passes more args).
         CurrentState = BumperState.Crusted;
-        Debug.Log("Bumper Crusted Applied");
         float newExpire = Time.time + duration;
-        earthFissureDamage = damage;
+        earthFissureDamage = damage; // legacy baseline, not directly used for eruption now
         earthBonusXP = bonusXP;
         earthBonusScore = bonusScore;
         if (newExpire > earthCrustExpireAt)
             earthCrustExpireAt = newExpire;
+
+        // NEW reset accumulation
+        earthAccumulatedDamage = 0f;
+        lastBallDuringCrust = null;
+    }
+
+    // Overload used by reward (keeping original signature)
+    public void ApplyCrusted(float damage, float duration, float bonusXP, float bonusScore)
+    {
+        ApplyCrusted(damage, duration, bonusXP, bonusScore, 0f, 0f);
     }
 
     public void HandleCrusted()
     {
         if (Time.time >= earthCrustExpireAt)
         {
-            bumper.TakeFissureDamage(earthFissureDamage, bumper.LastDmgFactorForXP);
+            // NEW: eruption damage = 75% of accumulated damage during crust.
+            // Minimum: 75% of the current damage of a relevant ball.
+            float eruptionFromAccum = 0.75f * earthAccumulatedDamage;
+
+            // Pick ball reference: last one that hit while crusted, else primary pinball ball.
+            Ball anchorBall = lastBallDuringCrust;
+            if (anchorBall == null)
+                anchorBall = Pinball.Instance != null ? Pinball.Instance.ball : null;
+
+            float minDamage = 0f;
+            if (anchorBall != null)
+                minDamage = 0.75f * anchorBall.CurrentDamage;
+
+            float finalDamage = Mathf.Max(eruptionFromAccum, minDamage);
+
+            bumper.TakeFissureDamage(finalDamage, bumper.LastDmgFactorForXP);
+
+            // Clear / reset state
             ClearCrusted();
         }
     }
@@ -156,7 +178,10 @@ public class BumperElementalState : MonoBehaviour
         earthCrustExpireAt = 0f;
         earthBonusXP = 0f;
         earthBonusScore = 0f;
-        CurrentState = BumperState.None;
+        earthAccumulatedDamage = 0f;
+        lastBallDuringCrust = null;
+        if (CurrentState == BumperState.Crusted)
+            CurrentState = BumperState.None;
     }
 
     public void ApplyShocked(float damage, float bonusXP, float bonusScore)
@@ -178,7 +203,8 @@ public class BumperElementalState : MonoBehaviour
         electricShockDamage = 0f;
         electricBonusXP = 0f;
         electricBonusScore = 0f;
-        CurrentState = BumperState.None;
+        if (CurrentState == BumperState.Shocked)
+            CurrentState = BumperState.None;
     }
 
     public void ClearElement()
@@ -187,6 +213,16 @@ public class BumperElementalState : MonoBehaviour
         ClearDrenched();
         ClearCrusted();
         ClearShocked();
+    }
+
+    // NEW: record incoming damage while crusted
+    public void RecordCrustedIncomingDamage(float amount, Ball sourceBall)
+    {
+        if (CurrentState != BumperState.Crusted) return;
+        if (amount > 0f)
+            earthAccumulatedDamage += amount;
+        if (sourceBall != null)
+            lastBallDuringCrust = sourceBall;
     }
 
 }

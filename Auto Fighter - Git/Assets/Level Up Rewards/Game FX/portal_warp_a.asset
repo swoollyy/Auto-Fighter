@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8ffb6b52354cd146a3662bae2ae0ac4, type: 3}
+  m_Name: portal_warp_a
+  m_EditorClassIdentifier: 
+  rewardID: portal_warp_a
+  displayName: Portals!
+  description: 'Summons a portal when close to a wall, sending you to the other side
+    with immense power!
+
+    2x XP on next hit
+
+    2x Score on next hit'
+  category: 7
+  rarity: 0
+  isPaddleReward: 0
+  blockWhenActive: 1
+  canStack: 0
+  scalable: 0
+  replacesReward: {fileID: 0}
+  exclusivityKey: 
+  blockedKeys: []
+  portalVisualPrefab: {fileID: 6495541613807467786, guid: 6f78c9a108ec5f545883f337426c1b64, type: 3}
+  leftPlaneLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  rightPlaneLayer:
+    serializedVersion: 2
+    m_Bits: 512
+  topPlaneLayer:
+    serializedVersion: 2
+    m_Bits: 1024
+  maxActiveDistance: 12
+  triggerDistance: 1.25
+  insideMargin: 0.35
+  lateralImpulse: 28
+  topImpulse: 30
+  cooldownSeconds: 5

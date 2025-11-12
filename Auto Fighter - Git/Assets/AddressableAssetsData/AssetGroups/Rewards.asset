@@ -20,37 +20,44 @@ MonoBehaviour:
   - m_GUID: 24718604a0cd6bc47ab5984a2c9de517
     m_Address: Assets/Level Up Rewards/Score Multiplier/r_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 463689142c6e3d145b0390deb1c96c81
     m_Address: Assets/Level Up Rewards/Score Multiplier/l_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 94d9bb8272f2d454592eebe1867d8a5a
     m_Address: Assets/Level Up Rewards/Score Multiplier/u_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: aa3a9b5eda8133244a50d822d184af38
     m_Address: Assets/Level Up Rewards/Score Multiplier/crs_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: b4065047fb1897e4ba53c3c58022eb66
     m_Address: Assets/Level Up Rewards/Score Multiplier/e_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: bde8db072f708b349b42caab3150cfd7
     m_Address: Assets/Level Up Rewards/Score Multiplier/a_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d8f7af850538bea41a431f90f499614e
     m_Address: Assets/Level Up Rewards/Score Multiplier/com_SM.asset
     m_ReadOnly: 0
-    m_SerializedLabels: []
+    m_SerializedLabels:
+    - Rewards
     FlaggedDuringContentUpdateRestriction: 0
   m_ReadOnly: 0
   m_Settings: {fileID: 11400000, guid: e7c3d0408446397419129cc4235295a7, type: 2}

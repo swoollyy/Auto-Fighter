@@ -18,6 +18,8 @@ public class CollectXP : MonoBehaviour
     ParticleSystem ps;
     ParticleSystem.TriggerModule trigger;
 
+    private readonly List<Collider> assignedTargets = new();
+
     // Reuse buffers to avoid GC allocations:
     static readonly List<ParticleSystem.Particle> enteredBuf = new(256);
     static readonly List<(Collider c, float d2)> sortBuf = new(64);
@@ -41,7 +43,7 @@ public class CollectXP : MonoBehaviour
 
     void OnDisable()
     {
-        XPCollectorRegistry.OnChanged -= RebindTargets; 
+        XPCollectorRegistry.OnChanged -= RebindTargets;
 
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
@@ -106,13 +108,14 @@ public class CollectXP : MonoBehaviour
 
         // Sort nearest first
         sortBuf.Sort((a, b) => a.d2.CompareTo(b.d2));
-
+        assignedTargets.Clear();
         // Assign nearest up to maxTargets
         int assignCount = Mathf.Min(maxTargets, sortBuf.Count);
         for (int i = 0; i < assignCount; i++)
+        {
             trigger.SetCollider(i, sortBuf[i].c);
-
-        // Clear any leftover slots (prevents stale checks)
+            assignedTargets.Add(sortBuf[i].c); // keep a local list to pick nearest on collect
+        }
         for (int i = assignCount; i < maxTargets; i++)
             trigger.SetCollider(i, null);
     }
@@ -131,11 +134,33 @@ public class CollectXP : MonoBehaviour
                 Pinball.Instance.AddXP(xpPerParticle);
             }
 
-
-
-
-            // Kill ONLY the collected particle
+            // Spawn XP numbers at the actual collection point
             var p = enteredBuf[i];
+            var main = ps.main;
+            Vector3 worldPos = main.simulationSpace == ParticleSystemSimulationSpace.World
+                ? p.position
+                : ps.transform.TransformPoint(p.position);
+
+            if (XPNumbers.IsReady)
+            {
+                // pick the nearest assigned collector (typically the ball) to this particle
+                Transform follow = null;
+                float best = float.PositiveInfinity;
+                for (int t = 0; t < assignedTargets.Count; t++)
+                {
+                    var col = assignedTargets[t];
+                    if (!col) continue;
+                    float d2 = (col.bounds.center - worldPos).sqrMagnitude;
+                    if (d2 < best) { best = d2; follow = col.transform; }
+                }
+
+                // Fallback to world-space if none found
+                if (follow)
+                    XPNumbers.Spawn(Mathf.RoundToInt(Pinball.Instance.FinalXPCalculated), follow, new Vector3(0f, 1.25f, 0f));
+                else
+                    XPNumbers.Spawn(Mathf.RoundToInt(Pinball.Instance.FinalXPCalculated), worldPos + new Vector3(0f, 1.25f, 0f));
+            }
+            // Kill ONLY the collected particle
             p.remainingLifetime = 0f;
             enteredBuf[i] = p;
         }

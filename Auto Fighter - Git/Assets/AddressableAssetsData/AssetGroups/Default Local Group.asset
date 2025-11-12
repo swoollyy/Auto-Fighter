@@ -161,6 +161,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9ac0dfaee35a54b4ea61e13e3ce889f6
+    m_Address: Assets/Level Up Rewards/Game FX/portal_warp_a.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 9b49cfe9510b8604583c2f49a9ea4434
     m_Address: Assets/Level Up Rewards/Ball FX/e_bfx_s.asset
     m_ReadOnly: 0
@@ -203,6 +209,12 @@ MonoBehaviour:
     m_SerializedLabels:
     - Rewards
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c4bf1e28a0d1c05459c2fecf07150570
+    m_Address: Assets/Level Up Rewards/Game FX/grenade_ability.asset
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - Rewards
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c6518bd1ec82e3b47b093d976792227c
     m_Address: Assets/Level Up Rewards/Ball FX/XP Radius/xp_radius_l.asset
     m_ReadOnly: 0
@@ -224,8 +236,7 @@ MonoBehaviour:
   - m_GUID: d232d6d868c3037488960087bfc791fb
     m_Address: Assets/Level Up Rewards/Life Rewards/life_r.asset
     m_ReadOnly: 0
-    m_SerializedLabels:
-    - Rewards
+    m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d319a9fc15f77f14f89203d971e08a5d
     m_Address: Assets/Level Up Rewards/Ball FX/com_bfx_s.asset
