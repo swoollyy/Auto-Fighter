@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-11-11T23:06:44.9403261Z (UTC)
+- Generated: 2025-11-13T23:04:11.6663113Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 126
+- Files: 127
 
 ## Assets/BumperAnimScript.cs
 
@@ -1020,6 +1020,74 @@ public static class ProjectSummary
     [Serializable] private class MemberLite { public string name, type, flags; }
     [Serializable] private class MethodLite { public string name, ret; public List<string> @params; }
 }
+```
+
+## Assets/FireWispVelocityDriver.cs
+
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(Renderer))]
+public class FireVelocityFeeder : MonoBehaviour
+{
+    public int materialIndex = 1;      // fire material slot
+    public bool useRigidbody = true;
+    public float smoothTime = 0.06f;
+    public float velScale = 1f;
+
+    public bool sendAngular = true;
+    public float angSmooth = 0.06f;
+
+    Rigidbody _rb;
+    Renderer _rend;
+    MaterialPropertyBlock _mpb;
+
+    Vector3 _prevPos, _velSmoothed, _angSmoothed;
+
+    void Awake()
+    {
+        _rb = GetComponent<Rigidbody>();
+        _rend = GetComponent<Renderer>();
+        _mpb = new MaterialPropertyBlock();
+        _prevPos = transform.position;
+
+        // IMPORTANT: PropertyBlocks are ignored by Static Batching
+        gameObject.isStatic = false;
+    }
+
+    void Update()
+    {
+        Vector3 vel = Vector3.zero;
+        Vector3 ang = Vector3.zero;
+
+        if (useRigidbody && _rb != null)
+        {
+            vel = _rb.velocity;
+            ang = _rb.angularVelocity;
+        }
+        else
+        {
+            // Derive velocity from transform motion
+            Vector3 pos = transform.position;
+            vel = (pos - _prevPos) / Mathf.Max(Time.deltaTime, 1e-5f);
+            _prevPos = pos;
+        }
+
+        // Smooth to reduce jitter
+        float t = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.0001f, smoothTime));
+        _velSmoothed = Vector3.Lerp(_velSmoothed, vel, t);
+
+        float ta = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.0001f, angSmooth));
+        _angSmoothed = Vector3.Lerp(_angSmoothed, ang, ta);
+
+        // Apply to material slot
+        _rend.GetPropertyBlock(_mpb, materialIndex);
+        _mpb.SetVector("_VelWS", _velSmoothed * velScale);
+        if (sendAngular) _mpb.SetVector("_AngVelWS", _angSmoothed);
+        _rend.SetPropertyBlock(_mpb, materialIndex);
+    }
+}
+
 ```
 
 ## Assets/Plugins/Demigiant/DOTween/Modules/DOTweenModuleAudio.cs
@@ -4195,6 +4263,11 @@ public class Ball : MonoBehaviour
         tmpBonusBouncesRemaining = src.tmpBonusBouncesRemaining;
         tempDamageBouncesRemaining = src.tempDamageBouncesRemaining;
 
+        var col = GetComponent<Collider>();
+        var srcCol = src.GetComponent<Collider>();
+
+        col.excludeLayers = srcCol.excludeLayers;
+
         // Size & speed
         transform.localScale = src.transform.localScale;
         maxSpeed = src.maxSpeed;
@@ -4322,6 +4395,7 @@ public class Ball : MonoBehaviour
 ```csharp
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class BallElementalState : MonoBehaviour
@@ -4329,12 +4403,44 @@ public class BallElementalState : MonoBehaviour
     [SerializeField]
     private ElementalState initialState = ElementalState.None;
 
+    [Header("Element Overlay Materials (optional)")]
+    [Tooltip("1st overlay material for Fire state.")]
+    [SerializeField] private Material fireMaterial1;
+    [Tooltip("2nd overlay material for Fire state.")]
+    [SerializeField] private Material fireMaterial2;
+    [SerializeField] private Material waterMaterial;
+    [SerializeField] private Material earthMaterial;
+    [SerializeField] private Material electricMaterial;
+
+    [Tooltip("Instantiate a unique copy of the overlay material(s) per ball (safe if you mutate).")]
+    [SerializeField] private bool instantiateElementMaterials = true;
+
+    [Tooltip("Primary slot index where elemental overlay starts (Fire will also use the next slot).")]
+    [SerializeField] private int elementMaterialSlot = 1;
+
+    [Header("Fire Helper")]
+    [Tooltip("Fire velocity feeder script (auto-added if missing on Fire).")]
+    [SerializeField] private bool autoAddFireVelocityFeeder = true;
+
     Pinball PM;
 
     public ElementalState CurrentState = ElementalState.None;
+
+    private Renderer _rend;
+    private FireVelocityFeeder _fireFeeder;
+
+    // Track currently applied element overlay materials (Fire uses 2)
+    private readonly List<Material> _activeElementMaterials = new List<Material>();
+    // Cache of original (base) materials so we can restore cleanly
+    private Material[] _baseMaterials;
+    private bool _cachedBase;
+
+    // For clean up when we instantiate
+    private readonly List<Material> _instancedOverlayMaterials = new();
+
     private Ball ball;
     private float originalMaxSpeed;
-    // Combination dictionary for easy expansion
+
     private static readonly Dictionary<(ElementalState, ElementalState), ElementalState> combinations =
         new()
         {
@@ -4350,7 +4456,6 @@ public class BallElementalState : MonoBehaviour
             {(ElementalState.Air, ElementalState.Water), ElementalState.Vapor},
             {(ElementalState.Air, ElementalState.Earth), ElementalState.Whirlwind},
             {(ElementalState.Earth, ElementalState.Air), ElementalState.Whirlwind},
-            // Add more combinations as needed
         };
 
     private float fireTempDamage;
@@ -4392,7 +4497,6 @@ public class BallElementalState : MonoBehaviour
     private int earthBouncesRemaining;
     private int electricBouncesRemaining;
 
-    // Public getters if needed
     public float FireActiveTempDamage => fireTempDamage;
     public float FireBurnDamage => fireBurnDamage;
     public float FireBurnDuration => fireBurnDuration;
@@ -4403,7 +4507,7 @@ public class BallElementalState : MonoBehaviour
     public bool FireEffectActive => fireEffectActive;
     public bool FireIsCursed => fireIsCursed;
 
-    public float WaterBonusXP => waterBonusXP;  
+    public float WaterBonusXP => waterBonusXP;
     public int WaterBonusDamage => waterBonusDamage;
     public float WaterDrenchDuration => waterDrenchDuration;
     public bool WaterExplode => waterExplode;
@@ -4429,28 +4533,40 @@ public class BallElementalState : MonoBehaviour
     public bool ElectricIsCursed => electricIsCursed;
     public int ElectricBouncesRemaining => electricBouncesRemaining;
 
-
-
-
     private void Awake()
     {
         ball = GetComponent<Ball>();
-        if(ball == null)
-        {
+        if (ball == null)
             Debug.LogWarning("BallElementalState requires a Ball component on the same GameObject.");
-        }
 
-        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        _rend = GetComponent<Renderer>();
+        if (_rend == null)
+            Debug.LogWarning("BallElementalState requires a Renderer component.");
 
+        _fireFeeder = GetComponent<FireVelocityFeeder>();
+        if (_fireFeeder) _fireFeeder.enabled = false;
+
+        PM = GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
     }
 
-    // Start is called before the first frame update
     void Start()
     {
         CurrentState = initialState;
-        if(ball != null)
+        if (ball != null)
             originalMaxSpeed = ball.maxSpeed;
 
+        CacheBaseMaterialsOnce();
+
+        if (CurrentState != ElementalState.None)
+            ApplyElementMaterial(CurrentState);
+    }
+
+    private void CacheBaseMaterialsOnce()
+    {
+        if (_cachedBase || _rend == null) return;
+        // Use .materials so we get instances consistent with runtime modifications (not shared).
+        _baseMaterials = _rend.materials.ToArray();
+        _cachedBase = true;
     }
 
     public void SetState(ElementalState newState)
@@ -4458,7 +4574,8 @@ public class BallElementalState : MonoBehaviour
         if (CurrentState == newState) return;
         CurrentState = newState;
         ApplyStateEffects();
-        //TODO VFX/SFX
+        ApplyElementMaterial(newState);
+        // TODO: VFX / SFX
     }
 
     public void CombineWith(ElementalState newElement)
@@ -4469,16 +4586,12 @@ public class BallElementalState : MonoBehaviour
 
     public ElementalState CombineElements(ElementalState existing, ElementalState incoming)
     {
-        if(combinations.TryGetValue((existing, incoming), out var result))
-        {
-            return result;
-        }
-        return incoming; // Default to the incoming element if no combination exists)
+        return combinations.TryGetValue((existing, incoming), out var result) ? result : incoming;
     }
 
     private void ApplyStateEffects()
     {
-        if(ball == null) return;
+        if (ball == null) return;
         switch (CurrentState)
         {
             case ElementalState.Fire:
@@ -4489,23 +4602,149 @@ public class BallElementalState : MonoBehaviour
                 break;
             case ElementalState.Air:
                 break;
-            // Add more cases for other elemental states as needed
             default:
                 ball.maxSpeed = originalMaxSpeed;
                 break;
         }
     }
 
-
     public void ClearState()
     {
         CurrentState = ElementalState.None;
-        //TODO Remove VFX/SFX
+        RemoveElementMaterials();
+        if (_fireFeeder) _fireFeeder.enabled = false;
+        // TODO: remove VFX / SFX
+    }
+
+    private void ApplyElementMaterial(ElementalState state)
+    {
+        if (_rend == null) return;
+        CacheBaseMaterialsOnce();
+
+        // Remove previous overlays first.
+        RemoveElementMaterials();
+
+        if (_fireFeeder) _fireFeeder.enabled = false;
+
+        var mats = _rend.materials.ToList(); // current stack (should now equal _baseMaterials after removal)
+
+        // Ensure slot index is not negative
+        if (elementMaterialSlot < 0) elementMaterialSlot = 0;
+
+        // Local creation helper
+        Material Make(Material src)
+        {
+            if (src == null) return null;
+            if (!instantiateElementMaterials) return src;
+            var inst = new Material(src);
+            _instancedOverlayMaterials.Add(inst);
+            return inst;
+        }
+
+        switch (state)
+        {
+            case ElementalState.Fire:
+                if (fireMaterial1 == null || fireMaterial2 == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 2);
+                var fireMat1 = Make(fireMaterial1);
+                var fireMat2 = Make(fireMaterial2);
+                mats[elementMaterialSlot] = fireMat1;
+                mats[elementMaterialSlot + 1] = fireMat2;
+                _activeElementMaterials.Add(fireMat1);
+                _activeElementMaterials.Add(fireMat2);
+                if (!_fireFeeder && autoAddFireVelocityFeeder)
+                    _fireFeeder = gameObject.AddComponent<FireVelocityFeeder>();
+                if (_fireFeeder) _fireFeeder.enabled = true;
+                break;
+
+            case ElementalState.Water:
+                if (waterMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var wMat = Make(waterMaterial);
+                mats[elementMaterialSlot] = wMat;
+                _activeElementMaterials.Add(wMat);
+                break;
+
+            case ElementalState.Earth:
+                if (earthMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var eMat = Make(earthMaterial);
+                mats[elementMaterialSlot] = eMat;
+                _activeElementMaterials.Add(eMat);
+                break;
+
+            case ElementalState.Electric:
+                if (electricMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var elMat = Make(electricMaterial);
+                mats[elementMaterialSlot] = elMat;
+                _activeElementMaterials.Add(elMat);
+                break;
+
+            default:
+                return;
+        }
+
+        _rend.materials = mats.ToArray();
+    }
+
+    // Ensure list has at least 'requiredCount' items by extending with base material clones (not overlay)
+    private void EnsureCapacity(List<Material> mats, int requiredCount)
+    {
+        if (!_cachedBase || _baseMaterials == null || _baseMaterials.Length == 0) return;
+        var baseRef = _baseMaterials[0];
+        while (mats.Count < requiredCount)
+        {
+            // Use the first base material reference (extra slots will still render using that material until replaced)
+            mats.Add(baseRef);
+        }
+    }
+
+    private void RemoveElementMaterials()
+    {
+        if (_rend == null) return;
+
+        // If nothing active, still restore to base if we previously modified length.
+        if (_activeElementMaterials.Count == 0)
+        {
+            if (_cachedBase)
+                _rend.materials = _baseMaterials.ToArray();
+            return;
+        }
+
+        var before = _rend.materials;
+        // Restore original base set (fast & deterministic) instead of trying to surgically remove.
+        if (_cachedBase)
+        {
+            _rend.materials = _baseMaterials.ToArray();
+        }
+        else
+        {
+            // Fallback: rebuild removing overlays by reference
+            var mats = before.Where(m => !_activeElementMaterials.Contains(m)).ToArray();
+            _rend.materials = mats;
+        }
+
+        // Clean up instanced overlay materials (avoid leaking)
+        if (instantiateElementMaterials && _instancedOverlayMaterials.Count > 0)
+        {
+            foreach (var inst in _instancedOverlayMaterials)
+            {
+                if (inst != null)
+                    Destroy(inst);
+            }
+            _instancedOverlayMaterials.Clear();
+        }
+
+        _activeElementMaterials.Clear();
+        // Debug (optional): Uncomment if you need verification
+        // Debug.Log($"[BallElementalState] Cleared overlays. Before count={before.Length}, After count={_rend.materials.Length}");
     }
 
     public void OnBounce(Bumper bumper)
     {
         if (!areEffectsActive) return;
+
         var elem = bumper.gameObject.GetComponent<BumperElementalState>();
 
         if (fireEffectActive && bumper != null)
@@ -4523,7 +4762,7 @@ public class BallElementalState : MonoBehaviour
             elem.ClearElement();
             elem.ApplyCrusted(earthFissureDamage * ball.CurrentMultipliers, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
-        if(electricEffectActive && bumper != null)
+        if (electricEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyShocked(electricShockDamage * ball.CurrentMultipliers, electricBonusXP, electricBonusScore);
@@ -4533,141 +4772,95 @@ public class BallElementalState : MonoBehaviour
         {
             case ElementalState.Fire:
                 fireBouncesRemaining--;
-                if (fireBouncesRemaining <= 0)
-                {
-                    fireEffectActive = false;
-                    ClearState();
-                }
+                if (fireBouncesRemaining <= 0) { fireEffectActive = false; ClearState(); }
                 break;
             case ElementalState.Water:
                 waterBouncesRemaining--;
-                if (waterBouncesRemaining <= 0)
-                {
-                    waterEffectActive = false;
-                    ClearState();
-                }
+                if (waterBouncesRemaining <= 0) { waterEffectActive = false; ClearState(); }
                 break;
             case ElementalState.Earth:
                 earthBouncesRemaining--;
-                if (earthBouncesRemaining <= 0)
-                {
-                    earthEffectActive = false;
-                    ClearState();
-                }
+                if (earthBouncesRemaining <= 0) { earthEffectActive = false; ClearState(); }
                 break;
-
             case ElementalState.Electric:
                 electricBouncesRemaining--;
-                if (electricBouncesRemaining <= 0)
-                {
-                    electricEffectActive = false;
-                    ClearState();
-                }
-                break;
-            // Handle other elemental states with bounce effects as needed
-            default:
+                if (electricBouncesRemaining <= 0) { electricEffectActive = false; ClearState(); }
                 break;
         }
-
-
-
-
     }
 
     #region Elemental State Methods
 
     public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
-        waterEffectActive = false;
-        earthEffectActive = false;
-        electricEffectActive = false;
-
+        waterEffectActive = earthEffectActive = electricEffectActive = false;
         fireEffectActive = true;
-
-        Debug.Log("Fire effect applied to ball");
 
         fireTempDamage = bonusDamage;
         fireBurnDamage = burnDamage;
         fireBurnDuration = burnDuration;
         fireBouncesRemaining += bounceDuration;
-        if(fireBouncesRemaining > bounceDuration)
-            fireBouncesRemaining = bounceDuration;
+        if (fireBouncesRemaining > bounceDuration) fireBouncesRemaining = bounceDuration;
         fireExplode = canExplode;
         fireExplosionSize = explosionRadius;
         fireExplosionDamage = explosionDamageFlat;
         fireIsCursed = cursed;
 
         SetState(ElementalState.Fire);
-
     }
 
     public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
-        electricEffectActive = false;
-        fireEffectActive = false;
-        earthEffectActive = false;
-
+        electricEffectActive = fireEffectActive = earthEffectActive = false;
         waterEffectActive = true;
-        Debug.Log("Water effect applied to ball");
-
 
         waterBonusXP = bonusXP;
         waterBonusDamage = bonusDamage;
         waterDrenchDuration = drenchDuration;
         waterBouncesRemaining += bounceDuration;
-        if (waterBouncesRemaining > bounceDuration)
-            waterBouncesRemaining = bounceDuration;
+        if (waterBouncesRemaining > bounceDuration) waterBouncesRemaining = bounceDuration;
         waterExplode = canBurst;
         waterBurstSize = burstRadius;
         waterExplosionDamage = burstDamageFlat;
+        waterIsCursed = cursed;
 
         SetState(ElementalState.Water);
-
     }
 
     public void SetEarthState(int fissureDamage, float crustDuration, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
-        fireEffectActive = false;
-        waterEffectActive = false;
-        electricEffectActive = false;
-
+        fireEffectActive = waterEffectActive = electricEffectActive = false;
         earthEffectActive = true;
-        Debug.Log("Earth effect applied to ball");
 
         earthFissureDamage = fissureDamage;
         earthCrustDuration = crustDuration;
         earthBonusXP = bonusXP;
         earthBonusScore = bonusScore;
         earthBouncesRemaining += bounceDuration;
-        if (earthBouncesRemaining > bounceDuration)
-            earthBouncesRemaining = bounceDuration;
+        if (earthBouncesRemaining > bounceDuration) earthBouncesRemaining = bounceDuration;
         earthIsCursed = cursed;
+
         SetState(ElementalState.Earth);
     }
 
     public void SetElectricState(int shockDamage, int chainCount, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
-        fireEffectActive = false;
-        waterEffectActive = false;
-        earthEffectActive = false;
-
+        fireEffectActive = waterEffectActive = earthEffectActive = false;
         electricEffectActive = true;
-        Debug.Log("Electric effect applied to ball");
+
         electricShockDamage = shockDamage;
         electricChainCount = chainCount;
         electricBonusXP = bonusXP;
         electricBonusScore = bonusScore;
         electricBouncesRemaining += bounceDuration;
-        if (electricBouncesRemaining > bounceDuration)
-            electricBouncesRemaining = bounceDuration;
+        if (electricBouncesRemaining > bounceDuration) electricBouncesRemaining = bounceDuration;
         electricIsCursed = cursed;
+
         SetState(ElementalState.Electric);
     }
 
-
     #endregion
 }
-
 ```
 
 ## Assets/Scripts/BallElements.cs
@@ -5118,8 +5311,8 @@ public class BluePad : MonoBehaviour, IPadVariant
 
     [Header("Slow-Mo FX")]
     public bool enableSlowMo = true;
-    [Range(0.05f, 1f)] public float slowMoScale = 0.5f;
-    [Min(0.05f)] public float slowMoHoldDuration = 0.22f;
+    [Range(0.05f, 1f)] public float slowMoScale = 0.3f;
+    [Min(0.05f)] public float slowMoHoldDuration = 0.14f;
     [Min(0.02f)] public float slowMoEaseOutDuration = 0.10f;
 
     [Header("PostFX")]
@@ -10122,13 +10315,14 @@ public class PadLightFX : MonoBehaviour
 
 ```csharp
 using DG.Tweening;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 /// Pinball gameplay state machine
 public enum PinballState
@@ -10298,6 +10492,22 @@ public class Pinball : MonoBehaviour, IRunContext
     [Header("Global Physics")]
     [SerializeField] private bool overrideGlobalGravity = true;
     [SerializeField] private Vector3 gravityOverride = new Vector3(0f, 0f, -19.62f);
+
+    [Header("LevelUp Flow")]
+    [SerializeField, Tooltip("If a Level Up occurs during SkillAim, wait this long (unscaled) after aim ends before showing rewards.")]
+    private float postAimLevelUpDelay = 0.20f;
+    private bool _queueLevelUpAfterAim;
+
+    [Header("Post-LevelUp Resume SlowMo")]
+    [SerializeField] private bool enableResumeSlowMo = true;
+    [SerializeField, Tooltip("Initial timeScale when resuming from LevelUp (0.05..1). Lower = stronger slow-mo.")]
+    [Range(0.05f, 1f)] private float resumeSlowMoStartScale = 0.18f;
+    [SerializeField, Tooltip("Hold time (unscaled) at the strongest slow-mo before easing back to normal.")]
+    [Min(0f)] private float resumeSlowMoHold = 0.30f;
+    [SerializeField, Tooltip("Ease-out time (unscaled) to return to normal timeScale.")]
+    [Min(0.05f)] private float resumeSlowMoEase = 0.30f;
+    private readonly object _postLevelUpSlowmoToken = new object();
+    private Tween _resumeSlowmoTween;
     #endregion
 
     #region Runtime state
@@ -10614,8 +10824,18 @@ public class Pinball : MonoBehaviour, IRunContext
             curXP -= maxXP;
         }
 
-        if (pendingLevelUps > 0 && CurrentState != PinballState.LevelUp)
-            StartNextLevelUp();
+        // Don't interrupt SkillAim; queue LevelUp until aim completes.
+        if (pendingLevelUps > 0)
+        {
+            if (CurrentState == PinballState.SkillAim)
+            {
+                _queueLevelUpAfterAim = true;
+                return;
+            }
+
+            if (CurrentState != PinballState.LevelUp && CurrentState != PinballState.PaddleSelect)
+                StartNextLevelUp();
+        }
     }
 
     private void HandlePaddles()
@@ -11070,7 +11290,7 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (!xpFXPrefab) return;
 
-        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor));
+        int finalXP = Mathf.RoundToInt(xpCount * Mathf.Max(1f, damageFactor * .35f));
         finalXP *= Mathf.Max(1, mult);
 
         Vector3 position = new Vector3(pos.x, pos.y + 1f, pos.z);
@@ -11117,6 +11337,12 @@ public class Pinball : MonoBehaviour, IRunContext
     private void StartNextLevelUp()
     {
         if (pendingLevelUps <= 0) return;
+        // Defer LevelUp if player is aiming a skill shot
+        if (CurrentState == PinballState.SkillAim)
+        {
+            _queueLevelUpAfterAim = true;
+            return;
+        }
         ChangeState(PinballState.LevelUp);
     }
 
@@ -11139,8 +11365,45 @@ public class Pinball : MonoBehaviour, IRunContext
         }
         else
         {
-            ChangeState(PinballState.Play);
+            // Resume to Play with a short slow‑mo ramp using the TimeScaleHub (safe).
+            StartCoroutine(ResumeFromLevelUpFlow());
         }
+    }
+
+    private IEnumerator ResumeFromLevelUpFlow()
+    {
+        ChangeState(PinballState.Play);
+        // One frame to ensure UI/pause fully released
+        yield return null;
+        StartPostLevelUpSlowMo();
+    }
+
+    private void StartPostLevelUpSlowMo()
+    {
+        if (!enableResumeSlowMo) return;
+
+        _resumeSlowmoTween?.Kill(false);
+
+        float start = Mathf.Clamp(resumeSlowMoStartScale, 0.05f, 1f);
+        // Begin strong slow-mo
+        TimeScaleHub.Begin(_postLevelUpSlowmoToken, start, affectFixedDelta: true);
+
+        var seq = DOTween.Sequence().SetUpdate(true);
+        if (resumeSlowMoHold > 0f)
+            seq.AppendInterval(resumeSlowMoHold);
+
+        // Ease back to normal (1.0) and release the token
+        seq.Append(DOTween.To(() => start, s =>
+        {
+            // Update current slow-mo scale through the hub (min-of-active is enforced there)
+            TimeScaleHub.Begin(_postLevelUpSlowmoToken, s, affectFixedDelta: true);
+        }, 1f, resumeSlowMoEase).SetEase(Ease.OutQuad))
+        .OnComplete(() =>
+        {
+            TimeScaleHub.End(_postLevelUpSlowmoToken);
+        });
+
+        _resumeSlowmoTween = seq;
     }
 
     public void ApplyLevelBonuses()
@@ -11194,7 +11457,7 @@ public class Pinball : MonoBehaviour, IRunContext
     {
         if (!req.ball) return;
 
-        // NEW: cancel any portal slow-mo so Skill Aim owns time scale cleanly
+        // Ensure no leftover portal slow-mo interferes with SkillAim
         CancelAllPortalSlowmo();
 
         // (existing)
@@ -11212,10 +11475,10 @@ public class Pinball : MonoBehaviour, IRunContext
         _nextHitBounces = req.nextHitBounces;
         _lastAimDir = _aimBall ? _aimBall.transform.forward : Vector3.forward;
 
-        // NEW: keep portals on cooldown for the duration of the aim window (prevents edge cases)
+        // Keep portals on cooldown for the duration of the aim window (prevents edge cases)
         var portalRuntime = FindFirstObjectByType<PortalWarpRewardRuntime>();
         if (portalRuntime)
-            portalRuntime.ForceGlobalCooldown(_aimWindowDur + 0.10f);
+            portalRuntime.ForceGlobalCooldown(_aimWindowDur * 0.20f);
 
         if (!mainCam) mainCam = Camera.main;
 
@@ -11373,6 +11636,18 @@ public class Pinball : MonoBehaviour, IRunContext
         }
 
         currentState = PinballState.Play;
+
+        // If leveling is queued or still pending, show shortly after aim completes.
+        if (_queueLevelUpAfterAim || pendingLevelUps > 0)
+            StartCoroutine(InvokeLevelUpAfterSkillAim());
+    }
+
+    private IEnumerator InvokeLevelUpAfterSkillAim()
+    {
+        _queueLevelUpAfterAim = false;
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.01f, postAimLevelUpDelay));
+        if (pendingLevelUps > 0 && CurrentState == PinballState.Play)
+            StartNextLevelUp();
     }
 
     private void RestoreFromSkillAim(bool tweenCamFollowDist = true)
@@ -11429,17 +11704,17 @@ public class Pinball : MonoBehaviour, IRunContext
             camFollow.StartShake(shakeDuration, shakeStrength, shakeVibrato, shakeRandomness);
     }
 
-        public void ScreenShakeGrenade()
+    public void ScreenShakeGrenade()
     {
         if (mainCam == null || camFollow == null) return;
         // Roughly 1.6x strength/duration, tighter vibrato
-        camFollow.StartShake(shakeDuration* 1.6f, shakeStrength* 1.75f, Mathf.Max(8, shakeVibrato - 2), shakeRandomness);
+        camFollow.StartShake(shakeDuration * 1.6f, shakeStrength * 1.75f, Mathf.Max(8, shakeVibrato - 2), shakeRandomness);
     }
 
-#endregion
+    #endregion
 
-#region Bumper respawn
-public IEnumerator RespawnRoutine(Bumper bumper)
+    #region Bumper respawn
+    public IEnumerator RespawnRoutine(Bumper bumper)
     {
         if (!bumper || !ball) yield break;
 
@@ -11636,7 +11911,8 @@ public IEnumerator RespawnRoutine(Bumper bumper)
             else
             {
                 ui?.ClosePaddleSelect(false);
-                ChangeState(PinballState.Play);
+                // Resume with slow‑mo ramp to avoid abrupt return
+                StartCoroutine(ResumeFromLevelUpFlow());
             }
             return;
         }
@@ -11653,7 +11929,8 @@ public IEnumerator RespawnRoutine(Bumper bumper)
         else
         {
             ui?.ClosePaddleSelect(false);
-            ChangeState(PinballState.Play);
+            // Resume with slow‑mo ramp
+            StartCoroutine(ResumeFromLevelUpFlow());
         }
     }
     #endregion
@@ -11705,14 +11982,14 @@ public IEnumerator RespawnRoutine(Bumper bumper)
     {
         var candidates = pool.Where(r => r.Rarity == rarity).ToList();
         if (candidates.Count == 0) return null;
-        int index = Random.Range(0, candidates.Count);
+        int index = UnityEngine.Random.Range(0, candidates.Count);
         return candidates[index];
     }
 
     private RewardRarity RollRarity()
     {
         float total = rarityWeights.Values.Sum();
-        float roll = Random.Range(0f, total);
+        float roll = UnityEngine.Random.Range(0f, total);
 
         float cumulative = 0f;
         foreach (var kv in rarityWeights)
@@ -12394,6 +12671,12 @@ public class PortalWarpController : MonoBehaviour
     [Min(1f)] public float LateralImpulse = 28f;
     [Min(1f)] public float TopImpulse = 30f;
 
+    [Header("Low-X Exit Boost (Left/Right Portals)")]
+    [Tooltip("If lateral X speed magnitude is below this on exit, add extra X impulse away from the portal wall.")]
+    [Min(0f)] public float LowXBoostThreshold = 3f;
+    [Tooltip("Extra X direction impulse applied (VelocityChange) when below threshold.")]
+    [Min(0f)] public float LowXBoostImpulse = 30f;
+
     private static int s_activeSlowmo;
     public static bool IsAnySlowmoActive => s_activeSlowmo > 0;
 
@@ -12700,6 +12983,15 @@ public class PortalWarpController : MonoBehaviour
                 targetMinSpeed = xAbs + Mathf.Max(0f, exitImpulse);
                 preferredDir = (xSgn >= 0f) ? Vector3.right : Vector3.left;
                 _rb.velocity = new Vector3(xSgn * targetMinSpeed, 0f, prevVel.z);
+            }
+
+            // NEW: ensure lateral X movement away from the portal wall when nearly stalled in X
+            if (LowXBoostImpulse > 0f && Mathf.Abs(_rb.velocity.x) < LowXBoostThreshold)
+            {
+                // exitDir.x > 0 means we're at the Right wall; kick leftwards (negative X).
+                // exitDir.x < 0 means we're at the Left wall; kick rightwards (positive X).
+                float kickSign = (inward.x > 0f) ? -1f : 1f;
+                _rb.AddForce(new Vector3(kickSign * LowXBoostImpulse, 0f, 0f), ForceMode.VelocityChange);
             }
         }
         else

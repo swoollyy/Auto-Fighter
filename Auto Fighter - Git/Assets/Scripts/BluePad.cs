@@ -38,9 +38,12 @@ public class BluePad : MonoBehaviour, IPadVariant
     [Header("Planar Reset")]
     public bool zeroOnlyZBeforeLift = true;
 
-    [Header("Speed Uncap After Boost")]
+    [Header("Speed Uncap After Boost (CHANGED)")]
+    [Tooltip("Uncapped ADDITIVE speed amount. Baseline maxSpeed is never mutated. e.g. base 45 + 35 = 80 for duration.")]
+    public float uncapAddAmount = 35f;
     public float uncapDuration = .85f;
-    public float uncapMaxSpeed = 80f;
+    [Tooltip("Legacy absolute field (ignored now).")]
+    [HideInInspector] public float uncapMaxSpeed = 80f;
     public bool restoreMaxOnExpire = true;
 
     [Header("Collision / High Speed")]
@@ -175,7 +178,8 @@ public class BluePad : MonoBehaviour, IPadVariant
         newVel.z = Mathf.Max(targetZ, 0f);
         rb.velocity = newVel;
 
-        ball.TemporarilyUncapMaxSpeed(uncapDuration, uncapMaxSpeed, restoreMaxOnExpire);
+        // CHANGED: Use additive uncapped speed (baseline untouched)
+        ball.TemporarilyUncapMaxSpeedAdd(uncapDuration, uncapAddAmount, restoreOriginal: restoreMaxOnExpire);
 
         if (enableSlowMo)
             StartSlowMo();
@@ -183,7 +187,6 @@ public class BluePad : MonoBehaviour, IPadVariant
         Pinball.Instance?.ScreenShake();
         MarkApplied(id);
 
-        // FIX: Disable collider only briefly; will re-enable before revert to avoid leaving pad un-hittable.
         if (_trigger) _trigger.enabled = false;
     }
 
@@ -220,7 +223,6 @@ public class BluePad : MonoBehaviour, IPadVariant
 
         _slowMoCR = null;
 
-        // FIX: Re-enable collider BEFORE host reverts (so underlying DullPad stays usable).
         if (_trigger) _trigger.enabled = true;
 
         if (_host != null)
@@ -264,7 +266,6 @@ public class BluePad : MonoBehaviour, IPadVariant
 
     void OnDisable()
     {
-        // FIX: Safety re-enable collider if script is disabled mid-effect.
         if (_trigger && !_trigger.enabled) _trigger.enabled = true;
         CancelSlowMo();
     }

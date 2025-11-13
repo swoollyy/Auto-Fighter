@@ -152,12 +152,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseDamage: 5
-  _maxSpeedUncapped: 0
-  glowIntensityRiseRate: 8
+  _maxSpeedUncapped: 1
+  glowIntensityRiseRate: 16
   glowIntensityFallSmoothTime: 0.18
   limitKillBumperImpulse: 1
-  killBumperSpeedCap: 55
-  killBumperDampStrength: 0.65
+  killBumperSpeedCap: 45
+  killBumperDampStrength: 0.81
   killBumperVerticalClamp: 25
   killBumperImpulseRatioThreshold: 0.35
   clampDuringUncapIfFinite: 1
@@ -171,7 +171,7 @@ MonoBehaviour:
   comboBreakLayers:
     serializedVersion: 2
     m_Bits: 4228
-  maxSpeed: 50
+  maxSpeed: 45
   forceField: {fileID: 7301997074838616247}
   forceFieldRadius: 0
   baseForceFieldRadius: 0
@@ -188,6 +188,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   initialState: 0
+  fireMaterial1: {fileID: 2100000, guid: abb9a6f1da5ccdc49a5f99606c1f5111, type: 2}
+  fireMaterial2: {fileID: -876546973899608171, guid: 07349c019e622624d811a07b824d001b, type: 3}
+  waterMaterial: {fileID: 2100000, guid: 8f4d3a1713b2a04428587fb8f015ad07, type: 2}
+  earthMaterial: {fileID: 2100000, guid: df7448adbf04f80438a2bc932b70bcbe, type: 2}
+  electricMaterial: {fileID: 2100000, guid: dbf5d127fa10ca94bb8734db27d085d6, type: 2}
+  instantiateElementMaterials: 1
+  elementMaterialSlot: 1
+  autoAddFireVelocityFeeder: 1
   CurrentState: 0
 --- !u!114 &6619349316177529661
 MonoBehaviour:
@@ -201,6 +209,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1a7ffeb027eb3c14589fe8ec51a1a514, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  materialIndex: 2
+  useRigidbody: 1
+  smoothTime: 0.39
+  velScale: 0.42
+  sendAngular: 1
+  angSmooth: 0.9
 --- !u!1 &4486208946801086317
 GameObject:
   m_ObjectHideFlags: 0

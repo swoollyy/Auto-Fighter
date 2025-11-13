@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class BallElementalState : MonoBehaviour
@@ -7,12 +8,44 @@ public class BallElementalState : MonoBehaviour
     [SerializeField]
     private ElementalState initialState = ElementalState.None;
 
+    [Header("Element Overlay Materials (optional)")]
+    [Tooltip("1st overlay material for Fire state.")]
+    [SerializeField] private Material fireMaterial1;
+    [Tooltip("2nd overlay material for Fire state.")]
+    [SerializeField] private Material fireMaterial2;
+    [SerializeField] private Material waterMaterial;
+    [SerializeField] private Material earthMaterial;
+    [SerializeField] private Material electricMaterial;
+
+    [Tooltip("Instantiate a unique copy of the overlay material(s) per ball (safe if you mutate).")]
+    [SerializeField] private bool instantiateElementMaterials = true;
+
+    [Tooltip("Primary slot index where elemental overlay starts (Fire will also use the next slot).")]
+    [SerializeField] private int elementMaterialSlot = 1;
+
+    [Header("Fire Helper")]
+    [Tooltip("Fire velocity feeder script (auto-added if missing on Fire).")]
+    [SerializeField] private bool autoAddFireVelocityFeeder = true;
+
     Pinball PM;
 
     public ElementalState CurrentState = ElementalState.None;
+
+    private Renderer _rend;
+    private FireVelocityFeeder _fireFeeder;
+
+    // Track currently applied element overlay materials (Fire uses 2)
+    private readonly List<Material> _activeElementMaterials = new List<Material>();
+    // Cache of original (base) materials so we can restore cleanly
+    private Material[] _baseMaterials;
+    private bool _cachedBase;
+
+    // For clean up when we instantiate
+    private readonly List<Material> _instancedOverlayMaterials = new();
+
     private Ball ball;
     private float originalMaxSpeed;
-    // Combination dictionary for easy expansion
+
     private static readonly Dictionary<(ElementalState, ElementalState), ElementalState> combinations =
         new()
         {
@@ -28,7 +61,6 @@ public class BallElementalState : MonoBehaviour
             {(ElementalState.Air, ElementalState.Water), ElementalState.Vapor},
             {(ElementalState.Air, ElementalState.Earth), ElementalState.Whirlwind},
             {(ElementalState.Earth, ElementalState.Air), ElementalState.Whirlwind},
-            // Add more combinations as needed
         };
 
     private float fireTempDamage;
@@ -70,7 +102,6 @@ public class BallElementalState : MonoBehaviour
     private int earthBouncesRemaining;
     private int electricBouncesRemaining;
 
-    // Public getters if needed
     public float FireActiveTempDamage => fireTempDamage;
     public float FireBurnDamage => fireBurnDamage;
     public float FireBurnDuration => fireBurnDuration;
@@ -81,7 +112,7 @@ public class BallElementalState : MonoBehaviour
     public bool FireEffectActive => fireEffectActive;
     public bool FireIsCursed => fireIsCursed;
 
-    public float WaterBonusXP => waterBonusXP;  
+    public float WaterBonusXP => waterBonusXP;
     public int WaterBonusDamage => waterBonusDamage;
     public float WaterDrenchDuration => waterDrenchDuration;
     public bool WaterExplode => waterExplode;
@@ -107,28 +138,40 @@ public class BallElementalState : MonoBehaviour
     public bool ElectricIsCursed => electricIsCursed;
     public int ElectricBouncesRemaining => electricBouncesRemaining;
 
-
-
-
     private void Awake()
     {
         ball = GetComponent<Ball>();
-        if(ball == null)
-        {
+        if (ball == null)
             Debug.LogWarning("BallElementalState requires a Ball component on the same GameObject.");
-        }
 
-        PM = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
+        _rend = GetComponent<Renderer>();
+        if (_rend == null)
+            Debug.LogWarning("BallElementalState requires a Renderer component.");
 
+        _fireFeeder = GetComponent<FireVelocityFeeder>();
+        if (_fireFeeder) _fireFeeder.enabled = false;
+
+        PM = GameObject.FindWithTag("PinballManager")?.GetComponent<Pinball>();
     }
 
-    // Start is called before the first frame update
     void Start()
     {
         CurrentState = initialState;
-        if(ball != null)
+        if (ball != null)
             originalMaxSpeed = ball.maxSpeed;
 
+        CacheBaseMaterialsOnce();
+
+        if (CurrentState != ElementalState.None)
+            ApplyElementMaterial(CurrentState);
+    }
+
+    private void CacheBaseMaterialsOnce()
+    {
+        if (_cachedBase || _rend == null) return;
+        // Use .materials so we get instances consistent with runtime modifications (not shared).
+        _baseMaterials = _rend.materials.ToArray();
+        _cachedBase = true;
     }
 
     public void SetState(ElementalState newState)
@@ -136,7 +179,8 @@ public class BallElementalState : MonoBehaviour
         if (CurrentState == newState) return;
         CurrentState = newState;
         ApplyStateEffects();
-        //TODO VFX/SFX
+        ApplyElementMaterial(newState);
+        // TODO: VFX / SFX
     }
 
     public void CombineWith(ElementalState newElement)
@@ -147,16 +191,12 @@ public class BallElementalState : MonoBehaviour
 
     public ElementalState CombineElements(ElementalState existing, ElementalState incoming)
     {
-        if(combinations.TryGetValue((existing, incoming), out var result))
-        {
-            return result;
-        }
-        return incoming; // Default to the incoming element if no combination exists)
+        return combinations.TryGetValue((existing, incoming), out var result) ? result : incoming;
     }
 
     private void ApplyStateEffects()
     {
-        if(ball == null) return;
+        if (ball == null) return;
         switch (CurrentState)
         {
             case ElementalState.Fire:
@@ -167,23 +207,149 @@ public class BallElementalState : MonoBehaviour
                 break;
             case ElementalState.Air:
                 break;
-            // Add more cases for other elemental states as needed
             default:
                 ball.maxSpeed = originalMaxSpeed;
                 break;
         }
     }
 
-
     public void ClearState()
     {
         CurrentState = ElementalState.None;
-        //TODO Remove VFX/SFX
+        RemoveElementMaterials();
+        if (_fireFeeder) _fireFeeder.enabled = false;
+        // TODO: remove VFX / SFX
+    }
+
+    private void ApplyElementMaterial(ElementalState state)
+    {
+        if (_rend == null) return;
+        CacheBaseMaterialsOnce();
+
+        // Remove previous overlays first.
+        RemoveElementMaterials();
+
+        if (_fireFeeder) _fireFeeder.enabled = false;
+
+        var mats = _rend.materials.ToList(); // current stack (should now equal _baseMaterials after removal)
+
+        // Ensure slot index is not negative
+        if (elementMaterialSlot < 0) elementMaterialSlot = 0;
+
+        // Local creation helper
+        Material Make(Material src)
+        {
+            if (src == null) return null;
+            if (!instantiateElementMaterials) return src;
+            var inst = new Material(src);
+            _instancedOverlayMaterials.Add(inst);
+            return inst;
+        }
+
+        switch (state)
+        {
+            case ElementalState.Fire:
+                if (fireMaterial1 == null || fireMaterial2 == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 2);
+                var fireMat1 = Make(fireMaterial1);
+                var fireMat2 = Make(fireMaterial2);
+                mats[elementMaterialSlot] = fireMat1;
+                mats[elementMaterialSlot + 1] = fireMat2;
+                _activeElementMaterials.Add(fireMat1);
+                _activeElementMaterials.Add(fireMat2);
+                if (!_fireFeeder && autoAddFireVelocityFeeder)
+                    _fireFeeder = gameObject.AddComponent<FireVelocityFeeder>();
+                if (_fireFeeder) _fireFeeder.enabled = true;
+                break;
+
+            case ElementalState.Water:
+                if (waterMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var wMat = Make(waterMaterial);
+                mats[elementMaterialSlot] = wMat;
+                _activeElementMaterials.Add(wMat);
+                break;
+
+            case ElementalState.Earth:
+                if (earthMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var eMat = Make(earthMaterial);
+                mats[elementMaterialSlot] = eMat;
+                _activeElementMaterials.Add(eMat);
+                break;
+
+            case ElementalState.Electric:
+                if (electricMaterial == null) return;
+                EnsureCapacity(mats, elementMaterialSlot + 1);
+                var elMat = Make(electricMaterial);
+                mats[elementMaterialSlot] = elMat;
+                _activeElementMaterials.Add(elMat);
+                break;
+
+            default:
+                return;
+        }
+
+        _rend.materials = mats.ToArray();
+    }
+
+    // Ensure list has at least 'requiredCount' items by extending with base material clones (not overlay)
+    private void EnsureCapacity(List<Material> mats, int requiredCount)
+    {
+        if (!_cachedBase || _baseMaterials == null || _baseMaterials.Length == 0) return;
+        var baseRef = _baseMaterials[0];
+        while (mats.Count < requiredCount)
+        {
+            // Use the first base material reference (extra slots will still render using that material until replaced)
+            mats.Add(baseRef);
+        }
+    }
+
+    private void RemoveElementMaterials()
+    {
+        if (_rend == null) return;
+
+        // If nothing active, still restore to base if we previously modified length.
+        if (_activeElementMaterials.Count == 0)
+        {
+            if (_cachedBase)
+                _rend.materials = _baseMaterials.ToArray();
+            return;
+        }
+
+        var before = _rend.materials;
+        // Restore original base set (fast & deterministic) instead of trying to surgically remove.
+        if (_cachedBase)
+        {
+            _rend.materials = _baseMaterials.ToArray();
+        }
+        else
+        {
+            // Fallback: rebuild removing overlays by reference
+            var mats = before.Where(m => !_activeElementMaterials.Contains(m)).ToArray();
+            _rend.materials = mats;
+        }
+
+        // Clean up instanced overlay materials (avoid leaking)
+        if (instantiateElementMaterials && _instancedOverlayMaterials.Count > 0)
+        {
+            foreach (var inst in _instancedOverlayMaterials)
+            {
+                if (inst != null)
+                    Destroy(inst);
+            }
+            _instancedOverlayMaterials.Clear();
+        }
+
+        _activeElementMaterials.Clear();
+        // Debug (optional): Uncomment if you need verification
+        // Debug.Log($"[BallElementalState] Cleared overlays. Before count={before.Length}, After count={_rend.materials.Length}");
     }
 
     public void OnBounce(Bumper bumper)
     {
         if (!areEffectsActive) return;
+
         var elem = bumper.gameObject.GetComponent<BumperElementalState>();
 
         if (fireEffectActive && bumper != null)
@@ -201,7 +367,7 @@ public class BallElementalState : MonoBehaviour
             elem.ClearElement();
             elem.ApplyCrusted(earthFissureDamage * ball.CurrentMultipliers, earthCrustDuration, earthBonusXP, earthBonusScore);
         }
-        if(electricEffectActive && bumper != null)
+        if (electricEffectActive && bumper != null)
         {
             elem.ClearElement();
             elem.ApplyShocked(electricShockDamage * ball.CurrentMultipliers, electricBonusXP, electricBonusScore);
@@ -211,137 +377,92 @@ public class BallElementalState : MonoBehaviour
         {
             case ElementalState.Fire:
                 fireBouncesRemaining--;
-                if (fireBouncesRemaining <= 0)
-                {
-                    fireEffectActive = false;
-                    ClearState();
-                }
+                if (fireBouncesRemaining <= 0) { fireEffectActive = false; ClearState(); }
                 break;
             case ElementalState.Water:
                 waterBouncesRemaining--;
-                if (waterBouncesRemaining <= 0)
-                {
-                    waterEffectActive = false;
-                    ClearState();
-                }
+                if (waterBouncesRemaining <= 0) { waterEffectActive = false; ClearState(); }
                 break;
             case ElementalState.Earth:
                 earthBouncesRemaining--;
-                if (earthBouncesRemaining <= 0)
-                {
-                    earthEffectActive = false;
-                    ClearState();
-                }
+                if (earthBouncesRemaining <= 0) { earthEffectActive = false; ClearState(); }
                 break;
-
             case ElementalState.Electric:
                 electricBouncesRemaining--;
-                if (electricBouncesRemaining <= 0)
-                {
-                    electricEffectActive = false;
-                    ClearState();
-                }
-                break;
-            // Handle other elemental states with bounce effects as needed
-            default:
+                if (electricBouncesRemaining <= 0) { electricEffectActive = false; ClearState(); }
                 break;
         }
-
-
-
-
     }
 
     #region Elemental State Methods
 
     public void SetFireState(int bonusDamage, float burnDamage, float burnDuration, int bounceDuration, bool canExplode, float explosionRadius, int explosionDamageFlat, bool cursed)
     {
-        waterEffectActive = false;
-        earthEffectActive = false;
-        electricEffectActive = false;
-
+        waterEffectActive = earthEffectActive = electricEffectActive = false;
         fireEffectActive = true;
-
-        Debug.Log("Fire effect applied to ball");
 
         fireTempDamage = bonusDamage;
         fireBurnDamage = burnDamage;
         fireBurnDuration = burnDuration;
         fireBouncesRemaining += bounceDuration;
-        if(fireBouncesRemaining > bounceDuration)
-            fireBouncesRemaining = bounceDuration;
+        if (fireBouncesRemaining > bounceDuration) fireBouncesRemaining = bounceDuration;
         fireExplode = canExplode;
         fireExplosionSize = explosionRadius;
         fireExplosionDamage = explosionDamageFlat;
         fireIsCursed = cursed;
 
         SetState(ElementalState.Fire);
-
     }
 
     public void SetWaterState(float bonusXP, int bonusDamage, float drenchDuration, int bounceDuration, bool canBurst, float burstRadius, int burstDamageFlat, bool cursed)
     {
-        electricEffectActive = false;
-        fireEffectActive = false;
-        earthEffectActive = false;
-
+        electricEffectActive = fireEffectActive = earthEffectActive = false;
         waterEffectActive = true;
-        Debug.Log("Water effect applied to ball");
-
 
         waterBonusXP = bonusXP;
         waterBonusDamage = bonusDamage;
         waterDrenchDuration = drenchDuration;
         waterBouncesRemaining += bounceDuration;
-        if (waterBouncesRemaining > bounceDuration)
-            waterBouncesRemaining = bounceDuration;
+        if (waterBouncesRemaining > bounceDuration) waterBouncesRemaining = bounceDuration;
         waterExplode = canBurst;
         waterBurstSize = burstRadius;
         waterExplosionDamage = burstDamageFlat;
+        waterIsCursed = cursed;
 
         SetState(ElementalState.Water);
-
     }
 
     public void SetEarthState(int fissureDamage, float crustDuration, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
-        fireEffectActive = false;
-        waterEffectActive = false;
-        electricEffectActive = false;
-
+        fireEffectActive = waterEffectActive = electricEffectActive = false;
         earthEffectActive = true;
-        Debug.Log("Earth effect applied to ball");
 
         earthFissureDamage = fissureDamage;
         earthCrustDuration = crustDuration;
         earthBonusXP = bonusXP;
         earthBonusScore = bonusScore;
         earthBouncesRemaining += bounceDuration;
-        if (earthBouncesRemaining > bounceDuration)
-            earthBouncesRemaining = bounceDuration;
+        if (earthBouncesRemaining > bounceDuration) earthBouncesRemaining = bounceDuration;
         earthIsCursed = cursed;
+
         SetState(ElementalState.Earth);
     }
 
     public void SetElectricState(int shockDamage, int chainCount, float bonusXP, float bonusScore, int bounceDuration, bool cursed)
     {
-        fireEffectActive = false;
-        waterEffectActive = false;
-        earthEffectActive = false;
-
+        fireEffectActive = waterEffectActive = earthEffectActive = false;
         electricEffectActive = true;
-        Debug.Log("Electric effect applied to ball");
+
         electricShockDamage = shockDamage;
         electricChainCount = chainCount;
         electricBonusXP = bonusXP;
         electricBonusScore = bonusScore;
         electricBouncesRemaining += bounceDuration;
-        if (electricBouncesRemaining > bounceDuration)
-            electricBouncesRemaining = bounceDuration;
+        if (electricBouncesRemaining > bounceDuration) electricBouncesRemaining = bounceDuration;
         electricIsCursed = cursed;
+
         SetState(ElementalState.Electric);
     }
-
 
     #endregion
 }

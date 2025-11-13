@@ -21,37 +21,37 @@ public class Ball : MonoBehaviour
     private int tempDamageBouncesRemaining;
     private float forceFieldGravity;
 
-    // === Speed Uncap (BluePad interaction) ===
+    // === Speed Uncap (BluePad / SkillAim interaction) ===
     [Header("Runtime Speed Uncap")]
     [SerializeField, Tooltip("DEBUG: show current uncapped state in inspector")]
-    private bool _maxSpeedUncapped;                       // NEW
-    private float _maxSpeedUncapUntil;                    // NEW
-    private float _originalMaxSpeedBeforeUncap;           // NEW
-    private float _temporaryMaxSpeedTarget;               // NEW
-    private bool _restoreOriginalMaxOnExpire;             // NEW
+    private bool _maxSpeedUncapped;
+    private float _maxSpeedUncapUntil;
+    private float _temporaryMaxSpeedTarget;         // absolute target (baseline + additive). <=0 => fully uncapped (no finite cap)
+    private bool _restoreOriginalMaxOnExpire;
+    // NEW: additive bonus kept separate from baseline (never mutates baseline)
+    private float _tempMaxSpeedAdd;                 // additive bonus while uncapped (0 => none)
+    private bool _fullUncapped;                     // true if request was for fully uncapped (old <=0 semantic)
 
     // Apply temporary effects while uncapped
     private bool _uncapModsApplied;
     private float _savedBounciness = -1f;
     private float _uncapDamageBonus = 1f;
 
-    // Add near existing Glow fields
     [Header("Glow Light Smoothing")]
     [SerializeField, Tooltip("Units/sec to brighten when speeding up. Higher = snappier rise.")]
     private float glowIntensityRiseRate = 8f;
     [SerializeField, Range(0.03f, 0.6f), Tooltip("Smooth time (s) to dim when slowing down. Lower = faster.")]
     private float glowIntensityFallSmoothTime = 0.18f;
 
-    private float _glowIntensity;      // smoothed current intensity
-    private float _glowIntensityVel;   // velocity for SmoothDamp
+    private float _glowIntensity;
+    private float _glowIntensityVel;
 
-        // ================= Kill‑Bumper Velocity Control =================
     [Header("Kill Bumper Velocity Control")]
     [SerializeField, Tooltip("Apply a soft clamp to post‑kill bumper impulses so the ball does not go flying.")]
     private bool limitKillBumperImpulse = true;
     [SerializeField, Tooltip("Target cap for speed right after killing a bumper (only if exceeded).")]
     private float killBumperSpeedCap = 55f;
-    [SerializeField, Range(0f, 1f), Tooltip("How strongly to damp the excess above the cap (0 = none, 1 = snap directly to cap).")]    
+    [SerializeField, Range(0f, 1f), Tooltip("How strongly to damp the excess above the cap (0 = none, 1 = snap directly to cap).")]
     private float killBumperDampStrength = 0.65f;
     [SerializeField, Tooltip("Clamp absolute vertical (Y) component after kill to prevent huge upward/downward launches.")]
     private float killBumperVerticalClamp = 25f;
@@ -66,63 +66,68 @@ public class Ball : MonoBehaviour
     private float hardSpeedCap = 0f;
 
     /// <summary>
-    /// Temporarily disable clamping OR raise maxSpeed for 'duration' seconds.
-    /// If newMaxSpeed <= 0: remove clamp entirely. Otherwise raise to newMaxSpeed.
-    /// Also applies temporary bounciness (+80%) and damage (+20%) bonuses during the window.
+    /// TEMPORARY (legacy absolute signature): raise *effective* cap to newMaxSpeed (baseline NOT mutated).
+    /// newMaxSpeed <= 0 => fully uncapped (no finite cap). Kept for existing callsites (SkillAim etc).
     /// </summary>
     public void TemporarilyUncapMaxSpeed(float duration, float newMaxSpeed, bool restoreOriginal = true)
     {
-        duration = Mathf.Max(0.05f, duration);
-
-        // Capture the original cap only the first time we enter the window.
-        if (!_maxSpeedUncapped)
-        {
-            _originalMaxSpeedBeforeUncap = maxSpeed;
-            _restoreOriginalMaxOnExpire = restoreOriginal;
-        }
-        else
-        {
-            // If any subsequent call asks to restore, keep that intent.
-            _restoreOriginalMaxOnExpire |= restoreOriginal;
-        }
-
-        _maxSpeedUncapped = true;
-
-        // Extend the window if re-applied while active (don't shorten an existing longer window).
-        _maxSpeedUncapUntil = Mathf.Max(_maxSpeedUncapUntil, Time.time + duration);
-
-        // Prefer the highest temporary cap while active.
-        // newMaxSpeed <= 0 means "fully uncapped": keep it as 0 so FixedUpdate doesn't set maxSpeed.
         if (newMaxSpeed <= 0f)
         {
-            _temporaryMaxSpeedTarget = 0f;
+            // Fully uncapped (no finite target)
+            TemporarilyUncapMaxSpeedAdd(duration, 0f, restoreOriginal, fullUncap: true);
         }
         else
         {
-            _temporaryMaxSpeedTarget = _temporaryMaxSpeedTarget <= 0f
-                ? newMaxSpeed
-                : Mathf.Max(_temporaryMaxSpeedTarget, newMaxSpeed);
+            // Convert absolute to additive above baseline
+            float add = Mathf.Max(0f, newMaxSpeed - maxSpeed);
+            TemporarilyUncapMaxSpeedAdd(duration, add, restoreOriginal, fullUncap: false);
+        }
+    }
+
+    /// <summary>
+    /// NEW ADDITIVE API: add 'addAmount' to baseline for the window (without mutating baseline).
+    /// fullUncap overrides finite additive (unlimited except hardSpeedCap).
+    /// </summary>
+    public void TemporarilyUncapMaxSpeedAdd(float duration, float addAmount, bool restoreOriginal = true, bool fullUncap = false)
+    {
+        duration = Mathf.Max(0.05f, duration);
+
+        // Start / extend window
+        _maxSpeedUncapped = true;
+        _maxSpeedUncapUntil = Mathf.Max(_maxSpeedUncapUntil, Time.time + duration);
+        _restoreOriginalMaxOnExpire |= restoreOriginal;
+        _fullUncapped |= fullUncap;
+
+        if (!_fullUncapped)
+        {
+            // Track the highest additive requested
+            _tempMaxSpeedAdd = Mathf.Max(_tempMaxSpeedAdd, addAmount);
+            _temporaryMaxSpeedTarget = maxSpeed + _tempMaxSpeedAdd;
+        }
+        else
+        {
+            // Fully uncapped: ignore additive
+            _temporaryMaxSpeedTarget = 0f;
+            _tempMaxSpeedAdd = 0f;
         }
 
-        // Apply temporary physics/damage bonuses immediately
         if (!_uncapModsApplied)
             ApplyUncapMods();
 
-        // Optionally bump current velocity so player feels immediate boost when fully uncapped.
+        // Optional initial velocity bump if finite target specified
         var rbLocal = rb;
-        if (rbLocal && newMaxSpeed > 0 && rbLocal.velocity.magnitude < newMaxSpeed * 0.5f)
+        if (rbLocal && !_fullUncapped && _temporaryMaxSpeedTarget > maxSpeed && rbLocal.velocity.magnitude < _temporaryMaxSpeedTarget * 0.5f)
         {
-            rbLocal.velocity = rbLocal.velocity.normalized * Mathf.Min(newMaxSpeed * 0.65f, newMaxSpeed);
+            rbLocal.velocity = rbLocal.velocity.normalized * Mathf.Min(_temporaryMaxSpeedTarget * 0.65f, _temporaryMaxSpeedTarget);
         }
     }
 
     // === Glow / Combo UI state ===
     [Header("Glow")]
-    [SerializeField] private Color glowColor = Color.red; // UI and material "glow" color
-    [SerializeField, Range(0f, 5f)] private float emissionBase = 1.5f; // base emission when no combo
-    [SerializeField, Range(0f, 5f)] private float emissionPerComboStep = 0.30f; // extra intensity per combo step
+    [SerializeField] private Color glowColor = Color.red;
+    [SerializeField, Range(0f, 5f)] private float emissionBase = 1.5f;
+    [SerializeField, Range(0f, 5f)] private float emissionPerComboStep = 0.30f;
 
-    // NEW: optional light attached to the ball prefab
     [SerializeField, Tooltip("Optional child Light used to match glow color and modulate intensity with speed.")]
     private Light glowLight;
 
@@ -130,7 +135,7 @@ public class Ball : MonoBehaviour
     private const float LightIntensityMax = 3.5f;
 
     private Renderer _renderer;
-    private Material _runtimeMat; // unique instance so enabling emission doesn't affect shared material
+    private Material _runtimeMat;
     private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
 
     public static event System.Action<Ball> OnBallActivated;
@@ -184,6 +189,20 @@ public class Ball : MonoBehaviour
 
     private const float DAMAGE_BASELINE = 5f;
 
+    // BASELINE (permanent) max speed (CHANGED: never mutated by temporary uncaps; only grow/shrink rewards)
+    [Tooltip("Baseline max speed. Temporary uncaps no longer modify this value.")]
+    public float maxSpeed = 50f; // baseline
+
+    // Effective cap used for logic (helper)
+    private float EffectiveMaxSpeed
+        => _maxSpeedUncapped
+            ? (_fullUncapped
+                ? float.PositiveInfinity
+                : (_temporaryMaxSpeedTarget > 0f
+                    ? _temporaryMaxSpeedTarget
+                    : maxSpeed + _tempMaxSpeedAdd))
+            : maxSpeed;
+
     public float BaseDamage
     {
         get => baseDamage;
@@ -219,7 +238,6 @@ public class Ball : MonoBehaviour
 
     public void AddTempDamageForBounce(float factor, int bounces)
     {
-        // CHANGED: factor is now multiplicative (2 => double damage), not additive
         tempDamageBounceMultiplier *= Mathf.Max(0f, factor);
         tempDamageBouncesRemaining = bounces;
     }
@@ -320,18 +338,14 @@ public class Ball : MonoBehaviour
     bool debugTimerStart;
     bool resetBall = false;
     bool isStuck;
-    public float maxSpeed = 50f;
 
     [SerializeField] private ParticleSystemForceField forceField;
 
-    // OLD (was directly mutated). Keep for UI/debug.
     public float forceFieldRadius = 0f;
 
-    // NEW: persistent baseline captured from prefab
     [SerializeField, Tooltip("Baseline (prefab) radius; level-up inherits via Pinball.XPBaseRadiusScale")]
     private float baseForceFieldRadius = 0f;
 
-    // NEW: temporary multiplier for one-off effects (e.g., vacuum)
     private float tempForcefieldScale = 1f;
 
     public float TempForcefieldScale => tempForcefieldScale;
@@ -342,7 +356,6 @@ public class Ball : MonoBehaviour
         float factor = newAbsoluteScale / Mathf.Max(0.0001f, tempForcefieldScale);
         ApplyTempForcefieldScale(factor);
     }
-
 
     public float forceFieldRadiusEffective => baseForceFieldRadius * (Pinball.Instance ? Pinball.Instance.XPBaseRadiusScale : 1f) * tempForcefieldScale;
 
@@ -357,7 +370,6 @@ public class Ball : MonoBehaviour
         pinball = GameObject.FindWithTag("PinballManager").GetComponent<Pinball>();
         _renderer = GetComponent<Renderer>();
 
-        // Try auto-bind the child light if not set
         if (!glowLight)
             glowLight = GetComponentInChildren<Light>(true);
     }
@@ -380,8 +392,8 @@ public class Ball : MonoBehaviour
                 _runtimeMat.EnableKeyword("_EMISSION");
                 _renderer.sharedMaterial = _runtimeMat;
             }
-            ApplyGlow();        // sets emission and syncs light color
-            UpdateGlowLightIntensity(); // initialize intensity
+            ApplyGlow();
+            UpdateGlowLightIntensity();
             if (glowLight) _glowIntensity = glowLight.intensity;
         }
 
@@ -395,16 +407,15 @@ public class Ball : MonoBehaviour
             Pinball.Instance.UnregisterBall(this);
         XPCollectorRegistry.I?.Unregister(col);
 
-        // If we get disabled mid-uncap, restore the original cap (prevents sticky maxSpeed).
+        // Clear uncapped state (baseline never mutated now)
         if (_maxSpeedUncapped)
         {
-            if (_restoreOriginalMaxOnExpire)
-                maxSpeed = _originalMaxSpeedBeforeUncap;
             _temporaryMaxSpeedTarget = 0f;
+            _tempMaxSpeedAdd = 0f;
+            _fullUncapped = false;
             _maxSpeedUncapped = false;
         }
 
-        // Ensure temp uncap mods are reverted if ball gets disabled
         RevertUncapMods();
 
         BreakCombo("Ball disabled");
@@ -419,7 +430,6 @@ public class Ball : MonoBehaviour
 
         forceFieldGravity = forceField.gravity.constant;
 
-        // Capture baseline from prefab and initialize effective radius
         baseForceFieldRadius = forceField.endRange;
         forceFieldRadius = baseForceFieldRadius;
         RefreshForcefieldFromContext();
@@ -427,66 +437,50 @@ public class Ball : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Speed cap logic
         if (_maxSpeedUncapped)
         {
-            // Ensure temporary mods applied in case this was set elsewhere
             if (!_uncapModsApplied)
                 ApplyUncapMods();
 
             if (Time.time >= _maxSpeedUncapUntil)
             {
-                // Expired -> restore original maxSpeed if requested and revert temporary mods
-                if (_restoreOriginalMaxOnExpire)
-                    maxSpeed = _originalMaxSpeedBeforeUncap;
-
-                _temporaryMaxSpeedTarget = 0f; // fully clear the window
+                _temporaryMaxSpeedTarget = 0f;
+                _tempMaxSpeedAdd = 0f;
+                _fullUncapped = false;
                 RevertUncapMods();
                 _maxSpeedUncapped = false;
             }
             else
             {
-                // While uncapped:
-                //   - newMaxSpeed <= 0f => fully uncapped (no clamp here)
-                //   - newMaxSpeed  > 0f => treat as a finite cap; clamp if enabled
-                if (_temporaryMaxSpeedTarget > 0f)
+                // Finite cap case
+                if (!_fullUncapped && _temporaryMaxSpeedTarget > 0f)
                 {
-                    maxSpeed = Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap);
                     if (clampDuringUncapIfFinite)
-                        EnforceSpeedCapNow(maxSpeed);
+                        EnforceSpeedCapNow(_temporaryMaxSpeedTarget);
                 }
+                // Fully uncapped: no clamp except hardSpeedCap
             }
         }
         else
         {
-            // Normal clamp
             EnforceSpeedCapNow(maxSpeed);
-
-            // Safety: if for any reason mods are still applied while not uncapped, revert them
             if (_uncapModsApplied)
                 RevertUncapMods();
         }
 
-        // Optional absolute safety hard cap (applied last, regardless of state)
         if (hardSpeedCap > 0f)
             EnforceSpeedCapNow(hardSpeedCap);
 
-        // Update the glow light intensity based on current speed
         UpdateGlowLightIntensity();
     }
 
-    void Update()
-    {
-    }
+    void Update() { }
 
     private void RegisterBumperHitForCombo()
     {
         comboHitStreak++;
-
         if (!comboActive && comboHitStreak >= comboThreshold)
-        {
             comboActive = true;
-        }
 
         ApplyGlow();
         OnComboChanged?.Invoke(this);
@@ -523,43 +517,35 @@ public class Ball : MonoBehaviour
             mpb.SetColor(EmissionColorId, emissive);
             _renderer.SetPropertyBlock(mpb);
         }
-
-        // Keep the light color in sync with glow color
         SyncGlowLightColor();
     }
 
-    // NEW: keep the attached light color in sync with the ball glow color
     private void SyncGlowLightColor()
     {
         if (glowLight != null)
             glowLight.color = glowColor;
     }
 
-    // NEW: map speed [0..maxSpeed] to intensity [0.5 .. 2]
     private void UpdateGlowLightIntensity()
     {
         if (glowLight == null || rb == null) return;
 
-        // Target intensity from current speed
-        float max = Mathf.Max(0.01f, maxSpeed);
+        // Map speed to intensity using effective cap if finite; fallback to baseline if infinite
+        float cap = float.IsInfinity(EffectiveMaxSpeed) ? maxSpeed : Mathf.Max(0.01f, EffectiveMaxSpeed);
         float speed = rb.velocity.magnitude;
-        float t = Mathf.InverseLerp(0f, max, speed);
+        float t = Mathf.InverseLerp(0f, cap, speed);
         float target = Mathf.Lerp(LightIntensityMin, LightIntensityMax, t);
 
-        // Initialize smoothed value once
         if (_glowIntensity <= 0f)
             _glowIntensity = glowLight.intensity > 0f ? glowLight.intensity : target;
 
-        // Fast rise, slower fall
         float dt = Time.unscaledDeltaTime;
         if (target >= _glowIntensity)
         {
-            // Quick but not instant rise
             _glowIntensity = Mathf.MoveTowards(_glowIntensity, target, glowIntensityRiseRate * dt);
         }
         else
         {
-            // Smooth, slightly slower decay
             _glowIntensity = Mathf.SmoothDamp(_glowIntensity, target, ref _glowIntensityVel, glowIntensityFallSmoothTime, Mathf.Infinity, dt);
         }
 
@@ -624,9 +610,7 @@ public class Ball : MonoBehaviour
         Vector3 currentDir = direction.sqrMagnitude > .0001f ? direction.normalized : Vector3.forward;
 
         if (Time.time - lastBumpTime > sameDirWindow)
-        {
             sameDirHits = 0;
-        }
 
         if (prevBumpDirection != Vector3.zero)
         {
@@ -648,11 +632,10 @@ public class Ball : MonoBehaviour
 
         rb.AddForce(currentDir * deltaV, ForceMode.Impulse);
 
-        // NEW: immediate velocity cap after an impulse
         if (!_maxSpeedUncapped || (_temporaryMaxSpeedTarget > 0f && clampDuringUncapIfFinite))
         {
             float cap = _maxSpeedUncapped
-                ? Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap)
+                ? (_temporaryMaxSpeedTarget > 0f ? _temporaryMaxSpeedTarget : maxSpeed + _tempMaxSpeedAdd)
                 : maxSpeed;
             EnforceSpeedCapNow(cap);
         }
@@ -795,9 +778,6 @@ public class Ball : MonoBehaviour
         ApplyPaddleDamageEffect(effect);
     }
 
-    // === XP Forcefield helpers (NEW model) ===
-
-    // Recompute effective XP radius from baseline, global scale and temp scale
     public void RefreshForcefieldFromContext()
     {
         float global = Pinball.Instance ? Pinball.Instance.XPBaseRadiusScale : 1f;
@@ -806,14 +786,12 @@ public class Ball : MonoBehaviour
         if (forceField) forceField.endRange = eff;
     }
 
-    // Temporary scaling used by one-shot powerups (vacuum)
     public void ApplyTempForcefieldScale(float scaleFactor)
     {
         tempForcefieldScale *= Mathf.Max(0.0001f, scaleFactor);
         RefreshForcefieldFromContext();
     }
 
-    // Backwards-compat shim (if any old callsites exist)
     [Obsolete("Use ApplyTempForcefieldScale instead.")]
     public void UpdateForcefield(float amount) => ApplyTempForcefieldScale(amount);
 
@@ -827,15 +805,12 @@ public class Ball : MonoBehaviour
         forceField.gravity = forceFieldGravity;
     }
 
-    // NEW: comprehensive copy helper
     public void CopyFrom(Ball src)
     {
         if (src == null || ReferenceEquals(src, this)) return;
 
-        // Base stats
         BaseDamage = src.BaseDamage;
 
-        // Permanent + temporary multipliers
         flatBonusDamage = src.flatBonusDamage;
         damageMultiplier = src.damageMultiplier;
 
@@ -843,35 +818,35 @@ public class Ball : MonoBehaviour
         tempDamageMultiplierStore = src.tempDamageMultiplierStore;
         tempDamageBounceMultiplier = src.tempDamageBounceMultiplier;
 
-        // Bounce windows/counters
         bonusBouncesNeeded = src.bonusBouncesNeeded;
         bonusBouncesRemaining = src.bonusBouncesRemaining;
         tmpBonusBouncesNeeded = src.tmpBonusBouncesNeeded;
         tmpBonusBouncesRemaining = src.tmpBonusBouncesRemaining;
         tempDamageBouncesRemaining = src.tempDamageBouncesRemaining;
 
-        var col = GetComponent<Collider>();
+        var dstCol = GetComponent<Collider>();
         var srcCol = src.GetComponent<Collider>();
+        if (dstCol && srcCol) dstCol.excludeLayers = srcCol.excludeLayers;
 
-        col.excludeLayers = srcCol.excludeLayers;
-
-        // Size & speed
         transform.localScale = src.transform.localScale;
-        maxSpeed = src.maxSpeed;
+        maxSpeed = src.maxSpeed; // baseline ONLY (CHANGED: does not copy temporary uncapped target)
 
-        // PhysicMaterial properties
         EnsureUniquePhysicMaterial();
         src.EnsureUniquePhysicMaterial();
         if (col && col.material && src.col && src.col.material)
         {
-            col.material.bounciness = src.col.material.bounciness;
+            // If source is currently uncapped, do NOT copy boosted bounciness – use original
+            if (src._maxSpeedUncapped && src._uncapModsApplied && src._savedBounciness >= 0f)
+                col.material.bounciness = src._savedBounciness;
+            else
+                col.material.bounciness = src.col.material.bounciness;
+
             col.material.dynamicFriction = src.col.material.dynamicFriction;
             col.material.staticFriction = src.col.material.staticFriction;
             col.material.bounceCombine = src.col.material.bounceCombine;
             col.material.frictionCombine = src.col.material.frictionCombine;
         }
 
-        // XP forcefield state (NEW: inherit baseline & temp, then recompute from Pinball context)
         if (forceField && src.forceField)
         {
             baseForceFieldRadius = src.baseForceFieldRadius;
@@ -879,30 +854,32 @@ public class Ball : MonoBehaviour
             forceField.gravity = src.forceField.gravity;
             RefreshForcefieldFromContext();
         }
+
+        // Clear any active uncapped state for the duplicate
+        _maxSpeedUncapped = false;
+        _temporaryMaxSpeedTarget = 0f;
+        _tempMaxSpeedAdd = 0f;
+        _fullUncapped = false;
+        RevertUncapMods();
     }
 
     private void ApplyKillBumperVelocitySoftClamp(Bumper bumper)
     {
         if (!limitKillBumperImpulse || bumper == null || !bumper.IsDead) return;
-
-        // Only skip if fully uncapped (<= 0). If we have a finite uncap target, still clamp to it.
-        if (_maxSpeedUncapped && _temporaryMaxSpeedTarget <= 0f) return;
+        if (_maxSpeedUncapped && (_fullUncapped || _temporaryMaxSpeedTarget <= 0f)) return;
         if (rb == null) return;
 
-        // Determine the working cap reference for this moment
         float capRef = _maxSpeedUncapped && _temporaryMaxSpeedTarget > 0f
-            ? Mathf.Max(_temporaryMaxSpeedTarget, _originalMaxSpeedBeforeUncap)
+            ? Mathf.Max(_temporaryMaxSpeedTarget, maxSpeed)
             : maxSpeed;
 
         Vector3 v = rb.velocity;
         float speed = v.magnitude;
         if (speed <= 0.0001f) return;
 
-        // If the impulse wasn't disproportionately large, do nothing.
         float ratio = (speed - capRef) / Mathf.Max(1f, capRef);
         if (ratio < killBumperImpulseRatioThreshold && speed <= killBumperSpeedCap) return;
 
-        // Only clamp if above desired cap (soft approach)
         if (speed > killBumperSpeedCap)
         {
             float excess = speed - killBumperSpeedCap;
@@ -910,11 +887,9 @@ public class Ball : MonoBehaviour
             v = v.normalized * Mathf.Max(killBumperSpeedCap, damped);
         }
 
-        // Vertical clamp (optional; preserve sign)
         if (Mathf.Abs(v.y) > killBumperVerticalClamp)
             v.y = Mathf.Sign(v.y) * killBumperVerticalClamp;
 
-        // Ensure we don't exceed our working cap or the global hard cap afterwards
         float finalCap = capRef;
         if (hardSpeedCap > 0f) finalCap = Mathf.Min(finalCap, hardSpeedCap);
         if (finalCap > 0f && v.magnitude > finalCap)
@@ -923,18 +898,15 @@ public class Ball : MonoBehaviour
         rb.velocity = v;
     }
 
-    // Backward-compat shim
     public void GetProperties(Ball ball)
     {
         CopyFrom(ball);
     }
 
-    public void UpdateForcefield(float amount, bool obsoleteCompatOnly) => ApplyTempForcefieldScale(amount); // keep API stable for any lingering calls
+    public void UpdateForcefield(float amount, bool obsoleteCompatOnly) => ApplyTempForcefieldScale(amount);
 
-    // === Helpers for temporary uncap bonuses ===
     private void ApplyUncapMods()
     {
-        // +80% bounciness (x1.8)
         EnsureUniquePhysicMaterial();
         if (col != null && col.material != null)
         {
@@ -942,9 +914,7 @@ public class Ball : MonoBehaviour
             col.material.bounciness = _savedBounciness * 1.8f;
         }
 
-        // +20% damage multiplier
         _uncapDamageBonus = 1.75f;
-
         _uncapModsApplied = true;
     }
 
@@ -953,9 +923,7 @@ public class Ball : MonoBehaviour
         if (!_uncapModsApplied) return;
 
         if (col != null && col.material != null && _savedBounciness >= 0f)
-        {
             col.material.bounciness = _savedBounciness;
-        }
 
         _uncapDamageBonus = 1f;
         _savedBounciness = -1f;
@@ -973,5 +941,4 @@ public class Ball : MonoBehaviour
         if (speed > cap)
             rb.velocity = v.normalized * cap;
     }
-
 }
