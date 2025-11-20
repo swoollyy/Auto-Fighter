@@ -45,3 +45,8 @@ MonoBehaviour:
   baseValue: 1
   perLevelAdd: 1
   uiPosition: {x: 100, y: 100}
+  revealedAtStart: 0
+  progressiveUnlocks:
+  - requiredLevel: 1
+    unlocks:
+    - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}

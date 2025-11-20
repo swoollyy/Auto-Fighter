@@ -550,9 +550,9 @@ MonoBehaviour:
   baseAcceleration: 13
   baseMaxSpeed: 4
   baseBrakingForce: 0.5
-  turnSpeed: 15
-  lowSpeedSteerMultiplier: 5
-  highSpeedSteerMultiplier: 0.6
+  turnSpeed: 13
+  lowSpeedSteerMultiplier: 3.5
+  highSpeedSteerMultiplier: 0.85
   speedForSteerCurve: 15
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
@@ -560,15 +560,17 @@ MonoBehaviour:
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 1.2
-  maxDriftSteerMultiplier: 14
-  driftBuildRate: 0.3
-  driftReleaseRate: 3.5
-  driftSideForce: 1.3
-  driftSpeedDecayPerSecond: 3
+  maxDriftSteerMultiplier: 8
+  driftBuildRate: 0.95
+  driftReleaseRate: 16
+  driftSideForce: 0.67
+  driftSpeedDecayPerSecond: 8
+  requireDirectionalInputForDriftCharge: 1
+  driftNeutralDrainRate: 4.2
   resetDriftChargeOnSteerFlip: 1
-  steerFlipRetainedCharge: 0
+  steerFlipRetainedCharge: 0.119
   steerFlipThreshold: 0.15
-  minChargeForFlipReset: 0.15
+  minChargeForFlipReset: 0.042
   steerFlipRebuildDelay: 0.073
   baseDrag: 0.01
   groundLayers:

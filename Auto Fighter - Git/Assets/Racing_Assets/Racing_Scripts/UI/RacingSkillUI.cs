@@ -24,7 +24,7 @@ public class RacingSkillUI : MonoBehaviour
     [SerializeField] private bool rightMouseDragToPan = true;
 
     [Header("Buttons")]
-    [SerializeField] private Button playButton;            // NEW: replaces Back
+    [SerializeField] private Button playButton;
     [SerializeField] private bool autoOpenFirstSkill = true;
     [SerializeField] private bool verboseDebug = false;
     [SerializeField] private bool forceDeferredBuild = true;
@@ -34,9 +34,9 @@ public class RacingSkillUI : MonoBehaviour
     private Vector3 _contentBaseScale = Vector3.one;
 
     private RacingSkillTreeManager mgr;
-    private GameManager_Racing gameManager;                // NEW
+    private GameManager_Racing gameManager;
     private readonly List<RacingSkillUIEntry> entries = new();
-    private RacingSkillUIEntry selectedEntry;              // NEW
+    private RacingSkillUIEntry selectedEntry;
     private bool buildSucceeded;
 
     void Awake()
@@ -47,65 +47,26 @@ public class RacingSkillUI : MonoBehaviour
     private void OnEnable()
     {
         EnsureManager();
-        BindPlayButton();               // NEW
-        TryWireEvents();
-        if (verboseDebug) DumpPrereqStatus();
-        AttemptBuild();
+        BindPlayButton();
+        WireEvents();
+        AttemptBuild(); // builds only revealed
         RefreshAll();
         if (treeContent) _contentBaseScale = treeContent.localScale;
-        if (autoOpenFirstSkill && buildSucceeded && detailPanel && entries.Count > 0)
-            ShowEntryDetail(entries[0]);
+        AutoOpenFirstIfNeeded();
     }
 
-    private void DumpPrereqStatus()
-    {
-        Debug.Log($"[RacingSkillUI] Status - entryPrefab: {entryPrefab}, mgr: {(mgr ? "ok" : "null")}, skills: {(mgr ? mgr.AllSkills?.Count : 0)}, contentParent: {contentParent}, treeViewport: {treeViewport}, treeContent: {treeContent}, playButton: {playButton}");
-    }
-
-    private System.Collections.IEnumerator Start()
-    {
-        if (forceDeferredBuild)
-        {
-            yield return null;
-            if (!buildSucceeded)
-            {
-                if (verboseDebug) Debug.Log("[RacingSkillUI] Deferred build attempt.");
-                EnsureManager();
-                AttemptBuild();
-                RefreshAll();
-                if (autoOpenFirstSkill && buildSucceeded && detailPanel && entries.Count > 0)
-                    ShowEntryDetail(entries[0]);
-            }
-            if (!buildSucceeded)
-            {
-                yield return null;
-                if (!buildSucceeded && verboseDebug)
-                    Debug.LogWarning("[RacingSkillUI] Second deferred build failed.");
-            }
-        }
-    }
-
-    void OnDisable()
+    private void OnDisable()
     {
         UnwireEvents();
     }
 
     void Update()
     {
-        if (!buildSucceeded)
-        {
-            EnsureManager();
-            AttemptBuild();
-        }
-
-        if (treeViewport && treeContent)
-        {
-            HandleTreePan();
-            HandleTreeZoom();
-        }
+        HandleTreePan();
+        HandleTreeZoom();
     }
 
-    public void BindGameManager(GameManager_Racing gm) => gameManager = gm; // NEW public API
+    public void BindGameManager(GameManager_Racing gm) => gameManager = gm;
 
     private void BindPlayButton()
     {
@@ -118,21 +79,11 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnPlayClicked()
     {
-        // Hide detail if open
         ClearSelection();
         detailPanel?.HideImmediate();
-
-        // Start race
-        if (gameManager == null)
+        if (!gameManager)
             gameManager = FindObjectOfType<GameManager_Racing>();
-
-        if (gameManager != null)
-            gameManager.BeginRun();
-        else
-            Debug.LogWarning("[RacingSkillUI] GameManager_Racing not found for Play button.");
-
-        // Optionally deactivate skill UI root (manager handles root hiding)
-        // gameObject.SetActive(false);
+        gameManager?.BeginRun();
     }
 
     private void EnsureManager()
@@ -142,98 +93,117 @@ public class RacingSkillUI : MonoBehaviour
         if (!gameManager) gameManager = FindObjectOfType<GameManager_Racing>();
     }
 
+    private void WireEvents()
+    {
+        if (!mgr) return;
+        mgr.OnCurrencyChanged += HandleCurrencyChanged;
+        mgr.OnLevelChanged += HandleLevelChanged;
+        mgr.OnSkillRevealed += HandleSkillRevealed; // NEW
+    }
+
+    private void UnwireEvents()
+    {
+        if (!mgr) return;
+        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
+        mgr.OnLevelChanged -= HandleLevelChanged;
+        mgr.OnSkillRevealed -= HandleSkillRevealed;
+    }
+
+    private void HandleCurrencyChanged(int _) => RefreshAll();
+    private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
+
+    private void HandleSkillRevealed(SkillDefinition def)
+    {
+        // Rebuild to include newly revealed skill(s)
+        AttemptBuild();
+        RefreshAll();
+        AutoOpenFirstIfNeeded();
+    }
+
     private void AttemptBuild()
     {
-        if (buildSucceeded) return;
-
+        buildSucceeded = false;
         ClearChildren();
         entries.Clear();
-
         if (!entryPrefab || !mgr || mgr.AllSkills == null || mgr.AllSkills.Count == 0)
         {
             if (verboseDebug) Debug.LogWarning("[RacingSkillUI] Missing prerequisites.");
             return;
         }
 
-        if (treeViewport && treeContent)
-            BuildTree();
-        else if (contentParent)
-            BuildList();
-        else
+        var subset = mgr.AllSkills;
+        foreach (var def in subset)
         {
-            Debug.LogWarning("[RacingSkillUI] No layout targets.");
-            return;
+            if (!def) continue;
+            if (!mgr.IsSkillRevealed(def.type)) continue; // filter unrevealed
+            RacingSkillUIEntry inst = Instantiate(entryPrefab,
+                treeContent ? treeContent : contentParent);
+            if (treeContent)
+            {
+                var rt = inst.GetComponent<RectTransform>();
+                if (rt)
+                    rt.anchoredPosition = def.uiPosition;
+            }
+            inst.Bind(def, mgr);
+            inst.Selected += OnEntrySelected;
+            entries.Add(inst);
         }
 
         buildSucceeded = entries.Count > 0;
-        Debug.Log(buildSucceeded
-            ? $"[RacingSkillUI] Build succeeded ({entries.Count} skills)."
-            : "[RacingSkillUI] Build produced zero nodes.");
-    }
-
-    private void BuildList()
-    {
-        foreach (var def in mgr.AllSkills)
-        {
-            if (!def) continue;
-            var inst = Instantiate(entryPrefab, contentParent);
-            BindEntry(inst, def);
-        }
-    }
-
-    private void BuildTree()
-    {
-        foreach (var def in mgr.AllSkills)
-        {
-            if (!def) continue;
-            var inst = Instantiate(entryPrefab, treeContent);
-            var rt = inst.GetComponent<RectTransform>();
-            if (rt)
-            {
-                rt.anchoredPosition = def.uiPosition;
-                rt.pivot = new Vector2(0.5f, 0.5f);
-            }
-            BindEntry(inst, def);
-        }
-    }
-
-    private void BindEntry(RacingSkillUIEntry inst, SkillDefinition def)
-    {
-        inst.Bind(def, mgr);
-        inst.Selected -= OnEntrySelected;
-        inst.Selected += OnEntrySelected;
-        entries.Add(inst);
     }
 
     private void OnEntrySelected(SkillDefinition def)
     {
         if (!def || !detailPanel) return;
-        var entry = entries.Find(e => e.GetDefinition() == def);
-        selectedEntry = entry;
-        ShowEntryDetail(entry);
+        selectedEntry = entries.Find(e => e.GetDefinition() == def);
+        ShowEntryDetail(selectedEntry);
     }
 
     private void ShowEntryDetail(RacingSkillUIEntry entry)
     {
-        if (detailPanel == null || entry == null) return;
+        if (!entry || !detailPanel) return;
         detailPanel.Show(entry.GetDefinition());
         detailPanel.OnHidden -= HandleDetailHidden;
         detailPanel.OnHidden += HandleDetailHidden;
     }
 
-    private void HandleDetailHidden()
+    private void HandleDetailHidden() => selectedEntry = null;
+
+    private void ClearSelection() => selectedEntry = null;
+
+    private void RefreshAll()
     {
-        selectedEntry = null;
+        RefreshCurrency();
+        foreach (var e in entries) e.Refresh();
     }
 
-    public void ClearSelection()
+    private void RefreshCurrency()
     {
-        selectedEntry = null;
+        if (currencyText && mgr)
+            currencyText.text = $"Currency: {mgr.Currency}";
+    }
+
+    private void ClearChildren()
+    {
+        Transform parent = treeContent ? treeContent : contentParent;
+        if (!parent) return;
+        for (int i = parent.childCount - 1; i >= 0; i--)
+            Destroy(parent.GetChild(i).gameObject);
+    }
+
+    private void AutoOpenFirstIfNeeded()
+    {
+        if (!autoOpenFirstSkill || !buildSucceeded || detailPanel == null) return;
+        if (entries.Count > 0)
+        {
+            detailPanel.Show(entries[0].GetDefinition());
+            selectedEntry = entries[0];
+        }
     }
 
     private void HandleTreePan()
     {
-        if (!rightMouseDragToPan) return;
+        if (!treeViewport || !treeContent || !rightMouseDragToPan) return;
         if (Input.GetMouseButtonDown(1) &&
             RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
         {
@@ -247,62 +217,19 @@ public class RacingSkillUI : MonoBehaviour
             _lastMouse = cur;
             treeContent.anchoredPosition += delta * panSpeed;
         }
-        if (Input.GetMouseButtonUp(1)) _isPanning = false;
+        if (Input.GetMouseButtonUp(1))
+            _isPanning = false;
     }
 
     private void HandleTreeZoom()
     {
+        if (!treeViewport || !treeContent) return;
         if (!RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
             return;
-
         float scroll = Input.mouseScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.001f) return;
-
         float cur = treeContent.localScale.x;
         float next = Mathf.Clamp(cur + scroll * zoomStep, minZoom, maxZoom);
         treeContent.localScale = new Vector3(next, next, 1f);
-    }
-
-    private void TryWireEvents()
-    {
-        if (!mgr) return;
-        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
-        mgr.OnCurrencyChanged += HandleCurrencyChanged;
-        mgr.OnLevelChanged -= HandleLevelChanged;
-        mgr.OnLevelChanged += HandleLevelChanged;
-    }
-
-    private void UnwireEvents()
-    {
-        if (!mgr) return;
-        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
-        mgr.OnLevelChanged -= HandleLevelChanged;
-        if (detailPanel) detailPanel.OnHidden -= HandleDetailHidden;
-    }
-
-    private void HandleCurrencyChanged(int _) => RefreshAll();
-    private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
-
-    private void RefreshAll()
-    {
-        RefreshCurrency();
-        for (int i = 0; i < entries.Count; i++)
-            entries[i].Refresh();
-    }
-
-    private void RefreshCurrency()
-    {
-        if (currencyText && mgr)
-            currencyText.text = $"Currency: {mgr.Currency}";
-    }
-
-    private void ClearChildren()
-    {
-        if (contentParent)
-            for (int i = contentParent.childCount - 1; i >= 0; i--)
-                Destroy(contentParent.GetChild(i).gameObject);
-        if (treeContent)
-            for (int i = treeContent.childCount - 1; i >= 0; i--)
-                Destroy(treeContent.GetChild(i).gameObject);
     }
 }

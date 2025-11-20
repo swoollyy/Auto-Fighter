@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 [CreateAssetMenu(menuName = "Racing/Skill Definition", fileName = "SkillDefinition")]
 public class SkillDefinition : ScriptableObject
@@ -25,6 +26,22 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("Anchored position on the skill tree content canvas (in pixels).")]
     public Vector2 uiPosition = Vector2.zero;
 
+    [Header("Unlock Visibility")]
+    [Tooltip("If true this skill is visible from the start of a new run.")]
+    public bool revealedAtStart = false;
+
+    [System.Serializable]
+    public class ProgressiveUnlock
+    {
+        [Min(1), Tooltip("When THIS skill reaches this level, unlock the listed skill(s).")]
+        public int requiredLevel = 1;
+        [Tooltip("Skills revealed when requiredLevel is reached.")]
+        public List<SkillDefinition> unlocks = new();
+    }
+
+    [Tooltip("Configure which other skills become visible as this skill levels up.")]
+    public List<ProgressiveUnlock> progressiveUnlocks = new();
+
     public int GetCostForLevel(int nextLevel)
     {
         if (nextLevel <= 0) nextLevel = 1;
@@ -37,6 +54,21 @@ public class SkillDefinition : ScriptableObject
     {
         level = Mathf.Clamp(level, 0, maxLevel);
         float v = baseValue + perLevelAdd * level;
-        return mode == SkillApplicationMode.Multiplicative ? v : v; // semantics clarified in manager
+        return mode == SkillApplicationMode.Multiplicative ? v : v;
+    }
+
+    /// <summary>
+    /// Returns all skills that should unlock at (or below) the passed newLevel.
+    /// </summary>
+    public IEnumerable<SkillDefinition> GetUnlocksForLevel(int newLevel)
+    {
+        if (progressiveUnlocks == null) yield break;
+        foreach (var pu in progressiveUnlocks)
+        {
+            if (pu == null) continue;
+            if (newLevel >= pu.requiredLevel && pu.unlocks != null)
+                foreach (var s in pu.unlocks)
+                    if (s) yield return s;
+        }
     }
 }

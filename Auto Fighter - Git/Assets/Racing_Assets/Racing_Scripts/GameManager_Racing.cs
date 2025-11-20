@@ -27,6 +27,9 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private float spawnForwardOffset = 2f;
     [SerializeField] private float spawnHeightOffset = 0.2f;
 
+    [Header("Balancing")]
+    [SerializeField, Min(0f)] private float coinsPerDistance = 0.33f; // coins per meter
+
     private GameObject carInstance;
     private CarController carController;
     private bool runEnded = false;
@@ -176,7 +179,7 @@ public class GameManager_Racing : MonoBehaviour
         int distanceInt = Mathf.RoundToInt(runDistanceMeters);
 
         // 1) Distance coins
-        int distanceCoins = Mathf.RoundToInt(distanceInt * 0.5f);
+        int distanceCoins = Mathf.RoundToInt(distanceInt * coinsPerDistance);
         _distanceCoinsThisRun = distanceCoins;
 
         var mgr = RacingSkillTreeManager.Instance;

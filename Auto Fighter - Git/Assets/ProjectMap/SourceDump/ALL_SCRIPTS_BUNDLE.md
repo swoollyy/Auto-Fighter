@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2025-11-20T16:28:01.7930791Z (UTC)
+- Generated: 2025-11-20T22:48:08.3818612Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 157
 
@@ -3906,6 +3906,23 @@ public class CarController : MonoBehaviour
     [SerializeField] private float driftSideForce = 6f;
     [SerializeField] private float driftSpeedDecayPerSecond = 1.5f;
 
+    [Header("Drift Direction Change Reset")]
+    [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
+    [SerializeField] private bool resetDriftChargeOnSteerFlip = true;
+    [Tooltip("Portion of drift charge retained after a direction flip (0 = full reset).")]
+    [SerializeField, Range(0f, 1f)] private float steerFlipRetainedCharge = 0f;
+    [Tooltip("Minimum absolute steering input required to read a sign (+/-) for flip detection.")]
+    [SerializeField, Range(0f, 1f)] private float steerFlipThreshold = 0.20f;
+    [Tooltip("Minimum drift charge required before a direction flip can trigger a reset (prevents tiny wiggles).")]
+    [SerializeField, Range(0f, 1f)] private float minChargeForFlipReset = 0.15f;
+    [Tooltip("Delay after a flip before drift can start rebuilding (seconds).")]
+    [SerializeField, Range(0f, 1f)] private float steerFlipRebuildDelay = 0.15f;
+
+    // Runtime tracking of last raw steering (pre‑smoothed) to detect direction flips
+    private float _lastRawSteerValue;
+    private int _driftCurrentSteerSign = 0;          // last non-zero steering sign while drifting
+    private float _driftFlipBlockUntil = 0f;         // time until rebuilding allowed after flip
+
     [Header("Base Physics")]
     [SerializeField] private float baseDrag = 0.08f;
 
@@ -4097,34 +4114,68 @@ public class CarController : MonoBehaviour
     // ─────────────────────────────────────────────
     private void HandleInput()
     {
-        // Horizontal steering raw input (always captured)
         float rawHorizontal = Input.GetAxisRaw("Horizontal");
         float speed = rb != null ? rb.velocity.magnitude : 0f;
 
-        // DRIFT STATE (only build if unlocked)
         bool wasDrifting = isDrifting;
 
         if (!driftUnlocked)
         {
-            // Hard reset when locked
             driftCharge = 0f;
             isDrifting = false;
+            _driftCurrentSteerSign = 0;
         }
         else
         {
             bool driftHeld = Input.GetKey(driftKey);
             bool canDriftThisFrame = driftHeld && speed >= driftMinSpeed;
 
-            // Target charge (0 or 1)
-            float targetDrift = canDriftThisFrame ? 1f : 0f;
+            // Determine current steering sign (filtered by threshold)
+            int currentSign =
+                rawHorizontal > steerFlipThreshold ? 1 :
+                rawHorizontal < -steerFlipThreshold ? -1 : 0;
 
-            // Build or decay
+            // Update persistent sign tracking (only while holding drift)
+            if (driftHeld)
+            {
+                if (currentSign != 0)
+                {
+                    // Flip detection: previous non-zero sign differs from new sign
+                    if (resetDriftChargeOnSteerFlip &&
+                        _driftCurrentSteerSign != 0 &&
+                        currentSign != _driftCurrentSteerSign &&
+                        driftCharge >= minChargeForFlipReset)
+                    {
+                        // Flip occurred: reset/retain fraction
+                        driftCharge = Mathf.Clamp01(steerFlipRetainedCharge);
+                        driftEntrySpeed = 0f;
+                        driftClampSpeed = 0f;
+                        _driftFlipBlockUntil = Time.time + steerFlipRebuildDelay;
+                    }
+
+                    _driftCurrentSteerSign = currentSign;
+                }
+                // If steering neutral for a while you can optionally clear sign; choosing to keep it so a flip is still detected next time.
+            }
+            else
+            {
+                _driftCurrentSteerSign = 0;
+            }
+
+            // Block rebuild during delay window
+            if (Time.time < _driftFlipBlockUntil)
+            {
+                // Treat as if drift not allowed to build yet
+                canDriftThisFrame = false;
+            }
+
+            float targetDrift = (canDriftThisFrame ? 1f : 0f);
+
             float rate = targetDrift > driftCharge ? driftBuildRate : driftReleaseRate;
             driftCharge = Mathf.MoveTowards(driftCharge, targetDrift, rate * Time.deltaTime);
 
             isDrifting = driftCharge > 0.01f;
 
-            // Transition events
             if (isDrifting && !wasDrifting && rb != null)
             {
                 driftEntrySpeed = speed;
@@ -4137,7 +4188,8 @@ public class CarController : MonoBehaviour
             }
         }
 
-        // STEERING SMOOTH
+        _lastRawSteerValue = rawHorizontal;
+
         float smoothRate = steeringInputSmooth;
         if (isDrifting) smoothRate *= 1.4f;
 
@@ -4305,7 +4357,7 @@ public class CarController : MonoBehaviour
                 Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
                 Vector3 flatVel = new Vector3(velDir.x, 0f, velDir.z).normalized;
                 float steerInfluence = Mathf.Clamp01(Mathf.Abs(steeringInput));
-                const float driftAlignStrength = 4.5f;
+                const float driftAlignStrength = 2f;
                 float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.fixedDeltaTime);
                 Vector3 finalDir = Vector3.Slerp(flatVel, flatForward, blend);
                 if (finalDir.sqrMagnitude < 0.0001f)
@@ -4755,6 +4807,9 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private float spawnForwardOffset = 2f;
     [SerializeField] private float spawnHeightOffset = 0.2f;
 
+    [Header("Balancing")]
+    [SerializeField, Min(0f)] private float coinsPerDistance = 0.33f; // coins per meter
+
     private GameObject carInstance;
     private CarController carController;
     private bool runEnded = false;
@@ -4904,7 +4959,7 @@ public class GameManager_Racing : MonoBehaviour
         int distanceInt = Mathf.RoundToInt(runDistanceMeters);
 
         // 1) Distance coins
-        int distanceCoins = Mathf.RoundToInt(distanceInt * 0.5f);
+        int distanceCoins = Mathf.RoundToInt(distanceInt * coinsPerDistance);
         _distanceCoinsThisRun = distanceCoins;
 
         var mgr = RacingSkillTreeManager.Instance;
@@ -6485,59 +6540,23 @@ public class RacingSkillTreeManager : MonoBehaviour
     public static RacingSkillTreeManager Instance { get; private set; }
 
     [Header("Load")]
-    [Tooltip("Assign all skill definitions here or load via Resources/Addressables.")]
     public List<SkillDefinition> skills = new();
 
     [Header("Economy")]
     [SerializeField] private int playerCurrency = 0;
 
-    // Events
     public event Action<int> OnCurrencyChanged;
     public event Action<SkillType, int> OnLevelChanged;
     public event Action OnSkillsReset;
+    public event Action<SkillDefinition> OnSkillRevealed; // NEW
 
     private SkillTreeState _state;
     private readonly Dictionary<SkillType, SkillDefinition> _map = new();
 
+    // NEW: revealed (visible) skills
+    private readonly HashSet<SkillType> _revealedSkills = new();
+
     private const string CurrencyKey = "Racing_Currency";
-
-    private static readonly HashSet<SkillType> _additiveSkillTypes = new HashSet<SkillType>
-{
-    // Core car stats
-    SkillType.Acceleration_Add,
-    SkillType.MaxSpeed_Add,
-
-    // Fuel / turning / turret
-    SkillType.MaxFuel_Add,
-    SkillType.IdleFuelUse_Add,
-    SkillType.DrivingFuelUse_Add,
-    SkillType.TurnSpeed_Add,
-    SkillType.TurretDamage_Add,
-    SkillType.TurretProjectileSpeed_Add,
-    SkillType.TurretCooldown_Add,
-    SkillType.TurretBulletLifetime_Add,
-    SkillType.TurretConeAngle_Add,
-    SkillType.TurretScanRadius_Add,
-};
-
-    private static readonly HashSet<SkillType> _multiplicativeSkillTypes = new HashSet<SkillType>
-{
-    // Core car stats
-    SkillType.Acceleration_Mul,
-    SkillType.MaxSpeed_Mul,
-
-    // Fuel / turning / turret
-    SkillType.MaxFuel_Mul,
-    SkillType.IdleFuelUse_Mul,
-    SkillType.DrivingFuelUse_Mul,
-    SkillType.TurnSpeed_Mul,
-    SkillType.TurretDamage_Mul,
-    SkillType.TurretProjectileSpeed_Mul,
-    SkillType.TurretCooldown_Mul,
-    SkillType.TurretBulletLifetime_Mul,
-    SkillType.TurretConeAngle_Mul,
-    SkillType.TurretScanRadius_Mul,
-};
 
     void Awake()
     {
@@ -6551,9 +6570,16 @@ public class RacingSkillTreeManager : MonoBehaviour
                 _map[def.type] = def;
 
         _state = new SkillTreeState();
-        _state.ClearPersistent(); // start fresh
+        _state.ClearPersistent(); // fresh start
 
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
+
+        // Seed initial revealed skills
+        foreach (var def in skills)
+        {
+            if (def && def.revealedAtStart)
+                RevealSkill(def);
+        }
     }
 
     void OnApplicationQuit()
@@ -6561,15 +6587,24 @@ public class RacingSkillTreeManager : MonoBehaviour
         ClearAllData();
     }
 
+    // NEW: reveal logic
+    private void RevealSkill(SkillDefinition def)
+    {
+        if (!def) return;
+        if (_revealedSkills.Add(def.type))
+            OnSkillRevealed?.Invoke(def);
+    }
+
+    public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
+    public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
+
     // ---------------- Economy ----------------
     public int Currency => playerCurrency;
-
     private void SaveCurrency()
     {
         PlayerPrefs.SetInt(CurrencyKey, playerCurrency);
         PlayerPrefs.Save();
     }
-
     public void AddCurrency(int amount)
     {
         if (amount <= 0) return;
@@ -6614,29 +6649,29 @@ public class RacingSkillTreeManager : MonoBehaviour
 
             OnCurrencyChanged?.Invoke(playerCurrency);
             OnLevelChanged?.Invoke(type, GetLevel(type));
+
+            // NEW: evaluate unlocks
+            EvaluateProgressiveUnlocks(def, GetLevel(type));
             return true;
         }
         return false;
     }
 
-    // ---------------- Unified skill effect retrieval ----------------
-    // For a given skill type:
-    // If Multiplicative: value returned is the multiplier (>=1 ideally).
-    // If Additive: value returned is the additive amount (raw units).
-    // Level 0 → returns neutral (1 for mult, 0 for add).
-    // Level 0 → strict neutral: multiplicative = 1, additive = 0.
+    private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
+    {
+        if (!def) return;
+        foreach (var unlocked in def.GetUnlocksForLevel(newLevel))
+            RevealSkill(unlocked);
+    }
+
+    // ---------------- Raw effect retrieval unchanged ----------------
     public float GetRawEffectValue(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def))
-        {
-            // No definition -> treat as neutral (no effect)
             return 0f;
-        }
-
         int lvl = GetLevel(type);
         if (lvl <= 0)
             return def.mode == SkillApplicationMode.Multiplicative ? 1f : 0f;
-
         return def.GetValueAtLevel(lvl);
     }
 
@@ -6647,9 +6682,6 @@ public class RacingSkillTreeManager : MonoBehaviour
         return SkillApplicationMode.Additive;
     }
 
-    // Convenience for UI: always returns a multiplier (>=1).
-    // Additive effects are displayed as (1 + additiveValue / referenceUnit).
-    // For simplicity (no stat context here) we treat additive as (1 + value).
     public float GetDisplayMultiplier(SkillType type)
     {
         var mode = GetEffectMode(type);
@@ -6657,58 +6689,35 @@ public class RacingSkillTreeManager : MonoBehaviour
         return mode == SkillApplicationMode.Multiplicative ? v : (1f + v);
     }
 
-    /// <summary>
-    /// Apply a single skill to a base stat value.
-    /// If the skill is Additive: result = baseValue + value.
-    /// If Multiplicative:       result = baseValue * value.
-    /// If no definition / level 0: returns baseValue unchanged.
-    /// </summary>
     public float ApplyStat(SkillType type, float baseValue)
     {
         if (!_map.TryGetValue(type, out var def))
             return baseValue;
 
         int lvl = GetLevel(type);
-        if (lvl <= 0)
-            return baseValue;
+        if (lvl <= 0) return baseValue;
 
         float v = def.GetValueAtLevel(lvl);
-
         if (def.mode == SkillApplicationMode.Multiplicative)
-        {
-            // v is the multiplier (e.g. 1.10 for +10%)
             return baseValue * Mathf.Max(0f, v);
-        }
-        else
-        {
-            // v is the additive delta (can be negative if you want)
-            return baseValue + v;
-        }
+        return baseValue + v;
     }
 
-    /// <summary>
-    /// Apply multiple skills in sequence to the same base stat.
-    /// Lets you chain e.g. Additive then Multiplicative for the same parameter.
-    /// </summary>
     public float ApplyStatChain(float baseValue, params SkillType[] types)
     {
         float val = baseValue;
         if (types == null) return val;
-
         for (int i = 0; i < types.Length; i++)
             val = ApplyStat(types[i], val);
-
         return val;
     }
 
-
-    // Backward compatibility wrappers for UI calls
     public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
     public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
     public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
     public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
 
-    // ---------------- Reset / Clear ----------------
+    // ---------------- Reset ----------------
     public void ClearAllData()
     {
         _state.ClearPersistent();
@@ -6719,6 +6728,11 @@ public class RacingSkillTreeManager : MonoBehaviour
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, 0);
 
+        _revealedSkills.Clear();
+        foreach (var def in skills)
+            if (def && def.revealedAtStart)
+                RevealSkill(def);
+
         OnSkillsReset?.Invoke();
     }
 }
@@ -6728,6 +6742,7 @@ public class RacingSkillTreeManager : MonoBehaviour
 
 ```csharp
 using UnityEngine;
+using System.Collections.Generic;
 
 [CreateAssetMenu(menuName = "Racing/Skill Definition", fileName = "SkillDefinition")]
 public class SkillDefinition : ScriptableObject
@@ -6754,6 +6769,22 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("Anchored position on the skill tree content canvas (in pixels).")]
     public Vector2 uiPosition = Vector2.zero;
 
+    [Header("Unlock Visibility")]
+    [Tooltip("If true this skill is visible from the start of a new run.")]
+    public bool revealedAtStart = false;
+
+    [System.Serializable]
+    public class ProgressiveUnlock
+    {
+        [Min(1), Tooltip("When THIS skill reaches this level, unlock the listed skill(s).")]
+        public int requiredLevel = 1;
+        [Tooltip("Skills revealed when requiredLevel is reached.")]
+        public List<SkillDefinition> unlocks = new();
+    }
+
+    [Tooltip("Configure which other skills become visible as this skill levels up.")]
+    public List<ProgressiveUnlock> progressiveUnlocks = new();
+
     public int GetCostForLevel(int nextLevel)
     {
         if (nextLevel <= 0) nextLevel = 1;
@@ -6766,7 +6797,22 @@ public class SkillDefinition : ScriptableObject
     {
         level = Mathf.Clamp(level, 0, maxLevel);
         float v = baseValue + perLevelAdd * level;
-        return mode == SkillApplicationMode.Multiplicative ? v : v; // semantics clarified in manager
+        return mode == SkillApplicationMode.Multiplicative ? v : v;
+    }
+
+    /// <summary>
+    /// Returns all skills that should unlock at (or below) the passed newLevel.
+    /// </summary>
+    public IEnumerable<SkillDefinition> GetUnlocksForLevel(int newLevel)
+    {
+        if (progressiveUnlocks == null) yield break;
+        foreach (var pu in progressiveUnlocks)
+        {
+            if (pu == null) continue;
+            if (newLevel >= pu.requiredLevel && pu.unlocks != null)
+                foreach (var s in pu.unlocks)
+                    if (s) yield return s;
+        }
     }
 }
 ```
@@ -7050,64 +7096,84 @@ public class TireTrailController : MonoBehaviour
 ## Assets/Racing_Assets/Racing_Scripts/TrackCoinSpawner.cs
 
 ```csharp
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Streams coin pickups along the procedural track,
-/// spawning them far enough ahead that they never visibly pop in,
-/// and despawning them behind the player.
+/// Streams coin pickups along the procedural track with distance‑aware variety staging,
+/// early‑section balancing and dynamic unlocking (similar in concept to an obstacle/object spawner).
 /// </summary>
 public class TrackCoinSpawner : MonoBehaviour
 {
+    #region Variant Definition
+    [Serializable]
+    public class CoinVariant
+    {
+        [Tooltip("Prefab with CoinPickup component (value taken from variant if set >0).")]
+        public GameObject prefab;
+
+        [Tooltip("Minimum track distance (meters) before this variant can appear.")]
+        public float unlockDistance = 0f;
+
+        [Tooltip("If > 0 overrides the CoinPickup's value on spawn.")]
+        public int overrideValue = 0;
+
+        [Tooltip("Relative weight used in random selection among unlocked variants.")]
+        public float weight = 1f;
+
+        [Tooltip("Optional multiplier curve by normalized distance (0=start,1=end). Leave empty for 1.")]
+        public AnimationCurve distanceMultiplier = AnimationCurve.Linear(0, 1, 1, 1);
+    }
+    #endregion
+
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
-    [SerializeField] private GameObject coinPrefab;
-    [SerializeField] private Transform coinParent; // optional
+
+    [Header("Deprecated (kept for backward compatibility)")]
+    [SerializeField] private GameObject coinPrefab;          // Fallback/common coin
+    [SerializeField] private Transform coinParent;
+
+    [Header("Coin Variants (add higher value types here)")]
+    [SerializeField] private List<CoinVariant> variants = new();
 
     [Header("Coin Height")]
-    [Tooltip("Extra height above the road surface to place the coin.")]
     [SerializeField] private float coinHeightOffset = 0.5f;
 
     [Header("Path Sampling")]
-    [Tooltip("Use a smoothed path (Catmull-Rom) for coin placement.")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
-    [Header("Coin Slot Layout")]
-    [Tooltip("Distance between coin slots along the track (meters).")]
+    [Header("Slot Layout")]
     [SerializeField, Min(0.1f)] private float coinSpacing = 6f;
-
-    [Tooltip("Max total coins that can exist at once.")]
     [SerializeField] private int maxActiveCoins = 120;
 
     [Header("Spawn Window (ahead of player)")]
-    [Tooltip("Minimum distance in front of the player where new coins are allowed to appear.")]
     [SerializeField] private float minSpawnDistanceAhead = 40f;
-
-    [Tooltip("Maximum distance in front of the player we bother filling with coins.")]
     [SerializeField] private float maxSpawnDistanceAhead = 140f;
-
-    [Tooltip("How far behind the player we allow coins to exist before despawning.")]
     [SerializeField] private float despawnBehindDistance = 25f;
 
     [Header("Initial Pre-Spawn")]
-    [Tooltip("How far ahead (from start) we pre-fill coins before the run begins.")]
     [SerializeField] private float initialPreSpawnDistance = 80f;
 
-    [Header("Randomization")]
-    [Tooltip("Max random offset along the track (meters) applied per spawned coin.")]
-    [SerializeField] private float distanceJitter = 1.5f;
+    [Header("Global Spawn Chance")]
+    [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.85f;
+    [Tooltip("Extra scaling by normalized distance (0..1).")]
+    [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
 
-    [Tooltip("Probability [0-1] that a given slot will actually spawn a coin.")]
-    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.85f;
+    [Header("Early Region Balancing")]
+    [Tooltip("Meters from start considered 'early'.")]
+    [SerializeField] private float earlyRegionMeters = 60f;
+    [Tooltip("Chance scale applied inside early region (e.g. 0.6 = fewer coins early).")]
+    [SerializeField, Range(0f, 2f)] private float earlyRegionChanceScale = 0.6f;
+    [Tooltip("Optionally restrict to only the first (common) variant during early region.")]
+    [SerializeField] private bool restrictVariantsEarly = true;
+    [Tooltip("Hard cap of active coins allowed inside the early region.")]
+    [SerializeField] private int earlyRegionActiveCap = 40;
 
-    [Header("Lateral Placement (across road width)")]
-    [Tooltip("Fraction of half-width where coins can appear (0..1).")]
+    [Header("Lateral Placement")]
     [SerializeField, Range(0f, 1f)] private float lateralFractionOfHalfWidth = 0.7f;
-
-    [Tooltip("Margin from the physical edge of the road in meters.")]
     [SerializeField] private float edgeInnerMargin = 0.25f;
 
     [Header("Raycast Settings")]
@@ -7116,34 +7182,32 @@ public class TrackCoinSpawner : MonoBehaviour
     [SerializeField] private float raycastDownDistance = 15f;
     [SerializeField] private bool alignToSurfaceNormal = true;
 
-    [Header("Update Settings")]
-    [Tooltip("How often to update streaming (seconds).")]
+    [Header("Jitter")]
+    [SerializeField] private float distanceJitter = 1.5f;
+
+    [Header("Update")]
     [SerializeField] private float updateInterval = 0.2f;
 
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
-    // Internal path data
-    private readonly List<Vector3> _path = new List<Vector3>();
+    // Path data
+    private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
     private float _totalLength;
 
-    // Coin slots: slotIndex -> coin GameObject
-    private readonly Dictionary<int, GameObject> _coinsBySlot = new Dictionary<int, GameObject>();
+    // Slot → GameObject
+    private readonly Dictionary<int, GameObject> _coinsBySlot = new();
     private int _maxSlotIndex;
 
-    // Update timer
     private float _updateTimer;
-
-    // Cache for closest-segment search
     private int _lastClosestSegmentIndex = 0;
+    private readonly List<int> _toRemove = new();
 
-    // temp list for removals
-    private readonly List<int> _toRemove = new List<int>(64);
+    // --- New: track active coins inside early region for cap enforcement ---
+    private int _activeEarlyRegion;
 
-    // ----------------------------------------------------------
-    // LIFE CYCLE
-    // ----------------------------------------------------------
+    #region Lifecycle
     private void Reset()
     {
         if (trackGenerator == null)
@@ -7152,20 +7216,39 @@ public class TrackCoinSpawner : MonoBehaviour
 
     private void Update()
     {
-        if (_path.Count < 2 || playerTransform == null || coinPrefab == null)
+        if (_path.Count < 2 || playerTransform == null)
             return;
 
         _updateTimer += Time.deltaTime;
-        if (_updateTimer < updateInterval)
-            return;
-
-        _updateTimer = 0f;
-        StreamCoins();
+        if (_updateTimer >= updateInterval)
+        {
+            _updateTimer = 0f;
+            StreamCoins();
+        }
     }
+    #endregion
 
-    // ----------------------------------------------------------
-    // PATH BUILDING
-    // ----------------------------------------------------------
+    #region Initialization / Run
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+
+        if (trackGenerator == null || playerTransform == null)
+        {
+            Debug.LogError("[TrackCoinSpawner] InitializeForRun missing references.");
+            return;
+        }
+
+        RebuildPath();
+        ClearAllCoins();
+        SetupSlots();
+        PreSpawnInitialCoins();
+        _updateTimer = 0f;
+    }
+    #endregion
+
+    #region Path Build
     private void RebuildPath()
     {
         _path.Clear();
@@ -7173,56 +7256,37 @@ public class TrackCoinSpawner : MonoBehaviour
         _totalLength = 0f;
         _lastClosestSegmentIndex = 0;
 
-        if (trackGenerator == null)
-        {
-            if (verboseDebug) Debug.LogWarning("[TrackCoinSpawner] No trackGenerator assigned.");
-            return;
-        }
-
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2)
-        {
-            if (verboseDebug) Debug.LogWarning("[TrackCoinSpawner] Track has too few path points.");
-            return;
-        }
+        var src = trackGenerator?.PathPoints;
+        if (src == null || src.Count < 2) return;
 
         if (useSmoothing)
             GenerateSmoothedPath(src, Mathf.Max(1, smoothingSubdivisionsPerSegment), _path);
         else
             _path.AddRange(src);
 
-        if (_path.Count < 2)
-            return;
+        if (_path.Count < 2) return;
 
-        // cumulative lengths
         int n = _path.Count;
         _cumLengths = new float[n];
         _cumLengths[0] = 0f;
         float length = 0f;
-
         for (int i = 1; i < n; i++)
         {
             length += Vector3.Distance(_path[i - 1], _path[i]);
             _cumLengths[i] = length;
         }
-
         _totalLength = length;
-
-        if (verboseDebug)
-            Debug.Log($"[TrackCoinSpawner] Path rebuilt: {_path.Count} points, length ~ {_totalLength:0.0}m");
     }
 
     private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
     {
         outList.Clear();
         int n = raw.Count;
-
         if (n < 2)
         {
             outList.AddRange(raw);
             return;
         }
-
         outList.Add(raw[0]);
         for (int i = 0; i < n - 1; i++)
         {
@@ -7230,7 +7294,6 @@ public class TrackCoinSpawner : MonoBehaviour
             Vector3 p1 = raw[i];
             Vector3 p2 = raw[i + 1];
             Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
-
             for (int s = 1; s <= subdivisions; s++)
             {
                 float t = s / (float)subdivisions;
@@ -7250,124 +7313,282 @@ public class TrackCoinSpawner : MonoBehaviour
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         );
     }
+    #endregion
 
-    // ----------------------------------------------------------
-    // SLOT SETUP
-    // ----------------------------------------------------------
+    #region Slots / PreSpawn
     private void SetupSlots()
     {
-        _coinsBySlot.Clear();
-
         if (_totalLength <= 0f || coinSpacing <= 0f)
         {
             _maxSlotIndex = 0;
             return;
         }
-
         _maxSlotIndex = Mathf.FloorToInt(_totalLength / coinSpacing);
-        if (verboseDebug)
-            Debug.Log($"[TrackCoinSpawner] Slot setup: {_maxSlotIndex + 1} potential slots along track.");
     }
 
-    private void ClearAllCoins()
+    private void PreSpawnInitialCoins()
     {
-        foreach (var kvp in _coinsBySlot)
-        {
-            if (kvp.Value != null)
-                Destroy(kvp.Value);
-        }
-        _coinsBySlot.Clear();
-    }
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
 
-    // ----------------------------------------------------------
-    // STREAMING LOOP
-    // ----------------------------------------------------------
+        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(endDist / coinSpacing);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+        {
+            if (_coinsBySlot.Count >= maxActiveCoins) break;
+            float dist = slot * coinSpacing;
+            TrySpawnCoinAtDistance(slot, dist, preSpawn: true);
+        }
+    }
+    #endregion
+
+    #region Streaming
     private void StreamCoins()
     {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0)
-            return;
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
 
-        // 1) Get player distance along the track
         float playerDist = GetPlayerDistanceAlongTrack();
 
-        // 2) Define the forward spawn band where new coins are allowed
-        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / coinSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / coinSpacing), 0, _maxSlotIndex);
-
-        // 3) Spawn coins in the far-ahead band only
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            if (_coinsBySlot.ContainsKey(slot))
-                continue; // already spawned
-
-            if (_coinsBySlot.Count >= maxActiveCoins)
-                break;
-
-            float dist = slot * coinSpacing;
-
-            // Safety: never spawn closer than minSpawnDistanceAhead in front of player
-            if (dist < playerDist + minSpawnDistanceAhead)
-                continue;
-
-            if (Random.value > spawnChancePerSlot)
-                continue;
-
-            TrySpawnCoinAtDistance(slot, dist);
-        }
-
-        // 4) Despawn coins that are too far behind
-        float hardDespawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
-
+        // Despawn behind
+        float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
         _toRemove.Clear();
+        _activeEarlyRegion = 0;
+
         foreach (var kvp in _coinsBySlot)
         {
             int slot = kvp.Key;
             float slotDist = slot * coinSpacing;
-
-            // Only despawn behind; allow coins far ahead to exist
-            if (slotDist < hardDespawnStart)
+            if (slotDist < despawnStart)
             {
-                if (kvp.Value != null)
-                    Destroy(kvp.Value);
-
+                if (kvp.Value) Destroy(kvp.Value);
                 _toRemove.Add(slot);
+            }
+            else if (slotDist <= earlyRegionMeters)
+            {
+                _activeEarlyRegion++;
             }
         }
         for (int i = 0; i < _toRemove.Count; i++)
-        {
             _coinsBySlot.Remove(_toRemove[i]);
+
+        // Spawn ahead
+        float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spanStart / coinSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spanEnd / coinSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_coinsBySlot.ContainsKey(slot)) continue;
+            if (_coinsBySlot.Count >= maxActiveCoins) break;
+
+            float dist = slot * coinSpacing;
+            TrySpawnCoinAtDistance(slot, dist);
+        }
+    }
+    #endregion
+
+    #region Spawn Logic
+    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn = false)
+    {
+        // Distance jitter
+        float jitter = distanceJitter > 0f ? UnityEngine.Random.Range(-distanceJitter, distanceJitter) : 0f;
+        float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
+
+        // Compute spawn chance with early balancing and distance curve
+        float spawnChance = ComputeSpawnChance(dist);
+        if (UnityEngine.Random.value > spawnChance)
+            return;
+
+        // Early region active cap
+        if (dist <= earlyRegionMeters && _activeEarlyRegion >= earlyRegionActiveCap)
+            return;
+
+        // Determine variant
+        GameObject chosenPrefab = ResolveVariantPrefab(dist, out int overrideValue);
+        if (!chosenPrefab) return;
+
+        // Sample along path
+        SampleAlongPath(dist, out var centerPos, out var forward);
+
+        // Lateral placement
+        float halfWidth = (trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f);
+        float usableHalfWidth = Mathf.Max(0f, halfWidth * lateralFractionOfHalfWidth - edgeInnerMargin);
+        if (usableHalfWidth <= 0f) usableHalfWidth = halfWidth * 0.5f;
+
+        var flatForward = forward; flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 1e-6f) flatForward = Vector3.forward;
+        flatForward.Normalize();
+        var right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        float lateral = UnityEngine.Random.Range(-usableHalfWidth, usableHalfWidth);
+        Vector3 candidate = centerPos + right * lateral;
+
+        // Raycast to road
+        Vector3 origin = candidate + Vector3.up * raycastStartHeight;
+        float maxDist = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxDist, roadLayerMask, QueryTriggerInteraction.Ignore))
+        {
+            if (verboseDebug) Debug.DrawRay(origin, Vector3.down * maxDist, Color.red, 2f);
+            return;
+        }
+
+        Vector3 up = alignToSurfaceNormal ? hit.normal : Vector3.up;
+        Vector3 forwardOnSurface = Vector3.ProjectOnPlane(flatForward, up);
+        if (forwardOnSurface.sqrMagnitude < 1e-6f)
+            forwardOnSurface = Vector3.Cross(up, Vector3.right);
+        forwardOnSurface.Normalize();
+
+        Quaternion rot = Quaternion.LookRotation(forwardOnSurface, up);
+        Transform parent = coinParent ? coinParent : transform;
+        Vector3 spawnPos = hit.point + up * coinHeightOffset;
+
+        GameObject inst = Instantiate(chosenPrefab, spawnPos, rot, parent);
+        _coinsBySlot[slotIndex] = inst;
+
+        if (dist <= earlyRegionMeters) _activeEarlyRegion++;
+
+        // Override coin value if variant specifies
+        if (overrideValue > 0)
+        {
+            var pickup = inst.GetComponent<CoinPickup>();
+            if (pickup)
+            {
+                // reflection assign (value is private) – easier: expose public method or use serialized hack.
+                // Here we simply use a helper component:
+                var helper = inst.GetComponent<VariantCoinValueSetter>() ?? inst.AddComponent<VariantCoinValueSetter>();
+                helper.SetValue(overrideValue);
+            }
+        }
+
+        if (verboseDebug)
+        {
+            Debug.DrawLine(origin, hit.point, Color.yellow, 1.5f);
+            Debug.DrawRay(hit.point, up, Color.green, 1.5f);
         }
     }
 
-    // ----------------------------------------------------------
-    // PLAYER DISTANCE APPROX
-    // ----------------------------------------------------------
+    private float ComputeSpawnChance(float distance)
+    {
+        float norm = _totalLength > 0f ? distance / _totalLength : 0f;
+        float baseChance = baseSpawnChance * Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
+
+        // Early region scaling
+        if (distance <= earlyRegionMeters)
+            baseChance *= earlyRegionChanceScale;
+
+        return Mathf.Clamp01(baseChance);
+    }
+
+    private GameObject ResolveVariantPrefab(float distance, out int overrideValue)
+    {
+        overrideValue = 0;
+
+        // Gather unlocked variants
+        List<CoinVariant> unlocked = null;
+        if (variants != null && variants.Count > 0)
+        {
+            unlocked = variants.FindAll(v => v != null && distance >= v.unlockDistance);
+        }
+
+        // Early restriction
+        if (restrictVariantsEarly && distance <= earlyRegionMeters && unlocked != null && unlocked.Count > 0)
+        {
+            // Use lowest unlockDistance variant(s)
+            float minUnlock = float.MaxValue;
+            foreach (var v in unlocked) if (v.unlockDistance < minUnlock) minUnlock = v.unlockDistance;
+            unlocked = unlocked.FindAll(v => Mathf.Approximately(v.unlockDistance, minUnlock));
+        }
+
+        // Fallback
+        if (unlocked == null || unlocked.Count == 0)
+        {
+            if (coinPrefab)
+                return coinPrefab;
+            return variants != null && variants.Count > 0 && variants[0] != null ? variants[0].prefab : null;
+        }
+
+        // Weighted random with distance multiplier
+        float totalWeight = 0f;
+        float norm = _totalLength > 0f ? distance / _totalLength : 0f;
+        foreach (var v in unlocked)
+        {
+            float mult = v.distanceMultiplier != null ? v.distanceMultiplier.Evaluate(norm) : 1f;
+            totalWeight += Mathf.Max(0f, v.weight * mult);
+        }
+        if (totalWeight <= 0f) return unlocked[0].prefab;
+
+        float pick = UnityEngine.Random.value * totalWeight;
+        float accum = 0f;
+        foreach (var v in unlocked)
+        {
+            float mult = v.distanceMultiplier != null ? v.distanceMultiplier.Evaluate(norm) : 1f;
+            float w = Mathf.Max(0f, v.weight * mult);
+            accum += w;
+            if (pick <= accum)
+            {
+                overrideValue = v.overrideValue;
+                return v.prefab;
+            }
+        }
+
+        // Fallback
+        overrideValue = unlocked[unlocked.Count - 1].overrideValue;
+        return unlocked[unlocked.Count - 1].prefab;
+    }
+    #endregion
+
+    #region Helpers
+    private void SampleAlongPath(float targetDistance, out Vector3 pos, out Vector3 forward)
+    {
+        pos = Vector3.zero;
+        forward = Vector3.forward;
+
+        if (_path.Count < 2 || _cumLengths == null) return;
+
+        targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= targetDistance)
+            {
+                idx = i;
+                break;
+            }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
+        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
+        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
+
+        Vector3 a = _path[idx];
+        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
+        pos = Vector3.Lerp(a, b, t);
+        forward = (b - a).normalized;
+    }
+
     private float GetPlayerDistanceAlongTrack()
     {
-        if (_path.Count < 2 || _cumLengths == null)
-            return 0f;
-
+        if (_path.Count < 2 || _cumLengths == null) return 0f;
         Vector3 p = playerTransform.position;
 
         int bestIndex = _lastClosestSegmentIndex;
         float bestSqrDist = float.MaxValue;
 
-        // Simple O(N) search (N ~ ~1000) is fine at 5 Hz
         for (int i = 0; i < _path.Count - 1; i++)
         {
             Vector3 a = _path[i];
             Vector3 b = _path[i + 1];
             Vector3 ab = b - a;
             float abSqrMag = ab.sqrMagnitude;
-            if (abSqrMag < 0.0001f)
-                continue;
+            if (abSqrMag < 1e-6f) continue;
 
             float t = Vector3.Dot(p - a, ab) / abSqrMag;
             t = Mathf.Clamp01(t);
-
             Vector3 proj = a + ab * t;
             float sqrDist = (p - proj).sqrMagnitude;
 
@@ -7398,176 +7619,46 @@ public class TrackCoinSpawner : MonoBehaviour
         return dist;
     }
 
-    // ----------------------------------------------------------
-    // COIN SPAWN HELPER
-    // ----------------------------------------------------------
-    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack)
+    private void ClearAllCoins()
     {
-        // 🎲 randomize along-track position a bit so spacing isn't perfect
-        float jitter = (distanceJitter > 0f)
-            ? Random.Range(-distanceJitter, distanceJitter)
-            : 0f;
-
-        float sampleDist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
-
-        Vector3 centerPos;
-        Vector3 forward;
-        SampleAlongPath(sampleDist, out centerPos, out forward);
-
-        if (forward.sqrMagnitude < 0.0001f)
-            forward = Vector3.forward;
-
-        // Lateral placement
-        float halfWidth = (trackGenerator != null) ? trackGenerator.RoadWidth * 0.5f : 2f;
-        float usableHalfWidth = Mathf.Max(0f, halfWidth * lateralFractionOfHalfWidth - edgeInnerMargin);
-        if (usableHalfWidth <= 0f)
-            usableHalfWidth = halfWidth * 0.5f; // fallback
-
-        // Flatten forward to XZ for right direction
-        Vector3 flatForward = forward;
-        flatForward.y = 0f;
-        if (flatForward.sqrMagnitude < 0.0001f)
-            flatForward = Vector3.forward;
-        flatForward.Normalize();
-
-        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
-
-        // 🎲 lateral offset once per slot, fully random within allowed band
-        float lateral = Random.Range(-usableHalfWidth, usableHalfWidth);
-        Vector3 candidatePos = centerPos + right * lateral;
-
-        // Raycast down to road
-        Vector3 origin = candidatePos + Vector3.up * raycastStartHeight;
-        float maxDist = raycastStartHeight + raycastDownDistance;
-
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxDist, roadLayerMask, QueryTriggerInteraction.Ignore))
-        {
-            Vector3 up = alignToSurfaceNormal ? hit.normal : Vector3.up;
-
-            Vector3 fwdOnSurface = Vector3.ProjectOnPlane(flatForward, up);
-            if (fwdOnSurface.sqrMagnitude < 0.0001f)
-                fwdOnSurface = Vector3.Cross(up, Vector3.right);
-            fwdOnSurface.Normalize();
-
-            Quaternion rot = Quaternion.LookRotation(fwdOnSurface, up);
-            Transform parent = coinParent != null ? coinParent : transform;
-
-            // ⬆ apply height offset relative to surface normal
-            Vector3 spawnPos = hit.point + up * coinHeightOffset;
-
-            GameObject coin = Instantiate(coinPrefab, spawnPos, rot, parent);
-            _coinsBySlot[slotIndex] = coin;
+        foreach (var kvp in _coinsBySlot)
+            if (kvp.Value) Destroy(kvp.Value);
+        _coinsBySlot.Clear();
+    }
+    #endregion
 
 #if UNITY_EDITOR
-            if (verboseDebug)
-            {
-                Debug.DrawLine(origin, hit.point, Color.yellow, 2f);
-                Debug.DrawRay(hit.point, up, Color.green, 2f);
-                Debug.DrawRay(hit.point, fwdOnSurface, Color.blue, 2f);
-            }
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        for (int i = 0; i < _path.Count - 1; i++)
+            Gizmos.DrawLine(_path[i], _path[i + 1]);
+
+        if (earlyRegionMeters > 0f)
+        {
+            Gizmos.color = new Color(0f, 0.6f, 1f, 0.25f);
+            Vector3 start = _path.Count > 0 ? _path[0] : transform.position;
+            Gizmos.DrawWireSphere(start, 0.4f);
+        }
+    }
 #endif
-        }
-        else if (verboseDebug)
-        {
-            Debug.DrawRay(origin, Vector3.down * maxDist, Color.red, 2f);
-            Debug.LogWarning($"[TrackCoinSpawner] Raycast missed road at dist {distanceAlongTrack:0.0}.");
-        }
-    }
-
-    public void SetPlayerTransform(Transform player)
-    {
-        playerTransform = player;
-    }
-
-    private void SampleAlongPath(float targetDistance, out Vector3 pos, out Vector3 forward)
-    {
-        pos = Vector3.zero;
-        forward = Vector3.forward;
-
-        if (_path.Count < 2 || _cumLengths == null)
-            return;
-
-        targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
-
-        int idx = 0;
-        // simple linear search; can be upgraded to binary search if you want
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= targetDistance)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segStart = _cumLengths[idx];
-        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
-        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
-        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
-
-        Vector3 a = _path[idx];
-        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
-        pos = Vector3.Lerp(a, b, t);
-        forward = (b - a).normalized;
-    }
-
-    // ----------------------------------------------------------
-    // INITIALIZE & PRE-SPAWN
-    // ----------------------------------------------------------
-    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
-    {
-        trackGenerator = generator;
-        playerTransform = player;
-
-        if (trackGenerator == null || playerTransform == null)
-        {
-            Debug.LogError("[TrackCoinSpawner] InitializeForRun missing refs. " +
-                           $"trackGenerator={trackGenerator}, player={playerTransform}");
-            return;
-        }
-
-        if (verboseDebug)
-            Debug.Log("[TrackCoinSpawner] InitializeForRun: rebuilding path + slots.");
-
-        RebuildPath();
-        ClearAllCoins();
-        SetupSlots();
-
-        // Pre-fill the first part of the track so nothing pops in during countdown / early movement
-        PreSpawnInitialCoins();
-
-        _updateTimer = 0f;
-    }
-
-    private void PreSpawnInitialCoins()
-    {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0)
-            return;
-
-        float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.FloorToInt(preSpawnEnd / coinSpacing);
-
-        for (int slot = 0; slot <= endSlot; slot++)
-        {
-            if (_coinsBySlot.ContainsKey(slot))
-                continue;
-
-            if (_coinsBySlot.Count >= maxActiveCoins)
-                break;
-
-            float dist = slot * coinSpacing;
-
-            if (Random.value > spawnChancePerSlot)
-                continue;
-
-            TrySpawnCoinAtDistance(slot, dist);
-        }
-
-        if (verboseDebug)
-            Debug.Log($"[TrackCoinSpawner] PreSpawnInitialCoins spawned {_coinsBySlot.Count} coins up to {preSpawnEnd:0.0}m.");
-    }
 }
 
+/// <summary>
+/// Helper component to override coin pickup value at spawn without changing CoinPickup internals.
+/// </summary>
+[DisallowMultipleComponent]
+public class VariantCoinValueSetter : MonoBehaviour
+{
+    public void SetValue(int v)
+    {
+        var pickup = GetComponent<CoinPickup>();
+        if (!pickup) return;
+        // Using reflection to set private serialized field 'value'
+        var fi = typeof(CoinPickup).GetField("value", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (fi != null) fi.SetValue(pickup, v);
+    }
+}
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/TrackDistanceMeter.cs
@@ -7822,7 +7913,7 @@ public class RacingSkillUI : MonoBehaviour
     [SerializeField] private bool rightMouseDragToPan = true;
 
     [Header("Buttons")]
-    [SerializeField] private Button playButton;            // NEW: replaces Back
+    [SerializeField] private Button playButton;
     [SerializeField] private bool autoOpenFirstSkill = true;
     [SerializeField] private bool verboseDebug = false;
     [SerializeField] private bool forceDeferredBuild = true;
@@ -7832,9 +7923,9 @@ public class RacingSkillUI : MonoBehaviour
     private Vector3 _contentBaseScale = Vector3.one;
 
     private RacingSkillTreeManager mgr;
-    private GameManager_Racing gameManager;                // NEW
+    private GameManager_Racing gameManager;
     private readonly List<RacingSkillUIEntry> entries = new();
-    private RacingSkillUIEntry selectedEntry;              // NEW
+    private RacingSkillUIEntry selectedEntry;
     private bool buildSucceeded;
 
     void Awake()
@@ -7845,65 +7936,26 @@ public class RacingSkillUI : MonoBehaviour
     private void OnEnable()
     {
         EnsureManager();
-        BindPlayButton();               // NEW
-        TryWireEvents();
-        if (verboseDebug) DumpPrereqStatus();
-        AttemptBuild();
+        BindPlayButton();
+        WireEvents();
+        AttemptBuild(); // builds only revealed
         RefreshAll();
         if (treeContent) _contentBaseScale = treeContent.localScale;
-        if (autoOpenFirstSkill && buildSucceeded && detailPanel && entries.Count > 0)
-            ShowEntryDetail(entries[0]);
+        AutoOpenFirstIfNeeded();
     }
 
-    private void DumpPrereqStatus()
-    {
-        Debug.Log($"[RacingSkillUI] Status - entryPrefab: {entryPrefab}, mgr: {(mgr ? "ok" : "null")}, skills: {(mgr ? mgr.AllSkills?.Count : 0)}, contentParent: {contentParent}, treeViewport: {treeViewport}, treeContent: {treeContent}, playButton: {playButton}");
-    }
-
-    private System.Collections.IEnumerator Start()
-    {
-        if (forceDeferredBuild)
-        {
-            yield return null;
-            if (!buildSucceeded)
-            {
-                if (verboseDebug) Debug.Log("[RacingSkillUI] Deferred build attempt.");
-                EnsureManager();
-                AttemptBuild();
-                RefreshAll();
-                if (autoOpenFirstSkill && buildSucceeded && detailPanel && entries.Count > 0)
-                    ShowEntryDetail(entries[0]);
-            }
-            if (!buildSucceeded)
-            {
-                yield return null;
-                if (!buildSucceeded && verboseDebug)
-                    Debug.LogWarning("[RacingSkillUI] Second deferred build failed.");
-            }
-        }
-    }
-
-    void OnDisable()
+    private void OnDisable()
     {
         UnwireEvents();
     }
 
     void Update()
     {
-        if (!buildSucceeded)
-        {
-            EnsureManager();
-            AttemptBuild();
-        }
-
-        if (treeViewport && treeContent)
-        {
-            HandleTreePan();
-            HandleTreeZoom();
-        }
+        HandleTreePan();
+        HandleTreeZoom();
     }
 
-    public void BindGameManager(GameManager_Racing gm) => gameManager = gm; // NEW public API
+    public void BindGameManager(GameManager_Racing gm) => gameManager = gm;
 
     private void BindPlayButton()
     {
@@ -7916,21 +7968,11 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnPlayClicked()
     {
-        // Hide detail if open
         ClearSelection();
         detailPanel?.HideImmediate();
-
-        // Start race
-        if (gameManager == null)
+        if (!gameManager)
             gameManager = FindObjectOfType<GameManager_Racing>();
-
-        if (gameManager != null)
-            gameManager.BeginRun();
-        else
-            Debug.LogWarning("[RacingSkillUI] GameManager_Racing not found for Play button.");
-
-        // Optionally deactivate skill UI root (manager handles root hiding)
-        // gameObject.SetActive(false);
+        gameManager?.BeginRun();
     }
 
     private void EnsureManager()
@@ -7940,98 +7982,117 @@ public class RacingSkillUI : MonoBehaviour
         if (!gameManager) gameManager = FindObjectOfType<GameManager_Racing>();
     }
 
+    private void WireEvents()
+    {
+        if (!mgr) return;
+        mgr.OnCurrencyChanged += HandleCurrencyChanged;
+        mgr.OnLevelChanged += HandleLevelChanged;
+        mgr.OnSkillRevealed += HandleSkillRevealed; // NEW
+    }
+
+    private void UnwireEvents()
+    {
+        if (!mgr) return;
+        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
+        mgr.OnLevelChanged -= HandleLevelChanged;
+        mgr.OnSkillRevealed -= HandleSkillRevealed;
+    }
+
+    private void HandleCurrencyChanged(int _) => RefreshAll();
+    private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
+
+    private void HandleSkillRevealed(SkillDefinition def)
+    {
+        // Rebuild to include newly revealed skill(s)
+        AttemptBuild();
+        RefreshAll();
+        AutoOpenFirstIfNeeded();
+    }
+
     private void AttemptBuild()
     {
-        if (buildSucceeded) return;
-
+        buildSucceeded = false;
         ClearChildren();
         entries.Clear();
-
         if (!entryPrefab || !mgr || mgr.AllSkills == null || mgr.AllSkills.Count == 0)
         {
             if (verboseDebug) Debug.LogWarning("[RacingSkillUI] Missing prerequisites.");
             return;
         }
 
-        if (treeViewport && treeContent)
-            BuildTree();
-        else if (contentParent)
-            BuildList();
-        else
+        var subset = mgr.AllSkills;
+        foreach (var def in subset)
         {
-            Debug.LogWarning("[RacingSkillUI] No layout targets.");
-            return;
+            if (!def) continue;
+            if (!mgr.IsSkillRevealed(def.type)) continue; // filter unrevealed
+            RacingSkillUIEntry inst = Instantiate(entryPrefab,
+                treeContent ? treeContent : contentParent);
+            if (treeContent)
+            {
+                var rt = inst.GetComponent<RectTransform>();
+                if (rt)
+                    rt.anchoredPosition = def.uiPosition;
+            }
+            inst.Bind(def, mgr);
+            inst.Selected += OnEntrySelected;
+            entries.Add(inst);
         }
 
         buildSucceeded = entries.Count > 0;
-        Debug.Log(buildSucceeded
-            ? $"[RacingSkillUI] Build succeeded ({entries.Count} skills)."
-            : "[RacingSkillUI] Build produced zero nodes.");
-    }
-
-    private void BuildList()
-    {
-        foreach (var def in mgr.AllSkills)
-        {
-            if (!def) continue;
-            var inst = Instantiate(entryPrefab, contentParent);
-            BindEntry(inst, def);
-        }
-    }
-
-    private void BuildTree()
-    {
-        foreach (var def in mgr.AllSkills)
-        {
-            if (!def) continue;
-            var inst = Instantiate(entryPrefab, treeContent);
-            var rt = inst.GetComponent<RectTransform>();
-            if (rt)
-            {
-                rt.anchoredPosition = def.uiPosition;
-                rt.pivot = new Vector2(0.5f, 0.5f);
-            }
-            BindEntry(inst, def);
-        }
-    }
-
-    private void BindEntry(RacingSkillUIEntry inst, SkillDefinition def)
-    {
-        inst.Bind(def, mgr);
-        inst.Selected -= OnEntrySelected;
-        inst.Selected += OnEntrySelected;
-        entries.Add(inst);
     }
 
     private void OnEntrySelected(SkillDefinition def)
     {
         if (!def || !detailPanel) return;
-        var entry = entries.Find(e => e.GetDefinition() == def);
-        selectedEntry = entry;
-        ShowEntryDetail(entry);
+        selectedEntry = entries.Find(e => e.GetDefinition() == def);
+        ShowEntryDetail(selectedEntry);
     }
 
     private void ShowEntryDetail(RacingSkillUIEntry entry)
     {
-        if (detailPanel == null || entry == null) return;
+        if (!entry || !detailPanel) return;
         detailPanel.Show(entry.GetDefinition());
         detailPanel.OnHidden -= HandleDetailHidden;
         detailPanel.OnHidden += HandleDetailHidden;
     }
 
-    private void HandleDetailHidden()
+    private void HandleDetailHidden() => selectedEntry = null;
+
+    private void ClearSelection() => selectedEntry = null;
+
+    private void RefreshAll()
     {
-        selectedEntry = null;
+        RefreshCurrency();
+        foreach (var e in entries) e.Refresh();
     }
 
-    public void ClearSelection()
+    private void RefreshCurrency()
     {
-        selectedEntry = null;
+        if (currencyText && mgr)
+            currencyText.text = $"Currency: {mgr.Currency}";
+    }
+
+    private void ClearChildren()
+    {
+        Transform parent = treeContent ? treeContent : contentParent;
+        if (!parent) return;
+        for (int i = parent.childCount - 1; i >= 0; i--)
+            Destroy(parent.GetChild(i).gameObject);
+    }
+
+    private void AutoOpenFirstIfNeeded()
+    {
+        if (!autoOpenFirstSkill || !buildSucceeded || detailPanel == null) return;
+        if (entries.Count > 0)
+        {
+            detailPanel.Show(entries[0].GetDefinition());
+            selectedEntry = entries[0];
+        }
     }
 
     private void HandleTreePan()
     {
-        if (!rightMouseDragToPan) return;
+        if (!treeViewport || !treeContent || !rightMouseDragToPan) return;
         if (Input.GetMouseButtonDown(1) &&
             RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
         {
@@ -8045,63 +8106,20 @@ public class RacingSkillUI : MonoBehaviour
             _lastMouse = cur;
             treeContent.anchoredPosition += delta * panSpeed;
         }
-        if (Input.GetMouseButtonUp(1)) _isPanning = false;
+        if (Input.GetMouseButtonUp(1))
+            _isPanning = false;
     }
 
     private void HandleTreeZoom()
     {
+        if (!treeViewport || !treeContent) return;
         if (!RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
             return;
-
         float scroll = Input.mouseScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.001f) return;
-
         float cur = treeContent.localScale.x;
         float next = Mathf.Clamp(cur + scroll * zoomStep, minZoom, maxZoom);
         treeContent.localScale = new Vector3(next, next, 1f);
-    }
-
-    private void TryWireEvents()
-    {
-        if (!mgr) return;
-        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
-        mgr.OnCurrencyChanged += HandleCurrencyChanged;
-        mgr.OnLevelChanged -= HandleLevelChanged;
-        mgr.OnLevelChanged += HandleLevelChanged;
-    }
-
-    private void UnwireEvents()
-    {
-        if (!mgr) return;
-        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
-        mgr.OnLevelChanged -= HandleLevelChanged;
-        if (detailPanel) detailPanel.OnHidden -= HandleDetailHidden;
-    }
-
-    private void HandleCurrencyChanged(int _) => RefreshAll();
-    private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
-
-    private void RefreshAll()
-    {
-        RefreshCurrency();
-        for (int i = 0; i < entries.Count; i++)
-            entries[i].Refresh();
-    }
-
-    private void RefreshCurrency()
-    {
-        if (currencyText && mgr)
-            currencyText.text = $"Currency: {mgr.Currency}";
-    }
-
-    private void ClearChildren()
-    {
-        if (contentParent)
-            for (int i = contentParent.childCount - 1; i >= 0; i--)
-                Destroy(contentParent.GetChild(i).gameObject);
-        if (treeContent)
-            for (int i = treeContent.childCount - 1; i >= 0; i--)
-                Destroy(treeContent.GetChild(i).gameObject);
     }
 }
 ```
@@ -8126,14 +8144,9 @@ public class RacingSkillUIEntry : MonoBehaviour
     private SkillDefinition def;
     private RacingSkillTreeManager mgr;
 
-    public SkillType Type => def ? def.type : default;
-
-    // Selection event
     public System.Action<SkillDefinition> Selected;
 
-    // NEW: definition accessor (fixes GetDefinition compile error)
     public SkillDefinition GetDefinition() => def;
-    // (Alternative usage later: public SkillDefinition Definition => def;)
 
     public void Bind(SkillDefinition definition, RacingSkillTreeManager manager)
     {
@@ -8163,19 +8176,12 @@ public class RacingSkillUIEntry : MonoBehaviour
     public void Refresh()
     {
         if (!def || mgr == null) return;
-
         int lvl = mgr.GetLevel(def.type);
         if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
         if (effectText) effectText.text = $"Effect: {FormatEffect(def.type)}";
-
         if (costText)
-        {
-            if (lvl >= def.maxLevel) costText.text = "Maxed";
-            else costText.text = $"Cost: {mgr.GetNextLevelCost(def.type)}";
-        }
+            costText.text = (lvl >= def.maxLevel) ? "Maxed" : $"Cost: {mgr.GetNextLevelCost(def.type)}";
     }
-
-    public void UpdateInteractable() { /* no-op (buy moved to panel) */ }
 
     private string FormatEffect(SkillType type)
     {

@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
 using Debug = UnityEngine.Debug;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -35,6 +36,13 @@ public class CarController : MonoBehaviour
     [SerializeField] private float driftReleaseRate = 3.5f;
     [SerializeField] private float driftSideForce = 6f;
     [SerializeField] private float driftSpeedDecayPerSecond = 1.5f;
+
+       [Header("Drift Neutral Behavior")]
+   [Tooltip("Require a non‑zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
+   [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
+   [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
+   [SerializeField] private float driftNeutralDrainRate = 4.2f;
+
 
     [Header("Drift Direction Change Reset")]
     [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
@@ -299,10 +307,40 @@ public class CarController : MonoBehaviour
                 canDriftThisFrame = false;
             }
 
+                       if (requireDirectionalInputForDriftCharge)
+                           {
+                bool hasDirectionalSteer = currentSign != 0;
+                               if (!hasDirectionalSteer)
+                                   {
+                                       // Holding drift without steering: drain charge toward 0
+                                       if (driftCharge > 0f && driftHeld)
+                                           {
+                        float drain = (driftNeutralDrainRate > 0f ? driftNeutralDrainRate : driftReleaseRate);
+                        driftCharge = Mathf.MoveTowards(driftCharge, 0f, drain * Time.deltaTime);
+                                           }
+                                       // Prevent new build while neutral
+                    canDriftThisFrame = false;
+                                   }
+                              else
+                                  {
+                                       // Directional steer present -> normal build allowed if other conditions met
+                    canDriftThisFrame &= true;
+                                   }
+                           }
+
             float targetDrift = (canDriftThisFrame ? 1f : 0f);
 
             float rate = targetDrift > driftCharge ? driftBuildRate : driftReleaseRate;
-            driftCharge = Mathf.MoveTowards(driftCharge, targetDrift, rate * Time.deltaTime);
+                       // If directional input required and currently neutral, we already handled manual drain above;
+                       // skip applying releaseRate again to avoid double drain (only apply when targetDrift == 0 from other causes).
+                       if (requireDirectionalInputForDriftCharge && targetDrift == 0f && (rawHorizontal > -steerFlipThreshold && rawHorizontal < steerFlipThreshold) && driftCharge > 0f)
+                           {
+                               // already drained; do nothing here
+                           }
+                       else
+                           {
+                driftCharge = Mathf.MoveTowards(driftCharge, targetDrift, rate * Time.deltaTime);
+                           }
 
             isDrifting = driftCharge > 0.01f;
 
@@ -481,13 +519,13 @@ public class CarController : MonoBehaviour
                     driftClampSpeed -= driftSpeedDecayPerSecond * Time.fixedDeltaTime;
                     if (driftClampSpeed < 0f) driftClampSpeed = 0f;
                 }
-
+                
                 float targetSpeed = Mathf.Min(driftClampSpeed, effectiveMaxSpeed);
 
                 Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
                 Vector3 flatVel = new Vector3(velDir.x, 0f, velDir.z).normalized;
                 float steerInfluence = Mathf.Clamp01(Mathf.Abs(steeringInput));
-                const float driftAlignStrength = 4.5f;
+                const float driftAlignStrength = 2f;
                 float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.fixedDeltaTime);
                 Vector3 finalDir = Vector3.Slerp(flatVel, flatForward, blend);
                 if (finalDir.sqrMagnitude < 0.0001f)

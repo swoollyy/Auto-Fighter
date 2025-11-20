@@ -1084,10 +1084,10 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1603377497}
   - {fileID: 1410127228}
   - {fileID: 1960857828}
   - {fileID: 740355971}
+  - {fileID: 1602990815}
   m_Father: {fileID: 863292879}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -1259,7 +1259,7 @@ MonoBehaviour:
   segmentCount: 200
   autoDetectSegmentLength: 1
   segmentLength: 8
-  minTurnAngle: 10
+  minTurnAngle: 25
   startMaxTurnAngle: 60
   endMaxTurnAngle: 90
   difficultyCurve:
@@ -1286,7 +1286,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  startTurnChance: 0.497
+  startTurnChance: 0.59
   endTurnChance: 0.774
   turnFrequencyCurve:
     serializedVersion: 2
@@ -1462,17 +1462,45 @@ MonoBehaviour:
   playerTransform: {fileID: 0}
   coinPrefab: {fileID: 4608549205946665033, guid: 47419904148fa4046a004e31a1bef274, type: 3}
   coinParent: {fileID: 0}
+  variants: []
   coinHeightOffset: 0.5
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  coinSpacing: 1.5
-  maxActiveCoins: 120
+  coinSpacing: 5
+  maxActiveCoins: 40
   minSpawnDistanceAhead: 40
   maxSpawnDistanceAhead: 80
   despawnBehindDistance: 25
   initialPreSpawnDistance: 60
-  distanceJitter: 0.82
-  spawnChancePerSlot: 0.423
+  baseSpawnChance: 0.458
+  spawnChanceDistanceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  earlyRegionMeters: 150
+  earlyRegionChanceScale: 0.524
+  restrictVariantsEarly: 1
+  earlyRegionActiveCap: 30
   lateralFractionOfHalfWidth: 1
   edgeInnerMargin: 0.06
   roadLayerMask:
@@ -1481,6 +1509,7 @@ MonoBehaviour:
   raycastStartHeight: 5
   raycastDownDistance: 15
   alignToSurfaceNormal: 1
+  distanceJitter: 0.3
   updateInterval: 0.2
   verboseDebug: 1
 --- !u!114 &796779774
@@ -1609,6 +1638,7 @@ MonoBehaviour:
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
   spawnHeightOffset: 0.2
+  coinsPerDistance: 0.2
 --- !u!4 &804777575
 Transform:
   m_ObjectHideFlags: 0
@@ -3126,7 +3156,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 252.82
+      value: 252.82007
       objectReference: {fileID: 0}
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -3350,11 +3380,11 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1765543737}
-  m_Father: {fileID: 663395614}
+  m_Father: {fileID: 1960857828}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: -55.199997, y: 25.850006}
   m_SizeDelta: {x: 360, y: 636}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1603377498
@@ -3846,12 +3876,12 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1602990815}
   - {fileID: 1468231093984776216}
   - {fileID: 7586651885309017165}
   - {fileID: 2561260215266806527}
   - {fileID: 6551415648324930122}
   - {fileID: 8848139793430873855}
+  - {fileID: 1603377497}
   m_Father: {fileID: 663395614}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -4299,7 +4329,7 @@ PrefabInstance:
   serializedVersion: 2
   m_Modification:
     serializedVersion: 3
-    m_TransformParent: {fileID: 1960857828}
+    m_TransformParent: {fileID: 663395614}
     m_Modifications:
     - target: {fileID: 164673377558727779, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_Name
@@ -4371,11 +4401,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -55.199997
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: -147.62
+      value: -173.47
       objectReference: {fileID: 0}
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
