@@ -1,0 +1,397 @@
+{ "pid": 21364, "tid": 77309411328, "ph": "M", "name": "thread_name", "args": { "name": "ReadEntireBinlogFromIpcAsync" } },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678413271, "dur": 15936, "ph": "X", "name": "WaitForConnectionAsync", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429210, "dur": 146063, "ph": "X", "name": "UpdateFromStreamAsync", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429236, "dur": 64, "ph": "X", "name": "ReadAsync 0", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429304, "dur": 2, "ph": "X", "name": "ProcessMessages 4", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429308, "dur": 162, "ph": "X", "name": "ReadAsync 4", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429482, "dur": 3, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429488, "dur": 57, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429549, "dur": 11, "ph": "X", "name": "ProcessMessages 47", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678429562, "dur": 2145, "ph": "X", "name": "ReadAsync 47", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431725, "dur": 4, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431733, "dur": 63, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431799, "dur": 7, "ph": "X", "name": "ProcessMessages 3468", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431809, "dur": 28, "ph": "X", "name": "ReadAsync 3468", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431846, "dur": 4, "ph": "X", "name": "ProcessMessages 692", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431853, "dur": 69, "ph": "X", "name": "ReadAsync 692", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431930, "dur": 2, "ph": "X", "name": "ProcessMessages 20", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431935, "dur": 39, "ph": "X", "name": "ReadAsync 20", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431977, "dur": 3, "ph": "X", "name": "ProcessMessages 626", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678431982, "dur": 72, "ph": "X", "name": "ReadAsync 626", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432062, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432066, "dur": 56, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432127, "dur": 3, "ph": "X", "name": "ProcessMessages 2132", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432132, "dur": 45, "ph": "X", "name": "ReadAsync 2132", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432182, "dur": 4, "ph": "X", "name": "ProcessMessages 1634", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432189, "dur": 45, "ph": "X", "name": "ReadAsync 1634", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432237, "dur": 6, "ph": "X", "name": "ProcessMessages 1454", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432245, "dur": 36, "ph": "X", "name": "ReadAsync 1454", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432284, "dur": 1, "ph": "X", "name": "ProcessMessages 517", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432287, "dur": 38, "ph": "X", "name": "ReadAsync 517", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432333, "dur": 4, "ph": "X", "name": "ProcessMessages 988", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432341, "dur": 34, "ph": "X", "name": "ReadAsync 988", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432377, "dur": 2, "ph": "X", "name": "ProcessMessages 1384", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432381, "dur": 37, "ph": "X", "name": "ReadAsync 1384", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432424, "dur": 3, "ph": "X", "name": "ProcessMessages 526", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432430, "dur": 56, "ph": "X", "name": "ReadAsync 526", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432490, "dur": 3, "ph": "X", "name": "ProcessMessages 2253", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432495, "dur": 40, "ph": "X", "name": "ReadAsync 2253", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432539, "dur": 3, "ph": "X", "name": "ProcessMessages 1363", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432544, "dur": 29, "ph": "X", "name": "ReadAsync 1363", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432575, "dur": 2, "ph": "X", "name": "ProcessMessages 1415", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432578, "dur": 35, "ph": "X", "name": "ReadAsync 1415", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432620, "dur": 4, "ph": "X", "name": "ProcessMessages 810", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432627, "dur": 41, "ph": "X", "name": "ReadAsync 810", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432671, "dur": 3, "ph": "X", "name": "ProcessMessages 2196", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432676, "dur": 24, "ph": "X", "name": "ReadAsync 2196", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432702, "dur": 1, "ph": "X", "name": "ProcessMessages 319", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432705, "dur": 34, "ph": "X", "name": "ReadAsync 319", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432741, "dur": 2, "ph": "X", "name": "ProcessMessages 945", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432745, "dur": 51, "ph": "X", "name": "ReadAsync 945", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432799, "dur": 2, "ph": "X", "name": "ProcessMessages 1170", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432802, "dur": 53, "ph": "X", "name": "ReadAsync 1170", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432857, "dur": 2, "ph": "X", "name": "ProcessMessages 1773", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432861, "dur": 47, "ph": "X", "name": "ReadAsync 1773", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432912, "dur": 3, "ph": "X", "name": "ProcessMessages 1105", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432917, "dur": 57, "ph": "X", "name": "ReadAsync 1105", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432976, "dur": 2, "ph": "X", "name": "ProcessMessages 1353", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678432980, "dur": 86, "ph": "X", "name": "ReadAsync 1353", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433074, "dur": 36, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433112, "dur": 2, "ph": "X", "name": "ProcessMessages 1114", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433115, "dur": 33, "ph": "X", "name": "ReadAsync 1114", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433152, "dur": 3, "ph": "X", "name": "ProcessMessages 809", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433158, "dur": 254, "ph": "X", "name": "ReadAsync 809", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433415, "dur": 5, "ph": "X", "name": "ProcessMessages 4078", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433423, "dur": 33, "ph": "X", "name": "ReadAsync 4078", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433461, "dur": 4, "ph": "X", "name": "ProcessMessages 2358", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433468, "dur": 52, "ph": "X", "name": "ReadAsync 2358", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433523, "dur": 1, "ph": "X", "name": "ProcessMessages 640", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433527, "dur": 31, "ph": "X", "name": "ReadAsync 640", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433560, "dur": 2, "ph": "X", "name": "ProcessMessages 1234", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433564, "dur": 48, "ph": "X", "name": "ReadAsync 1234", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433615, "dur": 2, "ph": "X", "name": "ProcessMessages 1478", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433619, "dur": 29, "ph": "X", "name": "ReadAsync 1478", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433651, "dur": 1, "ph": "X", "name": "ProcessMessages 944", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433654, "dur": 20, "ph": "X", "name": "ReadAsync 944", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433675, "dur": 1, "ph": "X", "name": "ProcessMessages 877", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433678, "dur": 23, "ph": "X", "name": "ReadAsync 877", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433710, "dur": 4, "ph": "X", "name": "ProcessMessages 552", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433720, "dur": 68, "ph": "X", "name": "ReadAsync 552", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433792, "dur": 3, "ph": "X", "name": "ProcessMessages 1257", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433797, "dur": 42, "ph": "X", "name": "ReadAsync 1257", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433842, "dur": 1, "ph": "X", "name": "ProcessMessages 659", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433845, "dur": 25, "ph": "X", "name": "ReadAsync 659", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433878, "dur": 4, "ph": "X", "name": "ProcessMessages 1141", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433884, "dur": 37, "ph": "X", "name": "ReadAsync 1141", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433924, "dur": 2, "ph": "X", "name": "ProcessMessages 1163", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433927, "dur": 33, "ph": "X", "name": "ReadAsync 1163", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433963, "dur": 2, "ph": "X", "name": "ProcessMessages 1185", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433966, "dur": 29, "ph": "X", "name": "ReadAsync 1185", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678433998, "dur": 2, "ph": "X", "name": "ProcessMessages 922", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678434001, "dur": 22, "ph": "X", "name": "ReadAsync 922", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678434026, "dur": 2, "ph": "X", "name": "ProcessMessages 618", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678434029, "dur": 4022, "ph": "X", "name": "ReadAsync 618", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438064, "dur": 3, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438070, "dur": 762, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438842, "dur": 4, "ph": "X", "name": "ProcessMessages 36", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438849, "dur": 100, "ph": "X", "name": "ReadAsync 36", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438958, "dur": 19, "ph": "X", "name": "ProcessMessages 2032", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678438980, "dur": 42, "ph": "X", "name": "ReadAsync 2032", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439024, "dur": 24, "ph": "X", "name": "ProcessMessages 36", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439051, "dur": 36, "ph": "X", "name": "ReadAsync 36", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439093, "dur": 4, "ph": "X", "name": "ProcessMessages 72", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439100, "dur": 50, "ph": "X", "name": "ReadAsync 72", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439158, "dur": 4, "ph": "X", "name": "ProcessMessages 64", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439164, "dur": 63, "ph": "X", "name": "ReadAsync 64", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439235, "dur": 6, "ph": "X", "name": "ProcessMessages 156", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439245, "dur": 53, "ph": "X", "name": "ReadAsync 156", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439303, "dur": 4, "ph": "X", "name": "ProcessMessages 40", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439309, "dur": 104, "ph": "X", "name": "ReadAsync 40", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439421, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439426, "dur": 28, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439457, "dur": 1, "ph": "X", "name": "ProcessMessages 4", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439461, "dur": 124, "ph": "X", "name": "ReadAsync 4", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439591, "dur": 1, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439595, "dur": 21, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439618, "dur": 2, "ph": "X", "name": "ProcessMessages 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439621, "dur": 111, "ph": "X", "name": "ReadAsync 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439741, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439746, "dur": 31, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439780, "dur": 2, "ph": "X", "name": "ProcessMessages 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678439784, "dur": 1501, "ph": "X", "name": "ReadAsync 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678441300, "dur": 3, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678441307, "dur": 51, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678441361, "dur": 703, "ph": "X", "name": "ProcessMessages 80", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442075, "dur": 187, "ph": "X", "name": "ReadAsync 80", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442277, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442289, "dur": 84, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442382, "dur": 52, "ph": "X", "name": "ProcessMessages 80", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442437, "dur": 254, "ph": "X", "name": "ReadAsync 80", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442701, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442706, "dur": 66, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442776, "dur": 27, "ph": "X", "name": "ProcessMessages 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678442806, "dur": 1299, "ph": "X", "name": "ReadAsync 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678444124, "dur": 5, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678444133, "dur": 50, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678444186, "dur": 22, "ph": "X", "name": "ProcessMessages 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678444209, "dur": 1352, "ph": "X", "name": "ReadAsync 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445578, "dur": 4, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445585, "dur": 56, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445645, "dur": 24, "ph": "X", "name": "ProcessMessages 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445672, "dur": 166, "ph": "X", "name": "ReadAsync 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445848, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445854, "dur": 84, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445944, "dur": 33, "ph": "X", "name": "ProcessMessages 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678445979, "dur": 828, "ph": "X", "name": "ReadAsync 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678446820, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678446825, "dur": 35, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678446867, "dur": 18, "ph": "X", "name": "ProcessMessages 50", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678446888, "dur": 904, "ph": "X", "name": "ReadAsync 50", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678447802, "dur": 3, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678447808, "dur": 61, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678447875, "dur": 6, "ph": "X", "name": "ProcessMessages 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678447884, "dur": 1972, "ph": "X", "name": "ReadAsync 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678449877, "dur": 4, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678449884, "dur": 87, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678449979, "dur": 32, "ph": "X", "name": "ProcessMessages 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678450014, "dur": 114765, "ph": "X", "name": "ReadAsync 34", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678564804, "dur": 7, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678564815, "dur": 96, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678564921, "dur": 32, "ph": "X", "name": "ProcessMessages 516", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678564957, "dur": 4308, "ph": "X", "name": "ReadAsync 516", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569282, "dur": 5, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569291, "dur": 40, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569334, "dur": 4, "ph": "X", "name": "ProcessMessages 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569342, "dur": 379, "ph": "X", "name": "ReadAsync 8", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569733, "dur": 4, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569740, "dur": 36, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569779, "dur": 35, "ph": "X", "name": "ProcessMessages 50", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678569816, "dur": 514, "ph": "X", "name": "ReadAsync 50", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678570339, "dur": 2, "ph": "X", "name": "ProcessMessages 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678570344, "dur": 31, "ph": "X", "name": "ReadAsync 12", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678570384, "dur": 2, "ph": "X", "name": "ProcessMessages 13", "args": {} },
+{ "pid": 21364, "tid": 77309411328, "ts": 1763593678570388, "dur": 4859, "ph": "X", "name": "ReadAsync 13", "args": {} },
+{ "pid": 21364, "tid": 11859, "ts": 1763593678576104, "dur": 542, "ph": "X", "name": "ReadEntireBinlogFromIpcAsync", "args": {} },
+{ "pid": 21364, "tid": 73014444032, "ph": "M", "name": "thread_name", "args": { "name": "BuildAsync" } },
+{ "pid": 21364, "tid": 73014444032, "ts": 1763593678410825, "dur": 164539, "ph": "X", "name": "RunBackend", "args": {} },
+{ "pid": 21364, "tid": 73014444032, "ts": 1763593678410957, "dur": 2205, "ph": "X", "name": "BackendProgram.Start", "args": {} },
+{ "pid": 21364, "tid": 73014444032, "ts": 1763593678575372, "dur": 39, "ph": "X", "name": "await WaitForAndApplyScriptUpdaters", "args": {} },
+{ "pid": 21364, "tid": 73014444032, "ts": 1763593678575417, "dur": 5, "ph": "X", "name": "await taskToReadBuildProgramOutput", "args": {} },
+{ "pid": 21364, "tid": 11859, "ts": 1763593678576650, "dur": 15, "ph": "X", "name": "BuildAsync", "args": {} },
+{ "pid": 21364, "tid": 1, "ph": "M", "name": "thread_name", "args": { "name": "" } },
+{ "pid": 21364, "tid": 1, "ts": 1763593678388033, "dur": 1700, "ph": "X", "name": "<Add>b__0", "args": {} },
+{ "pid": 21364, "tid": 1, "ts": 1763593678389742, "dur": 19760, "ph": "X", "name": "<SetupBuildRequest>b__0", "args": {} },
+{ "pid": 21364, "tid": 1, "ts": 1763593678409506, "dur": 1283, "ph": "X", "name": "WriteJson", "args": {} },
+{ "pid": 21364, "tid": 11859, "ts": 1763593678576667, "dur": 12, "ph": "X", "name": "", "args": {} },
+{ "cat":"", "pid":12345, "tid":0, "ts":0, "ph":"M", "name":"process_name", "args": { "name":"bee_backend" } }
+,{ "pid":12345, "tid":0, "ts":1763593678429948, "dur":1489, "ph":"X", "name": "DriverInitData",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678431446, "dur":131, "ph":"X", "name": "RemoveStaleOutputs",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678431609, "dur":789, "ph":"X", "name": "BuildQueueInit",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678432608, "dur":74, "ph":"X", "name": "EmitFirstTimeEnqueue",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/StreamingAssets/aa/catalog.json" }}
+,{ "pid":12345, "tid":0, "ts":1763593678433738, "dur":112, "ph":"X", "name": "EmitFirstTimeEnqueue",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.XRModule.dll" }}
+,{ "pid":12345, "tid":0, "ts":1763593678434079, "dur":97, "ph":"X", "name": "EmitFirstTimeEnqueue",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.TextMeshPro.dll" }}
+,{ "pid":12345, "tid":0, "ts":1763593678432422, "dur":2378, "ph":"X", "name": "EnqueueRequestedNodes",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678434801, "dur":135786, "ph":"X", "name": "WaitForBuildFinished", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678570589, "dur":326, "ph":"X", "name": "JoinBuildThread",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678571093, "dur":1134, "ph":"X", "name": "Tundra",  "args": { "detail":"Write AllBuiltNodes" }}
+,{ "pid":12345, "tid":1, "ts":1763593678432583, "dur":2227, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":1, "ts":1763593678434814, "dur":3901, "ph":"X", "name": "CheckDagSignatures",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":1, "ts":1763593678438740, "dur":54, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":1, "ts":1763593678438797, "dur":757, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\PlayerDataCache\\Win64\\Data\\boot.config" }}
+,{ "pid":12345, "tid":1, "ts":1763593678439560, "dur":7972, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\PlayerDataCache\\Win64\\Data\\RuntimeInitializeOnLoads.json" }}
+,{ "pid":12345, "tid":1, "ts":1763593678447537, "dur":190, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\PlayerDataCache\\Win64\\Data\\ScriptingAssemblies.json" }}
+,{ "pid":12345, "tid":1, "ts":1763593678438796, "dur":9339, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"AddBootConfigGUID Library/Bee/artifacts/WinPlayerBuildProgram/boot.config" }}
+,{ "pid":12345, "tid":1, "ts":1763593678448345, "dur":80, "ph":"X", "name": "StoreTimestampsOfNonGeneratedInputFiles",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":1, "ts":1763593678448431, "dur":103, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":1, "ts":1763593678448918, "dur":116541, "ph":"X", "name": "AddBootConfigGUID",  "args": { "detail":"Library/Bee/artifacts/WinPlayerBuildProgram/boot.config" }}
+,{ "pid":12345, "tid":1, "ts":1763593678568019, "dur":1905, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\Bee\\artifacts\\WinPlayerBuildProgram\\boot.config" }}
+,{ "pid":12345, "tid":1, "ts":1763593678568018, "dur":1910, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/boot.config" }}
+,{ "pid":12345, "tid":1, "ts":1763593678569954, "dur":528, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/boot.config" }}
+,{ "pid":12345, "tid":2, "ts":1763593678432622, "dur":2216, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":2, "ts":1763593678434843, "dur":619, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":2, "ts":1763593678435462, "dur":4304, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":2, "ts":1763593678439775, "dur":273, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":2, "ts":1763593678440108, "dur":2885, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/level0" }}
+,{ "pid":12345, "tid":2, "ts":1763593678443012, "dur":127662, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":3, "ts":1763593678432601, "dur":2218, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":3, "ts":1763593678434823, "dur":801, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":3, "ts":1763593678435624, "dur":4128, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":3, "ts":1763593678439761, "dur":205, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":3, "ts":1763593678439973, "dur":7640, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/resources.assets.resS" }}
+,{ "pid":12345, "tid":3, "ts":1763593678447632, "dur":122961, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":4, "ts":1763593678432646, "dur":2232, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":4, "ts":1763593678434881, "dur":562, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":4, "ts":1763593678435444, "dur":3279, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":4, "ts":1763593678438745, "dur":484, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\UnityCrashHandler64.exe" }}
+,{ "pid":12345, "tid":4, "ts":1763593678438729, "dur":501, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/UnityCrashHandler64.exe" }}
+,{ "pid":12345, "tid":4, "ts":1763593678439242, "dur":135, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.Postprocessing.Runtime.dll" }}
+,{ "pid":12345, "tid":4, "ts":1763593678439241, "dur":137, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.Postprocessing.Runtime.dll" }}
+,{ "pid":12345, "tid":4, "ts":1763593678439460, "dur":282, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":4, "ts":1763593678439742, "dur":190, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.StreamingModule.dll" }}
+,{ "pid":12345, "tid":4, "ts":1763593678439932, "dur":130679, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":5, "ts":1763593678432714, "dur":2286, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":5, "ts":1763593678435005, "dur":188, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":5, "ts":1763593678435194, "dur":703, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":5, "ts":1763593678435898, "dur":2949, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":5, "ts":1763593678438855, "dur":766, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\4.0\\web.config" }}
+,{ "pid":12345, "tid":5, "ts":1763593678438851, "dur":771, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.0/web.config" }}
+,{ "pid":12345, "tid":5, "ts":1763593678440359, "dur":5934, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/sharedassets0.assets.resS" }}
+,{ "pid":12345, "tid":5, "ts":1763593678446321, "dur":124417, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":6, "ts":1763593678432735, "dur":2423, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":6, "ts":1763593678435161, "dur":785, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":6, "ts":1763593678435946, "dur":2885, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":6, "ts":1763593678438837, "dur":114, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.5/DefaultWsdlHelpGenerator.aspx" }}
+,{ "pid":12345, "tid":6, "ts":1763593678438970, "dur":53, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\EmbedRuntime\\mono-2.0-bdwgc.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678438965, "dur":58, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439039, "dur":84, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.VisualScripting.State.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439038, "dur":85, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.VisualScripting.State.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439132, "dur":191, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\UnityEngine.UI.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439132, "dur":192, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.UI.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439332, "dur":214, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Assembly-CSharp.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439331, "dur":215, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Assembly-CSharp.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439739, "dur":178, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":6, "ts":1763593678439926, "dur":2113, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Assembly-CSharp.dll" }}
+,{ "pid":12345, "tid":6, "ts":1763593678442049, "dur":128677, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":7, "ts":1763593678432760, "dur":2409, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":7, "ts":1763593678435172, "dur":777, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":7, "ts":1763593678435951, "dur":2864, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":7, "ts":1763593678438829, "dur":153, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\4.5\\machine.config" }}
+,{ "pid":12345, "tid":7, "ts":1763593678438819, "dur":164, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.5/machine.config" }}
+,{ "pid":12345, "tid":7, "ts":1763593678439041, "dur":119, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.ProBuilder.KdTree.dll" }}
+,{ "pid":12345, "tid":7, "ts":1763593678439040, "dur":121, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ProBuilder.KdTree.dll" }}
+,{ "pid":12345, "tid":7, "ts":1763593678439224, "dur":50, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ProBuilder.Stl.dll" }}
+,{ "pid":12345, "tid":7, "ts":1763593678439283, "dur":300, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.RenderPipelines.Core.Runtime.dll" }}
+,{ "pid":12345, "tid":7, "ts":1763593678439282, "dur":302, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.RenderPipelines.Core.Runtime.dll" }}
+,{ "pid":12345, "tid":7, "ts":1763593678440485, "dur":10075, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/sharedassets0.assets" }}
+,{ "pid":12345, "tid":7, "ts":1763593678450580, "dur":120003, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":8, "ts":1763593678432783, "dur":2534, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":8, "ts":1763593678435319, "dur":212, "ph":"X", "name": "EarlyStatNonGeneratedFile",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":8, "ts":1763593678435532, "dur":3192, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":8, "ts":1763593678438743, "dur":725, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\mconfig\\config.xml" }}
+,{ "pid":12345, "tid":8, "ts":1763593678438729, "dur":740, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/mconfig/config.xml" }}
+,{ "pid":12345, "tid":8, "ts":1763593678439476, "dur":406, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/mconfig/config.xml" }}
+,{ "pid":12345, "tid":8, "ts":1763593678439883, "dur":130674, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":9, "ts":1763593678432810, "dur":2635, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":9, "ts":1763593678435446, "dur":3280, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":9, "ts":1763593678438729, "dur":149, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/config" }}
+,{ "pid":12345, "tid":9, "ts":1763593678438903, "dur":779, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\2.0\\machine.config" }}
+,{ "pid":12345, "tid":9, "ts":1763593678438901, "dur":782, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/machine.config" }}
+,{ "pid":12345, "tid":9, "ts":1763593678439715, "dur":187, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/machine.config" }}
+,{ "pid":12345, "tid":9, "ts":1763593678439902, "dur":130658, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":10, "ts":1763593678432837, "dur":2701, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":10, "ts":1763593678435539, "dur":3182, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":10, "ts":1763593678438771, "dur":107, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.5/settings.map" }}
+,{ "pid":12345, "tid":10, "ts":1763593678438896, "dur":63, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/settings.map" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439042, "dur":134, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.ProBuilder.Poly2Tri.dll" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439041, "dur":135, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ProBuilder.Poly2Tri.dll" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439184, "dur":262, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.ProBuilder.dll" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439184, "dur":263, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ProBuilder.dll" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439465, "dur":431, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.SubsystemsModule.dll" }}
+,{ "pid":12345, "tid":10, "ts":1763593678439896, "dur":130688, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":11, "ts":1763593678432854, "dur":2694, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":11, "ts":1763593678435549, "dur":4225, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":11, "ts":1763593678439844, "dur":6765, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/globalgamemanagers.assets.resS" }}
+,{ "pid":12345, "tid":11, "ts":1763593678446640, "dur":123960, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":12, "ts":1763593678432880, "dur":2774, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":12, "ts":1763593678435654, "dur":4105, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":12, "ts":1763593678439769, "dur":203, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":12, "ts":1763593678439979, "dur":4290, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/resources.assets" }}
+,{ "pid":12345, "tid":12, "ts":1763593678444290, "dur":126277, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":13, "ts":1763593678432902, "dur":2781, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":13, "ts":1763593678435684, "dur":4059, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":13, "ts":1763593678439769, "dur":271, "ph":"X", "name": "EmitNodeStart",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":13, "ts":1763593678440116, "dur":1998, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Resources/unity_builtin_extra" }}
+,{ "pid":12345, "tid":13, "ts":1763593678442127, "dur":128537, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":14, "ts":1763593678432923, "dur":2814, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":14, "ts":1763593678435738, "dur":3934, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":14, "ts":1763593678439683, "dur":7806, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\PlayerDataCache\\Win64\\Data\\RuntimeInitializeOnLoads.json" }}
+,{ "pid":12345, "tid":14, "ts":1763593678439678, "dur":7817, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/RuntimeInitializeOnLoads.json" }}
+,{ "pid":12345, "tid":14, "ts":1763593678447544, "dur":123048, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":15, "ts":1763593678432954, "dur":2792, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":15, "ts":1763593678435746, "dur":3729, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":15, "ts":1763593678439516, "dur":229, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":15, "ts":1763593678439745, "dur":197, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.PerformanceReportingModule.dll" }}
+,{ "pid":12345, "tid":15, "ts":1763593678439942, "dur":130664, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":16, "ts":1763593678432982, "dur":2769, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":16, "ts":1763593678435751, "dur":3151, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":16, "ts":1763593678438905, "dur":72, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/DefaultWsdlHelpGenerator.aspx" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439039, "dur":301, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.TextMeshPro.dll" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439039, "dur":301, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.TextMeshPro.dll" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439351, "dur":72, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Assembly-CSharp-firstpass.dll" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439350, "dur":73, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Assembly-CSharp-firstpass.dll" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439466, "dur":330, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.SubstanceModule.dll" }}
+,{ "pid":12345, "tid":16, "ts":1763593678439836, "dur":3263, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/globalgamemanagers" }}
+,{ "pid":12345, "tid":16, "ts":1763593678443119, "dur":127559, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":17, "ts":1763593678433022, "dur":2734, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":17, "ts":1763593678435757, "dur":3123, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":17, "ts":1763593678438896, "dur":622, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\2.0\\web.config" }}
+,{ "pid":12345, "tid":17, "ts":1763593678438883, "dur":636, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/web.config" }}
+,{ "pid":12345, "tid":17, "ts":1763593678439605, "dur":549, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\com.unity.addressables\\aa\\Windows\\catalog.json" }}
+,{ "pid":12345, "tid":17, "ts":1763593678439605, "dur":550, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/StreamingAssets/aa/catalog.json" }}
+,{ "pid":12345, "tid":17, "ts":1763593678440176, "dur":130442, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":18, "ts":1763593678433060, "dur":2704, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":18, "ts":1763593678435764, "dur":3098, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":18, "ts":1763593678438872, "dur":92, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\4.0\\machine.config" }}
+,{ "pid":12345, "tid":18, "ts":1763593678438867, "dur":98, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.0/machine.config" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439045, "dur":77, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.RenderPipelines.Core.ShaderLibrary.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439044, "dur":78, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.RenderPipelines.Core.ShaderLibrary.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439131, "dur":53, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.ProBuilder.Csg.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439130, "dur":54, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ProBuilder.Csg.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439193, "dur":113, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.ResourceManager.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439193, "dur":113, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.ResourceManager.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439469, "dur":347, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.SpriteShapeModule.dll" }}
+,{ "pid":12345, "tid":18, "ts":1763593678439817, "dur":130756, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":19, "ts":1763593678433087, "dur":2689, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":19, "ts":1763593678435776, "dur":3078, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":19, "ts":1763593678438857, "dur":121, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.0/settings.map" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439046, "dur":304, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.VisualScripting.Flow.dll" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439046, "dur":305, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.VisualScripting.Flow.dll" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439606, "dur":50, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\UnityPlayer.dll" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439606, "dur":51, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/UnityPlayer.dll" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439664, "dur":123, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/UnityPlayer.dll" }}
+,{ "pid":12345, "tid":19, "ts":1763593678439832, "dur":3609, "ph":"X", "name": "CopyFiles",  "args": { "detail":"D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/globalgamemanagers.assets" }}
+,{ "pid":12345, "tid":19, "ts":1763593678443457, "dur":127278, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":20, "ts":1763593678433114, "dur":2679, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":20, "ts":1763593678435793, "dur":3081, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":20, "ts":1763593678438877, "dur":65, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.0/Browsers/Compat.browser" }}
+,{ "pid":12345, "tid":20, "ts":1763593678439046, "dur":168, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.Timeline.dll" }}
+,{ "pid":12345, "tid":20, "ts":1763593678439045, "dur":170, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.Timeline.dll" }}
+,{ "pid":12345, "tid":20, "ts":1763593678439215, "dur":463, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":20, "ts":1763593678439678, "dur":211, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.Timeline.dll" }}
+,{ "pid":12345, "tid":20, "ts":1763593678439890, "dur":130696, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":21, "ts":1763593678433153, "dur":2647, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":21, "ts":1763593678435800, "dur":3069, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":21, "ts":1763593678438872, "dur":764, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.0/DefaultWsdlHelpGenerator.aspx" }}
+,{ "pid":12345, "tid":21, "ts":1763593678439646, "dur":70, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\PlayerDataCache\\Win64\\Data\\ScriptingAssemblies.json" }}
+,{ "pid":12345, "tid":21, "ts":1763593678439643, "dur":74, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/ScriptingAssemblies.json" }}
+,{ "pid":12345, "tid":21, "ts":1763593678439726, "dur":182, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/ScriptingAssemblies.json" }}
+,{ "pid":12345, "tid":21, "ts":1763593678439908, "dur":130647, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":22, "ts":1763593678433176, "dur":2766, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":22, "ts":1763593678435942, "dur":2898, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":22, "ts":1763593678438844, "dur":692, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.5/Browsers/Compat.browser" }}
+,{ "pid":12345, "tid":22, "ts":1763593678439602, "dur":295, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"Library\\com.unity.addressables\\aa\\Windows\\settings.json" }}
+,{ "pid":12345, "tid":22, "ts":1763593678439602, "dur":296, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/StreamingAssets/aa/settings.json" }}
+,{ "pid":12345, "tid":22, "ts":1763593678439909, "dur":130695, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":23, "ts":1763593678433193, "dur":2756, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":23, "ts":1763593678435950, "dur":2781, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":23, "ts":1763593678438747, "dur":738, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f2\\Editor\\Data\\PlaybackEngines\\WindowsStandaloneSupport\\Variations\\win64_player_nondevelopment_mono\\MonoBleedingEdge\\etc\\mono\\4.5\\web.config" }}
+,{ "pid":12345, "tid":23, "ts":1763593678438732, "dur":754, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/4.5/web.config" }}
+,{ "pid":12345, "tid":23, "ts":1763593678439582, "dur":176, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":23, "ts":1763593678439759, "dur":200, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.AIModule.dll" }}
+,{ "pid":12345, "tid":23, "ts":1763593678439959, "dur":130693, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":24, "ts":1763593678433225, "dur":2733, "ph":"X", "name": "FirstLock",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":24, "ts":1763593678435959, "dur":2769, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":24, "ts":1763593678438732, "dur":142, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/browscap.ini" }}
+,{ "pid":12345, "tid":24, "ts":1763593678438875, "dur":51, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":24, "ts":1763593678438929, "dur":63, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/MonoBleedingEdge/etc/mono/2.0/Browsers/Compat.browser" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439037, "dur":100, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.Addressables.dll" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439036, "dur":101, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.Addressables.dll" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439146, "dur":368, "ph":"X", "name": "ComputeFileSignatureSha1",  "args": { "detail":"D:\\game_dev\\Auto-Fighter-Git\\Auto Fighter - Git\\Library\\Bee\\PlayerScriptAssemblies\\Unity.VisualScripting.Core.dll" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439145, "dur":370, "ph":"X", "name": "CheckInputSignature",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/Unity.VisualScripting.Core.dll" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439540, "dur":217, "ph":"X", "name": "OutputFilesMissingFor",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439757, "dur":196, "ph":"X", "name": "EmitNodeUpToDate",  "args": { "detail":"CopyFiles D:/game_dev/Auto-Fighter-Git/Builds/Auto Fighter_Data/Managed/UnityEngine.GridModule.dll" }}
+,{ "pid":12345, "tid":24, "ts":1763593678439953, "dur":130660, "ph":"X", "name": "WaitingForWork", "cname":"thread_state_sleeping",  "args": { "detail":"" }}
+,{ "pid":12345, "tid":0, "ts":1763593678574809, "dur":674, "ph":"X", "name": "ProfilerWriteOutput" }
+,{ "pid": 21364, "tid": 11859, "ts": 1763593678576931, "dur": 2118, "ph": "X", "name": "Wait for external events", "args": {"First to finish": "backend1.traceevents"} },
+{ "pid": 21364, "tid": 11859, "ts": 1763593678579151, "dur": 9564, "ph": "X", "name": "backend1.traceevents", "args": {} },
+{ "pid": 21364, "tid": 11859, "ts": 1763593678576094, "dur": 12713, "ph": "X", "name": "Write chrome-trace events", "args": {} },

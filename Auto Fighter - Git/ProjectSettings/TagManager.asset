@@ -28,9 +28,9 @@ TagManager:
   - TopPlane
   - Projectile
   - Walls(IGNORE)
-  - 
-  - 
-  - 
+  - Road
+  - RoadSurface
+  - Coin
   - 
   - 
   - 

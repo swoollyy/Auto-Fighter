@@ -10058,7 +10058,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: -99.1, y: -26.900024}
+  m_AnchoredPosition: {x: -99.1, y: -26.899963}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0}
 --- !u!114 &964719390
@@ -27069,6 +27069,10 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: dbf5d127fa10ca94bb8734db27d085d6, type: 2}
     - target: {fileID: 6354145308610006291, guid: 6257bb711fb736c4698c60f81e225883, type: 3}
       propertyPath: autoAddFireVelocityFeeder
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6421297171356081029, guid: 6257bb711fb736c4698c60f81e225883, type: 3}
+      propertyPath: m_IsTrigger
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6421297171356081029, guid: 6257bb711fb736c4698c60f81e225883, type: 3}
