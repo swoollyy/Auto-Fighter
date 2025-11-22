@@ -24,7 +24,7 @@ RenderSettings:
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 3
+  m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
   m_HaloStrength: 0.5
@@ -134,7 +134,7 @@ GameObject:
   - component: {fileID: 126404435}
   - component: {fileID: 126404434}
   - component: {fileID: 126404436}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(-1500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -229,7 +229,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -245,7 +245,7 @@ GameObject:
   - component: {fileID: 134083626}
   - component: {fileID: 134083625}
   - component: {fileID: 134083627}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(-500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -340,7 +340,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -843,7 +843,7 @@ GameObject:
   - component: {fileID: 497889776}
   - component: {fileID: 497889775}
   - component: {fileID: 497889777}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(-1500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -938,7 +938,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -1554,6 +1554,14 @@ MonoBehaviour:
     stopAtNormalizedDist: 0.3
     extraHeightOffset: 0
     extraLateralPadding: 0
+  - id: Shuttle Track Obstacle
+    prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
+    baseWeight: 1
+    startAtNormalizedDist: 0.001
+    fullWeightNormalizedDist: 0.1
+    stopAtNormalizedDist: 0.3
+    extraHeightOffset: 0
+    extraLateralPadding: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   obstacleSpacing: 4
@@ -1629,11 +1637,46 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   trackGenerator: {fileID: 796779767}
   carPrefab: {fileID: 5657100606639614825, guid: de383ed4deee06749be7a9934d6d5c1a, type: 3}
-  cameraFollow: {fileID: 661794730}
   uiManager: {fileID: 277147483}
   distanceSystem: {fileID: 796779772}
   trackCoinSpawner: {fileID: 796779773}
   trackObstacleSpawner: {fileID: 796779774}
+  crossObstacleDirector: {fileID: 1466983249}
+  mainCam: {fileID: 661794728}
+  cameraFollow: {fileID: 661794730}
+  enableCrashScreenShake: 1
+  enableCrashSlowMo: 1
+  crashShakeDuration: 0.12
+  crashShakeStrength: 0.12
+  crashShakeVibrato: 16
+  crashShakeRandomness: 90
+  crashSlowMoScale: 0.167
+  crashSlowMoHold: 0.25
+  crashSlowMoEaseOut: 0.75
+  crashSlowMoCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.4
+      inSlope: 0
+      outSlope: 0.6
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0.6
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   skillTreeRoot: {fileID: 663395613}
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
@@ -1666,7 +1709,7 @@ GameObject:
   - component: {fileID: 853046289}
   - component: {fileID: 853046288}
   - component: {fileID: 853046290}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1761,7 +1804,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -2225,7 +2268,7 @@ GameObject:
   - component: {fileID: 1140189680}
   - component: {fileID: 1140189679}
   - component: {fileID: 1140189681}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(-1500.00, -0.10, -500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2320,7 +2363,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -3078,6 +3121,191 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!1 &1466983248
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1466983250}
+  - component: {fileID: 1466983249}
+  m_Layer: 0
+  m_Name: CrossObstacleDirector
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1466983249
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1466983248}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b54ee9484c6daae438c371a64bddfc1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  car: {fileID: 0}
+  distanceMeter: {fileID: 796779772}
+  trackGenerator: {fileID: 796779767}
+  crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
+  enabledSpawning: 1
+  minPlayerSpeed: 4
+  spawnCooldownSeconds: 4.16
+  minLeadDistance: 5
+  maxLeadDistance: 29
+  maxCurvatureHorizonScale: 0.65
+  crossSpeedRange: {x: 5, y: 11}
+  crossSpeedMultiplierCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  obstacleScaleRange: {x: 0.8, y: 2.2}
+  sizeCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  yawErrorDegreesCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 19
+      inSlope: -9.525442
+      outSlope: -9.525442
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.4125
+    - serializedVersion: 3
+      time: 1
+      value: 4
+      inSlope: -9.622645
+      outSlope: -9.622645
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.14999998
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  accuracyCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.9
+      inSlope: -0.09524648
+      outSlope: -0.09524648
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.21666667
+    - serializedVersion: 3
+      time: 1
+      value: 0.05
+      inSlope: -0.55
+      outSlope: -0.55
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spawnIntervalCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0.0041656494
+      value: 1.7429237
+      inSlope: -1.5142336
+      outSlope: -1.5142336
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.4916687
+      value: 1.0047302
+      inSlope: -1.5142336
+      outSlope: -1.5142336
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spawnCooldownRandomRange: {x: 0.8, y: 2.65}
+  curvatureSampleLength: 12
+  highCurvatureThreshold: 0.35
+  enableYawWeightedMisses: 1
+  yawSpeedImpactMax: 0.4
+  yawDistanceImpactMax: 19.4
+  yawAngleAmplifyMax: 0.6
+  debugGizmos: 1
+  verboseLog: 0
+--- !u!4 &1466983250
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1466983248}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 179.81749, y: -99.20094, z: 307.9366}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1515046026
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -3193,7 +3421,7 @@ GameObject:
   - component: {fileID: 1577998652}
   - component: {fileID: 1577998651}
   - component: {fileID: 1577998653}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(-500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3288,7 +3516,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -3301,7 +3529,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1589862220}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3749,7 +3977,7 @@ GameObject:
   - component: {fileID: 1940623215}
   - component: {fileID: 1940623214}
   - component: {fileID: 1940623216}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(500.00, -0.10, -500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3844,7 +4072,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -4102,7 +4330,7 @@ GameObject:
   - component: {fileID: 2014939780}
   - component: {fileID: 2014939779}
   - component: {fileID: 2014939782}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4197,7 +4425,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 4
   dragMultiplier: 2
@@ -4213,7 +4441,7 @@ GameObject:
   - component: {fileID: 2110202240}
   - component: {fileID: 2110202239}
   - component: {fileID: 2110202241}
-  m_Layer: 0
+  m_Layer: 16
   m_Name: Terrain_(500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4308,7 +4536,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.5
+  maxSpeedMultiplier: 0.25
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
@@ -5040,3 +5268,4 @@ SceneRoots:
   - {fileID: 789709191}
   - {fileID: 1020764693}
   - {fileID: 1980186994}
+  - {fileID: 1466983250}

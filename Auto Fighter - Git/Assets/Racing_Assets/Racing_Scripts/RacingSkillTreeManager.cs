@@ -28,25 +28,44 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance && Instance != this) { Destroy(gameObject); return; }
+        // Singleton guard
+        if (Instance && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
+        // Build definition map
         _map.Clear();
         foreach (var def in skills)
+        {
             if (def && !_map.ContainsKey(def.type))
                 _map[def.type] = def;
+        }
 
+        // Create state and LOAD any previously saved levels
         _state = new SkillTreeState();
-        _state.ClearPersistent(); // fresh start
+        _state.Load();   // <<< IMPORTANT: no ClearPersistent here
 
+        // Load player currency
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
 
         // Seed initial revealed skills
+        _revealedSkills.Clear();
         foreach (var def in skills)
         {
             if (def && def.revealedAtStart)
                 RevealSkill(def);
+        }
+
+        // Fire initial events so UI / cars can sync
+        OnCurrencyChanged?.Invoke(playerCurrency);
+        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
+        {
+            OnLevelChanged?.Invoke(t, GetLevel(t));
         }
     }
 
@@ -115,15 +134,19 @@ public class RacingSkillTreeManager : MonoBehaviour
             SaveCurrency();
             _state.Save();
 
-            OnCurrencyChanged?.Invoke(playerCurrency);
-            OnLevelChanged?.Invoke(type, GetLevel(type));
+            int newLvl = GetLevel(type);
 
-            // NEW: evaluate unlocks
-            EvaluateProgressiveUnlocks(def, GetLevel(type));
+            Debug.Log($"[RacingSkillTreeManager] Purchased {type}, new level = {newLvl}, currency = {playerCurrency}");
+
+            OnCurrencyChanged?.Invoke(playerCurrency);
+            OnLevelChanged?.Invoke(type, newLvl);
+
+            EvaluateProgressiveUnlocks(def, newLvl);
             return true;
         }
         return false;
     }
+
 
     private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
     {

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -12,12 +12,37 @@ public class GameManager_Racing : MonoBehaviour
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private GameObject carPrefab;
-    [SerializeField] private CameraFollow cameraFollow;
     [SerializeField] private UIManager_Racing uiManager;
     [SerializeField] private TrackDistanceMeter distanceSystem;
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
+    [SerializeField] private CrossObstacleDirector crossObstacleDirector;
 
+    [Header("Camera & Follow")]
+    [SerializeField] private Camera mainCam;
+    [SerializeField] private CameraFollow cameraFollow;
+
+    [Header("Crash FX")]
+    [SerializeField] private bool enableCrashScreenShake = true;
+    [SerializeField] private bool enableCrashSlowMo = true;
+
+    // Base values – severity will scale these
+    [SerializeField] private float crashShakeDuration = 0.18f;
+    [SerializeField] private float crashShakeStrength = 0.45f;
+    [SerializeField, Range(1, 30)] private int crashShakeVibrato = 16;
+    [SerializeField, Range(0f, 180f)] private float crashShakeRandomness = 90f;
+
+    [Header("Crash SlowMo Settings")]
+    [SerializeField, Range(0.05f, 1f)] private float crashSlowMoScale = 0.35f;
+    [SerializeField] private float crashSlowMoHold = 0.25f;
+    [SerializeField] private float crashSlowMoEaseOut = 0.25f;
+
+    // Optional curve to scale effect based on severity (x=0–1 severity, y=0–1 strength)
+    [SerializeField] private AnimationCurve crashSlowMoCurve = AnimationCurve.Linear(0, 0.4f, 1, 1f);
+
+
+    private Coroutine _crashSlowMoRoutine;
+    private bool _ownsCrashSlowMo;
 
     [Header("Skill Tree UI (assign the root object that holds RacingSkillUI)")]
     [SerializeField] private GameObject skillTreeRoot;
@@ -47,6 +72,8 @@ public class GameManager_Racing : MonoBehaviour
     private int _pickupCoinsThisRun = 0;
     private int _obstacleCoinsThisRun = 0;
 
+    public CarController ActiveCar => carController;
+
     void Awake()
     {
 
@@ -60,6 +87,8 @@ public class GameManager_Racing : MonoBehaviour
 
         Physics.gravity = new Vector3(0, -9.81f, 0);
         Time.timeScale = 1f;
+
+
     }
 
     void Start()
@@ -81,6 +110,23 @@ public class GameManager_Racing : MonoBehaviour
         if (trackGenerator != null)
             trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
 
+    }
+
+    private void OnDisable()
+    {
+
+        // Make sure we release any slowmo we own when this manager is disabled
+        if (_crashSlowMoRoutine != null)
+        {
+            StopCoroutine(_crashSlowMoRoutine);
+            _crashSlowMoRoutine = null;
+        }
+
+        if (_ownsCrashSlowMo)
+        {
+            TimeScaleHub.End(this);
+            _ownsCrashSlowMo = false;
+        }
     }
 
     void Update()
@@ -268,6 +314,98 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
     }
 
+    /// <summary>
+    /// Called by CarController when a crash occurs.
+    /// impactSpeed is in m/s, severity is 0..1 from CarController.
+    /// </summary>
+    public void OnCarCrash(float impactSpeed, float severity)
+    {
+        if (!enabled) return;
+
+        float sev = Mathf.Clamp01(severity);
+
+        // Remap severity through curve if provided
+        if (crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0)
+        {
+            sev = Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev));
+        }
+
+        // Screen shake (camera)
+        if (enableCrashScreenShake && cameraFollow != null)
+        {
+            float dur = crashShakeDuration * Mathf.Lerp(0.6f, 1.3f, sev);
+            float str = crashShakeStrength * Mathf.Lerp(0.5f, 1.6f, sev);
+            int vib = Mathf.RoundToInt(crashShakeVibrato * Mathf.Lerp(0.6f, 1.2f, sev));
+
+            cameraFollow.StartShake(dur, str, vib, crashShakeRandomness);
+        }
+
+        if (enableCrashSlowMo)
+        {
+            StartCrashSlowMo(sev);
+        }
+
+    }
+
+    private void StartCrashSlowMo(float severity)
+    {
+        // kill any previous crash slow-mo
+        if (_crashSlowMoRoutine != null)
+        {
+            StopCoroutine(_crashSlowMoRoutine);
+            _crashSlowMoRoutine = null;
+        }
+
+        if (_ownsCrashSlowMo)
+        {
+            TimeScaleHub.End(this);
+            _ownsCrashSlowMo = false;
+        }
+
+        _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity));
+    }
+
+    private IEnumerator CrashSlowMoRoutine(float severity)
+    {
+        _ownsCrashSlowMo = true;
+
+        // Map severity (0–1) through curve → strength multiplier
+        float sev = Mathf.Clamp01(severity);
+        float curveVal = crashSlowMoCurve != null ? crashSlowMoCurve.Evaluate(sev) : sev;
+        float targetScale = Mathf.Lerp(1f, crashSlowMoScale, curveVal);
+
+        float hold = crashSlowMoHold;
+        float easeOut = crashSlowMoEaseOut;
+
+        Debug.Log($"[GameManager_Racing] Crash SlowMo → severity={severity:F2}, curveVal={curveVal:F2}, scale={targetScale:F2}, hold={hold:F2}, easeOut={easeOut:F2}");
+
+        // ENTER SLOW-MO
+        TimeScaleHub.Begin(this, targetScale, affectFixedDelta: true);
+
+        // Hold using realtime (unaffected by timeScale)
+        float holdEnd = Time.realtimeSinceStartup + hold;
+        while (Time.realtimeSinceStartup < holdEnd)
+            yield return null;
+
+        // Ease-out blend back to normal time
+        float start = Time.realtimeSinceStartup;
+        float end = start + easeOut;
+
+        while (Time.realtimeSinceStartup < end)
+        {
+            float t = Mathf.InverseLerp(start, end, Time.realtimeSinceStartup);
+            float scale = Mathf.Lerp(targetScale, 1f, t);
+            TimeScaleHub.Begin(this, scale, affectFixedDelta: true);
+            yield return null;
+        }
+
+        // FULL RESTORE
+        TimeScaleHub.End(this);
+        _ownsCrashSlowMo = false;
+        _crashSlowMoRoutine = null;
+    }
+
+
 
     private bool TrackIsReady(ProceduralTrackGenerator gen)
     {
@@ -340,6 +478,7 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         carController = carInstance.GetComponent<CarController>();
+        crossObstacleDirector.SetCar(carController);
 
         // NEW: reset distance tracking for the new run
         runDistanceMeters = 0f;
