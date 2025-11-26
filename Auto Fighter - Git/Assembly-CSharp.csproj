@@ -62,9 +62,11 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\PostFXController.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\BallShrinkRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackFuelSpawner.cs" />
     <Compile Include="Assets\Scripts\Bumper.cs" />
     <Compile Include="Assets\Scripts\BallXPBar.cs" />
     <Compile Include="Assets\Scripts\Ball.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackHPSpawner.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingSkillTreeManager.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\GrenadeAbilityRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProceduralTrackGenerator.cs" />
@@ -92,6 +94,7 @@
     <Compile Include="Assets\PowerupPickupTween.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\EnvMapAnimator.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackDistanceMeter.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossTrackObstacle.cs" />
     <Compile Include="Assets\Scripts\RewardCategory.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireTrailController.cs" />
     <Compile Include="Assets\SkidMarkSegment.cs" />
@@ -107,6 +110,7 @@
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SimpleScript.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark04.cs" />
     <Compile Include="Assets\Scripts\PowerupSystem.cs" />
+    <Compile Include="Assets\CrossObstacleDirector.cs" />
     <Compile Include="Assets\Scripts\EndGame.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ChatController.cs" />
     <Compile Include="Assets\Scripts\BallElementalState.cs" />
@@ -129,6 +133,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeState.cs" />
     <Compile Include="Assets\Scripts\IRunContext.cs" />
     <Compile Include="Assets\Scripts\TweenXPNumberSystem.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\HPPickup.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_DigitValidator.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_FrameRateCounter.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextConsoleSimulator.cs" />
@@ -136,6 +141,7 @@
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TeleType.cs" />
     <Compile Include="Assets\Scripts\CharacterUI.cs" />
     <Compile Include="Assets\Scripts\PaddleElementalState.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ShuttleTrackObstacle.cs" />
     <Compile Include="Assets\DullPad.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventCheck.cs" />
     <Compile Include="Assets\Scripts\SpeedTrailFollower.cs" />
@@ -192,6 +198,7 @@
     <Compile Include="Assets\Scripts\DamageNumberStyleSO.cs" />
     <Compile Include="Assets\Scripts\GrenadeRewardRuntime.cs" />
     <Compile Include="Assets\Scripts\Pinball.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\FuelPickup.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundSurface.cs" />
     <Compile Include="Assets\FireWispVelocityDriver.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingBullet.cs" />

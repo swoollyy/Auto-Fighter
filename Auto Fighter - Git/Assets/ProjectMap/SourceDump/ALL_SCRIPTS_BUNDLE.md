@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2025-11-26T03:29:44.1879902Z (UTC)
+- Generated: 2025-11-26T21:58:00.2093625Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 164
 
@@ -4647,7 +4647,7 @@ public class CarController : MonoBehaviour
     [SerializeField, Tooltip("Preserve highest speed reached during current drift/glide while drift key held.")]
     private bool lockToDriftPeakSpeed = true; // NEW
 
-// NEW: gentle deceleration while drifting if S is held (softer than normal braking)
+    // NEW: gentle deceleration while drifting if S is held (softer than normal braking)
     [Header("Drift Braking")]
     [SerializeField, Tooltip("Per-second speed decay while drifting and holding S. Lower = softer, preserves ice feel.")]
     private float driftBrakeDecayPerSecond = 0.6f;
@@ -4789,13 +4789,43 @@ public class CarController : MonoBehaviour
     [SerializeField] private float postBoostSlowdownDuration = 0.75f;
     [SerializeField] private float boostCooldown = 1.25f;
     [SerializeField] private float boostFuelCost = 0f;
+    [SerializeField] private float driftBoostSustainAcceleration = 30f;
 
+    // NEW: Drift-held Boost configuration
+    [Header("Drift-held Boost")]
+    [SerializeField, Tooltip("Enable boost scaling based on how long drift is held in one direction.")]
+    private bool enableDriftHeldBoost = true;
+    [SerializeField, Tooltip("Minimum drift hold time (s) before any boost reward applies.")]
+    private float driftBoostMinHoldSeconds = 0.35f;
+    [SerializeField, Tooltip("Maximum drift hold time (s) that maps to max rewards.")]
+    private float driftBoostMaxHoldSeconds = 2.00f;
+    [SerializeField, Tooltip("Boost force range mapped from min→max hold.")]
+    private Vector2 driftBoostForceRange = new Vector2(25f, 75f);
+    [SerializeField, Tooltip("Boost duration range mapped from min→max hold.")]
+    private Vector2 driftBoostDurationRange = new Vector2(0.35f, 1.50f);
+    [SerializeField, Tooltip("Max speed multiplier range mapped from min→max hold.")]
+    private Vector2 driftBoostMaxSpeedMultRange = new Vector2(1.10f, 1.60f);
+    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers.")]
+    private float driftBoostFuelCost = 0f;
+
+    // Runtime boost state
     private float _boostCooldownTimer;
     private bool _boostRequested;
     private bool _isBoosting;
     private float _boostTimer;
     private bool _isPostBoost;
     private float _postBoostTimer;
+
+    // Drift-held boost runtime (per-direction)
+    private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
+    private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
+    private bool _driftWasActiveLastFrame;
+
+    // Overrides per boost activation (allows custom parameters from drift-held boost)
+    private bool _boostOverrideActive;
+    private float _boostOverrideForce;
+    private float _boostOverrideDuration;
+    private float _boostOverrideMaxMult;
 
     private Quaternion _initialRotation;
     private bool _isReorienting;
@@ -5021,14 +5051,22 @@ public class CarController : MonoBehaviour
         if (_isBoosting)
         {
             _boostTimer -= Time.fixedDeltaTime;
-            if (boostSustainAcceleration > 0f)
-                rb.AddForce(transform.forward * boostSustainAcceleration, ForceMode.Acceleration);
+
+            float sustainAccel = _boostOverrideActive ? driftBoostSustainAcceleration : boostSustainAcceleration;
+            if (sustainAccel > 0f)
+                rb.AddForce(transform.forward * sustainAccel, ForceMode.Acceleration);
 
             if (_boostTimer <= 0f)
             {
                 _isBoosting = false;
                 _isPostBoost = postBoostSlowdownDuration > 0f;
                 _postBoostTimer = postBoostSlowdownDuration;
+
+                // Clear any override once boost ends
+                _boostOverrideActive = false;
+                _boostOverrideForce = 0f;
+                _boostOverrideDuration = 0f;
+                _boostOverrideMaxMult = 0f;
             }
         }
         else if (_isPostBoost)
@@ -5040,23 +5078,28 @@ public class CarController : MonoBehaviour
 
         if (_boostRequested)
         {
+            if (_boostOverrideActive) _boostCooldownTimer = 0f;
             _boostRequested = false;
-
             if (_boostCooldownTimer <= 0f)
             {
-                if (boostFuelCost > 0f)
+                // Fuel gate
+                float cost = boostFuelCost;
+                if (_boostOverrideActive) cost = driftBoostFuelCost;
+
+                if (cost > 0f)
                 {
-                    if (isOutOfFuel || currentFuel < boostFuelCost)
+                    if (isOutOfFuel || currentFuel < cost)
                         return;
                 }
 
-                rb.AddForce(transform.forward * boostForce, ForceMode.Acceleration);
-
-                if (boostFuelCost > 0f)
-                    ConsumeFuel(boostFuelCost);
+                // Apply the impulse (override if drift-held boost requested)
+                float impulseForce = _boostOverrideActive ? _boostOverrideForce : boostForce;
+                rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
+                Debug.Log($"Boost activated! Force={impulseForce}");
+                if (cost > 0f) ConsumeFuel(cost);
 
                 _isBoosting = true;
-                _boostTimer = Mathf.Max(0f, boostDuration);
+                _boostTimer = Mathf.Max(0f, _boostOverrideActive ? _boostOverrideDuration : boostDuration);
                 _isPostBoost = false;
                 _boostCooldownTimer = boostCooldown;
             }
@@ -5071,15 +5114,18 @@ public class CarController : MonoBehaviour
     private float GetCurrentSpeedCap()
     {
         float normalCap = effectiveMaxSpeed;
-        if (_isBoosting)
-            return normalCap * Mathf.Max(1f, boostMaxSpeedMultiplier);
+        float maxMult = _isBoosting
+            ? (_boostOverrideActive ? Mathf.Max(1f, _boostOverrideMaxMult) : Mathf.Max(1f, boostMaxSpeedMultiplier))
+            : 1f;
+
+        float boostedCap = normalCap * maxMult;
+
         if (_isPostBoost && postBoostSlowdownDuration > 0f)
         {
             float t = 1f - Mathf.Clamp01(_postBoostTimer / postBoostSlowdownDuration);
-            float boostedCap = normalCap * Mathf.Max(1f, boostMaxSpeedMultiplier);
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
-        return normalCap;
+        return _isBoosting ? boostedCap : normalCap;
     }
 
     private void WireManagerEvents()
@@ -5127,8 +5173,11 @@ public class CarController : MonoBehaviour
 
         float rawHorizontal = Input.GetAxisRaw("Horizontal");
         float speed = rb != null ? rb.velocity.magnitude : 0f;
+        bool prevDriftKeyHeld = driftButtonHeld;
 
         bool wasDrifting = isDrifting;
+        int prevHoldDirectionSign = _driftHoldDirectionSign;
+
 
         if (!driftUnlocked)
         {
@@ -5154,18 +5203,18 @@ public class CarController : MonoBehaviour
                         currentSign != _driftCurrentSteerSign &&
                         driftCharge >= minChargeForFlipReset)
                     {
-                        // Direction flip: keep velocity retention.
-                        // OLD (removed): driftEntrySpeed = 0f; driftClampSpeed = 0f;
+                        // Direction flip: retain some charge but reset drift-held boost accumulation
                         driftCharge = Mathf.Clamp01(steerFlipRetainedCharge);
+
+                        // Reset drift-held timer on flip
+                        ResetDriftHeldTimer();
 
                         if (rb != null)
                         {
                             float currentSpeed = rb.velocity.magnitude;
-                            // Ensure driftEntrySpeed remains valid so drift speed preservation logic keeps working.
                             if (driftEntrySpeed <= 0.01f)
                                 driftEntrySpeed = currentSpeed;
 
-                            // Maintain or elevate clamp & peak to current speed so we don't lose momentum.
                             driftClampSpeed = Mathf.Max(driftClampSpeed, currentSpeed);
                             driftPeakSpeed = Mathf.Max(driftPeakSpeed, currentSpeed);
                         }
@@ -5208,19 +5257,72 @@ public class CarController : MonoBehaviour
 
             isDrifting = driftCharge > 0.01f;
 
+            // Drift-held boost accumulation
+            if (enableDriftHeldBoost)
+            {
+                // Build time as long as drift key + a steering direction are held (independent of driftCharge / speed)
+                if (driftButtonHeld && _driftCurrentSteerSign != 0)
+                {
+                    if (_driftHoldDirectionSign == 0 || _driftHoldDirectionSign == _driftCurrentSteerSign)
+                    {
+                        _driftHoldDirectionSign = _driftCurrentSteerSign;
+                    }
+                    else
+                    {
+                        // Direction flip: start new accumulation
+                        ResetDriftHeldTimer();
+                        _driftHoldDirectionSign = _driftCurrentSteerSign;
+                    }
+
+                    _driftHoldTimeSeconds += Time.deltaTime;
+                }
+
+                // Trigger boost ONLY on drift key release (protects against crash or speed loss firing it)
+                if (!driftButtonHeld && prevDriftKeyHeld)
+                {
+                    TryTriggerDriftHeldBoost();
+                    ResetDriftHeldTimer();
+                }
+
+                // If no direction while still holding drift, do not accumulate further (but keep current hold until release)
+                if (driftButtonHeld && _driftCurrentSteerSign == 0)
+                {
+                    // Optionally could slowly decay; for now just pause accumulation.
+                }
+
+                // Hard reset if not holding drift at all
+                if (!driftButtonHeld)
+                {
+                    _driftHoldDirectionSign = 0;
+                }
+            }
+
             if (isDrifting && !wasDrifting && rb != null)
             {
                 driftEntrySpeed = speed;
                 driftClampSpeed = driftEntrySpeed;
                 driftPeakSpeed = driftEntrySpeed;
+
+                // Reset held boost timer on brand new drift start
+                if (enableDriftHeldBoost)
+                {
+                    ResetDriftHeldTimer();
+                    _driftHoldDirectionSign = _driftCurrentSteerSign;
+                }
             }
             else if (!isDrifting && wasDrifting)
             {
+                // Drift ended – evaluate boost
+                if (enableDriftHeldBoost)
+                    TryTriggerDriftHeldBoost();
+
                 driftEntrySpeed = 0f;
                 driftClampSpeed = 0f;
                 driftPeakSpeed = 0f;
             }
         }
+
+        _driftWasActiveLastFrame = isDrifting;
 
         // NEW: Glide logic (ice feel) – if holding drift with no directional charge but above speed threshold.
         if (allowDriftGlideWithoutSteer)
@@ -5281,6 +5383,50 @@ public class CarController : MonoBehaviour
         );
 
         _inputsSuppressedThisFrame = suppressInputs;
+    }
+
+    // Evaluate and trigger a drift-held boost if thresholds are met
+    private void TryTriggerDriftHeldBoost()
+    {
+        if (!enableDriftHeldBoost) return;
+        if (_inCrash) return; // prevent accidental boost trigger after a crash interruption
+
+        float held = _driftHoldTimeSeconds;
+        ResetDriftHeldTimer();
+
+        if (held < driftBoostMinHoldSeconds)
+            return; // below minimum threshold
+
+        float clamped = Mathf.Min(held, driftBoostMaxHoldSeconds);
+        float norm = Mathf.InverseLerp(driftBoostMinHoldSeconds, driftBoostMaxHoldSeconds, clamped);
+
+        float force = Mathf.Lerp(driftBoostForceRange.x, driftBoostForceRange.y, norm);
+        float duration = Mathf.Lerp(driftBoostDurationRange.x, driftBoostDurationRange.y, norm);
+        float maxMult = Mathf.Lerp(driftBoostMaxSpeedMultRange.x, driftBoostMaxSpeedMultRange.y, norm);
+
+        _boostOverrideActive = true;
+        _boostOverrideForce = force;
+        _boostOverrideDuration = duration;
+        _boostOverrideMaxMult = maxMult;
+
+        if (driftBoostFuelCost > 0f)
+        {
+            if (!isOutOfFuel && currentFuel >= driftBoostFuelCost)
+                ConsumeFuel(driftBoostFuelCost);
+            else
+            {
+                _boostOverrideActive = false;
+                return;
+            }
+        }
+
+        _boostRequested = true;
+    }
+
+    private void ResetDriftHeldTimer()
+    {
+        _driftHoldTimeSeconds = 0f;
+        _driftHoldDirectionSign = 0;
     }
 
     private void TriggerCrash(Vector3 hitDirection, float crashDuration, float impulseMagnitude, float torqueMagnitude, float severity, Vector3 contactPointWS, bool applyDamage)
@@ -5544,9 +5690,7 @@ public class CarController : MonoBehaviour
                 // NEW: gentle deceleration while drifting when holding S (no harsh brake force)
                 if (brakingOrReverse && isDrifting)
                 {
-                    // consume braking fuel but avoid strong backward impulse
                     ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
-                    // decay handled below via driftClampSpeed reduction
                 }
                 // No passive coast drag while drifting/gliding.
             }
@@ -5575,9 +5719,6 @@ public class CarController : MonoBehaviour
                     ? rb.velocity.normalized
                     : transform.forward;
 
-                // Decay control:
-                // - Holding S while drifting: gentle decay (driftBrakeDecayPerSecond).
-                // - No input while drifting/gliding: driftGlideDecayPerSecond or driftSpeedDecayPerSecond.
                 bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
                 bool noThrottleNoBrake = (!forwardKey && !reverseKey);
 
@@ -5612,7 +5753,6 @@ public class CarController : MonoBehaviour
                     finalDir = flatForward;
 
                 float targetMagnitude;
-                // If braking during drift, do NOT lock to peak speed and cap to the clamp.
                 bool brakingDrift = (reverseKey && !forwardKey);
 
                 if (!brakingDrift && lockToDriftPeakSpeed && driftButtonHeld)
@@ -5621,21 +5761,17 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    // While brakingDrift, preferentially bleed speed down to clamp.
-                    // Use Min with currentMag so velocity doesn't increase while braking.
                     targetMagnitude = Mathf.Min(currentMag, Mathf.Max(driftClampSpeed, 0f));
                 }
 
                 float cap = GetCurrentSpeedCap();
                 targetMagnitude = Mathf.Min(targetMagnitude, cap);
 
-                // Preserve speed if accelerating: never drop below currentMag
                 if (forwardKey && !reverseKey)
                     targetMagnitude = Mathf.Max(targetMagnitude, currentMag);
 
                 rb.velocity = finalDir.normalized * Mathf.Max(0f, targetMagnitude);
 
-                // Optional: small backward assist only while braking drift (very light)
                 if (isDrifting && brakingDrift && currentMag > 0.1f)
                 {
                     float assist = currentBrakingForce * 0.15f; // gentle

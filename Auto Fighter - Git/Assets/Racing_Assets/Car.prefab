@@ -652,12 +652,12 @@ MonoBehaviour:
   boostFuelCost: 5
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
-  driftBoostMinHoldSeconds: 0.1
-  driftBoostMaxHoldSeconds: 0.8
-  driftBoostForceRange: {x: 100, y: 150}
-  driftBoostDurationRange: {x: 1.1, y: 1.1}
-  driftBoostMaxSpeedMultRange: {x: 4, y: 4}
-  driftBoostFuelCost: -50
+  driftBoostMinHoldSeconds: 0.8
+  driftBoostMaxHoldSeconds: 2.2
+  driftBoostForceRange: {x: 3, y: 8}
+  driftBoostDurationRange: {x: 0.3, y: 0.8}
+  driftBoostMaxSpeedMultRange: {x: 1.35, y: 1.35}
+  driftBoostFuelCost: 0
   grassFuelUseMultiplier: 3
   offDefaultFraction: 0
   grassFraction: 0
