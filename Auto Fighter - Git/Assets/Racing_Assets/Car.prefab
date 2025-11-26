@@ -198,15 +198,23 @@ MonoBehaviour:
   fireCooldown: 1.5
   bulletSpeed: 8
   bulletDamage: 1
-  bulletRange: 5
-  bulletLifetime: 3
+  bulletRange: 100
+  bulletLifetime: 0.5
   targetScanRadius: 360
-  useAutoTargeting: 1
   coneAngle: 360
   targetLayers:
     serializedVersion: 2
     m_Bits: 2048
+  useAutoTargeting: 1
+  travelAllowanceMultiplier: 1.1
+  pathPriorityWeight: 2
+  preemptTimeMargin: 1.15
+  forwardDotThreshold: 0.15
+  lateralEpsilon: 0.25
   debugCone: 0
+  debugSelectedTarget: 0
+  debugHazardColor: {r: 1, g: 0, b: 0, a: 1}
+  debugFallbackColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
 --- !u!1 &4362480833433498972
 GameObject:
   m_ObjectHideFlags: 0
@@ -462,6 +470,7 @@ Transform:
   - {fileID: 9169940093698534252}
   - {fileID: 6634055323736555214}
   - {fileID: 5305984966754168742}
+  - {fileID: 1156056499681092424}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &5809011667624789452
@@ -521,7 +530,7 @@ BoxCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5657100606639614825}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 13400000, guid: f17a08b901f34cb4cbd3677a41be2a7e, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -547,32 +556,39 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 13
+  baseAcceleration: 10
   baseMaxSpeed: 4
-  baseBrakingForce: 0.5
+  baseBrakingForce: 0.3
   turnSpeed: 12
-  lowSpeedSteerMultiplier: 6.7
+  lowSpeedSteerMultiplier: 11.76
   highSpeedSteerMultiplier: 1
-  speedForSteerCurve: 5.5
+  speedForSteerCurve: 4.25
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
   requireDriftUnlock: 1
   driftKey: 304
-  driftMinSpeed: 1.2
-  maxDriftSteerMultiplier: 8
-  driftBuildRate: 0.95
+  driftMinSpeed: 2.9
+  maxDriftSteerMultiplier: 7.44
+  driftBuildRate: 0.84
   driftReleaseRate: 16
-  driftSideForce: 0.67
-  driftSpeedDecayPerSecond: 8
-  requireDirectionalInputForDriftCharge: 1
-  driftNeutralDrainRate: 4.2
+  driftSideForce: 0.35
+  driftSpeedDecayPerSecond: 0
+  driftHeldSpeedDecayPerSecond: 0
+  driftForwardAccelMultiplier: 0
+  useFullAccelWhileDrifting: 1
+  lockToDriftPeakSpeed: 1
+  driftBrakeDecayPerSecond: 0.001
+  requireDirectionalInputForDriftCharge: 0
+  driftNeutralDrainRate: 3.15
   resetDriftChargeOnSteerFlip: 1
   steerFlipRetainedCharge: 0.119
   steerFlipThreshold: 0.15
-  minChargeForFlipReset: 0.042
-  steerFlipRebuildDelay: 0.073
-  baseDrag: 0.01
+  minChargeForFlipReset: 0
+  steerFlipRebuildDelay: 0
+  allowDriftGlideWithoutSteer: 1
+  driftGlideDecayPerSecond: 0
+  baseDrag: 0
   groundLayers:
     serializedVersion: 2
     m_Bits: 81920
@@ -590,27 +606,76 @@ MonoBehaviour:
   crashLayers:
     serializedVersion: 2
     m_Bits: 2048
-  minImpactSpeed: 3.6
-  maxImpactSpeed: 14
-  minCrashDuration: 1.1
-  maxCrashDuration: 2.6
-  impulsePerUnitSpeed: 0.87
+  minImpactSpeed: 2.6
+  maxImpactSpeed: 8
+  minCrashDuration: 0.87
+  maxCrashDuration: 1.5
+  impulsePerUnitSpeed: 1.01
   torquePerUnitSpeed: 3.26
   crashDragMultiplier: 1
   crashAngularDrag: 1
   crashYawTorqueMultiplier: 4.32
   crashRollTorqueMultiplier: 2.52
+  crashPitchTorqueMultiplier: 0.35
   reorientDuration: 0.25
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
+  maxHP: 100
+  hpCrashDamageAtSeverity1: 90
+  hpRegenPerSecond: 0
+  performanceAtZeroHP: 0.498
+  degradeStartHPFraction: 0.498
+  enableDamageMalfunction: 1
+  maxMalfunctionChancePerSecond: 0.136
+  malfunctionBurstDuration: {x: 0.2, y: 0.4}
+  malfunctionCooldown: {x: 1.3, y: 2.7}
+  fuelLossAtSeverity1: 60
+  minHpLossPerCrash: 20
+  minFuelLossPerCrash: 20
+  crashDamageCooldown: 0.75
+  damageSmokeVFX: {fileID: 3246868859361284785}
+  smokeStartHPFraction: 0.5
+  smokeMinRate: 5
+  smokeMaxRate: 30
+  smokeMinSize: 0.5
+  smokeMaxSize: 1.6
+  smokeColorAtThreshold: {r: 1, g: 1, b: 1, a: 1}
+  smokeColorAtZeroHP: {r: 0.3773585, g: 0.3773585, b: 0.3773585, a: 1}
+  invertSmokeColorLerp: 0
+  boostKey: 32
+  boostForce: 30
+  boostSustainAcceleration: 30
+  boostDuration: 0.6
+  boostMaxSpeedMultiplier: 1.65
+  postBoostSlowdownDuration: 1.35
+  boostCooldown: 1.25
+  boostFuelCost: 5
+  driftBoostSustainAcceleration: 30
+  enableDriftHeldBoost: 1
+  driftBoostMinHoldSeconds: 0.1
+  driftBoostMaxHoldSeconds: 0.8
+  driftBoostForceRange: {x: 100, y: 150}
+  driftBoostDurationRange: {x: 1.1, y: 1.1}
+  driftBoostMaxSpeedMultRange: {x: 4, y: 4}
+  driftBoostFuelCost: -50
   grassFuelUseMultiplier: 3
   offDefaultFraction: 0
   grassFraction: 0
-  coastDecelFactor: 0.1
+  coastLowDecelPerSecond: 0.48
+  coastHighDecelPerSecond: 5.55
+  coastHighSpeedFraction: 1
+  useExponentialCoast: 0
+  coastDampingPerSecond: 2
+  coastDecelFactor: 0.35
   brakeForwardFactor: 0.7
   reverseAccelFactor: 1.06
   brakeToReverseSpeed: 0.5
   baseSteeringDamp: 8
+  enableSteerTraction: 1
+  steerTractionReorientRate: 6
+  steerRollingAccel: 2.25
+  minSpeedForSteerTraction: 0.1
+  lateralFrictionWhileSteering: 3.5
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -812,6 +877,85 @@ Transform:
   m_Children: []
   m_Father: {fileID: 7624176337786834354}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &420375859517043959
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 7624176337786834354}
+    m_Modifications:
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.15
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.15
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.15
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2955223996555018916, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_Name
+      value: SmokeVFX
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+--- !u!4 &1156056499681092424 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+  m_PrefabInstance: {fileID: 420375859517043959}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &3246868859361284785 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+  m_PrefabInstance: {fileID: 420375859517043959}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &3026898324425350654
 PrefabInstance:
   m_ObjectHideFlags: 0

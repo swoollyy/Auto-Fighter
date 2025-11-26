@@ -1,0 +1,76 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 929d11989ad6a8745964fb3e6569a0c2, type: 3}
+  m_Name: CoinSpawn
+  m_EditorClassIdentifier: 
+  type: 30
+  displayName: 
+  description: Increases spawn rate of coins
+  maxLevel: 5
+  costCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 1
+      value: 15
+      inSlope: 13.755206
+      outSlope: 13.755206
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.12722823
+    - serializedVersion: 3
+      time: 2
+      value: 25
+      inSlope: 13.956207
+      outSlope: 13.956207
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 3
+      value: 35
+      inSlope: 14.191658
+      outSlope: 14.191658
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 4
+      value: 45
+      inSlope: 14.191547
+      outSlope: 14.191547
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 5
+      value: 55
+      inSlope: 17.350285
+      outSlope: 17.350285
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.0958333
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  flatCost: 0
+  mode: 0
+  baseValue: 0
+  perLevelAdd: 0.05
+  uiPosition: {x: -200, y: -300}
+  revealedAtStart: 0
+  progressiveUnlocks: []

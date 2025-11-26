@@ -28,23 +28,31 @@ public class CoinPickup : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Only react to the car
         if (!other.TryGetComponent<CarController>(out var car))
             return;
 
         var mgr = RacingSkillTreeManager.Instance;
+        int finalValue = value;
+
+        // NEW: double-value chance skill
         if (mgr != null)
         {
-            mgr.AddCurrency(value);
+            float dblChance = mgr.GetCoinDoubleChance();
+            if (dblChance > 0f && Random.value < dblChance)
+                finalValue *= 2;
+            mgr.AddCurrency(finalValue);
+        }
+        else
+        {
+            // Fallback
+            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
         }
 
-        // NEW: notify the GameManager so it can track pickups separately
         if (GameManager_Racing.Instance != null)
         {
-            GameManager_Racing.Instance.RegisterCoinPickup(value);
+            GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
         }
 
-        // TODO: play SFX / VFX here if you want before destroying
         Destroy(gameObject);
     }
 }

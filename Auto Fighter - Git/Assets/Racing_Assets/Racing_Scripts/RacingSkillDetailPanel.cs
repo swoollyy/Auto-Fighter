@@ -179,15 +179,24 @@ public class RacingSkillDetailPanel : MonoBehaviour
 
     private string FormatEffect(SkillType type)
     {
-        float m = type switch
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return "x1";
+
+        switch (type)
         {
-            SkillType.Acceleration => mgr.GetAccelerationMultiplier(),
-            SkillType.MaxSpeed => mgr.GetMaxSpeedMultiplier(),
-            SkillType.FuelEfficiency => mgr.GetFuelEfficiencyMultiplier(),
-            SkillType.SteeringResponsiveness => mgr.GetSteeringMultiplier(),
-            _ => 1f
-        };
-        return $"x{m:0.##}";
+            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
+            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
+            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
+            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return $"SpawnRate x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return $"Double Chance {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+            default:
+                return "x1";
+        }
     }
 }
 

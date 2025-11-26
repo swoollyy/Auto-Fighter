@@ -42,7 +42,25 @@
     TurretConeAngle_Add,
     TurretConeAngle_Mul,
     TurretScanRadius_Add,
-    TurretScanRadius_Mul
+    TurretScanRadius_Mul,
+
+    CoinSpawnRate_Add,
+    CoinSpawnRate_Mul,
+
+    CoinDoubleChance_Add,
+    CoinDoubleChance_Mul,
+
+    FuelPickupUnlock,            // gate spawning (level > 0 enables)
+    FuelPickupSpawnRate_Add,     // spawn chance scaling (add chain)
+    FuelPickupSpawnRate_Mul,     // spawn chance scaling (mul chain)
+    FuelPickupAmount_Add,        // amount scaling (add chain) – base is 15
+    FuelPickupAmount_Mul,         // amount scaling (mul chain)
+
+    HPPickupUnlock,
+    HPPickupSpawnRate_Add,
+    HPPickupSpawnRate_Mul,
+    HPPickupAmount_Add,
+    HPPickupAmount_Mul
 }
 
 

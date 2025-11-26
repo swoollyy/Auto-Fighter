@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 [CreateAssetMenu(menuName = "Racing/Skill Definition", fileName = "SkillDefinition")]
@@ -17,10 +17,12 @@ public class SkillDefinition : ScriptableObject
 
     [Header("Effect")]
     public SkillApplicationMode mode = SkillApplicationMode.Multiplicative;
-    [Tooltip("Base additive or multiplicative value at level 0 (multiplicative: 1 = no change).")]
-    public float baseValue = 1f;
-    [Tooltip("Per level increment (add to base for additive, added then used as multiplier for multiplicative).")]
-    public float perLevelAdd = 0.05f;
+
+    [Tooltip("Additive: starting offset. Multiplicative: ignored (baseline is always 1 at level 0).")]
+    public float baseValue = 0f;
+
+    [Tooltip("Per-level increment. Additive: value added each level. Multiplicative: extra factor added to 1 (0.01 => +1%).")]
+    public float perLevelAdd = 0.01f;
 
     [Header("UI Layout")]
     [Tooltip("Anchored position on the skill tree content canvas (in pixels).")]
@@ -50,11 +52,22 @@ public class SkillDefinition : ScriptableObject
         return flatCost;
     }
 
+    /// <summary>
+    /// Returns the raw effect value for the given level (>=1).
+    /// Level 0 is handled externally (0 additive, 1 multiplicative).
+    /// Additive: baseValue + perLevelAdd * level.
+    /// Multiplicative: 1 + perLevelAdd * level (baseValue ignored).
+    /// </summary>
     public float GetValueAtLevel(int level)
     {
         level = Mathf.Clamp(level, 0, maxLevel);
-        float v = baseValue + perLevelAdd * level;
-        return mode == SkillApplicationMode.Multiplicative ? v : v;
+        if (mode == SkillApplicationMode.Multiplicative)
+        {
+            // Level 0 → 1 (handled upstream), Level N → 1 + perLevelAdd * N
+            return 1f + perLevelAdd * level;
+        }
+        // Additive: Level 0 → baseValue (upstream treats it as 0), Level N → baseValue + perLevelAdd * N
+        return baseValue + perLevelAdd * level;
     }
 
     /// <summary>

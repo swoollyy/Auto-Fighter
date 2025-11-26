@@ -56,15 +56,23 @@ public class RacingSkillUIEntry : MonoBehaviour
 
     private string FormatEffect(SkillType type)
     {
-        float m = 1f;
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return "x1";
+
         switch (type)
         {
-            case SkillType.Acceleration: m = mgr.GetAccelerationMultiplier(); break;
-            case SkillType.MaxSpeed: m = mgr.GetMaxSpeedMultiplier(); break;
-            case SkillType.FuelEfficiency: m = mgr.GetFuelEfficiencyMultiplier(); break;
-            case SkillType.SteeringResponsiveness: m = mgr.GetSteeringMultiplier(); break;
-            default: m = 1f; break;
+            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
+            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
+            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
+            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return $"Spawn x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return $"Double {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+            default:
+                return "x1";
         }
-        return $"x{m:0.##}";
     }
 }

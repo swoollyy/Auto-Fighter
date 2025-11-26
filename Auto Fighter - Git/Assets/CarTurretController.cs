@@ -23,18 +23,29 @@ public class CarTurretController : MonoBehaviour
     [Header("Targeting / Cone")]
     [Tooltip("Max distance we look for targets in front of the car.")]
     [SerializeField] private float targetScanRadius = 60f;
-
-    [Header("Targeting Mode")]
-    [SerializeField] private bool useAutoTargeting = true;
-
     [Tooltip("Total cone angle in degrees (centered on car forward).")]
     [SerializeField] private float coneAngle = 45f;
-
     [Tooltip("Layers considered valid targets (enemies/obstacles).")]
     [SerializeField] private LayerMask targetLayers = ~0;
+    [SerializeField] private bool useAutoTargeting = true;
+
+    [Header("Protective Targeting Assist")]
+    [Tooltip("Safety window multiplier for bullet reach: bulletSpeed * bulletLifetime * multiplier.")]
+    [SerializeField] private float travelAllowanceMultiplier = 1.1f;
+    [Tooltip("Extra weight applied to path hazard score (targets directly in car path).")]
+    [SerializeField] private float pathPriorityWeight = 2.0f;
+    [Tooltip("Bullet must arrive earlier than car * this margin to qualify as a path hazard.")]
+    [SerializeField] private float preemptTimeMargin = 1.15f;
+    [Tooltip("Minimum forward dot to consider a target 'in front' (0 = hemisphere, 1 = straight ahead).")]
+    [SerializeField, Range(0f, 1f)] private float forwardDotThreshold = 0.15f;
+    [Tooltip("Small epsilon to avoid division issues in scoring.")]
+    [SerializeField] private float lateralEpsilon = 0.25f;
 
     [Header("Debug")]
     [SerializeField] private bool debugCone = false;
+    [SerializeField] private bool debugSelectedTarget = false;
+    [SerializeField] private Color debugHazardColor = Color.red;
+    [SerializeField] private Color debugFallbackColor = Color.yellow;
 
     // Backing base stats (inspector defaults)
     private float baseBulletDamage;
@@ -44,8 +55,8 @@ public class CarTurretController : MonoBehaviour
     private float baseConeAngle;
     private float baseScanRadius;
 
-
     private float _cooldownTimer;
+    private Rigidbody _carRb;
 
     private void Awake()
     {
@@ -58,6 +69,8 @@ public class CarTurretController : MonoBehaviour
         if (muzzle == null)
             muzzle = transform;
 
+        if (car != null)
+            _carRb = car.GetComponent<Rigidbody>();
 
         baseBulletDamage = bulletDamage;
         baseBulletSpeed = bulletSpeed;
@@ -67,7 +80,6 @@ public class CarTurretController : MonoBehaviour
         baseScanRadius = targetScanRadius;
 
         ApplySkillStats();
-
     }
 
     private void OnEnable()
@@ -90,16 +102,8 @@ public class CarTurretController : MonoBehaviour
         }
     }
 
-    private void HandleSkillChanged(SkillType _, int __)
-    {
-        ApplySkillStats();
-    }
-
-    private void HandleSkillsReset()
-    {
-        // reset runtime values back to base, then reapply (which will be neutral at level 0)
-        ApplySkillStats();
-    }
+    private void HandleSkillChanged(SkillType _, int __) => ApplySkillStats();
+    private void HandleSkillsReset() => ApplySkillStats();
 
     private void Update()
     {
@@ -115,9 +119,8 @@ public class CarTurretController : MonoBehaviour
         Vector3 origin = muzzle.position;
         Vector3 carForward = (car != null ? car.transform.forward : transform.forward).normalized;
 
-        // Get a direction within the forward cone (auto-aim toward a target if one exists)
         Vector3 shootDir = useAutoTargeting
-            ? GetAutoTargetDirection(origin, carForward)
+            ? GetProtectiveTargetDirection(origin, carForward)
             : GetRandomConeDirection(carForward);
 
         FireBullet(origin, shootDir);
@@ -125,80 +128,245 @@ public class CarTurretController : MonoBehaviour
     }
 
     /// <summary>
-    /// Picks a target inside the cone in front of the car, or falls back to straight forward.
+    /// Protective targeting: try to clear the car's path first by picking a reachable target
+    /// that is centered and can be intercepted before the car collides.
+    /// Falls back to the most centered reachable target.
     /// </summary>
-    private Vector3 GetAutoTargetDirection(Vector3 origin, Vector3 fallbackForward)
+    private Vector3 GetProtectiveTargetDirection(Vector3 origin, Vector3 forward)
     {
-        fallbackForward.Normalize();
+        forward.Normalize();
 
-        // No target layers set? Just shoot forward.
         if (targetLayers.value == 0)
-            return fallbackForward;
+            return forward;
 
-        Collider[] hits = Physics.OverlapSphere(
-            origin,
-            targetScanRadius,
-            targetLayers,
-            QueryTriggerInteraction.Ignore
-        );
+        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Ignore);
 
-        Transform bestTarget = null;
-        float bestSqrDist = float.MaxValue;
+        if (hits == null || hits.Length == 0)
+            return forward;
+
+        // Precompute constants
+        float halfAngleRad = Mathf.Deg2Rad * (coneAngle * 0.5f);
+        float cosThreshold = Mathf.Cos(halfAngleRad); // for cone mask
+        float maxTravel = Mathf.Min(bulletSpeed * bulletLifetime * travelAllowanceMultiplier, bulletRange);
+
+        // Car forward speed for prediction
+        float carFwdSpeed = GetCarForwardSpeed(forward);
+        if (carFwdSpeed < 0.5f)
+            carFwdSpeed = 0.5f; // minimal speed to avoid infinite times
+
+        // Best path hazard candidate
+        bool hazardFound = false;
+        Vector3 hazardAimDir = Vector3.zero;
+        float hazardBestScore = float.MinValue;
+        float hazardBestDistSqr = float.MaxValue;
+        Vector3 hazardPos = Vector3.zero;
+
+        // Best fallback candidate
+        Vector3 fallbackAimDir = Vector3.zero;
+        float fallbackBestScore = float.MinValue;
+        float fallbackBestDistSqr = float.MaxValue;
+        Vector3 fallbackPos = Vector3.zero;
 
         foreach (var col in hits)
         {
             if (!col || col == ownerCollider)
                 continue;
 
-            Vector3 toTarget = col.bounds.center - origin;
+            Vector3 targetPoint = col.bounds.center;
+            Vector3 toTarget = targetPoint - origin;
             float sqrDist = toTarget.sqrMagnitude;
             if (sqrDist < 0.0001f)
                 continue;
 
             float dist = Mathf.Sqrt(sqrDist);
             Vector3 dir = toTarget / dist;
-            float angle = Vector3.Angle(fallbackForward, dir);
 
-            // Only accept targets inside the cone
-            if (angle > coneAngle * 0.5f)
+            // Must be within cone
+            float dotForward = Vector3.Dot(forward, dir);
+            if (dotForward < cosThreshold)
                 continue;
 
-            if (sqrDist < bestSqrDist)
+            // Must be reachable within travel envelope
+            if (dist > maxTravel)
+                continue;
+
+            // Base alignment metrics
+            float forwardComponent = Mathf.Max(0f, Vector3.Dot(forward, toTarget)); // signed forward distance
+            float lateralComponent = Mathf.Sqrt(Mathf.Max(0f, sqrDist - forwardComponent * forwardComponent));
+
+            // Try lead
+            Vector3 targetVel = Vector3.zero;
+            var rb = col.attachedRigidbody;
+            if (rb != null && rb.gameObject.activeInHierarchy && !rb.isKinematic)
+                targetVel = rb.velocity;
+
+            Vector3 aimDir;
+            bool canLead = TryComputeLeadDirection(origin, targetPoint, targetVel, bulletSpeed, maxTravel, out aimDir);
+            if (!canLead)
+                aimDir = dir;
+
+            // Recompute dot with aim direction (if lead changed focus)
+            float aimDot = Vector3.Dot(forward, aimDir);
+
+            // Compute path alignment score (higher is better)
+            // Emphasize high forward dot, penalize lateral deviation.
+            float pathAlignmentScore = aimDot / (1f + lateralComponent / Mathf.Max(lateralEpsilon, forwardComponent + lateralEpsilon));
+
+            // Fallback score (pure centeredness)
+            float centeredScore = aimDot;
+
+            // Predict times
+            float bulletTime = dist / Mathf.Max(0.01f, bulletSpeed);
+            float carTime = forwardComponent > 0f
+                ? (forwardComponent / Mathf.Max(0.01f, carFwdSpeed))
+                : float.MaxValue;
+
+            bool isInFront = aimDot >= forwardDotThreshold;
+            bool canPreempt = bulletTime <= carTime * preemptTimeMargin;
+
+            bool qualifiesHazard = isInFront && forwardComponent > 0f && canPreempt;
+
+            if (qualifiesHazard)
             {
-                bestSqrDist = sqrDist;
-                bestTarget = col.transform;
+                float weightedScore = pathAlignmentScore * pathPriorityWeight;
+                if (weightedScore > hazardBestScore ||
+                    (Mathf.Abs(weightedScore - hazardBestScore) < 1e-4f && sqrDist < hazardBestDistSqr))
+                {
+                    hazardFound = true;
+                    hazardBestScore = weightedScore;
+                    hazardBestDistSqr = sqrDist;
+                    hazardAimDir = aimDir;
+                    hazardPos = targetPoint;
+                }
+            }
+            else
+            {
+                if (centeredScore > fallbackBestScore ||
+                    (Mathf.Abs(centeredScore - fallbackBestScore) < 1e-4f && sqrDist < fallbackBestDistSqr))
+                {
+                    fallbackBestScore = centeredScore;
+                    fallbackBestDistSqr = sqrDist;
+                    fallbackAimDir = aimDir;
+                    fallbackPos = targetPoint;
+                }
             }
         }
 
-        if (bestTarget != null)
+        // Debug draws
+        if (debugSelectedTarget)
         {
-            Vector3 dir = (bestTarget.position - origin);
-            if (dir.sqrMagnitude > 0.0001f)
-                return dir.normalized;
+            if (hazardFound)
+            {
+                Debug.DrawLine(origin, hazardPos, debugHazardColor, 0.15f);
+                Debug.DrawRay(hazardPos, Vector3.up * 2f, debugHazardColor, 0.15f);
+            }
+            else if (fallbackBestScore > float.MinValue)
+            {
+                Debug.DrawLine(origin, fallbackPos, debugFallbackColor, 0.15f);
+                Debug.DrawRay(fallbackPos, Vector3.up * 2f, debugFallbackColor, 0.15f);
+            }
         }
 
-        return fallbackForward;
+        if (hazardFound && hazardAimDir.sqrMagnitude > 0.0001f)
+            return hazardAimDir.normalized;
+
+        if (fallbackBestScore > float.MinValue && fallbackAimDir.sqrMagnitude > 0.0001f)
+            return fallbackAimDir.normalized;
+
+        return forward;
+    }
+
+    private float GetCarForwardSpeed(Vector3 forward)
+    {
+        forward.Normalize();
+        if (car == null)
+            return 0f;
+
+        // Try Rigidbody velocity
+        if (_carRb != null)
+        {
+            Vector3 vel = _carRb.velocity;
+            return Mathf.Abs(Vector3.Dot(vel, forward));
+        }
+
+        // If CarController exposes something like CurrentSpeed you can swap this:
+        // return Mathf.Abs(car.CurrentSpeed);
+        return 0f;
+    }
+
+    /// <summary>
+    /// Computes an intercept direction for a projectile with given speed to a target moving at targetVel.
+    /// Returns false if no feasible intercept (target too fast or out of reach).
+    /// </summary>
+    private bool TryComputeLeadDirection(Vector3 shooterPos, Vector3 targetPos, Vector3 targetVel, float projectileSpeed, float maxTravel, out Vector3 leadDir)
+    {
+        leadDir = Vector3.zero;
+
+        if (projectileSpeed <= 0.01f)
+            return false;
+
+        Vector3 toTarget = targetPos - shooterPos;
+        float distSqr = toTarget.sqrMagnitude;
+        if (distSqr < 1e-6f)
+            return false;
+
+        // Stationary target fallback
+        if (targetVel.sqrMagnitude < 1e-6f)
+        {
+            float dist = Mathf.Sqrt(distSqr);
+            if (dist > maxTravel) return false;
+            leadDir = toTarget.normalized;
+            return true;
+        }
+
+        // Quadratic intercept
+        Vector3 r = toTarget;
+        float v2 = targetVel.sqrMagnitude;
+        float s2 = projectileSpeed * projectileSpeed;
+
+        float a = v2 - s2;
+        float b = 2f * Vector3.Dot(targetVel, r);
+        float c = r.sqrMagnitude;
+
+        float t;
+        if (Mathf.Abs(a) < 1e-6f)
+        {
+            if (Mathf.Abs(b) < 1e-6f) return false;
+            t = -c / b;
+        }
+        else
+        {
+            float disc = b * b - 4f * a * c;
+            if (disc < 0f) return false;
+            float sqrtDisc = Mathf.Sqrt(disc);
+            float t1 = (-b + sqrtDisc) / (2f * a);
+            float t2 = (-b - sqrtDisc) / (2f * a);
+            t = float.MaxValue;
+            if (t1 > 0f) t = Mathf.Min(t, t1);
+            if (t2 > 0f) t = Mathf.Min(t, t2);
+            if (!float.IsFinite(t) || t == float.MaxValue) return false;
+        }
+
+        float travel = projectileSpeed * t;
+        if (travel > maxTravel) return false;
+
+        Vector3 intercept = targetPos + targetVel * t;
+        Vector3 toIntercept = intercept - shooterPos;
+        if (toIntercept.sqrMagnitude < 1e-6f) return false;
+        leadDir = toIntercept.normalized;
+        return true;
     }
 
     private Vector3 GetRandomConeDirection(Vector3 forward)
     {
         forward.Normalize();
-
-        // Random rotation inside cone
         float halfAngle = coneAngle * 0.5f;
-
-        // Random Yaw inside cone
-        float angleOffset = Random.Range(-halfAngle, halfAngle);
-
-        // Slight random pitch variation (optional, can set to 0 if you want planar only)
-        float pitchOffset = 0f; // Or Random.Range(-halfAngle * 0.2f, halfAngle * 0.2f)
-
-        Quaternion randomRot =
-            Quaternion.AngleAxis(angleOffset, Vector3.up) *
-            Quaternion.AngleAxis(pitchOffset, Vector3.right);
-
-        Vector3 coneDir = randomRot * forward;
-        return coneDir.normalized;
+        float yaw = Random.Range(-halfAngle, halfAngle);
+        float pitch = 0f; // keep shots mostly planar
+        Quaternion rot =
+            Quaternion.AngleAxis(yaw, Vector3.up) *
+            Quaternion.AngleAxis(pitch, Vector3.right);
+        return (rot * forward).normalized;
     }
 
     private void FireBullet(Vector3 origin, Vector3 direction)
@@ -223,57 +391,21 @@ public class CarTurretController : MonoBehaviour
         }
     }
 
-
     private void ApplySkillStats()
     {
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr == null)
             return;
 
-        // Damage per bullet
-        bulletDamage = mgr.ApplyStatChain(
-            baseBulletDamage,
-            SkillType.TurretDamage_Add,
-            SkillType.TurretDamage_Mul
-        );
-
-        // Projectile speed
-        bulletSpeed = mgr.ApplyStatChain(
-            baseBulletSpeed,
-            SkillType.TurretProjectileSpeed_Add,
-            SkillType.TurretProjectileSpeed_Mul
-        );
-
-        // Cooldown between shots (lower is better)
-        fireCooldown = mgr.ApplyStatChain(
-            baseFireCooldown,
-            SkillType.TurretCooldown_Add,
-            SkillType.TurretCooldown_Mul
-        );
+        bulletDamage = mgr.ApplyStatChain(baseBulletDamage, SkillType.TurretDamage_Add, SkillType.TurretDamage_Mul);
+        bulletSpeed = mgr.ApplyStatChain(baseBulletSpeed, SkillType.TurretProjectileSpeed_Add, SkillType.TurretProjectileSpeed_Mul);
+        fireCooldown = mgr.ApplyStatChain(baseFireCooldown, SkillType.TurretCooldown_Add, SkillType.TurretCooldown_Mul);
         fireCooldown = Mathf.Max(0.01f, fireCooldown);
-
-        // Bullet lifetime
-        bulletLifetime = mgr.ApplyStatChain(
-            baseBulletLifetime,
-            SkillType.TurretBulletLifetime_Add,
-            SkillType.TurretBulletLifetime_Mul
-        );
+        bulletLifetime = mgr.ApplyStatChain(baseBulletLifetime, SkillType.TurretBulletLifetime_Add, SkillType.TurretBulletLifetime_Mul);
         bulletLifetime = Mathf.Max(0.01f, bulletLifetime);
-
-        // Cone angle
-        coneAngle = mgr.ApplyStatChain(
-            baseConeAngle,
-            SkillType.TurretConeAngle_Add,
-            SkillType.TurretConeAngle_Mul
-        );
+        coneAngle = mgr.ApplyStatChain(baseConeAngle, SkillType.TurretConeAngle_Add, SkillType.TurretConeAngle_Mul);
         coneAngle = Mathf.Clamp(coneAngle, 0f, 180f);
-
-        // Target scan radius
-        targetScanRadius = mgr.ApplyStatChain(
-            baseScanRadius,
-            SkillType.TurretScanRadius_Add,
-            SkillType.TurretScanRadius_Mul
-        );
+        targetScanRadius = mgr.ApplyStatChain(baseScanRadius, SkillType.TurretScanRadius_Add, SkillType.TurretScanRadius_Mul);
         targetScanRadius = Mathf.Max(0f, targetScanRadius);
     }
 
@@ -281,25 +413,18 @@ public class CarTurretController : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         if (!debugCone) return;
-
         Transform refTransform = car != null ? car.transform : transform;
         Vector3 origin = muzzle != null ? muzzle.position : transform.position;
-        Vector3 forward = refTransform.forward;
-
+        Vector3 fwd = refTransform.forward;
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(origin, targetScanRadius);
 
-        // Simple visualization: 2 rays at cone edges
         Quaternion leftRot = Quaternion.AngleAxis(-coneAngle * 0.5f, Vector3.up);
         Quaternion rightRot = Quaternion.AngleAxis(coneAngle * 0.5f, Vector3.up);
-
-        Vector3 leftDir = leftRot * forward;
-        Vector3 rightDir = rightRot * forward;
-
         Gizmos.color = Color.yellow;
-        Gizmos.DrawRay(origin, leftDir * targetScanRadius);
-        Gizmos.DrawRay(origin, rightDir * targetScanRadius);
-        Gizmos.DrawRay(origin, forward * targetScanRadius);
+        Gizmos.DrawRay(origin, (leftRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, (rightRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, fwd * targetScanRadius);
     }
 #endif
 }

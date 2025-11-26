@@ -17,6 +17,8 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
     [SerializeField] private CrossObstacleDirector crossObstacleDirector;
+    [SerializeField] private TrackFuelSpawner trackFuelSpawner;
+    [SerializeField] private TrackHPSpawner trackHPSpawner;
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -54,6 +56,14 @@ public class GameManager_Racing : MonoBehaviour
 
     [Header("Balancing")]
     [SerializeField, Min(0f)] private float coinsPerDistance = 0.33f; // coins per meter
+
+    [Header("Crash Penalties")]
+    [Tooltip("Enable currency loss when crashing.")]
+    [SerializeField] private bool enableCurrencyLossOnCrash = true;
+    [Tooltip("At max severity (1.0) crash, remove this fraction (0..1) of current currency.")]
+    [SerializeField, Range(0f, 1f)] private float currencyLossPercentAtSeverity1 = 0.05f;
+    [Tooltip("Minimum coins to remove on any crash when you have currency.")]
+    [SerializeField] private int minCurrencyLossPerCrash = 2;
 
     private GameObject carInstance;
     private CarController carController;
@@ -314,6 +324,26 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
     }
 
+    // Remove from run coins first (obstacles, then pickups). Returns actual removed.
+    private int DeductRunCoins(int amount)
+    {
+        int before = _pickupCoinsThisRun + _obstacleCoinsThisRun;
+        int toRemove = Mathf.Clamp(amount, 0, before);
+
+        int takeFromObstacles = Mathf.Min(_obstacleCoinsThisRun, toRemove);
+        _obstacleCoinsThisRun -= takeFromObstacles;
+        toRemove -= takeFromObstacles;
+
+        int takeFromPickups = Mathf.Min(_pickupCoinsThisRun, toRemove);
+        _pickupCoinsThisRun -= takeFromPickups;
+        toRemove -= takeFromPickups;
+
+        // Update HUD
+        uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
+
+        return before - (_pickupCoinsThisRun + _obstacleCoinsThisRun);
+    }
+
     /// <summary>
     /// Called by CarController when a crash occurs.
     /// impactSpeed is in m/s, severity is 0..1 from CarController.
@@ -345,6 +375,20 @@ public class GameManager_Racing : MonoBehaviour
             StartCrashSlowMo(sev);
         }
 
+        // Currency penalties (percentage-based)
+        if (enableCurrencyLossOnCrash)
+        {
+            int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
+            if (runCoins > 0)
+            {
+                int requested = Mathf.RoundToInt(runCoins * (severity * Mathf.Clamp01(currencyLossPercentAtSeverity1)));
+                int minLoss = Mathf.Clamp(minCurrencyLossPerCrash, 0, runCoins);
+                int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
+
+                int removed = DeductRunCoins(loss);
+                Debug.Log($"[GameManager_Racing] Crash penalty: lost {removed} run coins (severity={severity:F2}).");
+            }
+        }
     }
 
     private void StartCrashSlowMo(float severity)
@@ -469,6 +513,8 @@ public class GameManager_Racing : MonoBehaviour
 
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)

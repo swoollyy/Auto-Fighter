@@ -27,3 +27,5 @@ MonoBehaviour:
   baseValue: 1
   perLevelAdd: 0.05
   uiPosition: {x: -150, y: 150}
+  revealedAtStart: 0
+  progressiveUnlocks: []

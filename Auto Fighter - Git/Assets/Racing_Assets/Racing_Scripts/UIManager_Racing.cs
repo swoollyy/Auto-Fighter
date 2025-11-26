@@ -7,6 +7,9 @@ public class UIManager_Racing : MonoBehaviour
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
 
+    [Header("Car HP UI")]
+    [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
+
     [Header("In-Run UI")]
     [SerializeField] private TMP_Text runCoinsLiveText;   // e.g. top-left HUD text: "Coins: 0"
 
@@ -26,7 +29,7 @@ public class UIManager_Racing : MonoBehaviour
     // NEW: show the *final* total currency from the skill tree
     [SerializeField] private TMP_Text runTotalCurrencyText; // e.g. "Total Currency: 250"
 
-    [SerializeField] private TMP_Text totalCurrencyText; 
+    [SerializeField] private TMP_Text totalCurrencyText;
 
 
     private CarController car;
@@ -50,10 +53,13 @@ public class UIManager_Racing : MonoBehaviour
 
     private void Update()
     {
-        if (car == null || fuelFillImage == null)
-            return;
+        if (car == null) return;
 
-        fuelFillImage.fillAmount = car.FuelPercent;
+        if (fuelFillImage != null)
+            fuelFillImage.fillAmount = car.FuelPercent;
+
+        if (hpFillImage != null)
+            hpFillImage.fillAmount = car.HPPercent;
     }
 
     // NEW API: show/hide "Run Complete"

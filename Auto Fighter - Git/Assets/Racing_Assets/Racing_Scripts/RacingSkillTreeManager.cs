@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 [DefaultExecutionOrder(-100)]
@@ -16,29 +17,24 @@ public class RacingSkillTreeManager : MonoBehaviour
     public event Action<int> OnCurrencyChanged;
     public event Action<SkillType, int> OnLevelChanged;
     public event Action OnSkillsReset;
-    public event Action<SkillDefinition> OnSkillRevealed; // NEW
+    public event Action<SkillDefinition> OnSkillRevealed;
 
     private SkillTreeState _state;
     private readonly Dictionary<SkillType, SkillDefinition> _map = new();
-
-    // NEW: revealed (visible) skills
     private readonly HashSet<SkillType> _revealedSkills = new();
 
     private const string CurrencyKey = "Racing_Currency";
 
     void Awake()
     {
-        // Singleton guard
         if (Instance && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Build definition map
         _map.Clear();
         foreach (var def in skills)
         {
@@ -46,35 +42,21 @@ public class RacingSkillTreeManager : MonoBehaviour
                 _map[def.type] = def;
         }
 
-        // Create state and LOAD any previously saved levels
         _state = new SkillTreeState();
-        _state.Load();   // <<< IMPORTANT: no ClearPersistent here
+        ClearAllData(); // TEMP (remove if you want persistence)
 
-        // Load player currency
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
 
-        // Seed initial revealed skills
         _revealedSkills.Clear();
         foreach (var def in skills)
-        {
             if (def && def.revealedAtStart)
                 RevealSkill(def);
-        }
 
-        // Fire initial events so UI / cars can sync
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
-        {
             OnLevelChanged?.Invoke(t, GetLevel(t));
-        }
     }
 
-    void OnApplicationQuit()
-    {
-        ClearAllData();
-    }
-
-    // NEW: reveal logic
     private void RevealSkill(SkillDefinition def)
     {
         if (!def) return;
@@ -85,7 +67,6 @@ public class RacingSkillTreeManager : MonoBehaviour
     public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
     public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
 
-    // ---------------- Economy ----------------
     public int Currency => playerCurrency;
     private void SaveCurrency()
     {
@@ -96,6 +77,13 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         if (amount <= 0) return;
         playerCurrency += amount;
+        SaveCurrency();
+        OnCurrencyChanged?.Invoke(playerCurrency);
+    }
+    public void RemoveCurrency(int amount)
+    {
+        if (amount <= 0) return;
+        playerCurrency = Mathf.Max(0, playerCurrency - amount);
         SaveCurrency();
         OnCurrencyChanged?.Invoke(playerCurrency);
     }
@@ -115,8 +103,6 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     public IReadOnlyList<SkillDefinition> AllSkills => skills;
-
-    // ---------------- Levels & purchases ----------------
     public int GetLevel(SkillType t) => _state.GetLevel(t);
 
     public bool TryPurchase(SkillType type)
@@ -124,7 +110,6 @@ public class RacingSkillTreeManager : MonoBehaviour
         if (!_map.TryGetValue(type, out var def)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
-
         int cost = def.GetCostForLevel(nextLevel);
         if (playerCurrency < cost) return false;
 
@@ -133,20 +118,14 @@ public class RacingSkillTreeManager : MonoBehaviour
             playerCurrency -= cost;
             SaveCurrency();
             _state.Save();
-
             int newLvl = GetLevel(type);
-
-            Debug.Log($"[RacingSkillTreeManager] Purchased {type}, new level = {newLvl}, currency = {playerCurrency}");
-
             OnCurrencyChanged?.Invoke(playerCurrency);
             OnLevelChanged?.Invoke(type, newLvl);
-
             EvaluateProgressiveUnlocks(def, newLvl);
             return true;
         }
         return false;
     }
-
 
     private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
     {
@@ -155,7 +134,6 @@ public class RacingSkillTreeManager : MonoBehaviour
             RevealSkill(unlocked);
     }
 
-    // ---------------- Raw effect retrieval unchanged ----------------
     public float GetRawEffectValue(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def))
@@ -184,14 +162,51 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         if (!_map.TryGetValue(type, out var def))
             return baseValue;
-
         int lvl = GetLevel(type);
         if (lvl <= 0) return baseValue;
-
         float v = def.GetValueAtLevel(lvl);
         if (def.mode == SkillApplicationMode.Multiplicative)
             return baseValue * Mathf.Max(0f, v);
         return baseValue + v;
+    }
+
+    // Add these helpers anywhere in the class body
+    public float GetFuelPickupSpawnRateMultiplier()
+    {
+        // 1.0 baseline, then apply add/mul chain, clamped >= 0
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.FuelPickupSpawnRate_Add, SkillType.FuelPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetFuelPickupAmount(float baseAmount = 15f)
+    {
+        // Start at baseAmount (default 15), then apply add/mul chain
+        float v = ApplyStatChain(baseAmount, SkillType.FuelPickupAmount_Add, SkillType.FuelPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsFuelPickupUnlocked()
+    {
+        return GetLevel(SkillType.FuelPickupUnlock) > 0;
+    }
+
+    public float GetHPPickupSpawnRateMultiplier()
+    {
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.HPPickupSpawnRate_Add, SkillType.HPPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetHPPickupAmount(float baseAmount = 20f)
+    {
+        float v = ApplyStatChain(baseAmount, SkillType.HPPickupAmount_Add, SkillType.HPPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsHPPickupUnlocked()
+    {
+        return GetLevel(SkillType.HPPickupUnlock) > 0;
     }
 
     public float ApplyStatChain(float baseValue, params SkillType[] types)
@@ -208,13 +223,30 @@ public class RacingSkillTreeManager : MonoBehaviour
     public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
     public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
 
-    // ---------------- Reset ----------------
+    public float GetCoinSpawnRateMultiplier()
+    {
+        // Effective probability scaling; clamp to [0, +inf) then caller clamps to [0,1]
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetCoinDoubleChance()
+    {
+        // Starts at 0; additive levels add raw probability, multiplicative levels scale it.
+        float chance = ApplyStatChain(
+            0f,
+            SkillType.CoinDoubleChance_Add,
+            SkillType.CoinDoubleChance_Mul
+        );
+        return Mathf.Clamp01(chance);
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();
         playerCurrency = 0;
         SaveCurrency();
-
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, 0);

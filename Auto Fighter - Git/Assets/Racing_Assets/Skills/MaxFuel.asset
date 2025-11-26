@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 10
   displayName: Max Fuel
-  description: Boosts Max Fuel by 10
+  description: Boosts Max Fuel by 15
   maxLevel: 10
   costCurve:
     serializedVersion: 2
@@ -22,17 +22,17 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 5
-      outSlope: 5
+      inSlope: 3
+      outSlope: 3
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 10
-      value: 50
-      inSlope: 5
-      outSlope: 5
+      value: 30
+      inSlope: 3
+      outSlope: 3
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -42,8 +42,8 @@ MonoBehaviour:
     m_RotationOrder: 4
   flatCost: 0
   mode: 0
-  baseValue: 10
-  perLevelAdd: 10
+  baseValue: 0
+  perLevelAdd: 15
   uiPosition: {x: 0, y: 0}
   revealedAtStart: 1
   progressiveUnlocks:
@@ -51,3 +51,7 @@ MonoBehaviour:
     unlocks:
     - {fileID: 11400000, guid: aa1eeda89502fbf4aaebc90ca4ab0d89, type: 2}
     - {fileID: 11400000, guid: 8304c1a185e16584ab0cd6813ac19385, type: 2}
+    - {fileID: 11400000, guid: ccb6450a343b3c64e884ac21a53342d3, type: 2}
+  - requiredLevel: 5
+    unlocks:
+    - {fileID: 11400000, guid: 049ed5b3d640b7649bd8a9b441bf7bac, type: 2}

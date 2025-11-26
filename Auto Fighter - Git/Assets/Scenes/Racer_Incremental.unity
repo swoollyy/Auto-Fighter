@@ -134,7 +134,7 @@ GameObject:
   - component: {fileID: 126404435}
   - component: {fileID: 126404434}
   - component: {fileID: 126404436}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(-1500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -245,7 +245,7 @@ GameObject:
   - component: {fileID: 134083626}
   - component: {fileID: 134083625}
   - component: {fileID: 134083627}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(-500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -643,6 +643,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   fuelFillImage: {fileID: 1236887647}
+  hpFillImage: {fileID: 656787706}
   runCoinsLiveText: {fileID: 1431915342}
   runCompleteRoot: {fileID: 1226099134}
   runCompleteTitle: {fileID: 172159853}
@@ -843,7 +844,7 @@ GameObject:
   - component: {fileID: 497889776}
   - component: {fileID: 497889775}
   - component: {fileID: 497889777}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(-1500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -942,6 +943,81 @@ MonoBehaviour:
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
+--- !u!1 &656787704
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 656787705}
+  - component: {fileID: 656787707}
+  - component: {fileID: 656787706}
+  m_Layer: 0
+  m_Name: HP
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &656787705
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 656787704}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 863292879}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 10, y: 30.2}
+  m_SizeDelta: {x: 166.4, y: 15.2}
+  m_Pivot: {x: 0, y: 0}
+--- !u!114 &656787706
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 656787704}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.23113209, g: 1, b: 0.31252187, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 3
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 0
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &656787707
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 656787704}
+  m_CullTransparentMesh: 1
 --- !u!1 &661794726
 GameObject:
   m_ObjectHideFlags: 0
@@ -1050,6 +1126,17 @@ MonoBehaviour:
   target: {fileID: 0}
   offset: {x: 0, y: 4.52, z: -4.29}
   cameraPitch: 35.4
+  cam: {fileID: 661794728}
+  defaultFOV: 60
+  overrideDefaultFOVFromCamera: 1
+  fovLerpSpeed: 0.03
+  useSpeedBasedFOV: 1
+  car: {fileID: 0}
+  fovSpeedMin: 0
+  fovSpeedMax: 30
+  fovAtMinSpeed: 50
+  fovAtMaxSpeed: 80
+  speedFovSmooth: 2.6
   positionFollowSpeed: 3.24
   rotationFollowSpeed: 13.89
   rotationLag: 4.75
@@ -1236,6 +1323,9 @@ GameObject:
   - component: {fileID: 796779772}
   - component: {fileID: 796779773}
   - component: {fileID: 796779774}
+  - component: {fileID: 796779776}
+  - component: {fileID: 796779777}
+  - component: {fileID: 796779775}
   m_Layer: 14
   m_Name: TrackGen
   m_TagString: Untagged
@@ -1460,19 +1550,238 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   trackGenerator: {fileID: 796779767}
   playerTransform: {fileID: 0}
-  coinPrefab: {fileID: 4608549205946665033, guid: 47419904148fa4046a004e31a1bef274, type: 3}
-  coinParent: {fileID: 0}
-  variants: []
-  coinHeightOffset: 0.5
-  useSmoothing: 1
-  smoothingSubdivisionsPerSegment: 6
-  coinSpacing: 5
-  maxActiveCoins: 40
-  minSpawnDistanceAhead: 40
-  maxSpawnDistanceAhead: 80
+  bronzePrefab: {fileID: 4608549205946665033, guid: 9780661bceb8bd240b35b2996067a4b4, type: 3}
+  silverPrefab: {fileID: 4608549205946665033, guid: 14c53b102a44569488a93309ac33723f, type: 3}
+  goldPrefab: {fileID: 4608549205946665033, guid: 47419904148fa4046a004e31a1bef274, type: 3}
+  bronzeValue: 1
+  silverValue: 3
+  goldValue: 6
+  bronzeWeightCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.25
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.45
+      value: 0.6
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.6
+      value: 0.25
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.75
+      value: 0.12
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.9
+      value: 0.05
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.03
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  silverWeightCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.15283203
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.16249695
+      value: 0.39434814
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.3
+      value: 0.9
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 1.2
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.65
+      value: 1.1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.8
+      value: 0.7
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.4
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  goldWeightCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0.0041656494
+      value: 0.024749756
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.25
+      value: 0.05
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.4
+      value: 0.15
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.55
+      value: 0.25
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.7
+      value: 0.55
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.85
+      value: 1.2
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.95
+      value: 1.4
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1.5
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  bronzeGlobalScale: 1.12
+  silverGlobalScale: 1
+  goldGlobalScale: 1
+  coinSpacing: 3.9
+  maxActiveCoins: 50
+  minSpawnDistanceAhead: 50
+  maxSpawnDistanceAhead: 50
   despawnBehindDistance: 25
   initialPreSpawnDistance: 60
-  baseSpawnChance: 0.458
+  baseSpawnChance: 0.375
   spawnChanceDistanceCurve:
     serializedVersion: 2
     m_Curve:
@@ -1487,7 +1796,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 1
+      value: 1.5
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -1497,11 +1806,42 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  earlyRegionMeters: 150
-  earlyRegionChanceScale: 0.524
-  restrictVariantsEarly: 1
-  earlyRegionActiveCap: 30
-  lateralFractionOfHalfWidth: 1
+  lateTrackSpawnBonusCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.8
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1.15
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  applySkillSpawnRate: 1
+  coinHeightOffset: 0.5
+  lateralFractionOfHalfWidth: 0.812
   edgeInnerMargin: 0.06
   roadLayerMask:
     serializedVersion: 2
@@ -1509,9 +1849,13 @@ MonoBehaviour:
   raycastStartHeight: 5
   raycastDownDistance: 15
   alignToSurfaceNormal: 1
-  distanceJitter: 0.3
+  distanceJitter: 0.9
+  useSmoothing: 1
+  smoothingSubdivisionsPerSegment: 6
   updateInterval: 0.2
   verboseDebug: 1
+  showWeightsGizmo: 0
+  gizmoSamples: 50
 --- !u!114 &796779774
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1533,7 +1877,7 @@ MonoBehaviour:
   - id: Boulder
     prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
     baseWeight: 1
-    startAtNormalizedDist: 0.1
+    startAtNormalizedDist: 0.05
     fullWeightNormalizedDist: 0.35
     stopAtNormalizedDist: 0.5
     extraHeightOffset: 0
@@ -1606,6 +1950,143 @@ MonoBehaviour:
   obstacleHeightOffset: 0.5
   updateInterval: 0.1
   verboseDebug: 1
+--- !u!114 &796779775
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796779766}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 392f2a5971013a341b2e673cd62d9d06, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  surfaceType: 0
+  maxSpeedMultiplier: 1
+  accelerationMultiplier: 1
+  turnSpeedMultiplier: 1
+  dragMultiplier: 0.12
+--- !u!114 &796779776
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796779766}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b41984d6d7da144b8551e773ff7e89c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  trackGenerator: {fileID: 796779767}
+  playerTransform: {fileID: 0}
+  fuelPrefab: {fileID: 4645873251185170008, guid: 403c3ff804b0c8c439a0b011150f59cd, type: 3}
+  pickupSpacing: 18
+  maxActivePickups: 3
+  minSpawnDistanceAhead: 60
+  maxSpawnDistanceAhead: 60
+  despawnBehindDistance: 25
+  initialPreSpawnDistance: 80
+  baseSpawnChance: 0
+  spawnChanceDistanceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  heightOffset: 0.5
+  lateralFractionOfHalfWidth: 0.6
+  edgeInnerMargin: 0.25
+  roadLayerMask:
+    serializedVersion: 2
+    m_Bits: 16384
+  raycastStartHeight: 5
+  raycastDownDistance: 15
+  alignToSurfaceNormal: 1
+  useSmoothing: 1
+  smoothingSubdivisionsPerSegment: 6
+  updateInterval: 0.25
+  distanceJitter: 1.5
+  verboseDebug: 0
+--- !u!114 &796779777
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796779766}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 04f5f1271c428bc449d17b980228177e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  trackGenerator: {fileID: 796779767}
+  playerTransform: {fileID: 0}
+  hpPrefab: {fileID: 4645873251185170008, guid: eecceaf21c3d53543bd78025c6e420a4, type: 3}
+  pickupSpacing: 18
+  maxActivePickups: 3
+  minSpawnDistanceAhead: 60
+  maxSpawnDistanceAhead: 60
+  despawnBehindDistance: 25
+  initialPreSpawnDistance: 80
+  baseSpawnChance: 0
+  spawnChanceDistanceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  heightOffset: 0.5
+  lateralFractionOfHalfWidth: 0.6
+  edgeInnerMargin: 0.25
+  roadLayerMask:
+    serializedVersion: 2
+    m_Bits: 16384
+  raycastStartHeight: 5
+  raycastDownDistance: 15
+  alignToSurfaceNormal: 1
+  useSmoothing: 1
+  smoothingSubdivisionsPerSegment: 6
+  updateInterval: 0.25
+  distanceJitter: 1.5
+  verboseDebug: 0
 --- !u!1 &804777573
 GameObject:
   m_ObjectHideFlags: 0
@@ -1642,6 +2123,8 @@ MonoBehaviour:
   trackCoinSpawner: {fileID: 796779773}
   trackObstacleSpawner: {fileID: 796779774}
   crossObstacleDirector: {fileID: 1466983249}
+  trackFuelSpawner: {fileID: 796779776}
+  trackHPSpawner: {fileID: 796779777}
   mainCam: {fileID: 661794728}
   cameraFollow: {fileID: 661794730}
   enableCrashScreenShake: 1
@@ -1682,6 +2165,9 @@ MonoBehaviour:
   spawnForwardOffset: 0.5
   spawnHeightOffset: 0.2
   coinsPerDistance: 0.2
+  enableCurrencyLossOnCrash: 1
+  currencyLossPercentAtSeverity1: 0.5
+  minCurrencyLossPerCrash: 2
 --- !u!4 &804777575
 Transform:
   m_ObjectHideFlags: 0
@@ -1709,7 +2195,7 @@ GameObject:
   - component: {fileID: 853046289}
   - component: {fileID: 853046288}
   - component: {fileID: 853046290}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2042,6 +2528,7 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1236887646}
+  - {fileID: 656787705}
   - {fileID: 160336169}
   - {fileID: 663395614}
   - {fileID: 1226099135}
@@ -2268,7 +2755,7 @@ GameObject:
   - component: {fileID: 1140189680}
   - component: {fileID: 1140189679}
   - component: {fileID: 1140189681}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(-1500.00, -0.10, -500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3160,7 +3647,7 @@ MonoBehaviour:
   minLeadDistance: 5
   maxLeadDistance: 29
   maxCurvatureHorizonScale: 0.65
-  crossSpeedRange: {x: 5, y: 11}
+  crossSpeedRange: {x: 5, y: 14}
   crossSpeedMultiplierCurve:
     serializedVersion: 2
     m_Curve:
@@ -3175,7 +3662,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 1
+      value: 2
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -3421,7 +3908,7 @@ GameObject:
   - component: {fileID: 1577998652}
   - component: {fileID: 1577998651}
   - component: {fileID: 1577998653}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(-500.00, -0.10, -1500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3529,7 +4016,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1589862220}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3977,7 +4464,7 @@ GameObject:
   - component: {fileID: 1940623215}
   - component: {fileID: 1940623214}
   - component: {fileID: 1940623216}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(500.00, -0.10, -500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4302,6 +4789,17 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 06419b338e835904abeb70c909862cce, type: 2}
   - {fileID: 11400000, guid: dfa677e04a7d0424ca684535bbee7c21, type: 2}
   - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}
+  - {fileID: 11400000, guid: ccb6450a343b3c64e884ac21a53342d3, type: 2}
+  - {fileID: 11400000, guid: 256576f8f95894d4eaf57f330a2ee43c, type: 2}
+  - {fileID: 11400000, guid: 049ed5b3d640b7649bd8a9b441bf7bac, type: 2}
+  - {fileID: 11400000, guid: 8c64c0af07b44f94fb994c99204a652f, type: 2}
+  - {fileID: 11400000, guid: a996005951a39a746b776f18dcd1b0db, type: 2}
+  - {fileID: 11400000, guid: 10da8fb4eab9d104a9b20e19388f6c49, type: 2}
+  - {fileID: 11400000, guid: d55ccb8075829404c8e9cb540012e781, type: 2}
+  - {fileID: 11400000, guid: 875b6182a5df9674c9740c90a0096494, type: 2}
+  - {fileID: 11400000, guid: 19a51983ececf2145abca4a3360a6456, type: 2}
+  - {fileID: 11400000, guid: e413e74ecb5b72a4d96aeca7792af177, type: 2}
+  - {fileID: 11400000, guid: 7f1947f49e16492438735f3571dfe260, type: 2}
   playerCurrency: 0
 --- !u!4 &1980186994
 Transform:
@@ -4330,7 +4828,7 @@ GameObject:
   - component: {fileID: 2014939780}
   - component: {fileID: 2014939779}
   - component: {fileID: 2014939782}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4441,7 +4939,7 @@ GameObject:
   - component: {fileID: 2110202240}
   - component: {fileID: 2110202239}
   - component: {fileID: 2110202241}
-  m_Layer: 16
+  m_Layer: 14
   m_Name: Terrain_(500.00, -0.10, 500.00)
   m_TagString: Untagged
   m_Icon: {fileID: 0}

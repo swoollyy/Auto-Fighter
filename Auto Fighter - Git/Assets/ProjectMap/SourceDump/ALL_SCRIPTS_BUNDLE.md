@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-11-22T03:48:20.4119803Z (UTC)
+- Generated: 2025-11-26T03:29:44.1879902Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 160
+- Files: 164
 
 ## Assets/BumperAnimScript.cs
 
@@ -476,18 +476,29 @@ public class CarTurretController : MonoBehaviour
     [Header("Targeting / Cone")]
     [Tooltip("Max distance we look for targets in front of the car.")]
     [SerializeField] private float targetScanRadius = 60f;
-
-    [Header("Targeting Mode")]
-    [SerializeField] private bool useAutoTargeting = true;
-
     [Tooltip("Total cone angle in degrees (centered on car forward).")]
     [SerializeField] private float coneAngle = 45f;
-
     [Tooltip("Layers considered valid targets (enemies/obstacles).")]
     [SerializeField] private LayerMask targetLayers = ~0;
+    [SerializeField] private bool useAutoTargeting = true;
+
+    [Header("Protective Targeting Assist")]
+    [Tooltip("Safety window multiplier for bullet reach: bulletSpeed * bulletLifetime * multiplier.")]
+    [SerializeField] private float travelAllowanceMultiplier = 1.1f;
+    [Tooltip("Extra weight applied to path hazard score (targets directly in car path).")]
+    [SerializeField] private float pathPriorityWeight = 2.0f;
+    [Tooltip("Bullet must arrive earlier than car * this margin to qualify as a path hazard.")]
+    [SerializeField] private float preemptTimeMargin = 1.15f;
+    [Tooltip("Minimum forward dot to consider a target 'in front' (0 = hemisphere, 1 = straight ahead).")]
+    [SerializeField, Range(0f, 1f)] private float forwardDotThreshold = 0.15f;
+    [Tooltip("Small epsilon to avoid division issues in scoring.")]
+    [SerializeField] private float lateralEpsilon = 0.25f;
 
     [Header("Debug")]
     [SerializeField] private bool debugCone = false;
+    [SerializeField] private bool debugSelectedTarget = false;
+    [SerializeField] private Color debugHazardColor = Color.red;
+    [SerializeField] private Color debugFallbackColor = Color.yellow;
 
     // Backing base stats (inspector defaults)
     private float baseBulletDamage;
@@ -497,8 +508,8 @@ public class CarTurretController : MonoBehaviour
     private float baseConeAngle;
     private float baseScanRadius;
 
-
     private float _cooldownTimer;
+    private Rigidbody _carRb;
 
     private void Awake()
     {
@@ -511,6 +522,8 @@ public class CarTurretController : MonoBehaviour
         if (muzzle == null)
             muzzle = transform;
 
+        if (car != null)
+            _carRb = car.GetComponent<Rigidbody>();
 
         baseBulletDamage = bulletDamage;
         baseBulletSpeed = bulletSpeed;
@@ -520,7 +533,6 @@ public class CarTurretController : MonoBehaviour
         baseScanRadius = targetScanRadius;
 
         ApplySkillStats();
-
     }
 
     private void OnEnable()
@@ -543,16 +555,8 @@ public class CarTurretController : MonoBehaviour
         }
     }
 
-    private void HandleSkillChanged(SkillType _, int __)
-    {
-        ApplySkillStats();
-    }
-
-    private void HandleSkillsReset()
-    {
-        // reset runtime values back to base, then reapply (which will be neutral at level 0)
-        ApplySkillStats();
-    }
+    private void HandleSkillChanged(SkillType _, int __) => ApplySkillStats();
+    private void HandleSkillsReset() => ApplySkillStats();
 
     private void Update()
     {
@@ -568,9 +572,8 @@ public class CarTurretController : MonoBehaviour
         Vector3 origin = muzzle.position;
         Vector3 carForward = (car != null ? car.transform.forward : transform.forward).normalized;
 
-        // Get a direction within the forward cone (auto-aim toward a target if one exists)
         Vector3 shootDir = useAutoTargeting
-            ? GetAutoTargetDirection(origin, carForward)
+            ? GetProtectiveTargetDirection(origin, carForward)
             : GetRandomConeDirection(carForward);
 
         FireBullet(origin, shootDir);
@@ -578,80 +581,245 @@ public class CarTurretController : MonoBehaviour
     }
 
     /// <summary>
-    /// Picks a target inside the cone in front of the car, or falls back to straight forward.
+    /// Protective targeting: try to clear the car's path first by picking a reachable target
+    /// that is centered and can be intercepted before the car collides.
+    /// Falls back to the most centered reachable target.
     /// </summary>
-    private Vector3 GetAutoTargetDirection(Vector3 origin, Vector3 fallbackForward)
+    private Vector3 GetProtectiveTargetDirection(Vector3 origin, Vector3 forward)
     {
-        fallbackForward.Normalize();
+        forward.Normalize();
 
-        // No target layers set? Just shoot forward.
         if (targetLayers.value == 0)
-            return fallbackForward;
+            return forward;
 
-        Collider[] hits = Physics.OverlapSphere(
-            origin,
-            targetScanRadius,
-            targetLayers,
-            QueryTriggerInteraction.Ignore
-        );
+        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Ignore);
 
-        Transform bestTarget = null;
-        float bestSqrDist = float.MaxValue;
+        if (hits == null || hits.Length == 0)
+            return forward;
+
+        // Precompute constants
+        float halfAngleRad = Mathf.Deg2Rad * (coneAngle * 0.5f);
+        float cosThreshold = Mathf.Cos(halfAngleRad); // for cone mask
+        float maxTravel = Mathf.Min(bulletSpeed * bulletLifetime * travelAllowanceMultiplier, bulletRange);
+
+        // Car forward speed for prediction
+        float carFwdSpeed = GetCarForwardSpeed(forward);
+        if (carFwdSpeed < 0.5f)
+            carFwdSpeed = 0.5f; // minimal speed to avoid infinite times
+
+        // Best path hazard candidate
+        bool hazardFound = false;
+        Vector3 hazardAimDir = Vector3.zero;
+        float hazardBestScore = float.MinValue;
+        float hazardBestDistSqr = float.MaxValue;
+        Vector3 hazardPos = Vector3.zero;
+
+        // Best fallback candidate
+        Vector3 fallbackAimDir = Vector3.zero;
+        float fallbackBestScore = float.MinValue;
+        float fallbackBestDistSqr = float.MaxValue;
+        Vector3 fallbackPos = Vector3.zero;
 
         foreach (var col in hits)
         {
             if (!col || col == ownerCollider)
                 continue;
 
-            Vector3 toTarget = col.bounds.center - origin;
+            Vector3 targetPoint = col.bounds.center;
+            Vector3 toTarget = targetPoint - origin;
             float sqrDist = toTarget.sqrMagnitude;
             if (sqrDist < 0.0001f)
                 continue;
 
             float dist = Mathf.Sqrt(sqrDist);
             Vector3 dir = toTarget / dist;
-            float angle = Vector3.Angle(fallbackForward, dir);
 
-            // Only accept targets inside the cone
-            if (angle > coneAngle * 0.5f)
+            // Must be within cone
+            float dotForward = Vector3.Dot(forward, dir);
+            if (dotForward < cosThreshold)
                 continue;
 
-            if (sqrDist < bestSqrDist)
+            // Must be reachable within travel envelope
+            if (dist > maxTravel)
+                continue;
+
+            // Base alignment metrics
+            float forwardComponent = Mathf.Max(0f, Vector3.Dot(forward, toTarget)); // signed forward distance
+            float lateralComponent = Mathf.Sqrt(Mathf.Max(0f, sqrDist - forwardComponent * forwardComponent));
+
+            // Try lead
+            Vector3 targetVel = Vector3.zero;
+            var rb = col.attachedRigidbody;
+            if (rb != null && rb.gameObject.activeInHierarchy && !rb.isKinematic)
+                targetVel = rb.velocity;
+
+            Vector3 aimDir;
+            bool canLead = TryComputeLeadDirection(origin, targetPoint, targetVel, bulletSpeed, maxTravel, out aimDir);
+            if (!canLead)
+                aimDir = dir;
+
+            // Recompute dot with aim direction (if lead changed focus)
+            float aimDot = Vector3.Dot(forward, aimDir);
+
+            // Compute path alignment score (higher is better)
+            // Emphasize high forward dot, penalize lateral deviation.
+            float pathAlignmentScore = aimDot / (1f + lateralComponent / Mathf.Max(lateralEpsilon, forwardComponent + lateralEpsilon));
+
+            // Fallback score (pure centeredness)
+            float centeredScore = aimDot;
+
+            // Predict times
+            float bulletTime = dist / Mathf.Max(0.01f, bulletSpeed);
+            float carTime = forwardComponent > 0f
+                ? (forwardComponent / Mathf.Max(0.01f, carFwdSpeed))
+                : float.MaxValue;
+
+            bool isInFront = aimDot >= forwardDotThreshold;
+            bool canPreempt = bulletTime <= carTime * preemptTimeMargin;
+
+            bool qualifiesHazard = isInFront && forwardComponent > 0f && canPreempt;
+
+            if (qualifiesHazard)
             {
-                bestSqrDist = sqrDist;
-                bestTarget = col.transform;
+                float weightedScore = pathAlignmentScore * pathPriorityWeight;
+                if (weightedScore > hazardBestScore ||
+                    (Mathf.Abs(weightedScore - hazardBestScore) < 1e-4f && sqrDist < hazardBestDistSqr))
+                {
+                    hazardFound = true;
+                    hazardBestScore = weightedScore;
+                    hazardBestDistSqr = sqrDist;
+                    hazardAimDir = aimDir;
+                    hazardPos = targetPoint;
+                }
+            }
+            else
+            {
+                if (centeredScore > fallbackBestScore ||
+                    (Mathf.Abs(centeredScore - fallbackBestScore) < 1e-4f && sqrDist < fallbackBestDistSqr))
+                {
+                    fallbackBestScore = centeredScore;
+                    fallbackBestDistSqr = sqrDist;
+                    fallbackAimDir = aimDir;
+                    fallbackPos = targetPoint;
+                }
             }
         }
 
-        if (bestTarget != null)
+        // Debug draws
+        if (debugSelectedTarget)
         {
-            Vector3 dir = (bestTarget.position - origin);
-            if (dir.sqrMagnitude > 0.0001f)
-                return dir.normalized;
+            if (hazardFound)
+            {
+                Debug.DrawLine(origin, hazardPos, debugHazardColor, 0.15f);
+                Debug.DrawRay(hazardPos, Vector3.up * 2f, debugHazardColor, 0.15f);
+            }
+            else if (fallbackBestScore > float.MinValue)
+            {
+                Debug.DrawLine(origin, fallbackPos, debugFallbackColor, 0.15f);
+                Debug.DrawRay(fallbackPos, Vector3.up * 2f, debugFallbackColor, 0.15f);
+            }
         }
 
-        return fallbackForward;
+        if (hazardFound && hazardAimDir.sqrMagnitude > 0.0001f)
+            return hazardAimDir.normalized;
+
+        if (fallbackBestScore > float.MinValue && fallbackAimDir.sqrMagnitude > 0.0001f)
+            return fallbackAimDir.normalized;
+
+        return forward;
+    }
+
+    private float GetCarForwardSpeed(Vector3 forward)
+    {
+        forward.Normalize();
+        if (car == null)
+            return 0f;
+
+        // Try Rigidbody velocity
+        if (_carRb != null)
+        {
+            Vector3 vel = _carRb.velocity;
+            return Mathf.Abs(Vector3.Dot(vel, forward));
+        }
+
+        // If CarController exposes something like CurrentSpeed you can swap this:
+        // return Mathf.Abs(car.CurrentSpeed);
+        return 0f;
+    }
+
+    /// <summary>
+    /// Computes an intercept direction for a projectile with given speed to a target moving at targetVel.
+    /// Returns false if no feasible intercept (target too fast or out of reach).
+    /// </summary>
+    private bool TryComputeLeadDirection(Vector3 shooterPos, Vector3 targetPos, Vector3 targetVel, float projectileSpeed, float maxTravel, out Vector3 leadDir)
+    {
+        leadDir = Vector3.zero;
+
+        if (projectileSpeed <= 0.01f)
+            return false;
+
+        Vector3 toTarget = targetPos - shooterPos;
+        float distSqr = toTarget.sqrMagnitude;
+        if (distSqr < 1e-6f)
+            return false;
+
+        // Stationary target fallback
+        if (targetVel.sqrMagnitude < 1e-6f)
+        {
+            float dist = Mathf.Sqrt(distSqr);
+            if (dist > maxTravel) return false;
+            leadDir = toTarget.normalized;
+            return true;
+        }
+
+        // Quadratic intercept
+        Vector3 r = toTarget;
+        float v2 = targetVel.sqrMagnitude;
+        float s2 = projectileSpeed * projectileSpeed;
+
+        float a = v2 - s2;
+        float b = 2f * Vector3.Dot(targetVel, r);
+        float c = r.sqrMagnitude;
+
+        float t;
+        if (Mathf.Abs(a) < 1e-6f)
+        {
+            if (Mathf.Abs(b) < 1e-6f) return false;
+            t = -c / b;
+        }
+        else
+        {
+            float disc = b * b - 4f * a * c;
+            if (disc < 0f) return false;
+            float sqrtDisc = Mathf.Sqrt(disc);
+            float t1 = (-b + sqrtDisc) / (2f * a);
+            float t2 = (-b - sqrtDisc) / (2f * a);
+            t = float.MaxValue;
+            if (t1 > 0f) t = Mathf.Min(t, t1);
+            if (t2 > 0f) t = Mathf.Min(t, t2);
+            if (!float.IsFinite(t) || t == float.MaxValue) return false;
+        }
+
+        float travel = projectileSpeed * t;
+        if (travel > maxTravel) return false;
+
+        Vector3 intercept = targetPos + targetVel * t;
+        Vector3 toIntercept = intercept - shooterPos;
+        if (toIntercept.sqrMagnitude < 1e-6f) return false;
+        leadDir = toIntercept.normalized;
+        return true;
     }
 
     private Vector3 GetRandomConeDirection(Vector3 forward)
     {
         forward.Normalize();
-
-        // Random rotation inside cone
         float halfAngle = coneAngle * 0.5f;
-
-        // Random Yaw inside cone
-        float angleOffset = Random.Range(-halfAngle, halfAngle);
-
-        // Slight random pitch variation (optional, can set to 0 if you want planar only)
-        float pitchOffset = 0f; // Or Random.Range(-halfAngle * 0.2f, halfAngle * 0.2f)
-
-        Quaternion randomRot =
-            Quaternion.AngleAxis(angleOffset, Vector3.up) *
-            Quaternion.AngleAxis(pitchOffset, Vector3.right);
-
-        Vector3 coneDir = randomRot * forward;
-        return coneDir.normalized;
+        float yaw = Random.Range(-halfAngle, halfAngle);
+        float pitch = 0f; // keep shots mostly planar
+        Quaternion rot =
+            Quaternion.AngleAxis(yaw, Vector3.up) *
+            Quaternion.AngleAxis(pitch, Vector3.right);
+        return (rot * forward).normalized;
     }
 
     private void FireBullet(Vector3 origin, Vector3 direction)
@@ -676,57 +844,21 @@ public class CarTurretController : MonoBehaviour
         }
     }
 
-
     private void ApplySkillStats()
     {
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr == null)
             return;
 
-        // Damage per bullet
-        bulletDamage = mgr.ApplyStatChain(
-            baseBulletDamage,
-            SkillType.TurretDamage_Add,
-            SkillType.TurretDamage_Mul
-        );
-
-        // Projectile speed
-        bulletSpeed = mgr.ApplyStatChain(
-            baseBulletSpeed,
-            SkillType.TurretProjectileSpeed_Add,
-            SkillType.TurretProjectileSpeed_Mul
-        );
-
-        // Cooldown between shots (lower is better)
-        fireCooldown = mgr.ApplyStatChain(
-            baseFireCooldown,
-            SkillType.TurretCooldown_Add,
-            SkillType.TurretCooldown_Mul
-        );
+        bulletDamage = mgr.ApplyStatChain(baseBulletDamage, SkillType.TurretDamage_Add, SkillType.TurretDamage_Mul);
+        bulletSpeed = mgr.ApplyStatChain(baseBulletSpeed, SkillType.TurretProjectileSpeed_Add, SkillType.TurretProjectileSpeed_Mul);
+        fireCooldown = mgr.ApplyStatChain(baseFireCooldown, SkillType.TurretCooldown_Add, SkillType.TurretCooldown_Mul);
         fireCooldown = Mathf.Max(0.01f, fireCooldown);
-
-        // Bullet lifetime
-        bulletLifetime = mgr.ApplyStatChain(
-            baseBulletLifetime,
-            SkillType.TurretBulletLifetime_Add,
-            SkillType.TurretBulletLifetime_Mul
-        );
+        bulletLifetime = mgr.ApplyStatChain(baseBulletLifetime, SkillType.TurretBulletLifetime_Add, SkillType.TurretBulletLifetime_Mul);
         bulletLifetime = Mathf.Max(0.01f, bulletLifetime);
-
-        // Cone angle
-        coneAngle = mgr.ApplyStatChain(
-            baseConeAngle,
-            SkillType.TurretConeAngle_Add,
-            SkillType.TurretConeAngle_Mul
-        );
+        coneAngle = mgr.ApplyStatChain(baseConeAngle, SkillType.TurretConeAngle_Add, SkillType.TurretConeAngle_Mul);
         coneAngle = Mathf.Clamp(coneAngle, 0f, 180f);
-
-        // Target scan radius
-        targetScanRadius = mgr.ApplyStatChain(
-            baseScanRadius,
-            SkillType.TurretScanRadius_Add,
-            SkillType.TurretScanRadius_Mul
-        );
+        targetScanRadius = mgr.ApplyStatChain(baseScanRadius, SkillType.TurretScanRadius_Add, SkillType.TurretScanRadius_Mul);
         targetScanRadius = Mathf.Max(0f, targetScanRadius);
     }
 
@@ -734,29 +866,21 @@ public class CarTurretController : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         if (!debugCone) return;
-
         Transform refTransform = car != null ? car.transform : transform;
         Vector3 origin = muzzle != null ? muzzle.position : transform.position;
-        Vector3 forward = refTransform.forward;
-
+        Vector3 fwd = refTransform.forward;
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(origin, targetScanRadius);
 
-        // Simple visualization: 2 rays at cone edges
         Quaternion leftRot = Quaternion.AngleAxis(-coneAngle * 0.5f, Vector3.up);
         Quaternion rightRot = Quaternion.AngleAxis(coneAngle * 0.5f, Vector3.up);
-
-        Vector3 leftDir = leftRot * forward;
-        Vector3 rightDir = rightRot * forward;
-
         Gizmos.color = Color.yellow;
-        Gizmos.DrawRay(origin, leftDir * targetScanRadius);
-        Gizmos.DrawRay(origin, rightDir * targetScanRadius);
-        Gizmos.DrawRay(origin, forward * targetScanRadius);
+        Gizmos.DrawRay(origin, (leftRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, (rightRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, fwd * targetScanRadius);
     }
 #endif
 }
-
 ```
 
 ## Assets/CoinPickup.cs
@@ -792,23 +916,31 @@ public class CoinPickup : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Only react to the car
         if (!other.TryGetComponent<CarController>(out var car))
             return;
 
         var mgr = RacingSkillTreeManager.Instance;
+        int finalValue = value;
+
+        // NEW: double-value chance skill
         if (mgr != null)
         {
-            mgr.AddCurrency(value);
+            float dblChance = mgr.GetCoinDoubleChance();
+            if (dblChance > 0f && Random.value < dblChance)
+                finalValue *= 2;
+            mgr.AddCurrency(finalValue);
+        }
+        else
+        {
+            // Fallback
+            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
         }
 
-        // NEW: notify the GameManager so it can track pickups separately
         if (GameManager_Racing.Instance != null)
         {
-            GameManager_Racing.Instance.RegisterCoinPickup(value);
+            GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
         }
 
-        // TODO: play SFX / VFX here if you want before destroying
         Destroy(gameObject);
     }
 }
@@ -855,6 +987,10 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
     [Header("Spawn Interval Scaling")]
     [SerializeField] private AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
+
+    [Header("Spawn Cooldown Randomness")]
+    [Tooltip("Random multiplier applied to the spawn cooldown each time an obstacle is spawned.")]
+    [SerializeField] private Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
 
     [Header("Curvature Sampling")]
     [SerializeField] private float curvatureSampleLength = 12f;
@@ -980,6 +1116,17 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         float distanceNorm = Mathf.Clamp01(_trackTotalLength > 0f ? sCar / _trackTotalLength : 0f);
 
         float intervalScale = Mathf.Clamp(spawnIntervalCurve.Evaluate(distanceNorm), 0.05f, 10f);
+
+        // NEW: randomize cooldown so spawns aren�t perfectly periodic
+        float cooldownJitter = 1f;
+        if (spawnCooldownRandomRange.x != 1f || spawnCooldownRandomRange.y != 1f)
+        {
+            cooldownJitter = UnityEngine.Random.Range(
+                Mathf.Min(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y),
+                Mathf.Max(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y)
+            );
+        }
+
         float effectiveCooldown = spawnCooldownSeconds * intervalScale;
 
         float curvatureFactor = SampleCurvature(sCar, curvatureSampleLength);
@@ -1065,7 +1212,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         float finalScale = sizeRand * sizeEval;
 
         // How far off the road to start/end (purely geometric, no car/edge �fixing�)
-        float offTrackOffset = halfRoad + 1.0f; // 1 unit beyond road edge
+        float offTrackOffset = halfRoad + 5.0f; // 5 units beyond road edge
 
         Vector3 startWS = spawnPos + lateral * sideSign * offTrackOffset;
         Vector3 targetWS = spawnPos - lateral * sideSign * offTrackOffset;
@@ -4001,131 +4148,217 @@ namespace DG.Tweening
 ## Assets/PowerupPickupTween.cs
 
 ```csharp
-using DG.Tweening;
+using System.Collections;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public sealed class PowerupPickupTween : MonoBehaviour
+public class PowerupPickupTween : MonoBehaviour
 {
-    [Header("Target")]
-    [Tooltip("Visual root to animate. Defaults to self if null.")]
-    public Transform model;
+    [Header("General")]
+    [SerializeField] private Transform visualRoot; // optional: the transform that visually animates
+    [SerializeField] private Transform playerTransform; // if null, will try to resolve from car on collect
+    [SerializeField] private bool autoFindVisualRoot = true;
 
-    [Header("Update")]
-    [Tooltip("DOTween update type.")]
-    public UpdateType updateType = UpdateType.Normal;
-    [Tooltip("Ignore Time.timeScale (use unscaled time).")]
-    public bool independentUpdate = true;
+    [Header("Idle (pre-collect)")]
+    [SerializeField] private bool playIdleHover = true;
+    [SerializeField] private float idleHoverAmplitude = 0.15f;
+    [SerializeField] private float idleHoverFrequency = 1.2f;
+    [SerializeField] private float idleRotateSpeed = 45f;
 
-    [Header("Spawn")]
-    public float spawnScaleFrom = 0.0f;
-    public float spawnScaleTo = 1.0f;
-    public float spawnDuration = 0.35f;
-    public Ease spawnEase = Ease.OutBack;
+    [Header("Collect Animation")]
+    [Tooltip("Total time for bounce away and pull-in sequence.")]
+    [SerializeField] private float collectTotalDuration = 0.80f;
 
-    [Header("Idle Hover")]
-    public float hoverAmplitude = 0.15f;
-    public float hoverHalfCycle = 0.6f;
-    public Ease hoverEase = Ease.InOutSine;
+    [Header("Bounce Away")]
+    [SerializeField] private float bounceDuration = 0.30f;
+    [SerializeField] private float bounceDistance = 1.2f;
+    [SerializeField] private AnimationCurve bounceCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    [SerializeField] private float bounceUpward = 0.25f;
 
-    [Header("Rotate")]
-    public float rotateSpeedDegPerSec = 90f;
+    [Header("Black Hole Pull")]
+    [SerializeField] private float pullDuration = 0.50f;
+    [SerializeField] private AnimationCurve pullCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    [SerializeField] private float minApproachDistance = 0.15f;
+    [SerializeField] private float scaleDownAtEnd = 0.7f;
 
-    [Header("Collect Punch")]
-    public float collectPunchScale = 0.25f;
-    public float collectDuration = 0.18f;
-    public Ease collectEase = Ease.OutBack;
+    [Header("FX")]
+    [SerializeField] private ParticleSystem spawnFx;
+    [SerializeField] private ParticleSystem collectFx;
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip collectSfx;
+    [SerializeField] private float sfxVolume = 0.85f;
 
-    private Vector3 _baseLocalPos;
-    private Tweener _hoverTw;
-    private Tweener _rotateTw;
-    private Tweener _spawnTw;
+    private Vector3 _idleBasePos;
+    private bool _isCollected;
+    private Coroutine _collectRoutine;
 
-    void Awake()
+    private void Awake()
     {
-        if (!model) model = transform;
-        _baseLocalPos = model.localPosition;
+        if (!visualRoot && autoFindVisualRoot)
+        {
+            // Prefer first child as visual root if present
+            if (transform.childCount > 0) visualRoot = transform.GetChild(0);
+            else visualRoot = transform;
+        }
+        if (!visualRoot) visualRoot = transform;
+        _idleBasePos = visualRoot.position;
     }
 
-    void OnDisable()
+    private void Update()
     {
-        KillAllTweens();
-        if (model)
-        {
-            model.localPosition = _baseLocalPos;
-            model.localScale = Vector3.one;
-        }
+        if (_isCollected) return;
+        if (!playIdleHover) return;
+
+        float t = Time.time;
+        // Gentle hover and rotation
+        Vector3 pos = _idleBasePos;
+        pos.y += Mathf.Sin(t * Mathf.PI * 2f * idleHoverFrequency) * idleHoverAmplitude;
+        visualRoot.position = pos;
+        visualRoot.Rotate(Vector3.up, idleRotateSpeed * Time.deltaTime, Space.World);
     }
 
     public void PlaySpawn()
     {
-        if (!model) return;
-        KillAllTweens();
-
-        _baseLocalPos = model.localPosition;
-        model.localScale = Vector3.one * Mathf.Max(0f, spawnScaleFrom);
-
-        _spawnTw = model
-            .DOScale(spawnScaleTo, Mathf.Max(0.01f, spawnDuration))
-            .SetEase(spawnEase)
-            .SetUpdate(updateType, independentUpdate)
-            .SetLink(gameObject, LinkBehaviour.KillOnDestroy)
-            .OnComplete(StartIdle);
-
-        float lift = Mathf.Abs(hoverAmplitude) * 0.5f;
-        model.DOLocalMoveY(_baseLocalPos.y + lift, spawnDuration * 0.5f)
-             .SetLoops(2, LoopType.Yoyo)
-             .SetEase(Ease.OutSine)
-             .SetUpdate(updateType, independentUpdate)
-             .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
+        _idleBasePos = visualRoot.position;
+        if (spawnFx) spawnFx.Play(true);
     }
 
     public void PlayCollect()
     {
-        if (!model) return;
+        if (_isCollected) return;
+        _isCollected = true;
 
-        model.DOPunchScale(Vector3.one * collectPunchScale,
-                           Mathf.Max(0.05f, collectDuration), vibrato: 1, elasticity: 0.5f)
-             .SetEase(collectEase)
-             .SetUpdate(updateType, independentUpdate)
-             .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
+        if (_collectRoutine != null) StopCoroutine(_collectRoutine);
+        _collectRoutine = StartCoroutine(CollectSequence());
     }
 
-    public float GetCollectDuration() => Mathf.Max(0.05f, collectDuration);
-
-    private void StartIdle()
+    public float GetCollectDuration()
     {
-        if (!model) return;
-
-        if (Mathf.Abs(hoverAmplitude) > 0.0001f)
-        {
-            _hoverTw = model.DOLocalMoveY(_baseLocalPos.y + hoverAmplitude,
-                                          Mathf.Max(0.05f, hoverHalfCycle))
-                           .SetEase(hoverEase)
-                           .SetLoops(-1, LoopType.Yoyo)
-                           .SetUpdate(updateType, independentUpdate)
-                           .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
-        }
-
-        if (Mathf.Abs(rotateSpeedDegPerSec) > 0.01f)
-        {
-            float oneTurnTime = 360f / Mathf.Abs(rotateSpeedDegPerSec);
-            _rotateTw = model.DOLocalRotate(
-                            new Vector3(0f, Mathf.Sign(rotateSpeedDegPerSec) * 360f, 0f),
-                            oneTurnTime, RotateMode.LocalAxisAdd)
-                        .SetEase(Ease.Linear)
-                        .SetLoops(-1, LoopType.Incremental)
-                        .SetUpdate(updateType, independentUpdate)
-                        .SetLink(gameObject, LinkBehaviour.KillOnDestroy);
-        }
+        // Ensure duration matches sequence timing
+        return Mathf.Max(collectTotalDuration, bounceDuration + pullDuration);
     }
 
-    private void KillAllTweens()
+    private IEnumerator CollectSequence()
     {
-        _spawnTw?.Kill();
-        _hoverTw?.Kill();
-        _rotateTw?.Kill();
-        _spawnTw = _hoverTw = _rotateTw = null;
+        // Stop idle animation baseline drift
+        _idleBasePos = visualRoot.position;
+
+        // SFX
+        if (audioSource && collectSfx)
+        {
+            audioSource.PlayOneShot(collectSfx, sfxVolume);
+        }
+        // VFX
+        if (collectFx) collectFx.Play(true);
+
+        // Resolve player transform if missing
+        if (!playerTransform)
+        {
+            // Try to find CarController in scene and use its transform
+            var car = FindObjectOfType<CarController>();
+            if (car) playerTransform = car.transform;
+        }
+
+        // No player target? Just a quick scale-down and vanish
+        if (!playerTransform)
+        {
+            yield return ScaleDownAndDisable(0.25f);
+            yield break;
+        }
+
+        // Phase 1: bounce away slightly from the player
+        Vector3 startPos = visualRoot.position;
+        Vector3 toPlayer = (playerTransform.position - startPos);
+        Vector3 flatToPlayer = toPlayer; flatToPlayer.y = 0f;
+        Vector3 awayDir = (-flatToPlayer.normalized);
+        if (awayDir.sqrMagnitude < 1e-6f) awayDir = -transform.forward;
+
+        Vector3 bounceTarget = startPos + awayDir * bounceDistance + Vector3.up * bounceUpward;
+
+        float t = 0f;
+        float bd = Mathf.Max(0.0001f, bounceDuration);
+        while (t < bd)
+        {
+            t += Time.deltaTime;
+            float u = Mathf.Clamp01(t / bd);
+            float k = Mathf.Clamp01(bounceCurve.Evaluate(u));
+            visualRoot.position = Vector3.Lerp(startPos, bounceTarget, k);
+            yield return null;
+        }
+
+        // Phase 2: pull towards player (black hole style)
+        Vector3 pullStart = visualRoot.position;
+        float pd = Mathf.Max(0.0001f, pullDuration);
+        float t2 = 0f;
+
+        Vector3 initialScale = visualRoot.localScale;
+        Vector3 targetScale = initialScale * Mathf.Clamp(scaleDownAtEnd, 0.05f, 1f);
+
+        while (t2 < pd)
+        {
+            t2 += Time.deltaTime;
+            float u = Mathf.Clamp01(t2 / pd);
+            float k = Mathf.Clamp01(pullCurve.Evaluate(u));
+
+            // Target point: playerTransform position (optionally offset to chest/camera height)
+            Vector3 dest = playerTransform.position;
+            // If car has a specific anchor, try to use it (optional)
+            // e.g., dest = GetCarAnchorOrPlayer(playerTransform);
+
+            // Ease position from pullStart to near player
+            Vector3 p = Vector3.Lerp(pullStart, dest, k);
+
+            // Clamp min distance so it doesn't clip inside the player early
+            Vector3 toP = dest - p;
+            float dist = toP.magnitude;
+            if (dist > minApproachDistance)
+            {
+                visualRoot.position = p;
+            }
+            else
+            {
+                // Stop moving once we are very close
+                visualRoot.position = dest - toP.normalized * minApproachDistance;
+            }
+
+            // Scale down as it approaches
+            visualRoot.localScale = Vector3.Lerp(initialScale, targetScale, k);
+
+            yield return null;
+        }
+
+        // Final snap and hide
+        visualRoot.position = playerTransform.position;
+        visualRoot.localScale = targetScale;
+
+        // Disable visuals to let FuelPickup destroy on its own timing
+        HideVisuals();
+    }
+
+    private IEnumerator ScaleDownAndDisable(float duration)
+    {
+        Vector3 startScale = visualRoot.localScale;
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float u = Mathf.Clamp01(t / duration);
+            visualRoot.localScale = Vector3.Lerp(startScale, Vector3.zero, u);
+            yield return null;
+        }
+        HideVisuals();
+    }
+
+    private void HideVisuals()
+    {
+        // Disable renderers
+        var rends = visualRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < rends.Length; i++)
+            rends[i].enabled = false;
+
+        // Optionally disable collider to avoid extra hits
+        var col = GetComponent<Collider>();
+        if (col) col.enabled = false;
     }
 }
 ```
@@ -4135,6 +4368,10 @@ public sealed class PowerupPickupTween : MonoBehaviour
 ```csharp
 using UnityEngine;
 
+/// <summary>
+/// Camera follow with yaw‑only tracking, optional screen shake,
+/// runtime FOV control utilities, plus optional speed‑based automatic FOV.
+/// </summary>
 public class CameraFollow : MonoBehaviour
 {
     [Header("Follow Target")]
@@ -4144,6 +4381,26 @@ public class CameraFollow : MonoBehaviour
     [SerializeField] private Vector3 offset = new Vector3(0, 8, -12);
     [SerializeField, Range(5f, 45f)] private float cameraPitch = 20f;
 
+    [Header("FOV")]
+    [Tooltip("Camera used for FOV changes. If null, auto-grab Camera.main at runtime.")]
+    [SerializeField] private Camera cam;
+    [SerializeField] private float defaultFOV = 60f;
+    [SerializeField] private bool overrideDefaultFOVFromCamera = true;
+
+    [Header("FOV Animation")]
+    [Tooltip("Curve speed for FOV lerp. Higher = faster.")]
+    [SerializeField] private float fovLerpSpeed = 6f;
+
+    // ★ Speed-based FOV settings
+    [Header("Auto Speed FOV")]
+    [SerializeField] private bool useSpeedBasedFOV = true;                 // enable automatic speed FOV
+    [SerializeField] private CarController car;                            // optional explicit reference
+    [SerializeField] private float fovSpeedMin = 0f;                       // speed where FOV = fovAtMinSpeed
+    [SerializeField] private float fovSpeedMax = 40f;                      // speed where FOV = fovAtMaxSpeed
+    [SerializeField] private float fovAtMinSpeed = 58f;                    // low-speed FOV
+    [SerializeField] private float fovAtMaxSpeed = 70f;                    // high-speed FOV
+    [SerializeField] private float speedFovSmooth = 4f;                    // smoothing factor (lerp rate)
+
     [Header("Smoothing")]
     [SerializeField] private float positionFollowSpeed = 8f;
     [SerializeField] private float rotationFollowSpeed = 8f;
@@ -4151,144 +4408,133 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("How quickly the *camera's forward* catches up to the car's forward.\nLower = more lag, more looseness.")]
     [SerializeField] private float rotationLag = 4f;
 
-    // Internal smoothed direction so camera doesn't hard-lock to target.forward
     private Vector3 smoothedForward = Vector3.zero;
 
-    // ─────────────────────────────────────────────
     // Screen shake state
-    // ─────────────────────────────────────────────
     private float shakeTimer = 0f;
     private float shakeDuration = 0f;
     private float shakeStrength = 0f;
     private int shakeVibrato = 10;
     private float shakeRandomness = 0f;
-    private float shakeSeed; // for deterministic-ish noise per shake
+    private float shakeSeed;
+
+    // FOV animation state
+    private float _startFOV;
+    private float _targetFOV;
+    private float _fovLerpT;
+    private float _fovLerpDuration;
+    private bool _fovAnimating;
+
+    // ★ runtime speed-FOV target
+    private float _speedFovCurrent; // smoothed applied value
+
+    private void Awake()
+    {
+        if (cam == null)
+            cam = Camera.main;
+
+        if (cam != null && overrideDefaultFOVFromCamera)
+            defaultFOV = cam.fieldOfView;
+
+        _startFOV = _targetFOV = defaultFOV;
+        _fovLerpDuration = 0f;
+        _fovAnimating = false;
+
+        // ★ Try to auto-bind car if not supplied
+        if (car == null && target != null)
+            car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();
+
+        _speedFovCurrent = defaultFOV;
+    }
 
     private void LateUpdate()
     {
         if (target == null) return;
 
-        // -------------------------
-        // BUILD FLAT (YAW-ONLY) FORWARD
-        // -------------------------
+        // Build yaw-only forward
         Vector3 targetForwardFlat = target.forward;
         targetForwardFlat.y = 0f;
-
         if (targetForwardFlat.sqrMagnitude < 0.0001f)
-        {
-            targetForwardFlat = Vector3.forward; // safe fallback
-        }
+            targetForwardFlat = Vector3.forward;
         targetForwardFlat.Normalize();
 
-        // Initialize smoothedForward once
         if (smoothedForward == Vector3.zero)
-        {
             smoothedForward = targetForwardFlat;
-        }
 
-        // This is the "rubber band" part: camera forward slowly catches up
-        smoothedForward = Vector3.Slerp(
-            smoothedForward,
-            targetForwardFlat,
-            rotationLag * Time.deltaTime
-        );
-
-        // Build yaw-only rotation from smoothed direction
+        smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, rotationLag * Time.deltaTime);
         Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
 
-        // -------------------------
-        // POSITION FOLLOW (YAW-ONLY)
-        // -------------------------
-        // Use yawOnly instead of target.TransformDirection so we IGNORE car pitch/roll
+        // Position follow
         Vector3 desiredPos = target.position + yawOnly * offset;
+        Vector3 basePos = Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
 
-        Vector3 basePos = Vector3.Lerp(
-            transform.position,
-            desiredPos,
-            positionFollowSpeed * Time.deltaTime
-        );
-
-        // -------------------------
-        // ROTATION WITH FIXED PITCH
-        // -------------------------
+        // Rotation with fixed pitch
         Vector3 e = yawOnly.eulerAngles;
-        e.x = cameraPitch; // fixed downward tilt
-
+        e.x = cameraPitch;
         Quaternion desiredRot = Quaternion.Euler(e);
+        Quaternion baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotationFollowSpeed * Time.deltaTime);
 
-        Quaternion baseRot = Quaternion.Slerp(
-            transform.rotation,
-            desiredRot,
-            rotationFollowSpeed * Time.deltaTime
-        );
-
-        // -------------------------
-        // APPLY SCREEN SHAKE (POSITIONAL)
-        // -------------------------
+        // Shake
         Vector3 shakeOffset = Vector3.zero;
-
         if (shakeTimer > 0f && shakeDuration > 0f && shakeStrength > 0f)
         {
             shakeTimer -= Time.deltaTime;
             float remaining = Mathf.Max(0f, shakeTimer);
             float elapsed = Mathf.Clamp(shakeDuration - remaining, 0f, shakeDuration);
-
             float t = shakeDuration > 0f ? (elapsed / shakeDuration) : 1f;
-            // amplitude fades out from 1 -> 0 over time (ease-out)
             float amplitude = 1f - t;
-            amplitude *= amplitude; // ease-out^2 for a nicer falloff
+            amplitude *= amplitude;
 
-            // Vibrato is how many "wiggles" per second
             float frequency = Mathf.Max(1, shakeVibrato);
             float angle = (elapsed + shakeSeed) * frequency * Mathf.PI * 2f;
-
-            // Base directional oscillation
             Vector2 osc = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
 
-            // Randomness factor: jitter direction a bit
-            float randFactor = shakeRandomness / 180f; // 0..1-ish
-            if (randFactor > 0f)
+            if (shakeRandomness > 0f)
             {
-                // pseudo-stable random using seed + elapsed
                 float r1 = Mathf.PerlinNoise(shakeSeed, elapsed * 10f) * 2f - 1f;
                 float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsed * 10f) * 2f - 1f;
-                Vector2 rand = new Vector2(r1, r2) * randFactor;
-                osc += rand;
+                osc += new Vector2(r1, r2) * (shakeRandomness / 180f);
             }
 
             if (osc.sqrMagnitude > 0.0001f)
                 osc.Normalize();
 
-            // Convert 2D shake into world-space offset along camera's right/up
             Vector3 right = baseRot * Vector3.right;
             Vector3 up = baseRot * Vector3.up;
-
-            shakeOffset =
-                (right * osc.x + up * osc.y) *
-                (shakeStrength * amplitude);
+            shakeOffset = (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
         }
         else
         {
-            shakeTimer = 0f; // ensure we don't go negative
+            shakeTimer = 0f;
         }
 
         transform.position = basePos + shakeOffset;
         transform.rotation = baseRot;
+
+        // Manual animation step
+        UpdateFOV(Time.deltaTime);
+
+        // ★ Auto speed FOV (only when not manually animating)
+        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null)
+        {
+            float speed = car.CurrentSpeed;
+            float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
+            float target = Mathf.Lerp(fovAtMinSpeed, fovAtMaxSpeed, norm);
+
+            // Smooth approach
+            _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, target, speedFovSmooth * Time.deltaTime);
+            cam.fieldOfView = _speedFovCurrent;
+        }
     }
 
     public void SetTarget(Transform t)
     {
         target = t;
-        smoothedForward = Vector3.zero; // re-init on new target
+        smoothedForward = Vector3.zero;
+        if (car == null && t != null)
+            car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
     }
 
-    /// <summary>
-    /// Starts a camera shake.
-    /// duration: how long the shake lasts (seconds).
-    /// strength: max positional offset magnitude.
-    /// vibrato: how many "wiggles" per second (frequency).
-    /// randomness: how much to randomize direction (0 = clean sine wave).
-    /// </summary>
     public void StartShake(float duration, float strength, int vibrato, float randomness)
     {
         shakeDuration = Mathf.Max(0f, duration);
@@ -4296,12 +4542,59 @@ public class CameraFollow : MonoBehaviour
         shakeStrength = Mathf.Max(0f, strength);
         shakeVibrato = Mathf.Max(1, vibrato);
         shakeRandomness = Mathf.Max(0f, randomness);
-
-        // new random seed each time so shakes look different
         shakeSeed = Random.value * 1000f;
     }
-}
 
+    // FOV API
+    public void SetFieldOfView(float targetFOV, float duration = 0f)
+    {
+        if (cam == null) return;
+        targetFOV = Mathf.Clamp(targetFOV, 1f, 179f);
+
+        if (duration <= 0f)
+        {
+            cam.fieldOfView = targetFOV;
+            _fovAnimating = false;
+            // ★ Sync speed-based base to immediate value to avoid snap after animation
+            _speedFovCurrent = targetFOV;
+            return;
+        }
+
+        _startFOV = cam.fieldOfView;
+        _targetFOV = targetFOV;
+        _fovLerpT = 0f;
+        _fovLerpDuration = duration;
+        _fovAnimating = true;
+    }
+
+    public void ResetFieldOfView(float duration = 0f)
+    {
+        SetFieldOfView(defaultFOV, duration);
+    }
+
+    private void UpdateFOV(float dt)
+    {
+        if (!_fovAnimating || cam == null) return;
+
+        if (_fovLerpDuration <= 0f)
+        {
+            cam.fieldOfView = _targetFOV;
+            _fovAnimating = false;
+            _speedFovCurrent = cam.fieldOfView;
+            return;
+        }
+
+        _fovLerpT += dt * fovLerpSpeed / _fovLerpDuration;
+        float t = Mathf.Clamp01(_fovLerpT);
+        cam.fieldOfView = Mathf.Lerp(_startFOV, _targetFOV, t);
+
+        if (t >= 1f)
+        {
+            _fovAnimating = false;
+            _speedFovCurrent = cam.fieldOfView; // ★ hand over to auto system seamlessly
+        }
+    }
+}
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CarController.cs
@@ -4345,13 +4638,26 @@ public class CarController : MonoBehaviour
     [SerializeField] private float driftReleaseRate = 3.5f;
     [SerializeField] private float driftSideForce = 6f;
     [SerializeField] private float driftSpeedDecayPerSecond = 1.5f;
+    [SerializeField, Tooltip("Very small decay while drift key is held (ice feel).")]
+    private float driftHeldSpeedDecayPerSecond = 0.15f;
+    [SerializeField, Tooltip("Forward acceleration multiplier while drifting or gliding. 1 = same as normal.")]
+    private float driftForwardAccelMultiplier = 0.85f; // NEW
+    [SerializeField, Tooltip("Use full forward acceleration while holding drift + W (prevents perceived slowdown).")]
+    private bool useFullAccelWhileDrifting = true; // NEW
+    [SerializeField, Tooltip("Preserve highest speed reached during current drift/glide while drift key held.")]
+    private bool lockToDriftPeakSpeed = true; // NEW
 
-       [Header("Drift Neutral Behavior")]
-   [Tooltip("Require a non‑zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
-   [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
-   [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
-   [SerializeField] private float driftNeutralDrainRate = 4.2f;
+// NEW: gentle deceleration while drifting if S is held (softer than normal braking)
+    [Header("Drift Braking")]
+    [SerializeField, Tooltip("Per-second speed decay while drifting and holding S. Lower = softer, preserves ice feel.")]
+    private float driftBrakeDecayPerSecond = 0.6f;
 
+
+    [Header("Drift Neutral Behavior")]
+    [Tooltip("Require a non‑zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
+    [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
+    [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
+    [SerializeField] private float driftNeutralDrainRate = 4.2f;
 
     [Header("Drift Direction Change Reset")]
     [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
@@ -4365,10 +4671,17 @@ public class CarController : MonoBehaviour
     [Tooltip("Delay after a flip before drift can start rebuilding (seconds).")]
     [SerializeField, Range(0f, 1f)] private float steerFlipRebuildDelay = 0.15f;
 
-    // Runtime tracking of last raw steering (pre‑smoothed) to detect direction flips
+    [Header("Drift Glide (Ice Feel)")]
+    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice‑like glide).")]
+    [SerializeField] private bool allowDriftGlideWithoutSteer = true;
+    [Tooltip("Per‑second decay while gliding (very small to keep speed).")]
+    [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
+
+    private bool _driftGlideActive;          // NEW: glide mode (holding drift, no steer)
+
     private float _lastRawSteerValue;
-    private int _driftCurrentSteerSign = 0;          // last non-zero steering sign while drifting
-    private float _driftFlipBlockUntil = 0f;         // time until rebuilding allowed after flip
+    private int _driftCurrentSteerSign = 0;
+    private float _driftFlipBlockUntil = 0f;
 
     [Header("Base Physics")]
     [SerializeField] private float baseDrag = 0.08f;
@@ -4381,6 +4694,9 @@ public class CarController : MonoBehaviour
     [SerializeField] private float raycastExtraDistance = 2f;
     [SerializeField] private bool debugSurfaceRays = false;
 
+    [Tooltip("How far ground samples stretch from the collider center.\n0.5 = inner half, 1 = full collider extents, 1.5 = 50% beyond the collider, etc.")]
+    [SerializeField] private float surfaceSampleExtent = 1f;
+
     [Header("Fuel Settings")]
     [SerializeField] private float maxFuel = 100f;
     [SerializeField] private float fuelUsePerSecondAtFullThrottle = 5f;
@@ -4390,46 +4706,96 @@ public class CarController : MonoBehaviour
     [SerializeField] private float idleSpeedThreshold = 0.5f;
 
     [Header("Crash / Hit Reaction")]
-    [SerializeField] private LayerMask crashLayers;          // Obstacles, walls, etc.
-
-    [Tooltip("Impact speed below which we ignore the hit (m/s).")]
+    [SerializeField] private LayerMask crashLayers;
     [SerializeField] private float minImpactSpeed = 4f;
-
-    [Tooltip("Impact speed where crash severity = 1 (m/s). Higher speeds are clamped.")]
     [SerializeField] private float maxImpactSpeed = 25f;
-
-    [Tooltip("Shortest time you lose control on a light bump.")]
     [SerializeField] private float minCrashDuration = 0.15f;
-
-    [Tooltip("Longest time you lose control on a huge crash.")]
     [SerializeField] private float maxCrashDuration = 1.1f;
-
-    [Tooltip("How much linear shove per 1 m/s of impact speed.")]
     [SerializeField] private float impulsePerUnitSpeed = 0.6f;
-
-    [Tooltip("How much spin per 1 m/s of impact speed.")]
     [SerializeField] private float torquePerUnitSpeed = 0.45f;
-
     [SerializeField] private float crashDragMultiplier = 2f;
     [SerializeField] private float crashAngularDrag = 1.5f;
 
-
     [Header("Crash Spin Tuning")]
-    [Tooltip("Multiplier for yaw spin (around Y) on crash.")]
     [SerializeField] private float crashYawTorqueMultiplier = 1f;
-
-    [Tooltip("Multiplier for roll spin (around Z / car forward) on crash.")]
     [SerializeField] private float crashRollTorqueMultiplier = 0.6f;
+    [SerializeField] private float crashPitchTorqueMultiplier = 0.35f;
 
     [Header("Crash Recovery")]
     [SerializeField] private float reorientDuration = 0.6f;
 
     [Header("Steering Direction")]
-    [Tooltip("If true, steering is inverted when the car is moving backwards (screen-style controls).")]
     [SerializeField] private bool invertSteeringWhenReversing = false;
-
-    [Tooltip("How strong steering is while reversing, relative to forward.")]
     [SerializeField] private float reverseSteerMultiplier = 1f;
+
+    // ─────────────────────────────────────────────
+    // HEALTH SYSTEM
+    // ─────────────────────────────────────────────
+    [Header("Health")]
+    [SerializeField] private float maxHP = 100f;
+    [SerializeField] private float hpCrashDamageAtSeverity1 = 40f;
+    [Tooltip("Optional passive HP regen per second when not crashing. 0 = none.")]
+    [SerializeField] private float hpRegenPerSecond = 0f;
+
+    [Header("Performance Degradation (vs HP)")]
+    [SerializeField, Range(0.1f, 1f)] private float performanceAtZeroHP = 0.35f;
+    [SerializeField, Range(0f, 1f)] private float degradeStartHPFraction = 0.75f;
+
+    [Header("Input Malfunction (Low HP)")]
+    [SerializeField] private bool enableDamageMalfunction = true;
+    [SerializeField, Range(0f, 1f)] private float maxMalfunctionChancePerSecond = 0.5f;
+    [SerializeField] private Vector2 malfunctionBurstDuration = new Vector2(0.2f, 0.8f);
+    [SerializeField] private Vector2 malfunctionCooldown = new Vector2(0.4f, 1.2f);
+
+    [Header("Crash Penalties")]
+    [SerializeField] private float fuelLossAtSeverity1 = 20f;
+    [SerializeField, Tooltip("Minimum HP deducted per crash (applies after severity scaling).")]
+    private float minHpLossPerCrash = 10f;
+    [SerializeField, Tooltip("Minimum fuel deducted per crash (applies after severity scaling).")]
+    private float minFuelLossPerCrash = 10f;
+
+    [Header("Crash Cooldown")]
+    [SerializeField, Tooltip("Seconds of invulnerability after taking crash damage.")]
+    private float crashDamageCooldown = 0.75f;
+    private float _nextCrashAllowedTime = 0f; // runtime timer gate
+
+    [Header("Damage Smoke (VFX)")]
+    [Tooltip("Smoke VFX that scales with damage.")]
+    [SerializeField] private ParticleSystem damageSmokeVFX;
+    [Tooltip("HP fraction where smoke begins (e.g. 0.75 = starts below 75% HP).")]
+    [SerializeField, Range(0f, 1f)] private float smokeStartHPFraction = 0.75f;
+    [SerializeField] private float smokeMinRate = 4f;
+    [SerializeField] private float smokeMaxRate = 60f;
+    [Tooltip("Particle start size at threshold HP (first appearance).")]
+    [SerializeField] private float smokeMinSize = 0.5f;
+    [Tooltip("Particle start size at 0 HP.")]
+    [SerializeField] private float smokeMaxSize = 2.0f;
+    [Tooltip("Color when smoke first appears (higher HP side).")]
+    [SerializeField] private Color smokeColorAtThreshold = Color.white;
+    [Tooltip("Color when car is at 0 HP (fully damaged).")]
+    [SerializeField] private Color smokeColorAtZeroHP = Color.gray;
+    [Tooltip("Invert color lerp direction if you want threshold to be gray and low HP to be white.")]
+    [SerializeField] private bool invertSmokeColorLerp = false;
+
+    // ─────────────────────────────────────────────
+    // BOOST SYSTEM
+    // ─────────────────────────────────────────────
+    [Header("Boost")]
+    [SerializeField] private KeyCode boostKey = KeyCode.Space;
+    [SerializeField] private float boostForce = 50f;
+    [SerializeField] private float boostSustainAcceleration = 0f;
+    [SerializeField] private float boostDuration = 1.2f;
+    [SerializeField] private float boostMaxSpeedMultiplier = 1.35f;
+    [SerializeField] private float postBoostSlowdownDuration = 0.75f;
+    [SerializeField] private float boostCooldown = 1.25f;
+    [SerializeField] private float boostFuelCost = 0f;
+
+    private float _boostCooldownTimer;
+    private bool _boostRequested;
+    private bool _isBoosting;
+    private float _boostTimer;
+    private bool _isPostBoost;
+    private float _postBoostTimer;
 
     private Quaternion _initialRotation;
     private bool _isReorienting;
@@ -4442,7 +4808,6 @@ public class CarController : MonoBehaviour
     private float _baseDrag;
     private float _baseAngularDrag;
 
-    // Backing "base" values
     private float baseMaxFuel;
     private float baseIdleFuelUse;
     private float baseFuelUseFullThrottle;
@@ -4452,14 +4817,12 @@ public class CarController : MonoBehaviour
     [Header("Fuel Modifiers by Surface")]
     [SerializeField] private float grassFuelUseMultiplier = 1.5f;
 
-    // Surface-only adjusted values
     private float currentAcceleration;
     private float currentMaxSpeed;
     private float currentBrakingForce;
     private float currentTurnSpeed;
     private float currentDrag;
 
-    // Effective values
     private float effectiveAcceleration;
     private float effectiveMaxSpeed;
     private float effectiveTurnSpeed;
@@ -4470,22 +4833,25 @@ public class CarController : MonoBehaviour
     private BoxCollider boxCollider;
     private float steeringInput;
 
-    // Drift runtime
     private float driftCharge = 0f;
     private bool isDrifting = false;
     private float driftEntrySpeed = 0f;
     private float driftClampSpeed = 0f;
+    private bool driftButtonHeld = false; // NEW: track if drift key is currently held
+    private float driftPeakSpeed = 0f;     // NEW: highest speed attained while holding drift
 
-    // Fuel runtime
     private float currentFuel;
     private bool isOutOfFuel = false;
     private float currentFuelUseMultiplier = 1f;
+
+    private float currentHP;
+    private float _malfunctionTimer;
+    private float _malfunctionCooldownRemain;
 
     [Header("Debug (read-only)")]
     [SerializeField] private float offDefaultFraction = 0f;
     [SerializeField] private float grassFraction = 0f;
 
-    // Skill cached effects
     private SkillApplicationMode accelMode;
     private float accelValue;
     private SkillApplicationMode maxSpeedMode;
@@ -4495,6 +4861,18 @@ public class CarController : MonoBehaviour
     private SkillApplicationMode fuelMode;
     private float fuelValue;
 
+    [Header("Arcade Coasting")]
+    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
+    private float coastLowDecelPerSecond = 1.2f;
+    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
+    private float coastHighDecelPerSecond = 3.5f;
+    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
+    private float coastHighSpeedFraction = 0.8f;
+    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
+    private bool useExponentialCoast = false;
+    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
+    private float coastDampingPerSecond = 2.0f;
+
     [Header("Arcade Movement Tuning")]
     [SerializeField] private float coastDecelFactor = 0.1f;
     [SerializeField] private float brakeForwardFactor = 0.7f;
@@ -4503,6 +4881,23 @@ public class CarController : MonoBehaviour
 
     [SerializeField] private float baseSteeringDamp = 1f;
     private float currentSteeringDamp;
+
+    // ─────────────────────────────────────────────
+    // NEW: Steering traction while coasting (no throttle/brake, no drift)
+    // ─────────────────────────────────────────────
+    [Header("Steer Rolling Traction")]
+    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
+    private bool enableSteerTraction = true;
+    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
+    private float steerTractionReorientRate = 6f;
+    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
+    private float steerRollingAccel = 2.25f;
+    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
+    private float minSpeedForSteerTraction = 0.1f;
+    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
+    private float lateralFrictionWhileSteering = 3.5f;
+
+    private bool _inputsSuppressedThisFrame = false;
 
     private void Awake()
     {
@@ -4522,12 +4917,10 @@ public class CarController : MonoBehaviour
         _baseDrag = rb.drag;
         _baseAngularDrag = rb.angularDrag;
 
-
         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
         if (flatForward.sqrMagnitude > 0.0001f)
             transform.rotation = Quaternion.LookRotation(flatForward, Vector3.up);
 
-        // Remember initial rotation so we can snap/lerp back to it after a crash
         _initialRotation = transform.rotation;
 
         baseTurnSpeed = turnSpeed;
@@ -4544,10 +4937,14 @@ public class CarController : MonoBehaviour
         baseFuelUseFullThrottle = fuelUsePerSecondAtFullThrottle;
         baseFuelUseBraking = fuelUsePerSecondBraking;
 
-        driftUnlocked = !requireDriftUnlock; // default if not required
+        driftUnlocked = !requireDriftUnlock;
+
+        currentHP = Mathf.Max(1f, maxHP);
 
         RefreshSkillEffects();
         ApplySkillEffects();
+
+        UpdateDamageVFXImmediate();
     }
 
     private void OnEnable()
@@ -4568,11 +4965,20 @@ public class CarController : MonoBehaviour
         UpdateCrashReorientation();
         HandleInput();
         HandleSteering();
+
+        if (Input.GetKeyDown(boostKey))
+            _boostRequested = true;
+
+        if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
+        {
+            currentHP = Mathf.Min(maxHP, currentHP + hpRegenPerSecond * Time.deltaTime);
+        }
+
+        UpdateDamageVFXImmediate();
     }
 
     private void FixedUpdate()
     {
-
         float dt = Time.fixedDeltaTime;
 
         if (_inCrash)
@@ -4585,15 +4991,11 @@ public class CarController : MonoBehaviour
                 if (rb != null)
                 {
                     rb.freezeRotation = true;
-                    // Restore base drag, keep rotation free
                     rb.drag = _baseDrag;
                     rb.angularDrag = _baseAngularDrag;
-
-                    // Optional: lightly kill spin so reorientation feels clean
                     rb.angularVelocity = Vector3.zero;
                 }
 
-                // Start smooth reorientation: keep current yaw, flatten X/Z
                 _isReorienting = true;
                 _reorientElapsed = 0f;
                 _reorientStartRot = transform.rotation;
@@ -4601,8 +5003,6 @@ public class CarController : MonoBehaviour
                 Vector3 euler = transform.eulerAngles;
                 _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
             }
-
-            // Don’t process normal input while crashing
             return;
         }
 
@@ -4610,11 +5010,78 @@ public class CarController : MonoBehaviour
         RefreshSkillEffects();
         ApplySkillEffects();
         HandleMovement();
+        HandleBoost();
     }
 
-    // ─────────────────────────────────────────────
-    // Skill manager wiring
-    // ─────────────────────────────────────────────
+    private void HandleBoost()
+    {
+        if (_boostCooldownTimer > 0f)
+            _boostCooldownTimer -= Time.fixedDeltaTime;
+
+        if (_isBoosting)
+        {
+            _boostTimer -= Time.fixedDeltaTime;
+            if (boostSustainAcceleration > 0f)
+                rb.AddForce(transform.forward * boostSustainAcceleration, ForceMode.Acceleration);
+
+            if (_boostTimer <= 0f)
+            {
+                _isBoosting = false;
+                _isPostBoost = postBoostSlowdownDuration > 0f;
+                _postBoostTimer = postBoostSlowdownDuration;
+            }
+        }
+        else if (_isPostBoost)
+        {
+            _postBoostTimer -= Time.fixedDeltaTime;
+            if (_postBoostTimer <= 0f)
+                _isPostBoost = false;
+        }
+
+        if (_boostRequested)
+        {
+            _boostRequested = false;
+
+            if (_boostCooldownTimer <= 0f)
+            {
+                if (boostFuelCost > 0f)
+                {
+                    if (isOutOfFuel || currentFuel < boostFuelCost)
+                        return;
+                }
+
+                rb.AddForce(transform.forward * boostForce, ForceMode.Acceleration);
+
+                if (boostFuelCost > 0f)
+                    ConsumeFuel(boostFuelCost);
+
+                _isBoosting = true;
+                _boostTimer = Mathf.Max(0f, boostDuration);
+                _isPostBoost = false;
+                _boostCooldownTimer = boostCooldown;
+            }
+        }
+
+        float cap = GetCurrentSpeedCap();
+        float speed = rb.velocity.magnitude;
+        if (speed > cap)
+            rb.velocity = rb.velocity.normalized * cap;
+    }
+
+    private float GetCurrentSpeedCap()
+    {
+        float normalCap = effectiveMaxSpeed;
+        if (_isBoosting)
+            return normalCap * Mathf.Max(1f, boostMaxSpeedMultiplier);
+        if (_isPostBoost && postBoostSlowdownDuration > 0f)
+        {
+            float t = 1f - Mathf.Clamp01(_postBoostTimer / postBoostSlowdownDuration);
+            float boostedCap = normalCap * Mathf.Max(1f, boostMaxSpeedMultiplier);
+            return Mathf.Lerp(boostedCap, normalCap, t);
+        }
+        return normalCap;
+    }
+
     private void WireManagerEvents()
     {
         var mgr = RacingSkillTreeManager.Instance;
@@ -4651,11 +5118,13 @@ public class CarController : MonoBehaviour
         UpdateDriftUnlock();
     }
 
-    // ─────────────────────────────────────────────
-    // INPUT
-    // ─────────────────────────────────────────────
     private void HandleInput()
     {
+        if (_malfunctionTimer > 0f)
+            _malfunctionTimer -= Time.deltaTime;
+        if (_malfunctionCooldownRemain > 0f)
+            _malfunctionCooldownRemain -= Time.deltaTime;
+
         float rawHorizontal = Input.GetAxisRaw("Horizontal");
         float speed = rb != null ? rb.velocity.magnitude : 0f;
 
@@ -4669,82 +5138,73 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            bool driftHeld = Input.GetKey(driftKey);
-            bool canDriftThisFrame = driftHeld && speed >= driftMinSpeed;
+            driftButtonHeld = Input.GetKey(driftKey);
+            bool canDriftThisFrame = driftButtonHeld && speed >= driftMinSpeed;
 
-            // Determine current steering sign (filtered by threshold)
             int currentSign =
                 rawHorizontal > steerFlipThreshold ? 1 :
                 rawHorizontal < -steerFlipThreshold ? -1 : 0;
 
-            // Update persistent sign tracking (only while holding drift)
-            if (driftHeld)
+            if (driftButtonHeld)
             {
                 if (currentSign != 0)
                 {
-                    // Flip detection: previous non-zero sign differs from new sign
                     if (resetDriftChargeOnSteerFlip &&
                         _driftCurrentSteerSign != 0 &&
                         currentSign != _driftCurrentSteerSign &&
                         driftCharge >= minChargeForFlipReset)
                     {
-                        // Flip occurred: reset/retain fraction
+                        // Direction flip: keep velocity retention.
+                        // OLD (removed): driftEntrySpeed = 0f; driftClampSpeed = 0f;
                         driftCharge = Mathf.Clamp01(steerFlipRetainedCharge);
-                        driftEntrySpeed = 0f;
-                        driftClampSpeed = 0f;
+
+                        if (rb != null)
+                        {
+                            float currentSpeed = rb.velocity.magnitude;
+                            // Ensure driftEntrySpeed remains valid so drift speed preservation logic keeps working.
+                            if (driftEntrySpeed <= 0.01f)
+                                driftEntrySpeed = currentSpeed;
+
+                            // Maintain or elevate clamp & peak to current speed so we don't lose momentum.
+                            driftClampSpeed = Mathf.Max(driftClampSpeed, currentSpeed);
+                            driftPeakSpeed = Mathf.Max(driftPeakSpeed, currentSpeed);
+                        }
+
                         _driftFlipBlockUntil = Time.time + steerFlipRebuildDelay;
                     }
-
                     _driftCurrentSteerSign = currentSign;
                 }
-                // If steering neutral for a while you can optionally clear sign; choosing to keep it so a flip is still detected next time.
             }
             else
             {
                 _driftCurrentSteerSign = 0;
             }
 
-            // Block rebuild during delay window
             if (Time.time < _driftFlipBlockUntil)
-            {
-                // Treat as if drift not allowed to build yet
                 canDriftThisFrame = false;
-            }
 
-                       if (requireDirectionalInputForDriftCharge)
-                           {
+            if (requireDirectionalInputForDriftCharge)
+            {
                 bool hasDirectionalSteer = currentSign != 0;
-                               if (!hasDirectionalSteer)
-                                   {
-                                       // Holding drift without steering: drain charge toward 0
-                                       if (driftCharge > 0f && driftHeld)
-                                           {
+                if (!hasDirectionalSteer)
+                {
+                    if (driftCharge > 0f && driftButtonHeld)
+                    {
                         float drain = (driftNeutralDrainRate > 0f ? driftNeutralDrainRate : driftReleaseRate);
                         driftCharge = Mathf.MoveTowards(driftCharge, 0f, drain * Time.deltaTime);
-                                           }
-                                       // Prevent new build while neutral
+                    }
                     canDriftThisFrame = false;
-                                   }
-                              else
-                                  {
-                                       // Directional steer present -> normal build allowed if other conditions met
-                    canDriftThisFrame &= true;
-                                   }
-                           }
+                }
+            }
 
             float targetDrift = (canDriftThisFrame ? 1f : 0f);
-
             float rate = targetDrift > driftCharge ? driftBuildRate : driftReleaseRate;
-                       // If directional input required and currently neutral, we already handled manual drain above;
-                       // skip applying releaseRate again to avoid double drain (only apply when targetDrift == 0 from other causes).
-                       if (requireDirectionalInputForDriftCharge && targetDrift == 0f && (rawHorizontal > -steerFlipThreshold && rawHorizontal < steerFlipThreshold) && driftCharge > 0f)
-                           {
-                               // already drained; do nothing here
-                           }
-                       else
-                           {
+
+            if (!(requireDirectionalInputForDriftCharge && targetDrift == 0f &&
+                  (rawHorizontal > -steerFlipThreshold && rawHorizontal < steerFlipThreshold) && driftCharge > 0f))
+            {
                 driftCharge = Mathf.MoveTowards(driftCharge, targetDrift, rate * Time.deltaTime);
-                           }
+            }
 
             isDrifting = driftCharge > 0.01f;
 
@@ -4752,12 +5212,39 @@ public class CarController : MonoBehaviour
             {
                 driftEntrySpeed = speed;
                 driftClampSpeed = driftEntrySpeed;
+                driftPeakSpeed = driftEntrySpeed;
             }
             else if (!isDrifting && wasDrifting)
             {
                 driftEntrySpeed = 0f;
                 driftClampSpeed = 0f;
+                driftPeakSpeed = 0f;
             }
+        }
+
+        // NEW: Glide logic (ice feel) – if holding drift with no directional charge but above speed threshold.
+        if (allowDriftGlideWithoutSteer)
+        {
+            bool canGlide = driftButtonHeld && !isDrifting && speed >= driftMinSpeed;
+            if (canGlide)
+            {
+                if (!_driftGlideActive)
+                {
+                    driftEntrySpeed = speed;
+                    driftClampSpeed = driftEntrySpeed;
+                }
+                _driftGlideActive = true;
+            }
+            else if (_driftGlideActive && (!driftButtonHeld || speed < 0.5f))
+            {
+                _driftGlideActive = false;
+                driftEntrySpeed = 0f;
+                driftClampSpeed = 0f;
+            }
+        }
+        else
+        {
+            _driftGlideActive = false;
         }
 
         _lastRawSteerValue = rawHorizontal;
@@ -4765,113 +5252,143 @@ public class CarController : MonoBehaviour
         float smoothRate = steeringInputSmooth;
         if (isDrifting) smoothRate *= 1.4f;
 
+        bool suppressInputs = false;
+        if (enableDamageMalfunction)
+        {
+            float hpFrac = HPPercent;
+            float dmgT = Mathf.Clamp01((degradeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, degradeStartHPFraction));
+            float chancePerSec = Mathf.Lerp(0f, maxMalfunctionChancePerSecond, dmgT);
+
+            if (_malfunctionTimer <= 0f)
+            {
+                if (_malfunctionCooldownRemain <= 0f && chancePerSec > 0f)
+                {
+                    float p = chancePerSec * Time.deltaTime;
+                    if (Random.value < p)
+                    {
+                        _malfunctionTimer = Random.Range(malfunctionBurstDuration.x, malfunctionBurstDuration.y);
+                        _malfunctionCooldownRemain = Random.Range(malfunctionCooldown.x, malfunctionCooldown.y);
+                    }
+                }
+            }
+            suppressInputs = _malfunctionTimer > 0f;
+        }
+
         steeringInput = Mathf.MoveTowards(
             steeringInput,
-            rawHorizontal,
+            suppressInputs ? 0f : rawHorizontal,
             smoothRate * Time.deltaTime
         );
+
+        _inputsSuppressedThisFrame = suppressInputs;
     }
 
-    private void TriggerCrash(Vector3 hitDirection, float crashDuration, float impulseMagnitude, float torqueMagnitude)
+    private void TriggerCrash(Vector3 hitDirection, float crashDuration, float impulseMagnitude, float torqueMagnitude, float severity, Vector3 contactPointWS, bool applyDamage)
     {
         if (rb == null)
             return;
 
-        // Flatten hit direction to horizontal
         hitDirection.y = 0f;
         if (hitDirection.sqrMagnitude < 0.0001f)
-            hitDirection = -transform.forward;   // fallback
-
+            hitDirection = -transform.forward;
         hitDirection.Normalize();
 
         _inCrash = true;
         _crashTimer = crashDuration;
 
-        // Let physics own the car for a bit
         rb.freezeRotation = false;
         rb.drag = _baseDrag * crashDragMultiplier;
         rb.angularDrag = crashAngularDrag;
 
-        // Dampen existing velocity so impact feels stronger
         Vector3 v = rb.velocity;
         Vector3 flatVel = new Vector3(v.x, 0f, v.z);
 
-        // If we’re actually moving, deflect our direction
         if (flatVel.sqrMagnitude > 0.01f)
         {
-            // Treat hitDirection as pointing from obstacle -> car,
-            // so the "wall normal" we bounce off is roughly hitDirection
             Vector3 normal = hitDirection.normalized;
-
-            // Reflect our flat velocity off that normal (like a pool ball)
             Vector3 reflected = Vector3.Reflect(flatVel, normal);
 
-            // Blend between original and reflected to avoid crazy bounces
-            float deflectAmount = 0.6f; // 0 = ignore, 1 = full reflect
+            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, Mathf.Clamp01(severity));
             Vector3 newFlatVel = Vector3.Lerp(flatVel, reflected, deflectAmount);
 
-            // Optional: add a bit of slowdown
-            newFlatVel *= 0.8f;
+            float slowMul = Mathf.Lerp(0.9f, 0.6f, Mathf.Clamp01(severity));
+            newFlatVel *= slowMul;
 
             rb.velocity = new Vector3(newFlatVel.x, v.y, newFlatVel.z);
         }
         else
         {
-            // If we were basically stopped, just shove us away
             rb.velocity = hitDirection * impulseMagnitude * 0.5f;
         }
 
-        // Still add some extra shove so it feels punchy
         rb.AddForce(hitDirection * impulseMagnitude, ForceMode.VelocityChange);
 
-        // Spin: decide direction based on which SIDE the obstacle is on.
-        // hitDirection is from obstacle -> car (we used contact.normal),
-        // so the direction from car -> obstacle is -hitDirection.
         Vector3 toObstacleWorld = -hitDirection;
         Vector3 toObstacleLocal = transform.InverseTransformDirection(toObstacleWorld);
 
-        float sideSign = Mathf.Sign(toObstacleLocal.x); // +right, -left
-
-        // Fallback if almost perfectly front/back
+        float sideSign = Mathf.Sign(toObstacleLocal.x);
         if (Mathf.Abs(sideSign) < 0.001f)
             sideSign = Mathf.Sign(Vector3.Dot(toObstacleWorld, transform.right));
 
-        //
-        // Build separate yaw and roll components
-        //
-
-        // Yaw spin (around world Y) – same behavior as before but tunable
         Vector3 yawTorque = Vector3.up * torqueMagnitude * crashYawTorqueMultiplier * sideSign;
-
-        // Roll spin (around car's forward axis → Z rotation in inspector)
         Vector3 rollAxis = transform.forward;
         Vector3 rollTorque = rollAxis * torqueMagnitude * crashRollTorqueMultiplier * sideSign;
 
-        // Combine and apply
-        rb.AddTorque(yawTorque + rollTorque, ForceMode.VelocityChange);
+        Vector3 contactOffset = contactPointWS - transform.position;
+        Vector3 pitchAxis = transform.right;
+        float pitchSign = Mathf.Sign(Vector3.Dot(Vector3.Cross(contactOffset, hitDirection), pitchAxis));
+        Vector3 pitchTorque = pitchAxis * torqueMagnitude * crashPitchTorqueMultiplier * pitchSign;
+
+        rb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
+
+        float sev01 = Mathf.Clamp01(severity);
+
+        if (applyDamage)
+        {
+            if (hpCrashDamageAtSeverity1 > 0f)
+            {
+                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
+                hpLoss = Mathf.Min(hpLoss, currentHP);
+                currentHP = Mathf.Max(0f, currentHP - hpLoss);
+                Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
+            }
+            if (fuelLossAtSeverity1 > 0f)
+            {
+                float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
+                float before = currentFuel;
+                ConsumeFuel(requestedFuelLoss);
+                float consumed = Mathf.Max(0f, before - currentFuel);
+                if (consumed + 1e-3f < minFuelLossPerCrash)
+                {
+                    float shortfall = minFuelLossPerCrash - consumed;
+                    currentFuel = Mathf.Max(0f, currentFuel - shortfall);
+                }
+                Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
+            }
+
+            // Set cooldown timer AFTER applying damage
+            _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+        }
+        else
+        {
+            Debug.Log($"[CarController] Crash occurred but damage skipped (cooldown active, {Mathf.Max(0f, _nextCrashAllowedTime - Time.time):F2}s remain).");
+        }
     }
 
-    // ─────────────────────────────────────────────
-    // STEERING
-    // ─────────────────────────────────────────────
     private void HandleSteering()
     {
         if (rb == null) return;
-
-        // While crashing or reorienting, let physics (and the reorient code) own rotation.
-        if (_inCrash || _isReorienting)
-            return;
+        if (_inCrash || _isReorienting) return;
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, transform.forward);
         float steerSpeed = Mathf.Max(0f, effectiveTurnSpeed);
 
-        // Decide steering sign based on forward vs reverse
-        float steerDirection = 1f;
+        bool driftPhysicsActive = isDrifting || _driftGlideActive;
 
+        float steerDirection = 1f;
         if (invertSteeringWhenReversing && forwardSpeed < -0.1f)
         {
-            // Moving backwards and option enabled → invert steering
             steerDirection = -1f;
             steerSpeed *= reverseSteerMultiplier;
         }
@@ -4879,7 +5396,6 @@ public class CarController : MonoBehaviour
         float topSpeedForSteering = speedForSteerCurve > 0f ? speedForSteerCurve : Mathf.Max(1f, effectiveMaxSpeed);
         float t = Mathf.Clamp01(speed / topSpeedForSteering);
         float speedSteerMul = Mathf.Lerp(lowSpeedSteerMultiplier, highSpeedSteerMultiplier, t);
-
         float driftSteerMul = isDrifting ? Mathf.Lerp(1f, maxDriftSteerMultiplier, driftCharge) : 1f;
 
         if (Mathf.Abs(steeringInput) > 0.001f)
@@ -4892,7 +5408,9 @@ public class CarController : MonoBehaviour
                 float sign = Mathf.Sign(steeringInput);
                 Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
                 float sideMul = Mathf.Lerp(0.5f, 1f, driftCharge);
-                rb.AddForce(sideDir * driftSideForce * sideMul, ForceMode.Acceleration);
+                // Reduce lateral snap during flip rebuild delay.
+                float sideForceScale = Time.time < _driftFlipBlockUntil ? 0.4f : 1f;
+                rb.AddForce(sideDir * driftSideForce * sideMul * sideForceScale, ForceMode.Acceleration);
             }
         }
 
@@ -4914,9 +5432,6 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // ─────────────────────────────────────────────
-    // MOVEMENT + FUEL
-    // ─────────────────────────────────────────────
     private void HandleMovement()
     {
         if (rb == null) return;
@@ -4924,18 +5439,26 @@ public class CarController : MonoBehaviour
         Vector3 forward = transform.forward;
         bool forwardKey = Input.GetKey(KeyCode.W);
         bool reverseKey = Input.GetKey(KeyCode.S);
+
+        if (_inputsSuppressedThisFrame)
+        {
+            forwardKey = false;
+            reverseKey = false;
+        }
+
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
-        bool driftActive = isDrifting;
+
+        // Treat glide the same as drift for physics retention.
+        bool driftPhysicsActive = isDrifting || _driftGlideActive;
 
         if (!isOutOfFuel && maxFuel > 0f)
         {
-            bool accelerating = forwardKey && !driftActive;
+            bool accelerating = forwardKey;
             bool brakingOrReverse = reverseKey;
             bool nearIdleSpeed = speed <= idleSpeedThreshold + 0.001f;
 
-            // Driving logic
-            if (!driftActive)
+            if (!driftPhysicsActive)
             {
                 if (accelerating)
                 {
@@ -4950,92 +5473,190 @@ public class CarController : MonoBehaviour
                     if (forwardSpeed > brakeToReverseSpeed)
                     {
                         rb.AddForce(-forward * brakeAccel, ForceMode.Acceleration);
-                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime); // braking cost
+                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                     }
                     else
                     {
                         rb.AddForce(-forward * reverseAccel, ForceMode.Acceleration);
-                        ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime); // reverse throttle
+                        ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                     }
                 }
                 else
                 {
-                    // Coasting (no fuel) unless truly idle
-                    if (rb.velocity.sqrMagnitude > 0.001f)
+                    // Arcade gradual slowdown (no artificial drag slam).
+                    float currentSpeed = rb.velocity.magnitude;
+                    if (currentSpeed > 0.01f)
                     {
-                        Vector3 velDir = rb.velocity.normalized;
-                        float coastAccel = currentBrakingForce * coastDecelFactor;
-                        rb.AddForce(-velDir * coastAccel, ForceMode.Acceleration);
+                        float maxRef = Mathf.Max(1f, effectiveMaxSpeed);
+                        float speedFrac = Mathf.Clamp01(currentSpeed / maxRef);
+                        float highBlend = Mathf.Clamp01((speedFrac - coastHighSpeedFraction) / Mathf.Max(0.0001f, 1f - coastHighSpeedFraction));
+                        float decelPerSecond = Mathf.Lerp(coastLowDecelPerSecond, coastHighDecelPerSecond, highBlend);
+
+                        if (useExponentialCoast)
+                        {
+                            float k = Mathf.Max(0f, coastDampingPerSecond);
+                            float damp = Mathf.Exp(-k * Time.fixedDeltaTime);
+                            float targetMag = currentSpeed * damp;
+                            targetMag = Mathf.Max(0f, targetMag - decelPerSecond * 0.15f * Time.fixedDeltaTime);
+                            rb.velocity = rb.velocity.normalized * targetMag;
+                        }
+                        else
+                        {
+                            float newMag = Mathf.Max(0f, currentSpeed - decelPerSecond * Time.fixedDeltaTime);
+                            rb.velocity = rb.velocity.normalized * newMag;
+                        }
+                    }
+
+                    // NEW: Steering traction while coasting (unchanged)
+                    if (enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
+                    {
+                        Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
+                        Vector3 vel = rb.velocity;
+                        Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
+
+                        if (flatVel.sqrMagnitude > (minSpeedForSteerTraction * minSpeedForSteerTraction))
+                        {
+                            Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, flatForward, steerTractionReorientRate * Time.fixedDeltaTime).normalized;
+
+                            Vector3 fwdComp = flatForward * Vector3.Dot(flatVel, flatForward);
+                            Vector3 lateral = flatVel - fwdComp;
+                            lateral *= Mathf.Exp(-lateralFrictionWhileSteering * Time.fixedDeltaTime);
+                            float mag = (fwdComp + lateral).magnitude;
+
+                            Vector3 newFlat = blendedDir * mag;
+                            rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
+                        }
+
+                        rb.AddForce(flatForward * steerRollingAccel, ForceMode.Acceleration);
                     }
                 }
             }
             else
             {
-                // Drift mode: only reverse applies braking fuel use
-                if (reverseKey)
+                // Acceleration while drifting / gliding
+                if (accelerating && !brakingOrReverse)
                 {
-                    float brakeAccel = currentBrakingForce * brakeForwardFactor;
-                    rb.AddForce(-forward * brakeAccel, ForceMode.Acceleration);
-                    ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                    float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
+                    rb.AddForce(forward * effectiveAcceleration * accelMul, ForceMode.Acceleration);
+                    ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
+
+                // NEW: gentle deceleration while drifting when holding S (no harsh brake force)
+                if (brakingOrReverse && isDrifting)
+                {
+                    // consume braking fuel but avoid strong backward impulse
+                    ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                    // decay handled below via driftClampSpeed reduction
+                }
+                // No passive coast drag while drifting/gliding.
             }
 
-            // Idle fuel: only when not accelerating/braking and speed is very low and not drifting
-            if (!accelerating &&
-                !brakingOrReverse &&
-                !driftActive &&
-                nearIdleSpeed)
+            if (!accelerating && !brakingOrReverse && !driftPhysicsActive && nearIdleSpeed)
             {
                 ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
             }
         }
 
-        rb.drag = driftActive ? effectiveDrag * 0.01f : effectiveDrag;
+        rb.drag = driftPhysicsActive ? effectiveDrag * 0.01f : effectiveDrag;
 
         speed = rb.velocity.magnitude;
 
-        if (driftActive)
+        if (driftPhysicsActive)
         {
             if (driftEntrySpeed > 0.1f && speed > 0.01f)
             {
                 if (driftClampSpeed <= 0f)
                     driftClampSpeed = driftEntrySpeed;
 
-                Vector3 velDir =
-                    rb.velocity.sqrMagnitude > 0.0001f
-                        ? rb.velocity.normalized
-                        : transform.forward;
+                if (driftButtonHeld)
+                    driftPeakSpeed = Mathf.Max(driftPeakSpeed, rb.velocity.magnitude);
 
-                if (reverseKey)
+                Vector3 velDir = rb.velocity.sqrMagnitude > 0.0001f
+                    ? rb.velocity.normalized
+                    : transform.forward;
+
+                // Decay control:
+                // - Holding S while drifting: gentle decay (driftBrakeDecayPerSecond).
+                // - No input while drifting/gliding: driftGlideDecayPerSecond or driftSpeedDecayPerSecond.
+                bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
+                bool noThrottleNoBrake = (!forwardKey && !reverseKey);
+
+                if (gentleBrakeWhileDrifting)
                 {
-                    speed = rb.velocity.magnitude;
-                    driftClampSpeed = Mathf.Min(driftClampSpeed, speed);
+                    driftClampSpeed -= driftBrakeDecayPerSecond * Time.fixedDeltaTime;
+                }
+                else if (noThrottleNoBrake)
+                {
+                    float decayPerSecond = (_driftGlideActive && !isDrifting)
+                        ? driftGlideDecayPerSecond
+                        : driftSpeedDecayPerSecond;
+                    driftClampSpeed -= decayPerSecond * Time.fixedDeltaTime;
                 }
 
-                if (!forwardKey && !reverseKey)
-                {
-                    driftClampSpeed -= driftSpeedDecayPerSecond * Time.fixedDeltaTime;
-                    if (driftClampSpeed < 0f) driftClampSpeed = 0f;
-                }
-                
-                float targetSpeed = Mathf.Min(driftClampSpeed, effectiveMaxSpeed);
+                if (driftClampSpeed < 0f) driftClampSpeed = 0f;
+
+                float currentMag = rb.velocity.magnitude;
 
                 Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
                 Vector3 flatVel = new Vector3(velDir.x, 0f, velDir.z).normalized;
+
                 float steerInfluence = Mathf.Clamp01(Mathf.Abs(steeringInput));
                 const float driftAlignStrength = 2f;
                 float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.fixedDeltaTime);
-                Vector3 finalDir = Vector3.Slerp(flatVel, flatForward, blend);
+
+                Vector3 finalDir = (_driftGlideActive && !isDrifting)
+                    ? flatVel
+                    : Vector3.Slerp(flatVel, flatForward, blend);
+
                 if (finalDir.sqrMagnitude < 0.0001f)
                     finalDir = flatForward;
 
-                rb.velocity = finalDir.normalized * targetSpeed;
+                float targetMagnitude;
+                // If braking during drift, do NOT lock to peak speed and cap to the clamp.
+                bool brakingDrift = (reverseKey && !forwardKey);
+
+                if (!brakingDrift && lockToDriftPeakSpeed && driftButtonHeld)
+                {
+                    targetMagnitude = Mathf.Max(driftPeakSpeed, currentMag, driftClampSpeed);
+                }
+                else
+                {
+                    // While brakingDrift, preferentially bleed speed down to clamp.
+                    // Use Min with currentMag so velocity doesn't increase while braking.
+                    targetMagnitude = Mathf.Min(currentMag, Mathf.Max(driftClampSpeed, 0f));
+                }
+
+                float cap = GetCurrentSpeedCap();
+                targetMagnitude = Mathf.Min(targetMagnitude, cap);
+
+                // Preserve speed if accelerating: never drop below currentMag
+                if (forwardKey && !reverseKey)
+                    targetMagnitude = Mathf.Max(targetMagnitude, currentMag);
+
+                rb.velocity = finalDir.normalized * Mathf.Max(0f, targetMagnitude);
+
+                // Optional: small backward assist only while braking drift (very light)
+                if (isDrifting && brakingDrift && currentMag > 0.1f)
+                {
+                    float assist = currentBrakingForce * 0.15f; // gentle
+                    rb.AddForce(-flatForward * assist, ForceMode.Acceleration);
+                }
+
+                if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f)
+                {
+                    float sign = Mathf.Sign(steeringInput);
+                    Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
+                    float sideMul = Mathf.Lerp(0.5f, 1f, driftCharge);
+                    float sideForceScale = Time.time < _driftFlipBlockUntil ? 0.4f : 1f;
+                    rb.AddForce(sideDir * driftSideForce * sideMul * sideForceScale, ForceMode.Acceleration);
+                }
             }
         }
         else
         {
-            if (speed > effectiveMaxSpeed)
-                rb.velocity = rb.velocity.normalized * effectiveMaxSpeed;
+            float cap = GetCurrentSpeedCap();
+            if (speed > cap)
+                rb.velocity = rb.velocity.normalized * cap;
         }
     }
 
@@ -5072,9 +5693,6 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // ─────────────────────────────────────────────
-    // SURFACE SAMPLING
-    // ─────────────────────────────────────────────
     private void SampleGroundAndUpdateMultipliers()
     {
         if (carCollider == null) return;
@@ -5104,8 +5722,9 @@ public class CarController : MonoBehaviour
         {
             Vector3 size = boxCollider.size;
             Vector3 center = boxCollider.center;
-            float halfX = size.x * 0.5f;
-            float halfZ = size.z * 0.5f;
+
+            float halfX = size.x * 0.5f * surfaceSampleExtent;
+            float halfZ = size.z * 0.5f * surfaceSampleExtent;
             float halfY = size.y * 0.5f;
 
             for (int ix = 0; ix < samplesX; ix++)
@@ -5117,6 +5736,7 @@ public class CarController : MonoBehaviour
                 {
                     float tz = (iz + 0.5f) / samplesZ;
                     float localZ = Mathf.Lerp(-halfZ, halfZ, tz);
+
                     Vector3 localPoint = new Vector3(localX, -halfY + raycastHeightOffset, localZ) + center;
                     Vector3 origin = transform.TransformPoint(localPoint);
                     float rayDistance = size.y + raycastExtraDistance;
@@ -5134,15 +5754,19 @@ public class CarController : MonoBehaviour
         else
         {
             Bounds bounds = carCollider.bounds;
+            Vector3 center = bounds.center;
+            Vector3 extents = bounds.extents * surfaceSampleExtent;
+
             for (int ix = 0; ix < samplesX; ix++)
             {
                 float tx = (ix + 0.5f) / samplesX;
-                float x = Mathf.Lerp(bounds.min.x, bounds.max.x, tx);
+                float x = Mathf.Lerp(center.x - extents.x, center.x + extents.x, tx);
 
                 for (int iz = 0; iz < samplesZ; iz++)
                 {
                     float tz = (iz + 0.5f) / samplesZ;
-                    float z = Mathf.Lerp(bounds.min.z, bounds.max.z, tz);
+                    float z = Mathf.Lerp(center.z - extents.z, center.z + extents.z, tz);
+
                     Vector3 origin = new Vector3(x, bounds.max.y + raycastHeightOffset, z);
                     float rayDistance = bounds.size.y + raycastHeightOffset + raycastExtraDistance;
 
@@ -5240,9 +5864,6 @@ public class CarController : MonoBehaviour
         currentDrag = baseDrag * Mathf.Max(0f, dragMul);
     }
 
-    // ─────────────────────────────────────────────
-    // SKILL TREE COMPOSE
-    // ─────────────────────────────────────────────
     private void RefreshSkillEffects()
     {
         var mgr = RacingSkillTreeManager.Instance;
@@ -5270,62 +5891,25 @@ public class CarController : MonoBehaviour
     {
         var mgr = RacingSkillTreeManager.Instance;
 
-        int lvlAccel = 0;
-        int lvlMax = 0;
-        int lvlSteer = 0;
-        int lvlFuelEff = 0;
-
-        if (mgr != null)
-        {
-            lvlAccel = mgr.GetLevel(SkillType.Acceleration);
-            lvlMax = mgr.GetLevel(SkillType.MaxSpeed);
-            lvlSteer = mgr.GetLevel(SkillType.SteeringResponsiveness);
-            lvlFuelEff = mgr.GetLevel(SkillType.FuelEfficiency);
-        }
-
-    Debug.Log($"[CarController] Skills → " +
-        $"AccelLvl={lvlAccel}, MaxLvl={lvlMax}, SteerLvl={lvlSteer}, FuelEffLvl={lvlFuelEff} | " +
-        $"effAccel(before)={effectiveAcceleration:F2}, effMax(before)={effectiveMaxSpeed:F2}, effTurn(before)={effectiveTurnSpeed:F2} | " +
-        $"mgr={(mgr ? mgr.gameObject.name : "null")}");
-
-
-        if (lvlAccel <= 0)
-        {
-            effectiveAcceleration = currentAcceleration;
-        }
-        else
-        {
-            effectiveAcceleration = accelMode == SkillApplicationMode.Multiplicative
-                ? currentAcceleration * Mathf.Max(0f, accelValue)
-                : currentAcceleration + Mathf.Max(0f, accelValue);
-        }
-
-        if (lvlMax <= 0)
-        {
-            effectiveMaxSpeed = currentMaxSpeed;
-        }
-        else
-        {
-            effectiveMaxSpeed = maxSpeedMode == SkillApplicationMode.Multiplicative
-                ? currentMaxSpeed * Mathf.Max(0f, maxSpeedValue)
-                : currentMaxSpeed + Mathf.Max(0f, maxSpeedValue);
-        }
-
-        if (lvlSteer <= 0)
-        {
-            effectiveTurnSpeed = currentTurnSpeed;
-        }
-        else
-        {
-            effectiveTurnSpeed = steerMode == SkillApplicationMode.Multiplicative
-                ? currentTurnSpeed * Mathf.Max(0f, steerValue)
-                : currentTurnSpeed + Mathf.Max(0f, steerValue);
-        }
-
+        effectiveAcceleration = currentAcceleration;
+        effectiveMaxSpeed = currentMaxSpeed;
+        effectiveTurnSpeed = currentTurnSpeed;
         effectiveDrag = currentDrag;
 
         if (mgr != null)
         {
+            effectiveAcceleration = mgr.ApplyStatChain(
+                currentAcceleration,
+                SkillType.Acceleration_Add,
+                SkillType.Acceleration_Mul
+            );
+
+            effectiveMaxSpeed = mgr.ApplyStatChain(
+                currentMaxSpeed,
+                SkillType.MaxSpeed_Add,
+                SkillType.MaxSpeed_Mul
+            );
+
             float prevMaxFuel = maxFuel;
 
             maxFuel = mgr.ApplyStatChain(
@@ -5345,7 +5929,6 @@ public class CarController : MonoBehaviour
                     float percent = Mathf.Clamp01(currentFuel / prevMaxFuel);
                     currentFuel = percent * maxFuel;
                 }
-
                 currentFuel = Mathf.Clamp(currentFuel, 0f, maxFuel);
             }
 
@@ -5375,36 +5958,52 @@ public class CarController : MonoBehaviour
             );
 
             currentTurnSpeed = newTurnSpeed;
+            effectiveTurnSpeed = currentTurnSpeed;
         }
 
+        ApplyDamageDegradationToPerformance();
 
         if (rb != null)
         {
             float speed = rb.velocity.magnitude;
-            if (speed > effectiveMaxSpeed)
-                rb.velocity = rb.velocity.normalized * effectiveMaxSpeed;
+            float cap = GetCurrentSpeedCap();
+            if (speed > cap)
+                rb.velocity = rb.velocity.normalized * cap;
         }
 
 #if UNITY_EDITOR
-if (mgr != null)
-{
-    Debug.Log(
-        $"[CarController] Skills → " +
-        $"AccelLvl={mgr.GetLevel(SkillType.Acceleration)}, " +
-        $"MaxLvl={mgr.GetLevel(SkillType.MaxSpeed)}, " +
-        $"SteerLvl={mgr.GetLevel(SkillType.SteeringResponsiveness)}, " +
-        $"FuelEffLvl={mgr.GetLevel(SkillType.FuelEfficiency)} | " +
-        $"effAccel={effectiveAcceleration:F2}, " +
-        $"effMaxSpeed={effectiveMaxSpeed:F2}, " +
-        $"effTurn={effectiveTurnSpeed:F2}, " +
-        $"maxFuel={maxFuel:F1}, " +
-        $"idleFuel/s={idleFuelUsePerSecond:F3}, " +
-        $"driveFuel/s={fuelUsePerSecondAtFullThrottle:F3}"
-    );
-}
+        if (mgr != null)
+        {
+            Debug.Log(
+                $"[CarController] Skills(Add-chain) → " +
+                $"Accel_Add={mgr.GetLevel(SkillType.Acceleration_Add)}, " +
+                $"MaxSpeed_Add={mgr.GetLevel(SkillType.MaxSpeed_Add)}, " +
+                $"Turn_Add={mgr.GetLevel(SkillType.TurnSpeed_Add)}, " +
+                $"MaxFuel_Add={mgr.GetLevel(SkillType.MaxFuel_Add)} | " +
+                $"effAccel={effectiveAcceleration:F2}, " +
+                $"effMaxSpeed={effectiveMaxSpeed:F2}, " +
+                $"effTurn={effectiveTurnSpeed:F2}, " +
+                $"maxFuel={maxFuel:F1}, " +
+                $"idleFuel/s={idleFuelUsePerSecond:F3}, " +
+                $"driveFuel/s={fuelUsePerSecondAtFullThrottle:F3} | " +
+                $"HP={currentHP:F1}/{maxHP:F1}"
+            );
+        }
 #endif
+    }
 
+    private void ApplyDamageDegradationToPerformance()
+    {
+        float hpFrac = HPPercent;
+        if (hpFrac >= degradeStartHPFraction)
+            return;
 
+        float t = Mathf.Clamp01((degradeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, degradeStartHPFraction));
+        float perfMul = Mathf.Lerp(1f, Mathf.Clamp(performanceAtZeroHP, 0.1f, 1f), t);
+
+        effectiveAcceleration *= perfMul;
+        effectiveMaxSpeed *= perfMul;
+        effectiveTurnSpeed *= perfMul;
     }
 
     private void UpdateDriftUnlock()
@@ -5423,89 +6022,74 @@ if (mgr != null)
         if (rb == null)
             return;
 
-        // Only react to layers we care about
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
             return;
 
         float impactSpeed = collision.relativeVelocity.magnitude;
-
-        // Ignore gentle taps
         if (impactSpeed < minImpactSpeed)
             return;
 
-        // Map impact speed → severity 0..1
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
 
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
-        {
-            gm.OnCarCrash(impactSpeed, severity);
-        }
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
 
-        // Duration, impulse, torque all come from this severity
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && damageWindowOpen)
+            gm.OnCarCrash(impactSpeed, severity); // skip currency penalties if still in cooldown
+
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
 
-        // Direction to push the car away from the contact
         Vector3 hitDir;
+        Vector3 contactPoint = transform.position;
         if (collision.contactCount > 0)
         {
-            // contact normal points from the OTHER collider into ours, so we shove along it
-            hitDir = collision.GetContact(0).normal;
+            var c = collision.GetContact(0);
+            hitDir = c.normal;
+            contactPoint = c.point;
         }
         else
         {
             hitDir = (transform.position - collision.transform.position).normalized;
         }
 
-        TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag);
+        TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        // Only react to layers we care about
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
             return;
 
-        // If the obstacle has a Rigidbody, use relative velocity. Otherwise approximate.
         float impactSpeed = 0f;
-
         Rigidbody otherRb = other.attachedRigidbody;
         if (otherRb != null)
-        {
-            // Relative velocity between the two rigidbodies
             impactSpeed = (rb.velocity - otherRb.velocity).magnitude;
-        }
         else
-        {
-            // Otherwise approximate based on the car’s own speed
             impactSpeed = rb.velocity.magnitude;
-        }
 
-        // Ignore minor bumps
         if (impactSpeed < minImpactSpeed)
             return;
 
-        // Map impact speed to severity (0–1)
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
-        {
-            gm.OnCarCrash(impactSpeed, severity);
-        }
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
 
-        // Use severity to calculate values
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && damageWindowOpen)
+            gm.OnCarCrash(impactSpeed, severity);
+
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
 
-        // Impact direction: push away from the obstacle
         Vector3 hitDir = transform.position - other.bounds.center;
         hitDir.y = 0f;
         hitDir.Normalize();
 
-        TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag);
+        Vector3 contactPoint = other.bounds.ClosestPoint(transform.position);
+
+        TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
     }
 
     private void UpdateCrashReorientation()
@@ -5515,14 +6099,56 @@ if (mgr != null)
 
         _reorientElapsed += Time.deltaTime;
         float t = Mathf.Clamp01(_reorientElapsed / reorientDuration);
-
-        // Smoothly rotate from whatever rotation we ended the crash with,
-        // back to the initial rotation from Awake.
         transform.rotation = Quaternion.Slerp(_reorientStartRot, _reorientTargetRot, t);
-
         if (t >= 1f)
-        {
             _isReorienting = false;
+    }
+
+    // Add this method near other public APIs (e.g. below ConsumeFuel or at the end of the class)
+    public float AddFuel(float amount)
+    {
+        if (maxFuel <= 0f || amount <= 0f) return 0f;
+        float before = currentFuel;
+        currentFuel = Mathf.Min(maxFuel, currentFuel + amount);
+        if (currentFuel > 0f) isOutOfFuel = false; // allow driving again if we refueled
+        return Mathf.Max(0f, currentFuel - before);
+    }
+
+    public float AddHP(float amount)
+    {
+        if (maxHP <= 0f || amount <= 0f) return 0f;
+        float before = currentHP;
+        currentHP = Mathf.Min(maxHP, currentHP + amount);
+        return Mathf.Max(0f, currentHP - before);
+    }
+
+    private void UpdateDamageVFXImmediate()
+    {
+        if (!damageSmokeVFX) return;
+
+        float hpFrac = HPPercent;
+        var emission = damageSmokeVFX.emission;
+        var main = damageSmokeVFX.main;
+
+        if (hpFrac <= smokeStartHPFraction)
+        {
+            // Damage progress 0..1 from threshold → zero HP
+            float tDamage = Mathf.Clamp01((smokeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, smokeStartHPFraction));
+
+            emission.enabled = true;
+            emission.rateOverTime = Mathf.Lerp(smokeMinRate, smokeMaxRate, tDamage);
+
+            float size = Mathf.Lerp(smokeMinSize, smokeMaxSize, tDamage);
+            main.startSize = new ParticleSystem.MinMaxCurve(size);
+
+            // Color interpolation – invert if requested (handles ambiguous request)
+            float colorT = invertSmokeColorLerp ? (1f - tDamage) : tDamage;
+            Color currentColor = Color.Lerp(smokeColorAtThreshold, smokeColorAtZeroHP, colorT);
+            main.startColor = new ParticleSystem.MinMaxGradient(currentColor);
+        }
+        else
+        {
+            emission.enabled = false;
         }
     }
 
@@ -5534,6 +6160,10 @@ if (mgr != null)
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;
+
+    public float CurrentHP => currentHP;
+    public float MaxHP => maxHP;
+    public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
 }
 ```
 
@@ -5683,6 +6313,69 @@ public class SkidDebugStamp : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/FuelPickup.cs
+
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(Collider))]
+[DisallowMultipleComponent]
+public class FuelPickup : MonoBehaviour
+{
+    [Header("Fuel")]
+    [SerializeField, Min(0f)] private float baseAmount = 15f;
+
+    [Header("Visuals (optional)")]
+    [SerializeField] private PowerupPickupTween tween;
+
+    private bool hasBeenCollected = false;
+
+    private void Reset()
+    {
+        var col = GetComponent<Collider>();
+        if (col != null) col.isTrigger = true;
+    }
+
+    private void Awake()
+    {
+        if (!tween) tween = GetComponentInChildren<PowerupPickupTween>();
+        if (tween) tween.PlaySpawn();
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!other.TryGetComponent<CarController>(out var car))
+            return;
+
+        // Resolve final amount from skill tree
+        float amount = baseAmount;
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+            amount = mgr.GetFuelPickupAmount(baseAmount);
+
+        float added = 0f;
+
+        if (!hasBeenCollected) { added = car.AddFuel(amount); hasBeenCollected = true; }
+        if (added <= 0.001f)
+        {
+            // Nothing added � already full, still destroy it to avoid clutter
+            Destroy(gameObject);
+            return;
+        }
+
+        if (tween)
+        {
+            tween.PlayCollect();
+            Destroy(gameObject, tween.GetCollectDuration());
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/GameManager_Racing.cs
 
 ```csharp
@@ -5705,6 +6398,8 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
     [SerializeField] private CrossObstacleDirector crossObstacleDirector;
+    [SerializeField] private TrackFuelSpawner trackFuelSpawner;
+    [SerializeField] private TrackHPSpawner trackHPSpawner;
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -5742,6 +6437,14 @@ public class GameManager_Racing : MonoBehaviour
 
     [Header("Balancing")]
     [SerializeField, Min(0f)] private float coinsPerDistance = 0.33f; // coins per meter
+
+    [Header("Crash Penalties")]
+    [Tooltip("Enable currency loss when crashing.")]
+    [SerializeField] private bool enableCurrencyLossOnCrash = true;
+    [Tooltip("At max severity (1.0) crash, remove this fraction (0..1) of current currency.")]
+    [SerializeField, Range(0f, 1f)] private float currencyLossPercentAtSeverity1 = 0.05f;
+    [Tooltip("Minimum coins to remove on any crash when you have currency.")]
+    [SerializeField] private int minCurrencyLossPerCrash = 2;
 
     private GameObject carInstance;
     private CarController carController;
@@ -6002,6 +6705,26 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
     }
 
+    // Remove from run coins first (obstacles, then pickups). Returns actual removed.
+    private int DeductRunCoins(int amount)
+    {
+        int before = _pickupCoinsThisRun + _obstacleCoinsThisRun;
+        int toRemove = Mathf.Clamp(amount, 0, before);
+
+        int takeFromObstacles = Mathf.Min(_obstacleCoinsThisRun, toRemove);
+        _obstacleCoinsThisRun -= takeFromObstacles;
+        toRemove -= takeFromObstacles;
+
+        int takeFromPickups = Mathf.Min(_pickupCoinsThisRun, toRemove);
+        _pickupCoinsThisRun -= takeFromPickups;
+        toRemove -= takeFromPickups;
+
+        // Update HUD
+        uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
+
+        return before - (_pickupCoinsThisRun + _obstacleCoinsThisRun);
+    }
+
     /// <summary>
     /// Called by CarController when a crash occurs.
     /// impactSpeed is in m/s, severity is 0..1 from CarController.
@@ -6033,6 +6756,20 @@ public class GameManager_Racing : MonoBehaviour
             StartCrashSlowMo(sev);
         }
 
+        // Currency penalties (percentage-based)
+        if (enableCurrencyLossOnCrash)
+        {
+            int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
+            if (runCoins > 0)
+            {
+                int requested = Mathf.RoundToInt(runCoins * (severity * Mathf.Clamp01(currencyLossPercentAtSeverity1)));
+                int minLoss = Mathf.Clamp(minCurrencyLossPerCrash, 0, runCoins);
+                int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
+
+                int removed = DeductRunCoins(loss);
+                Debug.Log($"[GameManager_Racing] Crash penalty: lost {removed} run coins (severity={severity:F2}).");
+            }
+        }
     }
 
     private void StartCrashSlowMo(float severity)
@@ -6157,6 +6894,8 @@ public class GameManager_Racing : MonoBehaviour
 
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -6231,6 +6970,67 @@ public class GroundSurface : MonoBehaviour
     public float dragMultiplier = 1f;
 }
 
+```
+
+## Assets/Racing_Assets/Racing_Scripts/HPPickup.cs
+
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(Collider))]
+[DisallowMultipleComponent]
+public class HPPickup : MonoBehaviour
+{
+    [Header("HP")]
+    [SerializeField, Min(0f)] private float baseAmount = 20f;
+
+    [Header("Visuals (optional)")]
+    [SerializeField] private PowerupPickupTween tween;
+
+    private bool hasBeenCollected = false;
+
+    private void Reset()
+    {
+        var col = GetComponent<Collider>();
+        if (col != null) col.isTrigger = true;
+    }
+
+    private void Awake()
+    {
+        if (!tween) tween = GetComponentInChildren<PowerupPickupTween>();
+        if (tween) tween.PlaySpawn();
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!other.TryGetComponent<CarController>(out var car))
+            return;
+
+        float amount = baseAmount;
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+            amount = mgr.GetHPPickupAmount(baseAmount);
+
+        float added = 0f;
+        if (!hasBeenCollected) { added = car.AddHP(amount); hasBeenCollected = true; }
+
+        if (added <= 0.001f)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        if (tween)
+        {
+            tween.PlayCollect();
+            Destroy(gameObject, tween.GetCollectDuration());
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+}
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/ProceduralTrackGenerator.cs
@@ -7552,15 +8352,24 @@ public class RacingSkillDetailPanel : MonoBehaviour
 
     private string FormatEffect(SkillType type)
     {
-        float m = type switch
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return "x1";
+
+        switch (type)
         {
-            SkillType.Acceleration => mgr.GetAccelerationMultiplier(),
-            SkillType.MaxSpeed => mgr.GetMaxSpeedMultiplier(),
-            SkillType.FuelEfficiency => mgr.GetFuelEfficiencyMultiplier(),
-            SkillType.SteeringResponsiveness => mgr.GetSteeringMultiplier(),
-            _ => 1f
-        };
-        return $"x{m:0.##}";
+            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
+            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
+            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
+            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return $"SpawnRate x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return $"Double Chance {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+            default:
+                return "x1";
+        }
     }
 }
 
@@ -7579,6 +8388,7 @@ public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
 ```csharp
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 [DefaultExecutionOrder(-100)]
@@ -7595,29 +8405,24 @@ public class RacingSkillTreeManager : MonoBehaviour
     public event Action<int> OnCurrencyChanged;
     public event Action<SkillType, int> OnLevelChanged;
     public event Action OnSkillsReset;
-    public event Action<SkillDefinition> OnSkillRevealed; // NEW
+    public event Action<SkillDefinition> OnSkillRevealed;
 
     private SkillTreeState _state;
     private readonly Dictionary<SkillType, SkillDefinition> _map = new();
-
-    // NEW: revealed (visible) skills
     private readonly HashSet<SkillType> _revealedSkills = new();
 
     private const string CurrencyKey = "Racing_Currency";
 
     void Awake()
     {
-        // Singleton guard
         if (Instance && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Build definition map
         _map.Clear();
         foreach (var def in skills)
         {
@@ -7625,32 +8430,21 @@ public class RacingSkillTreeManager : MonoBehaviour
                 _map[def.type] = def;
         }
 
-        // Create state and LOAD any previously saved levels
         _state = new SkillTreeState();
-        _state.Load();   // <<< IMPORTANT: no ClearPersistent here
+        ClearAllData(); // TEMP (remove if you want persistence)
 
-        // Load player currency
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
 
-        // Seed initial revealed skills
         _revealedSkills.Clear();
         foreach (var def in skills)
-        {
             if (def && def.revealedAtStart)
                 RevealSkill(def);
-        }
 
-        // Fire initial events so UI / cars can sync
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
-        {
             OnLevelChanged?.Invoke(t, GetLevel(t));
-        }
     }
 
-
-
-    // NEW: reveal logic
     private void RevealSkill(SkillDefinition def)
     {
         if (!def) return;
@@ -7661,7 +8455,6 @@ public class RacingSkillTreeManager : MonoBehaviour
     public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
     public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
 
-    // ---------------- Economy ----------------
     public int Currency => playerCurrency;
     private void SaveCurrency()
     {
@@ -7672,6 +8465,13 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         if (amount <= 0) return;
         playerCurrency += amount;
+        SaveCurrency();
+        OnCurrencyChanged?.Invoke(playerCurrency);
+    }
+    public void RemoveCurrency(int amount)
+    {
+        if (amount <= 0) return;
+        playerCurrency = Mathf.Max(0, playerCurrency - amount);
         SaveCurrency();
         OnCurrencyChanged?.Invoke(playerCurrency);
     }
@@ -7691,8 +8491,6 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     public IReadOnlyList<SkillDefinition> AllSkills => skills;
-
-    // ---------------- Levels & purchases ----------------
     public int GetLevel(SkillType t) => _state.GetLevel(t);
 
     public bool TryPurchase(SkillType type)
@@ -7700,7 +8498,6 @@ public class RacingSkillTreeManager : MonoBehaviour
         if (!_map.TryGetValue(type, out var def)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
-
         int cost = def.GetCostForLevel(nextLevel);
         if (playerCurrency < cost) return false;
 
@@ -7709,20 +8506,14 @@ public class RacingSkillTreeManager : MonoBehaviour
             playerCurrency -= cost;
             SaveCurrency();
             _state.Save();
-
             int newLvl = GetLevel(type);
-
-            Debug.Log($"[RacingSkillTreeManager] Purchased {type}, new level = {newLvl}, currency = {playerCurrency}");
-
             OnCurrencyChanged?.Invoke(playerCurrency);
             OnLevelChanged?.Invoke(type, newLvl);
-
             EvaluateProgressiveUnlocks(def, newLvl);
             return true;
         }
         return false;
     }
-
 
     private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
     {
@@ -7731,7 +8522,6 @@ public class RacingSkillTreeManager : MonoBehaviour
             RevealSkill(unlocked);
     }
 
-    // ---------------- Raw effect retrieval unchanged ----------------
     public float GetRawEffectValue(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def))
@@ -7760,14 +8550,51 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         if (!_map.TryGetValue(type, out var def))
             return baseValue;
-
         int lvl = GetLevel(type);
         if (lvl <= 0) return baseValue;
-
         float v = def.GetValueAtLevel(lvl);
         if (def.mode == SkillApplicationMode.Multiplicative)
             return baseValue * Mathf.Max(0f, v);
         return baseValue + v;
+    }
+
+    // Add these helpers anywhere in the class body
+    public float GetFuelPickupSpawnRateMultiplier()
+    {
+        // 1.0 baseline, then apply add/mul chain, clamped >= 0
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.FuelPickupSpawnRate_Add, SkillType.FuelPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetFuelPickupAmount(float baseAmount = 15f)
+    {
+        // Start at baseAmount (default 15), then apply add/mul chain
+        float v = ApplyStatChain(baseAmount, SkillType.FuelPickupAmount_Add, SkillType.FuelPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsFuelPickupUnlocked()
+    {
+        return GetLevel(SkillType.FuelPickupUnlock) > 0;
+    }
+
+    public float GetHPPickupSpawnRateMultiplier()
+    {
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.HPPickupSpawnRate_Add, SkillType.HPPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetHPPickupAmount(float baseAmount = 20f)
+    {
+        float v = ApplyStatChain(baseAmount, SkillType.HPPickupAmount_Add, SkillType.HPPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsHPPickupUnlocked()
+    {
+        return GetLevel(SkillType.HPPickupUnlock) > 0;
     }
 
     public float ApplyStatChain(float baseValue, params SkillType[] types)
@@ -7784,13 +8611,30 @@ public class RacingSkillTreeManager : MonoBehaviour
     public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
     public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
 
-    // ---------------- Reset ----------------
+    public float GetCoinSpawnRateMultiplier()
+    {
+        // Effective probability scaling; clamp to [0, +inf) then caller clamps to [0,1]
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetCoinDoubleChance()
+    {
+        // Starts at 0; additive levels add raw probability, multiplicative levels scale it.
+        float chance = ApplyStatChain(
+            0f,
+            SkillType.CoinDoubleChance_Add,
+            SkillType.CoinDoubleChance_Mul
+        );
+        return Mathf.Clamp01(chance);
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();
         playerCurrency = 0;
         SaveCurrency();
-
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, 0);
@@ -7980,10 +8824,12 @@ public class SkillDefinition : ScriptableObject
 
     [Header("Effect")]
     public SkillApplicationMode mode = SkillApplicationMode.Multiplicative;
-    [Tooltip("Base additive or multiplicative value at level 0 (multiplicative: 1 = no change).")]
-    public float baseValue = 1f;
-    [Tooltip("Per level increment (add to base for additive, added then used as multiplier for multiplicative).")]
-    public float perLevelAdd = 0.05f;
+
+    [Tooltip("Additive: starting offset. Multiplicative: ignored (baseline is always 1 at level 0).")]
+    public float baseValue = 0f;
+
+    [Tooltip("Per-level increment. Additive: value added each level. Multiplicative: extra factor added to 1 (0.01 => +1%).")]
+    public float perLevelAdd = 0.01f;
 
     [Header("UI Layout")]
     [Tooltip("Anchored position on the skill tree content canvas (in pixels).")]
@@ -8013,11 +8859,22 @@ public class SkillDefinition : ScriptableObject
         return flatCost;
     }
 
+    /// <summary>
+    /// Returns the raw effect value for the given level (>=1).
+    /// Level 0 is handled externally (0 additive, 1 multiplicative).
+    /// Additive: baseValue + perLevelAdd * level.
+    /// Multiplicative: 1 + perLevelAdd * level (baseValue ignored).
+    /// </summary>
     public float GetValueAtLevel(int level)
     {
         level = Mathf.Clamp(level, 0, maxLevel);
-        float v = baseValue + perLevelAdd * level;
-        return mode == SkillApplicationMode.Multiplicative ? v : v;
+        if (mode == SkillApplicationMode.Multiplicative)
+        {
+            // Level 0 → 1 (handled upstream), Level N → 1 + perLevelAdd * N
+            return 1f + perLevelAdd * level;
+        }
+        // Additive: Level 0 → baseValue (upstream treats it as 0), Level N → baseValue + perLevelAdd * N
+        return baseValue + perLevelAdd * level;
     }
 
     /// <summary>
@@ -8139,7 +8996,25 @@ public enum SkillType
     TurretConeAngle_Add,
     TurretConeAngle_Mul,
     TurretScanRadius_Add,
-    TurretScanRadius_Mul
+    TurretScanRadius_Mul,
+
+    CoinSpawnRate_Add,
+    CoinSpawnRate_Mul,
+
+    CoinDoubleChance_Add,
+    CoinDoubleChance_Mul,
+
+    FuelPickupUnlock,            // gate spawning (level > 0 enables)
+    FuelPickupSpawnRate_Add,     // spawn chance scaling (add chain)
+    FuelPickupSpawnRate_Mul,     // spawn chance scaling (mul chain)
+    FuelPickupAmount_Add,        // amount scaling (add chain) – base is 15
+    FuelPickupAmount_Mul,         // amount scaling (mul chain)
+
+    HPPickupUnlock,
+    HPPickupSpawnRate_Add,
+    HPPickupSpawnRate_Mul,
+    HPPickupAmount_Add,
+    HPPickupAmount_Mul
 }
 
 
@@ -8320,124 +9195,138 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Streams coin pickups along the procedural track with distance‑aware variety staging,
-/// early‑section balancing and dynamic unlocking (similar in concept to an obstacle/object spawner).
-/// </summary>
 public class TrackCoinSpawner : MonoBehaviour
 {
-    #region Variant Definition
-    [Serializable]
-    public class CoinVariant
-    {
-        [Tooltip("Prefab with CoinPickup component (value taken from variant if set >0).")]
-        public GameObject prefab;
-
-        [Tooltip("Minimum track distance (meters) before this variant can appear.")]
-        public float unlockDistance = 0f;
-
-        [Tooltip("If > 0 overrides the CoinPickup's value on spawn.")]
-        public int overrideValue = 0;
-
-        [Tooltip("Relative weight used in random selection among unlocked variants.")]
-        public float weight = 1f;
-
-        [Tooltip("Optional multiplier curve by normalized distance (0=start,1=end). Leave empty for 1.")]
-        public AnimationCurve distanceMultiplier = AnimationCurve.Linear(0, 1, 1, 1);
-    }
-    #endregion
-
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
 
-    [Header("Deprecated (kept for backward compatibility)")]
-    [SerializeField] private GameObject coinPrefab;          // Fallback/common coin
-    [SerializeField] private Transform coinParent;
+    [Header("Prefabs (Order: Bronze / Silver / Gold)")]
+    [SerializeField] private GameObject bronzePrefab;
+    [SerializeField] private GameObject silverPrefab;
+    [SerializeField] private GameObject goldPrefab;
 
-    [Header("Coin Variants (add higher value types here)")]
-    [SerializeField] private List<CoinVariant> variants = new();
+    [Header("Coin Values")]
+    [SerializeField] private int bronzeValue = 1;
+    [SerializeField] private int silverValue = 3;
+    [SerializeField] private int goldValue = 8;
 
-    [Header("Coin Height")]
-    [SerializeField] private float coinHeightOffset = 0.5f;
+    [Header("Weight Curves (Track Fraction 0..1)")]
+    [Tooltip("Bronze starts high then fades out strongly by mid/end.")]
+    [SerializeField]
+    private AnimationCurve bronzeWeightCurve = new AnimationCurve(
+        new Keyframe(0f, 1f),
+        new Keyframe(0.25f, 1f),
+        new Keyframe(0.45f, 0.6f),
+        new Keyframe(0.60f, 0.25f),
+        new Keyframe(0.75f, 0.12f),
+        new Keyframe(0.90f, 0.05f),
+        new Keyframe(1f, 0.03f)
+    );
 
-    [Header("Path Sampling")]
-    [SerializeField] private bool useSmoothing = true;
-    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+    [Tooltip("Silver ramps up, dominates mid track, tapers near end.")]
+    [SerializeField]
+    private AnimationCurve silverWeightCurve = new AnimationCurve(
+        new Keyframe(0f, 0f),
+        new Keyframe(0.15f, 0.25f),
+        new Keyframe(0.30f, 0.9f),
+        new Keyframe(0.50f, 1.2f),
+        new Keyframe(0.65f, 1.1f),
+        new Keyframe(0.80f, 0.7f),
+        new Keyframe(1f, 0.4f)
+    );
 
-    [Header("Slot Layout")]
+    [Tooltip("Gold very rare early, increases late and becomes dominant.")]
+    [SerializeField]
+    private AnimationCurve goldWeightCurve = new AnimationCurve(
+        new Keyframe(0f, 0f),
+        new Keyframe(0.25f, 0.05f),
+        new Keyframe(0.40f, 0.15f),
+        new Keyframe(0.55f, 0.25f),
+        new Keyframe(0.70f, 0.55f),
+        new Keyframe(0.85f, 1.2f),
+        new Keyframe(0.95f, 1.4f),
+        new Keyframe(1f, 1.5f)
+    );
+
+    [Header("Global Variant Tweaks")]
+    [SerializeField, Tooltip("Extra overall scaling applied to bronze weights.")]
+    private float bronzeGlobalScale = 1f;
+    [SerializeField, Tooltip("Extra overall scaling applied to silver weights.")]
+    private float silverGlobalScale = 1f;
+    [SerializeField, Tooltip("Extra overall scaling applied to gold weights.")]
+    private float goldGlobalScale = 1f;
+
+    [Header("Spawn Layout")]
     [SerializeField, Min(0.1f)] private float coinSpacing = 6f;
     [SerializeField] private int maxActiveCoins = 120;
-
-    [Header("Spawn Window (ahead of player)")]
     [SerializeField] private float minSpawnDistanceAhead = 40f;
     [SerializeField] private float maxSpawnDistanceAhead = 140f;
     [SerializeField] private float despawnBehindDistance = 25f;
-
-    [Header("Initial Pre-Spawn")]
     [SerializeField] private float initialPreSpawnDistance = 80f;
 
-    [Header("Global Spawn Chance")]
+    [Header("Spawn Probability")]
     [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.85f;
-    [Tooltip("Extra scaling by normalized distance (0..1).")]
+    [Tooltip("Curve remaps distance fraction → multiplier on base spawn chance.")]
     [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
+    [Tooltip("Optional late-track spawn chance boost.")]
+    [SerializeField]
+    private AnimationCurve lateTrackSpawnBonusCurve = new AnimationCurve(
+        new Keyframe(0f, 1f),
+        new Keyframe(0.8f, 1f),
+        new Keyframe(1f, 1.15f)
+    );
 
-    [Header("Early Region Balancing")]
-    [Tooltip("Meters from start considered 'early'.")]
-    [SerializeField] private float earlyRegionMeters = 60f;
-    [Tooltip("Chance scale applied inside early region (e.g. 0.6 = fewer coins early).")]
-    [SerializeField, Range(0f, 2f)] private float earlyRegionChanceScale = 0.6f;
-    [Tooltip("Optionally restrict to only the first (common) variant during early region.")]
-    [SerializeField] private bool restrictVariantsEarly = true;
-    [Tooltip("Hard cap of active coins allowed inside the early region.")]
-    [SerializeField] private int earlyRegionActiveCap = 40;
+    [Header("Skill Integration")]
+    [SerializeField] private bool applySkillSpawnRate = true;
 
-    [Header("Lateral Placement")]
+    [Header("Placement")]
+    [SerializeField] private float coinHeightOffset = 0.5f;
     [SerializeField, Range(0f, 1f)] private float lateralFractionOfHalfWidth = 0.7f;
     [SerializeField] private float edgeInnerMargin = 0.25f;
 
-    [Header("Raycast Settings")]
+    [Header("Raycast")]
     [SerializeField] private LayerMask roadLayerMask = ~0;
     [SerializeField] private float raycastStartHeight = 5f;
     [SerializeField] private float raycastDownDistance = 15f;
     [SerializeField] private bool alignToSurfaceNormal = true;
 
-    [Header("Jitter")]
+    [Header("Jitter & Update")]
     [SerializeField] private float distanceJitter = 1.5f;
-
-    [Header("Update")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
     [SerializeField] private float updateInterval = 0.2f;
 
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
+    [SerializeField] private bool showWeightsGizmo = false;
+    [SerializeField] private int gizmoSamples = 50;
 
-    // Path data
+    // Internal path
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
     private float _totalLength;
-
-    // Slot → GameObject
-    private readonly Dictionary<int, GameObject> _coinsBySlot = new();
     private int _maxSlotIndex;
 
+    private readonly Dictionary<int, GameObject> _coinsBySlot = new();
+    private readonly List<int> _toRemove = new();
     private float _updateTimer;
     private int _lastClosestSegmentIndex = 0;
-    private readonly List<int> _toRemove = new();
 
-    // --- New: track active coins inside early region for cap enforcement ---
-    private int _activeEarlyRegion;
-
-    #region Lifecycle
-    private void Reset()
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {
-        if (trackGenerator == null)
-            trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
+        trackGenerator = generator;
+        playerTransform = player;
+        RebuildPath();
+        ClearAllCoins();
+        SetupSlots();
+        PreSpawnInitialCoins();
+        _updateTimer = 0f;
     }
 
     private void Update()
     {
-        if (_path.Count < 2 || playerTransform == null)
-            return;
+        if (_path.Count < 2 || playerTransform == null) return;
 
         _updateTimer += Time.deltaTime;
         if (_updateTimer >= updateInterval)
@@ -8446,29 +9335,7 @@ public class TrackCoinSpawner : MonoBehaviour
             StreamCoins();
         }
     }
-    #endregion
 
-    #region Initialization / Run
-    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
-    {
-        trackGenerator = generator;
-        playerTransform = player;
-
-        if (trackGenerator == null || playerTransform == null)
-        {
-            Debug.LogError("[TrackCoinSpawner] InitializeForRun missing references.");
-            return;
-        }
-
-        RebuildPath();
-        ClearAllCoins();
-        SetupSlots();
-        PreSpawnInitialCoins();
-        _updateTimer = 0f;
-    }
-    #endregion
-
-    #region Path Build
     private void RebuildPath()
     {
         _path.Clear();
@@ -8497,6 +9364,7 @@ public class TrackCoinSpawner : MonoBehaviour
         }
         _totalLength = length;
     }
+
 
     private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
     {
@@ -8533,9 +9401,7 @@ public class TrackCoinSpawner : MonoBehaviour
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         );
     }
-    #endregion
 
-    #region Slots / PreSpawn
     private void SetupSlots()
     {
         if (_totalLength <= 0f || coinSpacing <= 0f)
@@ -8549,7 +9415,6 @@ public class TrackCoinSpawner : MonoBehaviour
     private void PreSpawnInitialCoins()
     {
         if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
-
         float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
         int endSlot = Mathf.FloorToInt(endDist / coinSpacing);
 
@@ -8557,41 +9422,30 @@ public class TrackCoinSpawner : MonoBehaviour
         {
             if (_coinsBySlot.Count >= maxActiveCoins) break;
             float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist, preSpawn: true);
+            TrySpawnCoinAtDistance(slot, dist, true);
         }
     }
-    #endregion
 
-    #region Streaming
     private void StreamCoins()
     {
         if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
 
         float playerDist = GetPlayerDistanceAlongTrack();
-
-        // Despawn behind
         float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
-        _toRemove.Clear();
-        _activeEarlyRegion = 0;
 
+        _toRemove.Clear();
         foreach (var kvp in _coinsBySlot)
         {
-            int slot = kvp.Key;
-            float slotDist = slot * coinSpacing;
+            float slotDist = kvp.Key * coinSpacing;
             if (slotDist < despawnStart)
             {
                 if (kvp.Value) Destroy(kvp.Value);
-                _toRemove.Add(slot);
-            }
-            else if (slotDist <= earlyRegionMeters)
-            {
-                _activeEarlyRegion++;
+                _toRemove.Add(kvp.Key);
             }
         }
         for (int i = 0; i < _toRemove.Count; i++)
             _coinsBySlot.Remove(_toRemove[i]);
 
-        // Spawn ahead
         float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
         float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
 
@@ -8602,37 +9456,55 @@ public class TrackCoinSpawner : MonoBehaviour
         {
             if (_coinsBySlot.ContainsKey(slot)) continue;
             if (_coinsBySlot.Count >= maxActiveCoins) break;
-
             float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist);
+            TrySpawnCoinAtDistance(slot, dist, false);
         }
     }
-    #endregion
 
-    #region Spawn Logic
-    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn = false)
+    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
     {
-        // Distance jitter
         float jitter = distanceJitter > 0f ? UnityEngine.Random.Range(-distanceJitter, distanceJitter) : 0f;
         float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
 
-        // Compute spawn chance with early balancing and distance curve
         float spawnChance = ComputeSpawnChance(dist);
         if (UnityEngine.Random.value > spawnChance)
             return;
 
-        // Early region active cap
-        if (dist <= earlyRegionMeters && _activeEarlyRegion >= earlyRegionActiveCap)
-            return;
+        // Compute normalized distance
+        float norm = _totalLength > 0f ? dist / _totalLength : 0f;
 
-        // Determine variant
-        GameObject chosenPrefab = ResolveVariantPrefab(dist, out int overrideValue);
-        if (!chosenPrefab) return;
+        // Variant weights
+        float wBronze = Mathf.Max(0f, bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(norm) * bronzeGlobalScale : 0f);
+        float wSilver = Mathf.Max(0f, silverWeightCurve != null ? silverWeightCurve.Evaluate(norm) * silverGlobalScale : 0f);
+        float wGold = Mathf.Max(0f, goldWeightCurve != null ? goldWeightCurve.Evaluate(norm) * goldGlobalScale : 0f);
 
-        // Sample along path
+        float total = wBronze + wSilver + wGold;
+        if (total <= 0f) return;
+
+        float pick = UnityEngine.Random.value * total;
+        GameObject chosen = null;
+        int chosenValue = 1;
+
+        if (pick <= wBronze)
+        {
+            chosen = bronzePrefab;
+            chosenValue = bronzeValue;
+        }
+        else if (pick <= wBronze + wSilver)
+        {
+            chosen = silverPrefab;
+            chosenValue = silverValue;
+        }
+        else
+        {
+            chosen = goldPrefab;
+            chosenValue = goldValue;
+        }
+
+        if (!chosen) return;
+
         SampleAlongPath(dist, out var centerPos, out var forward);
 
-        // Lateral placement
         float halfWidth = (trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f);
         float usableHalfWidth = Mathf.Max(0f, halfWidth * lateralFractionOfHalfWidth - edgeInnerMargin);
         if (usableHalfWidth <= 0f) usableHalfWidth = halfWidth * 0.5f;
@@ -8645,7 +9517,6 @@ public class TrackCoinSpawner : MonoBehaviour
         float lateral = UnityEngine.Random.Range(-usableHalfWidth, usableHalfWidth);
         Vector3 candidate = centerPos + right * lateral;
 
-        // Raycast to road
         Vector3 origin = candidate + Vector3.up * raycastStartHeight;
         float maxDist = raycastStartHeight + raycastDownDistance;
 
@@ -8662,25 +9533,19 @@ public class TrackCoinSpawner : MonoBehaviour
         forwardOnSurface.Normalize();
 
         Quaternion rot = Quaternion.LookRotation(forwardOnSurface, up);
-        Transform parent = coinParent ? coinParent : transform;
+        Transform parent = transform;
         Vector3 spawnPos = hit.point + up * coinHeightOffset;
 
-        GameObject inst = Instantiate(chosenPrefab, spawnPos, rot, parent);
+        GameObject inst = Instantiate(chosen, spawnPos, rot, parent);
         _coinsBySlot[slotIndex] = inst;
 
-        if (dist <= earlyRegionMeters) _activeEarlyRegion++;
-
-        // Override coin value if variant specifies
-        if (overrideValue > 0)
+        // Assign value if coin has CoinPickup
+        var cp = inst.GetComponent<CoinPickup>();
+        if (cp != null)
         {
-            var pickup = inst.GetComponent<CoinPickup>();
-            if (pickup)
-            {
-                // reflection assign (value is private) – easier: expose public method or use serialized hack.
-                // Here we simply use a helper component:
-                var helper = inst.GetComponent<VariantCoinValueSetter>() ?? inst.AddComponent<VariantCoinValueSetter>();
-                helper.SetValue(overrideValue);
-            }
+            // Reflection set (private serialized field 'value')
+            var fi = typeof(CoinPickup).GetField("value", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (fi != null) fi.SetValue(cp, chosenValue);
         }
 
         if (verboseDebug)
@@ -8693,81 +9558,30 @@ public class TrackCoinSpawner : MonoBehaviour
     private float ComputeSpawnChance(float distance)
     {
         float norm = _totalLength > 0f ? distance / _totalLength : 0f;
-        float baseChance = baseSpawnChance * Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
+        float chance = baseSpawnChance;
 
-        // Early region scaling
-        if (distance <= earlyRegionMeters)
-            baseChance *= earlyRegionChanceScale;
+        if (spawnChanceDistanceCurve != null)
+            chance *= Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
 
-        return Mathf.Clamp01(baseChance);
+        if (lateTrackSpawnBonusCurve != null)
+            chance *= Mathf.Max(0f, lateTrackSpawnBonusCurve.Evaluate(norm));
+
+        if (applySkillSpawnRate)
+        {
+            var mgr = RacingSkillTreeManager.Instance;
+            if (mgr != null)
+                chance *= mgr.GetCoinSpawnRateMultiplier();
+        }
+
+        return Mathf.Clamp01(chance);
     }
 
-    private GameObject ResolveVariantPrefab(float distance, out int overrideValue)
-    {
-        overrideValue = 0;
-
-        // Gather unlocked variants
-        List<CoinVariant> unlocked = null;
-        if (variants != null && variants.Count > 0)
-        {
-            unlocked = variants.FindAll(v => v != null && distance >= v.unlockDistance);
-        }
-
-        // Early restriction
-        if (restrictVariantsEarly && distance <= earlyRegionMeters && unlocked != null && unlocked.Count > 0)
-        {
-            // Use lowest unlockDistance variant(s)
-            float minUnlock = float.MaxValue;
-            foreach (var v in unlocked) if (v.unlockDistance < minUnlock) minUnlock = v.unlockDistance;
-            unlocked = unlocked.FindAll(v => Mathf.Approximately(v.unlockDistance, minUnlock));
-        }
-
-        // Fallback
-        if (unlocked == null || unlocked.Count == 0)
-        {
-            if (coinPrefab)
-                return coinPrefab;
-            return variants != null && variants.Count > 0 && variants[0] != null ? variants[0].prefab : null;
-        }
-
-        // Weighted random with distance multiplier
-        float totalWeight = 0f;
-        float norm = _totalLength > 0f ? distance / _totalLength : 0f;
-        foreach (var v in unlocked)
-        {
-            float mult = v.distanceMultiplier != null ? v.distanceMultiplier.Evaluate(norm) : 1f;
-            totalWeight += Mathf.Max(0f, v.weight * mult);
-        }
-        if (totalWeight <= 0f) return unlocked[0].prefab;
-
-        float pick = UnityEngine.Random.value * totalWeight;
-        float accum = 0f;
-        foreach (var v in unlocked)
-        {
-            float mult = v.distanceMultiplier != null ? v.distanceMultiplier.Evaluate(norm) : 1f;
-            float w = Mathf.Max(0f, v.weight * mult);
-            accum += w;
-            if (pick <= accum)
-            {
-                overrideValue = v.overrideValue;
-                return v.prefab;
-            }
-        }
-
-        // Fallback
-        overrideValue = unlocked[unlocked.Count - 1].overrideValue;
-        return unlocked[unlocked.Count - 1].prefab;
-    }
-    #endregion
-
-    #region Helpers
     private void SampleAlongPath(float targetDistance, out Vector3 pos, out Vector3 forward)
     {
         pos = Vector3.zero;
         forward = Vector3.forward;
 
         if (_path.Count < 2 || _cumLengths == null) return;
-
         targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
 
         int idx = 0;
@@ -8835,8 +9649,7 @@ public class TrackCoinSpawner : MonoBehaviour
         }
 
         float baseDist = _cumLengths[bestIndex];
-        float dist = baseDist + segT * segLen;
-        return dist;
+        return baseDist + segT * segLen;
     }
 
     private void ClearAllCoins()
@@ -8845,39 +9658,39 @@ public class TrackCoinSpawner : MonoBehaviour
             if (kvp.Value) Destroy(kvp.Value);
         _coinsBySlot.Clear();
     }
-    #endregion
 
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
-        for (int i = 0; i < _path.Count - 1; i++)
-            Gizmos.DrawLine(_path[i], _path[i + 1]);
+        if (!showWeightsGizmo || _path.Count < 2 || _totalLength <= 0f)
+            return;
 
-        if (earlyRegionMeters > 0f)
+        Gizmos.color = Color.white;
+        Vector3 basePos = _path.Count > 0 ? _path[0] : transform.position;
+
+        float step = 1f / Mathf.Max(1, gizmoSamples);
+        for (int i = 0; i <= gizmoSamples; i++)
         {
-            Gizmos.color = new Color(0f, 0.6f, 1f, 0.25f);
-            Vector3 start = _path.Count > 0 ? _path[0] : transform.position;
-            Gizmos.DrawWireSphere(start, 0.4f);
+            float f = i * step;
+            float wb = bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(f) * bronzeGlobalScale : 0f;
+            float ws = silverWeightCurve != null ? silverWeightCurve.Evaluate(f) * silverGlobalScale : 0f;
+            float wg = goldWeightCurve != null ? goldWeightCurve.Evaluate(f) * goldGlobalScale : 0f;
+            float sum = wb + ws + wg + 0.0001f;
+
+            float yOffset = 0.5f;
+            Vector3 bronzeP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wb / sum + yOffset);
+            Vector3 silverP = basePos + Vector3.right * (f * 10f) + Vector3.up * (ws / sum + yOffset);
+            Vector3 goldP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wg / sum + yOffset);
+
+            Gizmos.color = new Color(0.8f, 0.5f, 0.2f, 0.9f);
+            Gizmos.DrawSphere(bronzeP, 0.06f);
+            Gizmos.color = new Color(0.75f, 0.75f, 0.75f, 0.9f);
+            Gizmos.DrawSphere(silverP, 0.06f);
+            Gizmos.color = new Color(0.95f, 0.85f, 0.15f, 0.9f);
+            Gizmos.DrawSphere(goldP, 0.06f);
         }
     }
 #endif
-}
-
-/// <summary>
-/// Helper component to override coin pickup value at spawn without changing CoinPickup internals.
-/// </summary>
-[DisallowMultipleComponent]
-public class VariantCoinValueSetter : MonoBehaviour
-{
-    public void SetValue(int v)
-    {
-        var pickup = GetComponent<CoinPickup>();
-        if (!pickup) return;
-        // Using reflection to set private serialized field 'value'
-        var fi = typeof(CoinPickup).GetField("value", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        if (fi != null) fi.SetValue(pickup, v);
-    }
 }
 ```
 
@@ -9100,6 +9913,722 @@ public class TrackDistanceMeter : MonoBehaviour
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         );
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackFuelSpawner.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class TrackFuelSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+
+    [Header("Prefab")]
+    [SerializeField] private GameObject fuelPrefab;
+
+    [Header("Spawn Layout")]
+    [SerializeField, Min(0.1f)] private float pickupSpacing = 18f;
+    [SerializeField] private int maxActivePickups = 64;
+    [SerializeField] private float minSpawnDistanceAhead = 40f;
+    [SerializeField] private float maxSpawnDistanceAhead = 140f;
+    [SerializeField] private float despawnBehindDistance = 25f;
+    [SerializeField] private float initialPreSpawnDistance = 80f;
+
+    [Header("Spawn Probability")]
+    [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.15f; // relatively rare by default
+    [Tooltip("Curve remaps distance fraction → multiplier on base spawn chance.")]
+    [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+    [Header("Placement")]
+    [SerializeField] private float heightOffset = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float lateralFractionOfHalfWidth = 0.6f;
+    [SerializeField] private float edgeInnerMargin = 0.25f;
+
+    [Header("Raycast")]
+    [SerializeField] private LayerMask roadLayerMask = ~0;
+    [SerializeField] private float raycastStartHeight = 5f;
+    [SerializeField] private float raycastDownDistance = 15f;
+    [SerializeField] private bool alignToSurfaceNormal = true;
+
+    [Header("Smoothing & Update")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+    [SerializeField] private float updateInterval = 0.25f;
+    [SerializeField] private float distanceJitter = 1.5f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // Path cache
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+    private int _maxSlotIndex;
+
+    private readonly Dictionary<int, GameObject> _activeBySlot = new();
+    private readonly List<int> _toRemove = new();
+
+    private float _updateT;
+    private int _lastClosestSegmentIndex;
+
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+        RebuildPath();
+        ClearAll();
+        SetupSlots();
+        PreSpawnInitial();
+        _updateT = 0f;
+    }
+
+    private void Update()
+    {
+        if (_path.Count < 2 || playerTransform == null) return;
+
+        // Gate spawning behind skill unlock
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null && !mgr.IsFuelPickupUnlocked())
+            return;
+
+        _updateT += Time.deltaTime;
+        if (_updateT >= updateInterval)
+        {
+            _updateT = 0f;
+            Stream();
+        }
+    }
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+        _lastClosestSegmentIndex = 0;
+
+        var src = trackGenerator?.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, Mathf.Max(1, smoothingSubdivisionsPerSegment), _path);
+        else
+            _path.AddRange(src);
+
+        if (_path.Count < 2) return;
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        _cumLengths[0] = 0f;
+        float length = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            length += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = length;
+        }
+        _totalLength = length;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
+    {
+        outList.Clear();
+        int n = raw.Count;
+        if (n < 2)
+        {
+            outList.AddRange(raw);
+            return;
+        }
+        outList.Add(raw[0]);
+        for (int i = 0; i < n - 1; i++)
+        {
+            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = raw[i];
+            Vector3 p2 = raw[i + 1];
+            Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
+            for (int s = 1; s <= subdivisions; s++)
+            {
+                float t = s / (float)subdivisions;
+                outList.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
+    }
+
+    private void SetupSlots()
+    {
+        if (_totalLength <= 0f || pickupSpacing <= 0f)
+        {
+            _maxSlotIndex = 0;
+            return;
+        }
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / pickupSpacing);
+    }
+
+    private void PreSpawnInitial()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(endDist / pickupSpacing);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+        {
+            if (_activeBySlot.Count >= maxActivePickups) break;
+            float dist = slot * pickupSpacing;
+            TrySpawnAtDistance(slot, dist, preSpawn: true);
+        }
+    }
+
+    private void Stream()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+
+        float playerDist = GetPlayerDistanceAlongPath();
+        float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
+
+        _toRemove.Clear();
+        foreach (var kvp in _activeBySlot)
+        {
+            float slotDist = kvp.Key * pickupSpacing;
+            if (slotDist < despawnStart)
+            {
+                if (kvp.Value) Destroy(kvp.Value);
+                _toRemove.Add(kvp.Key);
+            }
+        }
+        for (int i = 0; i < _toRemove.Count; i++)
+            _activeBySlot.Remove(_toRemove[i]);
+
+        float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spanStart / pickupSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spanEnd / pickupSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_activeBySlot.ContainsKey(slot)) continue;
+            if (_activeBySlot.Count >= maxActivePickups) break;
+            float dist = slot * pickupSpacing;
+            TrySpawnAtDistance(slot, dist, preSpawn: false);
+        }
+    }
+
+    private void TrySpawnAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
+    {
+        float jitter = distanceJitter > 0f ? Random.Range(-distanceJitter, distanceJitter) : 0f;
+        float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
+
+        // Compute normalized distance
+        float norm = _totalLength > 0f ? dist / _totalLength : 0f;
+
+        // Build chance: base → distance curve → unlock bonus → skill chain multiplier
+        float chance = baseSpawnChance;
+
+        if (spawnChanceDistanceCurve != null)
+            chance *= Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
+
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+        {
+            // NEW: initial 5% spawn rate bonus when fuel pickup unlock is active
+            if (mgr.IsFuelPickupUnlocked())
+                chance += 0.05f;
+
+            // Apply spawn-rate multiplier chain from the skill tree
+            chance *= mgr.GetFuelPickupSpawnRateMultiplier();
+        }
+
+        chance = Mathf.Clamp01(chance);
+
+        if (Random.value > chance)
+            return;
+
+        // Sample center and forward on path
+        SampleAlongPath(dist, out var center, out var forward);
+
+        float halfWidth = (trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f);
+        float usableHalfWidth = Mathf.Max(0f, halfWidth * lateralFractionOfHalfWidth - edgeInnerMargin);
+        if (usableHalfWidth <= 0f) usableHalfWidth = halfWidth * 0.5f;
+
+        var flatFwd = forward; flatFwd.y = 0f;
+        if (flatFwd.sqrMagnitude < 1e-6f) flatFwd = Vector3.forward;
+        flatFwd.Normalize();
+        var right = Vector3.Cross(Vector3.up, flatFwd).normalized;
+
+        float lateral = Random.Range(-usableHalfWidth, usableHalfWidth);
+        Vector3 candidate = center + right * lateral;
+
+        Vector3 origin = candidate + Vector3.up * raycastStartHeight;
+        float maxDist = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out var hit, maxDist, roadLayerMask, QueryTriggerInteraction.Ignore))
+        {
+            if (verboseDebug) Debug.DrawRay(origin, Vector3.down * maxDist, Color.red, 2f);
+            return;
+        }
+
+        Vector3 up = alignToSurfaceNormal ? hit.normal : Vector3.up;
+        Vector3 fOnSurface = Vector3.ProjectOnPlane(flatFwd, up);
+        if (fOnSurface.sqrMagnitude < 1e-6f)
+            fOnSurface = Vector3.Cross(up, Vector3.right);
+        fOnSurface.Normalize();
+
+        Quaternion rot = Quaternion.LookRotation(fOnSurface, up);
+        Vector3 spawnPos = hit.point + up * heightOffset;
+
+        if (!fuelPrefab) return;
+
+        var inst = Instantiate(fuelPrefab, spawnPos, rot, transform);
+        _activeBySlot[slotIndex] = inst;
+
+        if (verboseDebug)
+        {
+            Debug.DrawLine(origin, hit.point, Color.yellow, 1.5f);
+            Debug.DrawRay(hit.point, up, Color.green, 1.5f);
+        }
+    }
+
+    private void SampleAlongPath(float targetDistance, out Vector3 pos, out Vector3 forward)
+    {
+        pos = Vector3.zero;
+        forward = Vector3.forward;
+        if (_path.Count < 2 || _cumLengths == null) return;
+
+        targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= targetDistance) { idx = i; break; }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
+        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
+        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
+
+        Vector3 a = _path[idx];
+        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
+        pos = Vector3.Lerp(a, b, t);
+        forward = (b - a).normalized;
+    }
+
+    private float GetPlayerDistanceAlongPath()
+    {
+        if (_path.Count < 2 || _cumLengths == null || playerTransform == null) return 0f;
+        Vector3 p = playerTransform.position;
+
+        int bestIndex = _lastClosestSegmentIndex;
+        float bestSqrDist = float.MaxValue;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i];
+            Vector3 b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Vector3.Dot(p - a, ab) / abSqr;
+            t = Mathf.Clamp01(t);
+            Vector3 proj = a + ab * t;
+            float sqrDist = (p - proj).sqrMagnitude;
+
+            if (sqrDist < bestSqrDist)
+            {
+                bestSqrDist = sqrDist;
+                bestIndex = i;
+            }
+        }
+
+        _lastClosestSegmentIndex = bestIndex;
+
+        Vector3 aa = _path[bestIndex];
+        Vector3 bb = _path[bestIndex + 1];
+        Vector3 ab2 = bb - aa;
+        float ab2Sqr = ab2.sqrMagnitude;
+        float segT = 0f;
+        float segLen = 0f;
+
+        if (ab2Sqr > 0.0001f)
+        {
+            segLen = Mathf.Sqrt(ab2Sqr);
+            segT = Mathf.Clamp01(Vector3.Dot(p - aa, ab2) / ab2Sqr);
+        }
+
+        float baseDist = _cumLengths[bestIndex];
+        return baseDist + segT * segLen;
+    }
+
+    private void ClearAll()
+    {
+        foreach (var kvp in _activeBySlot)
+            if (kvp.Value) Destroy(kvp.Value);
+        _activeBySlot.Clear();
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackHPSpawner.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class TrackHPSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+
+    [Header("Prefab")]
+    [SerializeField] private GameObject hpPrefab;
+
+    [Header("Spawn Layout")]
+    [SerializeField, Min(0.1f)] private float pickupSpacing = 22f;
+    [SerializeField] private int maxActivePickups = 64;
+    [SerializeField] private float minSpawnDistanceAhead = 40f;
+    [SerializeField] private float maxSpawnDistanceAhead = 140f;
+    [SerializeField] private float despawnBehindDistance = 25f;
+    [SerializeField] private float initialPreSpawnDistance = 80f;
+
+    [Header("Spawn Probability")]
+    [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.12f;
+    [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+    [Header("Placement")]
+    [SerializeField] private float heightOffset = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float lateralFractionOfHalfWidth = 0.6f;
+    [SerializeField] private float edgeInnerMargin = 0.25f;
+
+    [Header("Raycast")]
+    [SerializeField] private LayerMask roadLayerMask = ~0;
+    [SerializeField] private float raycastStartHeight = 5f;
+    [SerializeField] private float raycastDownDistance = 15f;
+    [SerializeField] private bool alignToSurfaceNormal = true;
+
+    [Header("Smoothing & Update")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+    [SerializeField] private float updateInterval = 0.25f;
+    [SerializeField] private float distanceJitter = 1.5f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+    private int _maxSlotIndex;
+
+    private readonly Dictionary<int, GameObject> _activeBySlot = new();
+    private readonly List<int> _toRemove = new();
+
+    private float _updateT;
+    private int _lastClosestSegmentIndex;
+
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+        RebuildPath();
+        ClearAll();
+        SetupSlots();
+        PreSpawnInitial();
+        _updateT = 0f;
+    }
+
+    private void Update()
+    {
+        if (_path.Count < 2 || playerTransform == null) return;
+
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null && !mgr.IsHPPickupUnlocked())
+            return;
+
+        _updateT += Time.deltaTime;
+        if (_updateT >= updateInterval)
+        {
+            _updateT = 0f;
+            Stream();
+        }
+    }
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+        _lastClosestSegmentIndex = 0;
+
+        var src = trackGenerator?.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, Mathf.Max(1, smoothingSubdivisionsPerSegment), _path);
+        else
+            _path.AddRange(src);
+
+        if (_path.Count < 2) return;
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        _cumLengths[0] = 0f;
+        float length = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            length += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = length;
+        }
+        _totalLength = length;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
+    {
+        outList.Clear();
+        int n = raw.Count;
+        if (n < 2) { outList.AddRange(raw); return; }
+        outList.Add(raw[0]);
+        for (int i = 0; i < n - 1; i++)
+        {
+            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = raw[i];
+            Vector3 p2 = raw[i + 1];
+            Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
+            for (int s = 1; s <= subdivisions; s++)
+            {
+                float t = s / (float)subdivisions;
+                outList.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
+    }
+
+    private void SetupSlots()
+    {
+        if (_totalLength <= 0f || pickupSpacing <= 0f) { _maxSlotIndex = 0; return; }
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / pickupSpacing);
+    }
+
+    private void PreSpawnInitial()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(endDist / pickupSpacing);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+        {
+            if (_activeBySlot.Count >= maxActivePickups) break;
+            float dist = slot * pickupSpacing;
+            TrySpawnAtDistance(slot, dist, preSpawn: true);
+        }
+    }
+
+    private void Stream()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+
+        float playerDist = GetPlayerDistanceAlongPath();
+        float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
+
+        _toRemove.Clear();
+        foreach (var kvp in _activeBySlot)
+        {
+            float slotDist = kvp.Key * pickupSpacing;
+            if (slotDist < despawnStart)
+            {
+                if (kvp.Value) Destroy(kvp.Value);
+                _toRemove.Add(kvp.Key);
+            }
+        }
+        for (int i = 0; i < _toRemove.Count; i++)
+            _activeBySlot.Remove(_toRemove[i]);
+
+        float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spanStart / pickupSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spanEnd / pickupSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_activeBySlot.ContainsKey(slot)) continue;
+            if (_activeBySlot.Count >= maxActivePickups) break;
+            float dist = slot * pickupSpacing;
+            TrySpawnAtDistance(slot, dist, preSpawn: false);
+        }
+    }
+
+    private void TrySpawnAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
+    {
+        float jitter = distanceJitter > 0f ? Random.Range(-distanceJitter, distanceJitter) : 0f;
+        float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
+
+        float norm = _totalLength > 0f ? dist / _totalLength : 0f;
+
+        float chance = baseSpawnChance;
+        if (spawnChanceDistanceCurve != null)
+            chance *= Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
+
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+        {
+            // small base bonus when unlocked
+            if (mgr.IsHPPickupUnlocked())
+                chance += 0.05f;
+
+            chance *= mgr.GetHPPickupSpawnRateMultiplier();
+        }
+
+        chance = Mathf.Clamp01(chance);
+        if (Random.value > chance)
+            return;
+
+        SampleAlongPath(dist, out var center, out var forward);
+
+        float halfWidth = (trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f);
+        float usableHalfWidth = Mathf.Max(0f, halfWidth * lateralFractionOfHalfWidth - edgeInnerMargin);
+        if (usableHalfWidth <= 0f) usableHalfWidth = halfWidth * 0.5f;
+
+        var flatFwd = forward; flatFwd.y = 0f;
+        if (flatFwd.sqrMagnitude < 1e-6f) flatFwd = Vector3.forward;
+        flatFwd.Normalize();
+        var right = Vector3.Cross(Vector3.up, flatFwd).normalized;
+
+        float lateral = Random.Range(-usableHalfWidth, usableHalfWidth);
+        Vector3 candidate = center + right * lateral;
+
+        Vector3 origin = candidate + Vector3.up * raycastStartHeight;
+        float maxDist = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out var hit, maxDist, roadLayerMask, QueryTriggerInteraction.Ignore))
+        {
+            if (verboseDebug) Debug.DrawRay(origin, Vector3.down * maxDist, Color.red, 2f);
+            return;
+        }
+
+        Vector3 up = alignToSurfaceNormal ? hit.normal : Vector3.up;
+        Vector3 fOnSurface = Vector3.ProjectOnPlane(flatFwd, up);
+        if (fOnSurface.sqrMagnitude < 1e-6f)
+            fOnSurface = Vector3.Cross(up, Vector3.right);
+        fOnSurface.Normalize();
+
+        Quaternion rot = Quaternion.LookRotation(fOnSurface, up);
+        Vector3 spawnPos = hit.point + up * heightOffset;
+
+        if (!hpPrefab) return;
+
+        var inst = Instantiate(hpPrefab, spawnPos, rot, transform);
+        _activeBySlot[slotIndex] = inst;
+
+        if (verboseDebug)
+        {
+            Debug.DrawLine(origin, hit.point, Color.yellow, 1.5f);
+            Debug.DrawRay(hit.point, up, Color.green, 1.5f);
+        }
+    }
+
+    private void SampleAlongPath(float targetDistance, out Vector3 pos, out Vector3 forward)
+    {
+        pos = Vector3.zero;
+        forward = Vector3.forward;
+        if (_path.Count < 2 || _cumLengths == null) return;
+
+        targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= targetDistance) { idx = i; break; }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
+        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
+        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
+
+        Vector3 a = _path[idx];
+        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
+        pos = Vector3.Lerp(a, b, t);
+        forward = (b - a).normalized;
+    }
+
+    private float GetPlayerDistanceAlongPath()
+    {
+        if (_path.Count < 2 || _cumLengths == null || playerTransform == null) return 0f;
+        Vector3 p = playerTransform.position;
+
+        int bestIndex = _lastClosestSegmentIndex;
+        float bestSqrDist = float.MaxValue;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i];
+            Vector3 b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Vector3.Dot(p - a, ab) / abSqr;
+            t = Mathf.Clamp01(t);
+            Vector3 proj = a + ab * t;
+            float sqrDist = (p - proj).sqrMagnitude;
+
+            if (sqrDist < bestSqrDist) { bestSqrDist = sqrDist; bestIndex = i; }
+        }
+
+        _lastClosestSegmentIndex = bestIndex;
+
+        Vector3 aa = _path[bestIndex];
+        Vector3 bb = _path[bestIndex + 1];
+        Vector3 ab2 = bb - aa;
+        float ab2Sqr = ab2.sqrMagnitude;
+        float segT = 0f, segLen = 0f;
+
+        if (ab2Sqr > 0.0001f)
+        {
+            segLen = Mathf.Sqrt(ab2Sqr);
+            segT = Mathf.Clamp01(Vector3.Dot(p - aa, ab2) / ab2Sqr);
+        }
+
+        float baseDist = _cumLengths[bestIndex];
+        return baseDist + segT * segLen;
+    }
+
+    private void ClearAll()
+    {
+        foreach (var kvp in _activeBySlot)
+            if (kvp.Value) Destroy(kvp.Value);
+        _activeBySlot.Clear();
     }
 }
 ```
@@ -9405,16 +10934,24 @@ public class RacingSkillUIEntry : MonoBehaviour
 
     private string FormatEffect(SkillType type)
     {
-        float m = 1f;
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return "x1";
+
         switch (type)
         {
-            case SkillType.Acceleration: m = mgr.GetAccelerationMultiplier(); break;
-            case SkillType.MaxSpeed: m = mgr.GetMaxSpeedMultiplier(); break;
-            case SkillType.FuelEfficiency: m = mgr.GetFuelEfficiencyMultiplier(); break;
-            case SkillType.SteeringResponsiveness: m = mgr.GetSteeringMultiplier(); break;
-            default: m = 1f; break;
+            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
+            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
+            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
+            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return $"Spawn x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return $"Double {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+            default:
+                return "x1";
         }
-        return $"x{m:0.##}";
     }
 }
 ```
@@ -9430,6 +10967,9 @@ public class UIManager_Racing : MonoBehaviour
 {
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
+
+    [Header("Car HP UI")]
+    [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
 
     [Header("In-Run UI")]
     [SerializeField] private TMP_Text runCoinsLiveText;   // e.g. top-left HUD text: "Coins: 0"
@@ -9450,7 +10990,7 @@ public class UIManager_Racing : MonoBehaviour
     // NEW: show the *final* total currency from the skill tree
     [SerializeField] private TMP_Text runTotalCurrencyText; // e.g. "Total Currency: 250"
 
-    [SerializeField] private TMP_Text totalCurrencyText; 
+    [SerializeField] private TMP_Text totalCurrencyText;
 
 
     private CarController car;
@@ -9474,10 +11014,13 @@ public class UIManager_Racing : MonoBehaviour
 
     private void Update()
     {
-        if (car == null || fuelFillImage == null)
-            return;
+        if (car == null) return;
 
-        fuelFillImage.fillAmount = car.FuelPercent;
+        if (fuelFillImage != null)
+            fuelFillImage.fillAmount = car.FuelPercent;
+
+        if (hpFillImage != null)
+            hpFillImage.fillAmount = car.HPPercent;
     }
 
     // NEW API: show/hide "Run Complete"

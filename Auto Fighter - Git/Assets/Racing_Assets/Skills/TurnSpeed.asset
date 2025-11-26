@@ -42,7 +42,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   flatCost: 0
   mode: 0
-  baseValue: 1
+  baseValue: 0
   perLevelAdd: 1
   uiPosition: {x: 100, y: 100}
   revealedAtStart: 0
