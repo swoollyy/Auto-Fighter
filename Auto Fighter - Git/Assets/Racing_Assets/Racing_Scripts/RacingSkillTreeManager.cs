@@ -218,17 +218,25 @@ public class RacingSkillTreeManager : MonoBehaviour
         return val;
     }
 
-    public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
-    public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
-    public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
-    public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
-
     public float GetCoinSpawnRateMultiplier()
     {
         // Effective probability scaling; clamp to [0, +inf) then caller clamps to [0,1]
         float baseVal = 1f;
         baseVal = ApplyStatChain(baseVal, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
         return Mathf.Max(0f, baseVal);
+    }
+
+    // NEW: feature flag for obstacle-on-obstacle impact damage
+    public bool IsForcefieldImpactDamageUnlocked()
+    {
+        return GetLevel(SkillType.ForcefieldImpactDamageUnlock) > 0;
+    }
+
+    // NEW: damage amount (base 1.0f scaled by add/mul chain)
+    public float GetForcefieldImpactDamageAmount(float baseAmount = 1f)
+    {
+        float v = ApplyStatChain(baseAmount, SkillType.ForcefieldImpactDamage_Add, SkillType.ForcefieldImpactDamage_Mul);
+        return Mathf.Max(0f, v);
     }
 
     public float GetCoinDoubleChance()
@@ -240,6 +248,38 @@ public class RacingSkillTreeManager : MonoBehaviour
             SkillType.CoinDoubleChance_Mul
         );
         return Mathf.Clamp01(chance);
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑Held Boost helpers
+    // ------------------------------------------------------------------------
+    public bool IsDriftHeldBoostUnlocked()
+    {
+        return GetLevel(SkillType.DriftHeldBoostUnlock) > 0;
+    }
+
+    public float GetDriftHeldBoostForceScaled(float baseForce)
+    {
+        return ApplyStatChain(baseForce, SkillType.DriftHeldBoostForce_Add, SkillType.DriftHeldBoostForce_Mul);
+    }
+
+    public float GetDriftHeldBoostDurationScaled(float baseDuration)
+    {
+        return ApplyStatChain(baseDuration, SkillType.DriftHeldBoostDuration_Add, SkillType.DriftHeldBoostDuration_Mul);
+    }
+
+    public float GetDriftHeldBoostMaxSpeedMultScaled(float baseMaxMult)
+    {
+        return ApplyStatChain(baseMaxMult, SkillType.DriftHeldBoostMaxSpeedMult_Add, SkillType.DriftHeldBoostMaxSpeedMult_Mul);
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Distance coins per meter
+    // ------------------------------------------------------------------------
+    public float GetDistanceCoinsPerMeter(float baseCoinsPerMeter)
+    {
+        float v = ApplyStatChain(baseCoinsPerMeter, SkillType.DistanceCoinsPerMeter_Add, SkillType.DistanceCoinsPerMeter_Mul);
+        return Mathf.Max(0f, v);
     }
 
     public void ClearAllData()
@@ -258,4 +298,20 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         OnSkillsReset?.Invoke();
     }
+
+    public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
+    public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
+    public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
+    public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
+    public bool IsBoostUnlocked() => GetLevel(SkillType.BoostUnlock) > 0;
+    public float GetBoostForceScaled(float baseForce) =>
+        ApplyStatChain(baseForce, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+    public float GetBoostDurationScaled(float baseDuration) =>
+        ApplyStatChain(baseDuration, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+    public float GetBoostMaxSpeedMultScaled(float baseMult) =>
+        ApplyStatChain(baseMult, SkillType.BoostMaxSpeedMult_Add, SkillType.BoostMaxSpeedMult_Mul);
+    public float GetBoostCooldownScaled(float baseCooldown) =>
+        ApplyStatChain(baseCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+    public float GetBoostFuelCostScaled(float baseCost) =>
+        ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
 }

@@ -308,24 +308,36 @@ public class TrackObstacleSpawner : MonoBehaviour
 
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
         {
-            // Find the type again so we can read its offsets (small cost)
+            // Re-fetch type for per-type tweaks
             ObstacleType t = GetChosenTypeForDistance(sampleDist);
             float extraHeight = t != null ? t.extraHeightOffset : 0f;
             float extraPad = t != null ? t.extraLateralPadding : 0f;
 
-            Vector3 spawnPos = hit.point + hit.normal * (obstacleHeightOffset + extraHeight);
+            // Orientation: align to road normal, face along path
             Quaternion rot = Quaternion.LookRotation(flatForward, hit.normal);
             Transform parent = obstacleParent ? obstacleParent : transform;
 
-            // Clamp lateral padding (optional – you can remove if you don't need it)
+            // Lateral placement (based on right vector derived from path tangent)
+            Vector3 centered = hit.point;
+            float rawLateral = Vector3.Dot((pos - centered), right); // pos already had random lateral
+                                                                     // Clamp lateral if extra padding requested
+            float clampedUsable = usable;
             if (extraPad != 0f)
-            {
-                float clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
-                Vector3 centered = hit.point;
-                spawnPos = centered + right * Mathf.Clamp(Vector3.Dot(spawnPos - centered, right), -clampedUsable, clampedUsable);
-            }
+                clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
 
+            float finalLateral = Mathf.Clamp(rawLateral, -clampedUsable, clampedUsable);
+            Vector3 spawnPos = centered + right * finalLateral;
+
+            // Initial tiny lift (we'll resolve precisely next)
+            float desiredClearance = Mathf.Max(0f, obstacleHeightOffset + extraHeight);
+            spawnPos += hit.normal * Mathf.Max(0.005f, desiredClearance);
+
+            // Instantiate
             GameObject obstacle = Instantiate(chosenPrefab, spawnPos, rot, parent);
+
+            // Final precise placement: resolve any overlap with road, along road normal
+            ResolveGroundPenetration(obstacle, hit.collider, hit.normal);
+
             _obstaclesBySlot[slot] = obstacle;
         }
     }
@@ -464,7 +476,66 @@ public class TrackObstacleSpawner : MonoBehaviour
             Debug.Log($"[TrackObstacleSpawner] PreSpawnInitialWindow spawned {_obstaclesBySlot.Count} obstacles up to {preSpawnEnd:0.0}m.");
     }
 
+    /// <summary>
+    /// Gently pushes the spawned obstacle out of the ground collider along the ground normal,
+    /// using Physics.ComputePenetration. Ignores trigger colliders on the obstacle.
+    /// </summary>
+    private void ResolveGroundPenetration(GameObject obstacle, Collider groundCol, Vector3 groundNormal)
+    {
+        if (!obstacle || !groundCol) return;
 
+        // Collect non-trigger colliders from the obstacle
+        var cols = obstacle.GetComponentsInChildren<Collider>(true);
+        List<Collider> solidCols = new List<Collider>(cols.Length);
+        for (int i = 0; i < cols.Length; i++)
+        {
+            if (cols[i] && !cols[i].isTrigger) solidCols.Add(cols[i]);
+        }
+        if (solidCols.Count == 0) return;
+
+        Transform root = obstacle.transform;
+        const int maxIters = 4;
+        const float minStep = 0.0005f;
+
+        for (int iter = 0; iter < maxIters; iter++)
+        {
+            float maxPushAlongNormal = 0f;
+
+            // Find the largest penetration depth projected onto the ground normal
+            for (int i = 0; i < solidCols.Count; i++)
+            {
+                Collider c = solidCols[i];
+                if (!c) continue;
+
+                Vector3 sepDir = Vector3.zero;
+                float sepDist = 0f;
+
+                bool penetrating = Physics.ComputePenetration(
+                    c, c.transform.position, c.transform.rotation,
+                    groundCol, groundCol.transform.position, groundCol.transform.rotation,
+                    out sepDir, out sepDist
+                );
+
+                if (!penetrating || sepDist <= 0f) continue;
+
+                // Only push outward along ground normal
+                float proj = Vector3.Dot(sepDir * sepDist, groundNormal);
+                if (proj > maxPushAlongNormal)
+                    maxPushAlongNormal = proj;
+            }
+
+            if (maxPushAlongNormal <= minStep)
+                break; // good enough
+
+            // Apply push
+            root.position += groundNormal * maxPushAlongNormal;
+            Physics.SyncTransforms();
+        }
+
+        // Tiny non-zero lift to avoid z-fighting / hard contacts
+        root.position += groundNormal * 0.002f;
+        Physics.SyncTransforms();
+    }
 
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {

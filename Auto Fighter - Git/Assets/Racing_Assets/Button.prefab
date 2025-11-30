@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 3767090994384272396}
   - component: {fileID: 6623172487181502756}
   - component: {fileID: 4033649108100695057}
+  - component: {fileID: 9186470771314758172}
   m_Layer: 0
   m_Name: Button
   m_TagString: Untagged
@@ -60,7 +61,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 1, g: 0.43867922, b: 0.43867922, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -139,3 +140,15 @@ MonoBehaviour:
   effectText: {fileID: 0}
   costText: {fileID: 0}
   buyButton: {fileID: 0}
+--- !u!114 &9186470771314758172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2539930074240749689}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d46d312c36c3f5249ae40142ad772983, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

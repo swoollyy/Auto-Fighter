@@ -1,5 +1,24 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!243 &-5018588845661870095
+AudioMixerGroupController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Car Vroom
+  m_AudioMixer: {fileID: 24100000}
+  m_GroupID: 2d56ec801bce5084da57c841139df0a6
+  m_Children: []
+  m_Volume: e489ca74f5acd1b4b9e3d985fa9291fa
+  m_Pitch: 66aa959e44ee7cf4e995b3d9dfbe10fb
+  m_Send: 00000000000000000000000000000000
+  m_Effects:
+  - {fileID: 8323985305262832555}
+  m_UserColorIndex: 0
+  m_Mute: 0
+  m_Solo: 0
+  m_BypassEffects: 0
 --- !u!244 &-1738168863583010062
 AudioMixerEffectController:
   m_ObjectHideFlags: 3
@@ -34,6 +53,7 @@ AudioMixerController:
   - guids:
     - c3cd5c51c54fcd347915a7c9dba31bb7
     - 9f8a470ee04ee824eba3469b924ac9ec
+    - 2d56ec801bce5084da57c841139df0a6
     name: View
   m_CurrentViewIndex: 0
   m_TargetSnapshot: {fileID: 24500006}
@@ -48,6 +68,7 @@ AudioMixerGroupController:
   m_GroupID: c3cd5c51c54fcd347915a7c9dba31bb7
   m_Children:
   - {fileID: 8394088056482624698}
+  - {fileID: -5018588845661870095}
   m_Volume: 826da3abacbc7ea41a2bcef97d502d3d
   m_Pitch: 7a81289fd7db7e9409b0eb1947077f99
   m_Send: 00000000000000000000000000000000
@@ -83,6 +104,20 @@ AudioMixerSnapshotController:
   m_FloatValues:
     659c5bd261bdfef45bda132c2ecb6ed0: -22.71404
   m_TransitionOverrides: {}
+--- !u!244 &8323985305262832555
+AudioMixerEffectController:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: 
+  m_EffectID: 7da75dcf5624fdf4395a060c474de789
+  m_EffectName: Attenuation
+  m_MixLevel: 14d5b33427246084f96148f92f12b95f
+  m_Parameters: []
+  m_SendTarget: {fileID: 0}
+  m_EnableWetMix: 0
+  m_Bypass: 0
 --- !u!243 &8394088056482624698
 AudioMixerGroupController:
   m_ObjectHideFlags: 0

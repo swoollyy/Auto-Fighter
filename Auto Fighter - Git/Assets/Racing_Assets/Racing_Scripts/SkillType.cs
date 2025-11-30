@@ -9,6 +9,19 @@
     TurretUnlock,
     DriftUnlock,
 
+    // ---- NEW: Drift Boost Skill Unlock & Stat Chains ----
+    BoostUnlock,                 // unlocks space‑bar boost
+    BoostForce_Add,              // scales both boostForce and boostSustainAcceleration (add)
+    BoostForce_Mul,              // scales both boostForce and boostSustainAcceleration (mul)
+    BoostDuration_Add,
+    BoostDuration_Mul,
+    BoostMaxSpeedMult_Add,
+    BoostMaxSpeedMult_Mul,
+    BoostCooldown_Add,
+    BoostCooldown_Mul,
+    BoostFuelCost_Add,
+    BoostFuelCost_Mul,
+
     // ---- New additive/multiplicative chains for core stats ----
     // Acceleration
     Acceleration_Add,
@@ -60,7 +73,41 @@
     HPPickupSpawnRate_Add,
     HPPickupSpawnRate_Mul,
     HPPickupAmount_Add,
-    HPPickupAmount_Mul
+    HPPickupAmount_Mul,
+
+    ForcefieldUnlock = 4100,
+
+
+    // cooldown
+    ForcefieldCooldown_Add = 4120,
+    ForcefieldCooldown_Mul = 4121,
+
+    // knockback (single pair applied to both away and up)
+    ForcefieldKnockback_Add = 4130,
+    ForcefieldKnockback_Mul = 4131,
+
+    ForcefieldImpactDamageUnlock = 4200,
+
+    // NEW: impact damage amount scaling (base is 1.0)
+    ForcefieldImpactDamage_Add = 4201,
+    ForcefieldImpactDamage_Mul = 4202,
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑Held Boost Skill (unlock + stat chains)
+    // ------------------------------------------------------------------------
+    DriftHeldBoostUnlock = 4300,
+    DriftHeldBoostForce_Add = 4310,
+    DriftHeldBoostForce_Mul = 4311,
+    DriftHeldBoostDuration_Add = 4320,
+    DriftHeldBoostDuration_Mul = 4321,
+    DriftHeldBoostMaxSpeedMult_Add = 4330,
+    DriftHeldBoostMaxSpeedMult_Mul = 4331,
+
+    // ------------------------------------------------------------------------
+    // NEW: Distance coins per meter skill chains
+    // ------------------------------------------------------------------------
+    DistanceCoinsPerMeter_Add = 4400,
+    DistanceCoinsPerMeter_Mul = 4401
 }
 
 

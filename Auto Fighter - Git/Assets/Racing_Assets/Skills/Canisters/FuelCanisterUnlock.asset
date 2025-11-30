@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 929d11989ad6a8745964fb3e6569a0c2, type: 3}
+  m_Name: FuelCanisterUnlock
+  m_EditorClassIdentifier: 
+  type: 45
+  displayName: Fuel Canisters
+  description: Allows Fuel Canisters to spawn, recovering 15 Fuel. 5% initial Chance.
+  maxLevel: 1
+  costCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  flatCost: 35
+  mode: 1
+  baseValue: 1
+  perLevelAdd: 0.05
+  uiPosition: {x: 0, y: -75}
+  revealedAtStart: 0
+  progressiveUnlocks:
+  - requiredLevel: 1
+    unlocks:
+    - {fileID: 11400000, guid: 8c64c0af07b44f94fb994c99204a652f, type: 2}
+    - {fileID: 11400000, guid: a996005951a39a746b776f18dcd1b0db, type: 2}
+    - {fileID: 11400000, guid: 875b6182a5df9674c9740c90a0096494, type: 2}

@@ -10,7 +10,7 @@ public class RacingSkillDetailPanel : MonoBehaviour
     [SerializeField] private GameObject root;          // Stays active (overall panel parent / skill tree layer)
     [SerializeField] private GameObject backdrop;      // Clickable area to dismiss ONLY the info
     [SerializeField] private GameObject infoContainer; // NEW: the actual skill info box (card)
-    [SerializeField] private Button closeButton;       // Legacy (optional) – no longer used
+    [SerializeField] private Button closeButton;       // Legacy (optional) — no longer used
 
     [Header("Text Fields")]
     [SerializeField] private TMP_Text nameText;
@@ -29,42 +29,67 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public event Action OnHidden; // Fired when infoContainer is hidden (selection cleared)
 
     public bool IsInfoVisible => infoContainer != null && infoContainer.activeSelf;
+    public GameObject InfoContainer => infoContainer != null ? infoContainer : null;
 
     public void Init(RacingSkillTreeManager manager) => mgr = manager;
 
     void Awake()
     {
         if (!mgr) mgr = RacingSkillTreeManager.Instance;
+
+        // Remove the full-screen "big button" behaviour that blocks clicks.
+        // Instead, we make the visual backdrop inert (non-raycast) and install a global click catcher
+        // on the skill tree root so clicks that land outside the info box will hide it while allowing
+        // clicks on other skill buttons to still register.
         WireStaticBackdrop();
+
         // Ensure root stays active so backdrop can always catch clicks (if desired).
         if (root && !root.activeSelf) root.SetActive(true);
         if (infoContainer && infoContainer.activeSelf) { /* ok */ }
+
+        // Ensure a RacingUISoundManager exists on the UI root (auto-create if missing)
+        var sfxMgr = FindObjectOfType<RacingUISoundManager>();
+        if (sfxMgr == null && root != null)
+        {
+            // Add manager to root so inspector-exposed clips can be assigned by designer
+            sfxMgr = root.AddComponent<RacingUISoundManager>();
+        }
+
+        // Attach global click catcher to the root so we can detect clicks anywhere (without blocking raycasts).
+        if (root != null)
+        {
+            var catcher = root.GetComponent<SkillTreeGlobalClickCatcher>();
+            if (catcher == null) catcher = root.AddComponent<SkillTreeGlobalClickCatcher>();
+            catcher.Init(this);
+        }
     }
 
     private void WireStaticBackdrop()
     {
-        if (backdrop != null)
+        if (backdrop == null) return;
+
+        // If it's an Image (UI panel) make it visual-only (no raycast target) so it doesn't block clicks.
+        var img = backdrop.GetComponent<UnityEngine.UI.Image>();
+        if (img != null)
         {
-            var btn = backdrop.GetComponent<Button>();
-            if (btn)
-            {
-                btn.onClick.RemoveAllListeners();
-                btn.onClick.AddListener(HideInfo); // Only hide info now
-            }
-            else
-            {
-                var catcher = backdrop.GetComponent<BackdropClickCatcher>();
-                if (!catcher) catcher = backdrop.AddComponent<BackdropClickCatcher>();
-                catcher.onClicked = HideInfo;
-            }
+            img.raycastTarget = false;
         }
 
-        // Close button no longer needed; keep optional
-        if (closeButton != null)
+        // If there's a Button component, remove its listeners so it won't swallow clicks.
+        var btn = backdrop.GetComponent<Button>();
+        if (btn != null)
         {
-            closeButton.onClick.RemoveAllListeners();
-            closeButton.onClick.AddListener(HideInfo);
+            btn.onClick.RemoveAllListeners();
+            // remove the Button component entirely to avoid accidental blocking in editor
+            DestroyImmediate(btn);
         }
+
+        // Remove any legacy BackdropClickCatcher that relied on the backdrop receiving events.
+        var oldCatcher = backdrop.GetComponent<BackdropClickCatcher>();
+        if (oldCatcher != null)
+            DestroyImmediate(oldCatcher);
+
+        // Keep the backdrop GameObject as a visual only.
     }
 
     /// <summary>
@@ -145,8 +170,18 @@ public class RacingSkillDetailPanel : MonoBehaviour
     private void OnBuyClicked()
     {
         if (mgr == null || def == null) return;
-        if (mgr.TryPurchase(def.type))
+        bool purchased = mgr.TryPurchase(def.type);
+        if (purchased)
+        {
+            // Play UI purchase SFXs if available
+            var sfx = FindObjectOfType<RacingUISoundManager>();
+            if (sfx != null)
+            {
+                sfx.PlayPurchaseSkill();
+                sfx.PlayPurchaseCurrency(); // user said currency sound may be played along with purchase
+            }
             Refresh();
+        }
     }
 
     private void Refresh()
@@ -200,9 +235,6 @@ public class RacingSkillDetailPanel : MonoBehaviour
     }
 }
 
-/// <summary>
-/// Simple click catcher if backdrop has no Button.
-/// </summary>
 public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
 {
     public Action onClicked;

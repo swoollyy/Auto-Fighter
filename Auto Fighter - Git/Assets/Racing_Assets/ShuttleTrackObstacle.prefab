@@ -126,6 +126,8 @@ MonoBehaviour:
   scalePunchTime: 0.15
   destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   rewardCurrency: 1
+  baseImpactVelocityThreshold: 8
+  impactDamageCooldown: 0.25
 --- !u!54 &6906296771749627853
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -134,7 +136,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
   serializedVersion: 4
-  m_Mass: 1
+  m_Mass: 2.5
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -168,8 +170,8 @@ MonoBehaviour:
   overrideRoadWidth: 0
   edgeMargin: 0.35
   autoHalfWidthFromRenderer: 1
-  manualHalfWidth: 0.5
+  manualHalfWidth: 1
   speed: 5
   startOnLeft: 1
-  waitAtEndSeconds: 0.25
+  waitAtEndSeconds: 0.75
   trackGenerator: {fileID: 0}

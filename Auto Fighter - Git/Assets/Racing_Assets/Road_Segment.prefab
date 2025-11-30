@@ -100,4 +100,4 @@ MonoBehaviour:
   maxSpeedMultiplier: 1
   accelerationMultiplier: 1
   turnSpeedMultiplier: 1
-  dragMultiplier: 0.5
+  dragMultiplier: 1

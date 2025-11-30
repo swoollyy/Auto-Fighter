@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Rendering.PostProcessing;
 using Debug = UnityEngine.Debug;
 
@@ -157,6 +159,12 @@ public class CarController : MonoBehaviour
     private float crashDamageCooldown = 0.75f;
     private float _nextCrashAllowedTime = 0f; // runtime timer gate
 
+    [Header("Crash Impact VFX")]
+    [Tooltip("Optional explosion/impact VFX prefab to spawn at the car collision point.")]
+    [SerializeField] private GameObject crashImpactVFX;
+    [Tooltip("Lifetime of the spawned VFX (seconds) when instantiated or returned to pool).")]
+    [SerializeField] private float crashImpactVFXLifetime = 4f;
+
     [Header("Damage Smoke (VFX)")]
     [Tooltip("Smoke VFX that scales with damage.")]
     [SerializeField] private ParticleSystem damageSmokeVFX;
@@ -178,6 +186,12 @@ public class CarController : MonoBehaviour
     // ─────────────────────────────────────────────
     // BOOST SYSTEM
     // ─────────────────────────────────────────────
+
+    // Unlock gating
+    [Header("Boost Unlock")]
+    [SerializeField] private bool requireBoostUnlock = true;
+    private bool boostUnlocked;
+
     [Header("Boost")]
     [SerializeField] private KeyCode boostKey = KeyCode.Space;
     [SerializeField] private float boostForce = 50f;
@@ -214,6 +228,16 @@ public class CarController : MonoBehaviour
     private bool _isPostBoost;
     private float _postBoostTimer;
 
+    public event Action OnBoostStarted;
+    public event Action OnBoostEnded;
+
+    private float baseBoostForce;
+    private float baseBoostSustainAcceleration;
+    private float baseBoostDuration;
+    private float baseBoostMaxSpeedMult;
+    private float baseBoostCooldown;
+    private float baseBoostFuelCost;
+
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
@@ -241,6 +265,9 @@ public class CarController : MonoBehaviour
     private float baseFuelUseFullThrottle;
     private float baseFuelUseBraking;
     private float baseTurnSpeed;
+
+    private float _tempHandlingMultiplier = 1f;
+    private float _tempHandlingExpireAt = 0f;
 
     [Header("Fuel Modifiers by Surface")]
     [SerializeField] private float grassFuelUseMultiplier = 1.5f;
@@ -327,6 +354,62 @@ public class CarController : MonoBehaviour
 
     private bool _inputsSuppressedThisFrame = false;
 
+    // NEW: split suppression so steering is never fully blocked by malfunction
+    private bool _suppressThrottleBrakeThisFrame = false;
+    private bool _suppressSteeringThisFrame = false;
+
+    // ------------------------------------------------------------------------
+    // NEW: global near-miss / close-call detection for ALL obstacles
+    // Triggers the same close-call slowmo/postfx used by thrown projectiles.
+    // ------------------------------------------------------------------------
+    [Header("Close-Call Near-Miss (global)")]
+    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
+    private bool enableCloseCallNearMisses = true;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
+    private float closeCallDistance = 3.5f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
+    private float closeCallMinSpeed = 4f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
+    private float closeCallCooldown = 1.0f;
+
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
+    private float closeCallRootCooldown = 3.0f;
+
+    [Header("Crash Sound Effects")]
+    [SerializeField] private AudioClip crashClipDefault;
+    [SerializeField] private AudioClip crashClipHonk; // used for CrossTrackObstacle collisions
+    [SerializeField, Range(0f, 1f)] private float crashSfxVolume = 1f;
+
+    // Add these serialized fields near the "Crash Sound Effects" group (where crashClipDefault/crashClipHonk are declared)
+    [Header("Crash Sound Spatialization")]
+    [SerializeField, Tooltip("If true, crash sounds are spatial (3D). If false they play as 2D UI-like sounds.")]
+    private bool crashUseSpatial = true;
+    [SerializeField, Range(0f, 1f), Tooltip("When spatial, how much 3D panning is applied (0 = 2D, 1 = full 3D).")]
+    private float crashSpatialBlend = 1f;
+    [SerializeField, Tooltip("Rolloff mode used for crash SFX when spatialized.")]
+    private AudioRolloffMode crashRolloff = AudioRolloffMode.Logarithmic;
+    [SerializeField, Tooltip("Min distance for spatial attenuation.")]
+    private float crashMinDistance = 1f;
+    [SerializeField, Tooltip("Max distance for spatial attenuation.")]
+    private float crashMaxDistance = 50f;
+    [SerializeField, Range(0f, 3f), Tooltip("Global multiplier for crash SFX loudness to compensate for quiet audio.")]
+    private float crashVolumeMultiplier = 1.6f;
+
+    [Header("Crash Pitch Variation")]
+    [SerializeField, Range(0.5f, 2f), Tooltip("Minimum random pitch applied to crash SFX.")]
+    private float crashPitchMin = 0.95f;
+    [SerializeField, Range(0.5f, 2f), Tooltip("Maximum random pitch applied to crash SFX.")]
+    private float crashPitchMax = 1.05f;
+
+
+    // runtime cooldown map (root instance id -> last triggered time)
+    private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
+
+    // NEW helper to limit overlap sphere frequency (cheap throttle)
+    private float _lastCloseCallSweep = 0f;
+    private float _closeCallSweepInterval = 0.18f;
+
+    // NEW: split for steering traction code etc.
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -365,6 +448,14 @@ public class CarController : MonoBehaviour
         baseFuelUseFullThrottle = fuelUsePerSecondAtFullThrottle;
         baseFuelUseBraking = fuelUsePerSecondBraking;
 
+        baseBoostForce = boostForce;
+        baseBoostSustainAcceleration = boostSustainAcceleration;
+        baseBoostDuration = boostDuration;
+        baseBoostMaxSpeedMult = boostMaxSpeedMultiplier;
+        baseBoostCooldown = boostCooldown;
+        baseBoostFuelCost = boostFuelCost;
+        boostUnlocked = !requireBoostUnlock;
+
         driftUnlocked = !requireDriftUnlock;
 
         currentHP = Mathf.Max(1f, maxHP);
@@ -379,6 +470,7 @@ public class CarController : MonoBehaviour
     {
         WireManagerEvents();
         UpdateDriftUnlock();
+        UpdateBoostUnlock();
         RefreshSkillEffects();
         ApplySkillEffects();
     }
@@ -439,6 +531,85 @@ public class CarController : MonoBehaviour
         ApplySkillEffects();
         HandleMovement();
         HandleBoost();
+
+        // NEW: periodic near-miss sweep to detect close calls against ANY obstacle layers (uses crashLayers)
+        // Throttle frequency to _closeCallSweepInterval to avoid expensive queries every fixed frame.
+        if (enableCloseCallNearMisses && Time.time - _lastCloseCallSweep >= _closeCallSweepInterval)
+        {
+            _lastCloseCallSweep = Time.time;
+            CheckNearbyObstaclesForCloseCall();
+        }
+    }
+
+    // NEW: Detect nearby obstacles and fire close-call effects via GameManager_Racing.HandleProjectileCloseCall
+    private void CheckNearbyObstaclesForCloseCall()
+    {
+        if (!enableCloseCallNearMisses) return;
+        if (carCollider == null || rb == null) return;
+
+        // Speed guard (do not trigger when almost stopped)
+        if (rb.velocity.magnitude < closeCallMinSpeed) return;
+
+        // Overlap nearby colliders in crashLayers
+        Collider[] hits = Physics.OverlapSphere(transform.position, Mathf.Max(0.01f, closeCallDistance), crashLayers, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0) return;
+
+        var gm = GameManager_Racing.Instance;
+
+        // Ensure we only trigger once per root object per sweep
+        var seenRoots = new HashSet<int>();
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var other = hits[i];
+            if (other == null) continue;
+
+            // Ignore our own collider(s)
+            if (other == carCollider) continue;
+            if (other.transform.root == transform.root) continue;
+
+            int rootId = other.transform.root.GetInstanceID();
+
+            // Skip duplicates in this sweep (multiple child colliders)
+            if (seenRoots.Contains(rootId)) continue;
+            seenRoots.Add(rootId);
+
+            // Per-root cooldown
+            if (_lastCloseCallTime.TryGetValue(rootId, out float lastT))
+            {
+                float cooldownToUse = closeCallRootCooldown > 0f ? closeCallRootCooldown : closeCallCooldown;
+                if (Time.time - lastT < cooldownToUse) continue;
+            }
+
+            // Skip if overlapping / penetrating (that's an actual collision, not a near-miss)
+            bool penetrates = false;
+            if (carCollider != null && other != null)
+            {
+                Vector3 dir; float dist;
+                penetrates = Physics.ComputePenetration(
+                    carCollider, carCollider.transform.position, carCollider.transform.rotation,
+                    other, other.transform.position, other.transform.rotation,
+                    out dir, out dist
+                );
+                if (penetrates) continue;
+            }
+
+            // Compute closest point & distance to car center (planar distance is fine, but use 3D)
+            Vector3 closest = other.bounds.ClosestPoint(transform.position);
+            float d = Vector3.Distance(closest, transform.position);
+
+            if (d <= closeCallDistance)
+            {
+                // Register timestamp to cooldown map (keyed by root)
+                _lastCloseCallTime[rootId] = Time.time;
+
+                // Fire close-call -- reuse existing GM API which plays slowmo/postFX/zoom
+                if (gm != null)
+                {
+                    gm.HandleProjectileCloseCall(closest, d);
+                }
+            }
+        }
     }
 
     private void HandleBoost()
@@ -456,7 +627,10 @@ public class CarController : MonoBehaviour
 
             if (_boostTimer <= 0f)
             {
+                // Transition out of boosting
                 _isBoosting = false;
+                try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
+
                 _isPostBoost = postBoostSlowdownDuration > 0f;
                 _postBoostTimer = postBoostSlowdownDuration;
 
@@ -476,30 +650,66 @@ public class CarController : MonoBehaviour
 
         if (_boostRequested)
         {
-            if (_boostOverrideActive) _boostCooldownTimer = 0f;
             _boostRequested = false;
+
+            // Unlock check:
+            // - If normal boost is locked, allow the request ONLY if it was supplied as an override
+            //   (drift-held boost sets _boostOverrideActive true). This unbinds drift boost from
+            //   the regular boost unlock.
+            if (!boostUnlocked && !_boostOverrideActive)
+            {
+                Debug.Log("[CarController] Boost request ignored: Boost locked in inspector/skill tree.");
+                return;
+            }
+
             if (_boostCooldownTimer <= 0f)
             {
-                // Fuel gate
                 float cost = boostFuelCost;
-                if (_boostOverrideActive) cost = driftBoostFuelCost;
-
-                if (cost > 0f)
+                if (cost > 0f && (isOutOfFuel || currentFuel < cost))
                 {
-                    if (isOutOfFuel || currentFuel < cost)
-                        return;
+                    // Clear any pending override if we can't pay the cost so it doesn't persist.
+                    _boostOverrideActive = false;
+                    _boostOverrideForce = 0f;
+                    _boostOverrideDuration = 0f;
+                    _boostOverrideMaxMult = 0f;
+
+                    Debug.Log("[CarController] Boost request ignored: not enough fuel.");
+                    return;
                 }
 
-                // Apply the impulse (override if drift-held boost requested)
                 float impulseForce = _boostOverrideActive ? _boostOverrideForce : boostForce;
                 rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
-                Debug.Log($"Boost activated! Force={impulseForce}");
+
+                if (boostSustainAcceleration > 0f)
+                    rb.AddForce(transform.forward * boostSustainAcceleration, ForceMode.Acceleration);
+
                 if (cost > 0f) ConsumeFuel(cost);
 
+                // Transition into boosting
                 _isBoosting = true;
+                try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
+
+                Debug.Log($"[CarController] Boost STARTED: impulse={impulseForce:F2}, sustain={boostSustainAcceleration:F2}, duration={(_boostOverrideActive ? _boostOverrideDuration : boostDuration):F2}");
+
                 _boostTimer = Mathf.Max(0f, _boostOverrideActive ? _boostOverrideDuration : boostDuration);
                 _isPostBoost = false;
                 _boostCooldownTimer = boostCooldown;
+
+                // Clear override (we consumed it)
+                _boostOverrideActive = false;
+                _boostOverrideForce = 0f;
+                _boostOverrideDuration = 0f;
+                _boostOverrideMaxMult = 0f;
+            }
+            else
+            {
+                // Clear override if request rejected due to cooldown to avoid sticky override state
+                _boostOverrideActive = false;
+                _boostOverrideForce = 0f;
+                _boostOverrideDuration = 0f;
+                _boostOverrideMaxMult = 0f;
+
+                Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
             }
         }
 
@@ -551,6 +761,7 @@ public class CarController : MonoBehaviour
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateDriftUnlock();
+        UpdateBoostUnlock();
     }
 
     private void HandleSkillsReset()
@@ -560,6 +771,7 @@ public class CarController : MonoBehaviour
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateDriftUnlock();
+        UpdateBoostUnlock();
     }
 
     private void HandleInput()
@@ -752,6 +964,12 @@ public class CarController : MonoBehaviour
         float smoothRate = steeringInputSmooth;
         if (isDrifting) smoothRate *= 1.4f;
 
+        // Apply temporary handling boost: reduce smoothing (i.e. make steering snappier)
+        float handlingMult = GetTemporaryHandlingMultiplier();
+        // dividing smoothing rate by handling multiplier => lower smoothing = snappier input
+        if (handlingMult > 1f)
+            smoothRate /= handlingMult;
+
         bool suppressInputs = false;
         if (enableDamageMalfunction)
         {
@@ -764,26 +982,31 @@ public class CarController : MonoBehaviour
                 if (_malfunctionCooldownRemain <= 0f && chancePerSec > 0f)
                 {
                     float p = chancePerSec * Time.deltaTime;
-                    if (Random.value < p)
+                    if (UnityEngine.Random.value < p)
                     {
-                        _malfunctionTimer = Random.Range(malfunctionBurstDuration.x, malfunctionBurstDuration.y);
-                        _malfunctionCooldownRemain = Random.Range(malfunctionCooldown.x, malfunctionCooldown.y);
+                        _malfunctionTimer = UnityEngine.Random.Range(malfunctionBurstDuration.x, malfunctionBurstDuration.y);
+                        _malfunctionCooldownRemain = UnityEngine.Random.Range(malfunctionCooldown.x, malfunctionCooldown.y);
                     }
                 }
             }
+
             suppressInputs = _malfunctionTimer > 0f;
         }
 
+        // ADJUSTMENT: never fully suppress steering; only throttle/brake during malfunction
+        _suppressThrottleBrakeThisFrame = suppressInputs;
+        _suppressSteeringThisFrame = false; // keep steering responsive even during malfunction
+
+        // Smooth steering input (steering is never forced to 0 anymore)
         steeringInput = Mathf.MoveTowards(
             steeringInput,
-            suppressInputs ? 0f : rawHorizontal,
+            _suppressSteeringThisFrame ? 0f : rawHorizontal,
             smoothRate * Time.deltaTime
         );
 
-        _inputsSuppressedThisFrame = suppressInputs;
+        _inputsSuppressedThisFrame = _suppressThrottleBrakeThisFrame;
     }
 
-    // Evaluate and trigger a drift-held boost if thresholds are met
     private void TryTriggerDriftHeldBoost()
     {
         if (!enableDriftHeldBoost) return;
@@ -793,14 +1016,37 @@ public class CarController : MonoBehaviour
         ResetDriftHeldTimer();
 
         if (held < driftBoostMinHoldSeconds)
+        {
+            Debug.Log($"[CarController] Drift-held boost: held {held:F2}s < min {driftBoostMinHoldSeconds:F2}s -> NO BOOST");
             return; // below minimum threshold
+        }
 
         float clamped = Mathf.Min(held, driftBoostMaxHoldSeconds);
         float norm = Mathf.InverseLerp(driftBoostMinHoldSeconds, driftBoostMaxHoldSeconds, clamped);
 
         float force = Mathf.Lerp(driftBoostForceRange.x, driftBoostForceRange.y, norm);
         float duration = Mathf.Lerp(driftBoostDurationRange.x, driftBoostDurationRange.y, norm);
-        float maxMult = Mathf.Lerp(driftBoostMaxSpeedMultRange.x, driftBoostMaxSpeedMultRange.y, norm);
+        float maxMult = Mathf.Lerp(driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, norm); // preserve intent if curves change
+
+        // Apply skill scaling and gate by skill unlock (if a manager is present)
+        var mgr = RacingSkillTreeManager.Instance;
+        bool unlocked = mgr == null ? true : mgr.IsDriftHeldBoostUnlocked();
+
+        Debug.Log($"[CarController] Drift-held boost attempt: held={held:F2}s norm={norm:F2} force={force:F2} dur={duration:F2} maxMult={maxMult:F2} unlocked={unlocked}");
+
+        if (!unlocked)
+        {
+            // Skill exists and is locked -> do not trigger drift-held boost
+            Debug.Log("[CarController] Drift-held boost aborted: skill locked.");
+            return;
+        }
+
+        if (mgr != null)
+        {
+            force = mgr.GetDriftHeldBoostForceScaled(force);
+            duration = mgr.GetDriftHeldBoostDurationScaled(duration);
+            maxMult = mgr.GetDriftHeldBoostMaxSpeedMultScaled(maxMult);
+        }
 
         _boostOverrideActive = true;
         _boostOverrideForce = force;
@@ -814,11 +1060,13 @@ public class CarController : MonoBehaviour
             else
             {
                 _boostOverrideActive = false;
+                Debug.Log("[CarController] Drift-held boost aborted: not enough fuel.");
                 return;
             }
         }
 
         _boostRequested = true;
+        Debug.Log($"[CarController] Drift-held boost REQUESTED -> force={force:F2}, duration={duration:F2}, maxMult={maxMult:F2}");
     }
 
     private void ResetDriftHeldTimer()
@@ -926,7 +1174,7 @@ public class CarController : MonoBehaviour
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, transform.forward);
-        float steerSpeed = Mathf.Max(0f, effectiveTurnSpeed);
+        float steerSpeed = Mathf.Max(0f, effectiveTurnSpeed * GetTemporaryHandlingMultiplier());
 
         bool driftPhysicsActive = isDrifting || _driftGlideActive;
 
@@ -990,6 +1238,12 @@ public class CarController : MonoBehaviour
             reverseKey = false;
         }
 
+        if (_suppressThrottleBrakeThisFrame)
+        {
+            forwardKey = false;
+            reverseKey = false;
+        }
+
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
 
@@ -1011,17 +1265,35 @@ public class CarController : MonoBehaviour
                 }
                 else if (brakingOrReverse)
                 {
-                    float brakeAccel = currentBrakingForce * brakeForwardFactor;
-                    float reverseAccel = effectiveAcceleration * reverseAccelFactor;
+                    // --- smoother braking/reverse: move longitudinal velocity toward targets instead of instant AddForce ---
+                    float brakeAccel = currentBrakingForce * brakeForwardFactor;          // units: m/s^2 used as max delta
+                    float reverseAccel = effectiveAcceleration * reverseAccelFactor;     // units: m/s^2 used as max delta
 
-                    if (forwardSpeed > brakeToReverseSpeed)
+                    // current forward/backward speed (signed)
+                    float currentLong = Vector3.Dot(rb.velocity, forward);
+
+                    if (currentLong > brakeToReverseSpeed)
                     {
-                        rb.AddForce(-forward * brakeAccel, ForceMode.Acceleration);
+                        // braking: smoothly approach 0 (stop) at most brakeAccel * dt per fixed step
+                        float targetLong = 0f;
+                        float maxDelta = brakeAccel * Time.fixedDeltaTime;
+                        float newLong = Mathf.MoveTowards(currentLong, targetLong, maxDelta);
+
+                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
+                        rb.velocity = newVel;
+
                         ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                     }
                     else
                     {
-                        rb.AddForce(-forward * reverseAccel, ForceMode.Acceleration);
+                        // reversing: smoothly approach a modest reverse target speed (tweak targetReverseSpeed to taste)
+                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f); // inspector-tuneable if desired
+                        float maxDelta = reverseAccel * Time.fixedDeltaTime;
+                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, maxDelta);
+
+                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
+                        rb.velocity = newVel;
+
                         ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                     }
                 }
@@ -1493,6 +1765,26 @@ public class CarController : MonoBehaviour
 
             currentTurnSpeed = newTurnSpeed;
             effectiveTurnSpeed = currentTurnSpeed;
+
+            // Force applies to BOTH main boost impulse and sustain acceleration
+            boostForce = mgr.ApplyStatChain(baseBoostForce, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+            boostForce = Mathf.Max(0f, boostForce);
+
+            boostSustainAcceleration = mgr.ApplyStatChain(baseBoostSustainAcceleration, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+            boostSustainAcceleration = Mathf.Max(0f, boostSustainAcceleration);
+
+            boostDuration = mgr.ApplyStatChain(baseBoostDuration, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+            boostDuration = Mathf.Max(0.05f, boostDuration);
+
+            boostMaxSpeedMultiplier = mgr.ApplyStatChain(baseBoostMaxSpeedMult, SkillType.BoostMaxSpeedMult_Add, SkillType.BoostMaxSpeedMult_Mul);
+            boostMaxSpeedMultiplier = Mathf.Max(1f, boostMaxSpeedMultiplier);
+
+            boostCooldown = mgr.ApplyStatChain(baseBoostCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+            boostCooldown = Mathf.Max(0.05f, boostCooldown);
+
+            boostFuelCost = mgr.ApplyStatChain(baseBoostFuelCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+            boostFuelCost = Mathf.Max(0f, boostFuelCost);
+
         }
 
         ApplyDamageDegradationToPerformance();
@@ -1526,8 +1818,62 @@ public class CarController : MonoBehaviour
 #endif
     }
 
+    public void ApplyExternalCrashDamage(float severity)
+    {
+        // Respect internal cooldown so external callers can't bypass invulnerability windows.
+        if (Time.time < _nextCrashAllowedTime)
+            return;
+
+        float sev01 = Mathf.Clamp01(severity);
+
+        // Apply HP loss similar to TriggerCrash's applyDamage block
+        if (hpCrashDamageAtSeverity1 > 0f)
+        {
+            float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
+            hpLoss = Mathf.Min(hpLoss, currentHP);
+            currentHP = Mathf.Max(0f, currentHP - hpLoss);
+#if UNITY_EDITOR
+            Debug.Log($"[CarController] External crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
+#endif
+        }
+
+        // Apply fuel loss similar to TriggerCrash
+        if (fuelLossAtSeverity1 > 0f)
+        {
+            float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
+            float before = currentFuel;
+            ConsumeFuel(requestedFuelLoss);
+            float consumed = Mathf.Max(0f, before - currentFuel);
+            if (consumed + 1e-3f < minFuelLossPerCrash)
+            {
+                float shortfall = minFuelLossPerCrash - consumed;
+                currentFuel = Mathf.Max(0f, currentFuel - shortfall);
+            }
+#if UNITY_EDITOR
+            Debug.Log($"[CarController] External crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
+#endif
+        }
+
+        // Set cooldown after applying damage so subsequent crashes are gated
+        _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+    }
+
+    public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
+    {
+        if (multiplier <= 1f || duration <= 0f) return;
+        _tempHandlingMultiplier = Mathf.Max(1f, multiplier);
+        _tempHandlingExpireAt = Time.time + Mathf.Max(0f, duration);
+    }
+
+    private float GetTemporaryHandlingMultiplier()
+    {
+        return Time.time < _tempHandlingExpireAt ? _tempHandlingMultiplier : 1f;
+    }
+
     private void ApplyDamageDegradationToPerformance()
     {
+        // NOTE: keep degradation strictly to performance (accel/maxSpeed/turn).
+        // Do NOT alter drag, physics materials or anything that can freeze motion.
         float hpFrac = HPPercent;
         if (hpFrac >= degradeStartHPFraction)
             return;
@@ -1538,6 +1884,26 @@ public class CarController : MonoBehaviour
         effectiveAcceleration *= perfMul;
         effectiveMaxSpeed *= perfMul;
         effectiveTurnSpeed *= perfMul;
+
+        // IMPORTANT: we do NOT touch effectiveDrag here to avoid stalling the car.
+    }
+
+    private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)
+    {
+        // Preserve vertical component (y)
+        Vector3 vel = rb.velocity;
+        rb.velocity = forwardDir.normalized * newLong + Vector3.up * vel.y;
+    }
+
+    private void UpdateBoostUnlock()
+    {
+        if (!requireBoostUnlock)
+        {
+            boostUnlocked = true;
+            return;
+        }
+        var mgr = RacingSkillTreeManager.Instance;
+        boostUnlocked = (mgr != null && mgr.GetLevel(SkillType.BoostUnlock) > 0);
     }
 
     private void UpdateDriftUnlock()
@@ -1555,6 +1921,10 @@ public class CarController : MonoBehaviour
     {
         if (rb == null)
             return;
+
+        // --- NEW: skip crash logic if obstacle has active forcefield immunity ---
+        var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
+        if (immunity != null && immunity.IsImmune) return;
 
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
             return;
@@ -1577,25 +1947,90 @@ public class CarController : MonoBehaviour
 
         Vector3 hitDir;
         Vector3 contactPoint = transform.position;
+        Vector3 contactNormal = Vector3.up;
         if (collision.contactCount > 0)
         {
             var c = collision.GetContact(0);
             hitDir = c.normal;
             contactPoint = c.point;
+            contactNormal = c.normal;
         }
         else
         {
             hitDir = (transform.position - collision.transform.position).normalized;
         }
 
+
+        var otherCol = collision.collider;
+        var cross = otherCol.GetComponentInParent<CrossTrackObstacle>();
+        if (cross != null)
+        {
+            PlayCrashSfx(crashClipHonk, contactPoint, crashSfxVolume);
+        }
+        else
+        {
+            PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
+        }
+
+
+
+        // Spawn crash/explode VFX at the contact point (only when damage window open)
+        if (damageWindowOpen)
+        {
+            SpawnCrashImpactVFX(contactPoint, contactNormal);
+        }
+
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
+    }
+
+    // Add helper inside the class
+    private void PlayCrashSfx(AudioClip clip, Vector3 worldPos, float volume = 1f)
+    {
+        if (clip == null) return;
+
+        GameObject go = new GameObject("SFX_Crash_" + clip.name);
+        go.transform.position = worldPos;
+
+        var src = go.AddComponent<AudioSource>();
+        src.clip = clip;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.dopplerLevel = 0f;
+
+        // Spatial settings
+        src.spatialBlend = crashUseSpatial ? Mathf.Clamp01(crashSpatialBlend) : 0f;
+        src.rolloffMode = crashRolloff;
+        src.minDistance = Mathf.Max(0.01f, crashMinDistance);
+        src.maxDistance = Mathf.Max(src.minDistance + 0.1f, crashMaxDistance);
+
+        // Apply volume + multiplier and clamp
+        src.volume = Mathf.Clamp01(volume * crashVolumeMultiplier);
+
+        // Randomize pitch for variety
+        float pitch = UnityEngine.Random.Range(crashPitchMin, crashPitchMax);
+        src.pitch = Mathf.Clamp(pitch, 0.01f, 3f);
+
+        src.Play();
+        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
     }
 
     private void OnTriggerEnter(Collider other)
     {
+        // Ignore our own auxiliary trigger(s) (forcefield bubble etc.)
+        if (other.isTrigger)
+        {
+            // If it’s the child forcefield trigger just bail.
+            if (other.name == "ForcefieldTrigger" || other.GetComponentInParent<CarForcefield>() != null)
+                return;
+        }
+
+        var immunity = other.GetComponentInParent<LaunchImmunityMarker>();
+        if (immunity != null && immunity.IsImmune) return;
+
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
             return;
 
+        // (rest of existing crash logic unchanged)
         float impactSpeed = 0f;
         Rigidbody otherRb = other.attachedRigidbody;
         if (otherRb != null)
@@ -1607,7 +2042,7 @@ public class CarController : MonoBehaviour
             return;
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
-        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
 
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
@@ -1623,6 +2058,19 @@ public class CarController : MonoBehaviour
 
         Vector3 contactPoint = other.bounds.ClosestPoint(transform.position);
 
+        var crossTrigger = other.GetComponentInParent<CrossTrackObstacle>();
+        if (crossTrigger != null)
+            PlayCrashSfx(crashClipHonk, contactPoint, crashSfxVolume);
+        else
+            PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
+
+        // Spawn crash/explode VFX at the contact point (only when damage window open)
+        if (damageWindowOpen)
+        {
+            // For triggers we don't have a contact normal - use up as a reasonable default
+            SpawnCrashImpactVFX(contactPoint, Vector3.up);
+        }
+
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
     }
 
@@ -1633,9 +2081,64 @@ public class CarController : MonoBehaviour
 
         _reorientElapsed += Time.deltaTime;
         float t = Mathf.Clamp01(_reorientElapsed / reorientDuration);
+
+        // Smoothly slerp while reorienting
         transform.rotation = Quaternion.Slerp(_reorientStartRot, _reorientTargetRot, t);
+
         if (t >= 1f)
+        {
+            // Ensure exact, no residual tilt on X/Z — snap final rotation to zero X/Z
+            Vector3 finalEuler = transform.eulerAngles;
+            transform.rotation = Quaternion.Euler(0f, finalEuler.y, 0f);
+
+            // Also enforce on Rigidbody to avoid physics re-introducing tilt
+            if (rb != null)
+            {
+                rb.angularVelocity = Vector3.zero;
+                rb.rotation = transform.rotation;
+                rb.freezeRotation = true;
+                rb.drag = _baseDrag;
+                rb.angularDrag = _baseAngularDrag;
+            }
+
             _isReorienting = false;
+        }
+    }
+
+    // Helper: spawn impact VFX at world position with optional orientation (normal)
+    private void SpawnCrashImpactVFX(Vector3 worldPos, Vector3 normal)
+    {
+        if (crashImpactVFX == null) return;
+
+        // Try ProjectilePool if it exists
+        try
+        {
+            if (ProjectilePool.Instance != null)
+            {
+                GameObject inst = ProjectilePool.Instance.Get(crashImpactVFX);
+                if (inst != null)
+                {
+                    inst.transform.position = worldPos;
+                    inst.transform.rotation = Quaternion.LookRotation(normal, Vector3.up);
+                    inst.SetActive(true);
+                    // schedule return to pool
+                    StartCoroutine(ReturnPooledVFXLater(crashImpactVFX, inst, Mathf.Max(0.01f, crashImpactVFXLifetime)));
+                    return;
+                }
+            }
+        }
+        catch { /* ignore pool errors, fallback to Instantiate */ }
+
+        // Fallback: instantiate and destroy after lifetime
+        var go = Instantiate(crashImpactVFX, worldPos, Quaternion.LookRotation(normal, Vector3.up));
+        Destroy(go, Mathf.Max(0.01f, crashImpactVFXLifetime));
+    }
+
+    private System.Collections.IEnumerator ReturnPooledVFXLater(GameObject prefab, GameObject instance, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (instance != null && prefab != null && ProjectilePool.Instance != null)
+            ProjectilePool.Instance.Return(prefab, instance);
     }
 
     // Add this method near other public APIs (e.g. below ConsumeFuel or at the end of the class)

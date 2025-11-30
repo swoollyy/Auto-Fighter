@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 929d11989ad6a8745964fb3e6569a0c2, type: 3}
+  m_Name: DriftBoostUnlock
+  m_EditorClassIdentifier: 
+  type: 4300
+  displayName: Drift Boost Unlock
+  description: Let's you get boost from your drifts!
+  maxLevel: 1
+  costCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  flatCost: 30
+  mode: 0
+  baseValue: 0
+  perLevelAdd: 0.01
+  uiPosition: {x: 150, y: 150}
+  revealedAtStart: 0
+  progressiveUnlocks:
+  - requiredLevel: 1
+    unlocks:
+    - {fileID: 11400000, guid: ea08749df37753640a996086c76bc85c, type: 2}
+    - {fileID: 11400000, guid: 1e81d9c8dcc1a7a4bacf84e73d1c7984, type: 2}
+    - {fileID: 11400000, guid: 664725f754fee0349b55c9e3307da656, type: 2}

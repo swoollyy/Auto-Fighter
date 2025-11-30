@@ -17,6 +17,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
     [SerializeField] private CrossObstacleDirector crossObstacleDirector;
+    [SerializeField] private ThrownObstacleDirector thrownObstacleDirector;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
 
@@ -55,7 +56,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private float spawnHeightOffset = 0.2f;
 
     [Header("Balancing")]
-    [SerializeField, Min(0f)] private float coinsPerDistance = 0.33f; // coins per meter
+    [SerializeField, Min(0f)] private float baseCoinsPerMeter = 0.33f; // base coins per meter (now skill-modifiable)
 
     [Header("Crash Penalties")]
     [Tooltip("Enable currency loss when crashing.")]
@@ -65,24 +66,59 @@ public class GameManager_Racing : MonoBehaviour
     [Tooltip("Minimum coins to remove on any crash when you have currency.")]
     [SerializeField] private int minCurrencyLossPerCrash = 2;
 
+    [Header("Explosion Proximity FX")]
+    [SerializeField, Range(0f, 3f)] private float explosionShakeBaseDuration = 0.18f;
+    [SerializeField, Range(0f, 2f)] private float explosionShakeBaseStrength = 0.45f;
+    [SerializeField, Range(0.1f, 4f)] private float explosionShakeDistanceFalloff = 2.0f; // multiplier to radius
+
+    [Header("Explosion PostFX")]
+    [SerializeField, Range(0f, 2f)] private float explosionChromaticMultiplier = 1.0f;
+    [SerializeField, Range(0f, 200f)] private float explosionLensMultiplier = 1.0f;
+
+    [Header("Close-Call (Near Miss) FX")]
+    [SerializeField, Range(0.01f, 1f)] private float closeCallSlowMoScale = 0.6f;
+    [SerializeField, Min(0f)] private float closeCallSlowMoHold = 0.20f;
+    [SerializeField, Min(0f)] private float closeCallSlowMoEaseOut = 0.20f;
+    [SerializeField, Range(0f, 10f)] private float closeCallChromatic = 0.5f;
+    [SerializeField, Range(-100f, 100f)] private float closeCallLens = -12f;
+    [SerializeField, Range(0f, 10f)] private float closeCallZoomDeltaFOV = 2f; // how many degrees to zoom in
+    [SerializeField, Range(0.05f, 1f)] private float closeCallZoomDuration = 0.25f;
+
+    [Header("Close-Call Handling Boost")]
+    [Tooltip("Multiplier applied to car turn speed/handling when a close-call occurs (1.0 = no change).")]
+    [SerializeField, Range(1f, 2.5f)] private float closeCallHandlingTurnMultiplier = 1.15f;
+    [SerializeField, Min(0f), Tooltip("Duration (seconds) of the temporary handling boost applied to the car on close-call.")]
+    private float closeCallHandlingDuration = 2.0f;
+
+    [Header("Audio Clips")]
+    [SerializeField] private AudioClip runCompleteCoinClip;
+    [SerializeField] private float runCompleteCoinVolume = 1f;
+    [SerializeField] private AudioClip depositCoinsClip;
+    [SerializeField] private float depositCoinsVolume = 1f;
+
+    // runtime
+    private Coroutine _closeCallCR;
+
     private GameObject carInstance;
     private CarController carController;
     private bool runEnded = false;
     private bool runStarted = false;
     private Coroutine beginRunRoutine;
 
-    // NEW: simple distance tracking and finalize guard
     private float runDistanceMeters = 0f;
     private Rigidbody _carRb;
     private int _startingCurrency = 0;
     private bool _currencyAwarded = false;
 
-    // NEW: breakdown this run
     private int _distanceCoinsThisRun = 0;
     private int _pickupCoinsThisRun = 0;
     private int _obstacleCoinsThisRun = 0;
 
+    private bool _depositSoundPlayed = false;
+
     public CarController ActiveCar => carController;
+
+    private const string PREF_KEY_PLAY_DEPOSIT = "GM_PlayDepositOnLoad_v1";
 
     void Awake()
     {
@@ -94,6 +130,15 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         Instance = this;
+
+        int pendingDeposit = PlayerPrefs.GetInt(PREF_KEY_PLAY_DEPOSIT, 0);
+        if (pendingDeposit > 0)
+        {
+            PlayDepositCoinsSound();
+            PlayerPrefs.DeleteKey(PREF_KEY_PLAY_DEPOSIT);
+            PlayerPrefs.Save();
+            _depositSoundPlayed = true;
+        }
 
         Physics.gravity = new Vector3(0, -9.81f, 0);
         Time.timeScale = 1f;
@@ -144,7 +189,6 @@ public class GameManager_Racing : MonoBehaviour
         // Accumulate planar distance (XZ) while the car exists
         if (carInstance != null)
         {
-
             if (distanceSystem != null)
             {
                 runDistanceMeters = distanceSystem.DistanceAlongTrack; // live forward progress
@@ -156,8 +200,6 @@ public class GameManager_Racing : MonoBehaviour
                 // NOTE: spawn position captured in HandleTrackGenerated when carInstance is created.
                 // If needed you could store a _spawnPos; for now we just leave runDistanceMeters unchanged when no meter.
             }
-
-
         }
 
         if (carController == null)
@@ -180,17 +222,44 @@ public class GameManager_Racing : MonoBehaviour
             }
         }
 
+        // Replace previous Restart-on-R behaviour with "Return to Skill Tree" by default.
+        // Holding Ctrl or Shift + R still forces a full scene restart for convenience.
         if (runEnded && Input.GetKeyDown(KeyCode.R))
         {
-            RestartRun();
+            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
+                Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                // explicit restart (legacy behavior when modifier held)
+                RestartRun();
+            }
+            else
+            {
+                // Default: play deposit sound if needed, then restart the run (scene reload) so everything is reset.
+                TryPlayDepositSoundOnReset();
+                RestartRun();
+            }
         }
     }
 
+    // New helper: same gating logic used by ReturnToSkillTree for deposit audio, but callable before a scene restart.
+    private void TryPlayDepositSoundOnReset()
+    {
+        // Don't set twice for this run
+        if (_depositSoundPlayed) return;
+        if (!_currencyAwarded) return; // nothing was awarded this run
 
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
 
-
-
-
+        int deposited = mgr.Currency - _startingCurrency;
+        if (deposited > 0)
+        {
+            // Persist a flag so the freshly loaded scene can play the sound after reload finishes.
+            PlayerPrefs.SetInt(PREF_KEY_PLAY_DEPOSIT, deposited);
+            PlayerPrefs.Save();
+            _depositSoundPlayed = true;
+        }
+    }
 
     public void BeginRun()
     {
@@ -201,6 +270,7 @@ public class GameManager_Racing : MonoBehaviour
 
         var mgr = RacingSkillTreeManager.Instance;
         _startingCurrency = mgr != null ? mgr.Currency : 0;
+        _depositSoundPlayed = false;
 
         // NEW: reset breakdown for this run
         _distanceCoinsThisRun = 0;
@@ -235,13 +305,14 @@ public class GameManager_Racing : MonoBehaviour
         int distanceInt = Mathf.RoundToInt(runDistanceMeters);
 
         // 1) Distance coins
-        int distanceCoins = Mathf.RoundToInt(distanceInt * coinsPerDistance);
+        // Apply skill chain to base coins-per-meter
+        var mgr = RacingSkillTreeManager.Instance;
+        float coinsPerMeter = mgr != null ? mgr.GetDistanceCoinsPerMeter(baseCoinsPerMeter) : baseCoinsPerMeter;
+        int distanceCoins = Mathf.RoundToInt(distanceInt * coinsPerMeter);
         _distanceCoinsThisRun = distanceCoins;
 
-        var mgr = RacingSkillTreeManager.Instance;
-        int finalTotalCurrency = 0;
-
         // 2) Award distance coins into the *global* currency pool
+        int finalTotalCurrency = 0;
         if (mgr != null)
         {
             mgr.AddCurrency(distanceCoins);
@@ -262,6 +333,7 @@ public class GameManager_Racing : MonoBehaviour
             _obstacleCoinsThisRun,
             totalCoinsThisRun
         );
+        PlayRunCompleteCoinSound();
 
         _currencyAwarded = true;
         runEnded = true;
@@ -391,6 +463,120 @@ public class GameManager_Racing : MonoBehaviour
         }
     }
 
+    public void HandleProjectileExplosion(Vector3 explosionPos, float explosionRadius)
+    {
+        if (!enabled) return;
+
+        // compute distance to the active car
+        var activeCar = ActiveCar;
+        if (activeCar == null) return;
+
+        Vector3 carPos = activeCar.transform.position;
+        float dist = Vector3.Distance(carPos, explosionPos);
+
+        // define effect distance (where effect falls off to zero)
+        float effectMaxDist = explosionRadius * Mathf.Max(1f, explosionShakeDistanceFalloff);
+
+        float proximity = 0f;
+        if (effectMaxDist > 0f)
+            proximity = Mathf.Clamp01(1f - (dist / effectMaxDist)); // 1 = at center, 0 = outside effect
+
+        if (proximity <= 0f) return;
+
+        // Screen shake scaled by proximity
+        if (enableCrashScreenShake && cameraFollow != null)
+        {
+            float dur = Mathf.Lerp(0.05f, explosionShakeBaseDuration, proximity);
+            float str = Mathf.Lerp(0.05f, explosionShakeBaseStrength * explosionShakeBaseStrength * 1f, proximity); // small baseline
+            int vib = Mathf.RoundToInt(crashShakeVibrato * Mathf.Lerp(0.6f, 1.2f, proximity));
+            cameraFollow.StartShake(dur, str, vib, crashShakeRandomness);
+        }
+
+        // PostFX burst scaled by proximity
+        var postFX = FindObjectOfType<ForcefieldPostFXController>();
+        if (postFX != null)
+        {
+            float chroma = Mathf.Clamp01(explosionChromaticMultiplier * proximity);
+            float lens = Mathf.Lerp(0f, explosionLensMultiplier * proximity * 1.0f, proximity);
+            float hold = Mathf.Lerp(0.05f, 0.25f, proximity);
+            postFX.PlayBurstCustom(chroma, lens, hold, 0.06f, 0.18f);
+        }
+
+        // NEW: trigger a scaled slow-motion based on proximity (reuses crash slow-mo routine)
+        if (enableCrashSlowMo && proximity > 0f)
+        {
+            // Use proximity as severity (0..1) so CrashSlowMoCurve and related settings control feel
+            StartCrashSlowMo(proximity);
+        }
+    }
+
+    // Generic proximity ping for non-explosive projectiles (small visual cue)
+    public void HandleProjectileProximity(Vector3 pos, float radius)
+    {
+        // reuse explosion handler with smaller multipliers (no screen shake if desired)
+        HandleProjectileExplosion(pos, radius);
+    }
+
+    // Called on a close call (near miss). No screenshake — play slight slow-mo + postfx + camera zoom pulse.
+    public void HandleProjectileCloseCall(Vector3 pos, float closestDistance)
+    {
+        if (!enabled) return;
+
+        // Play a small PPS burst (chromatic + lens) centered on event
+        var postFX = FindObjectOfType<ForcefieldPostFXController>();
+        if (postFX != null)
+        {
+            float chroma = closeCallChromatic;
+            float lens = closeCallLens;
+            postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
+        }
+
+        // Start a gentle slow-mo for the close-call
+        if (_closeCallCR != null)
+        {
+            StopCoroutine(_closeCallCR);
+            _closeCallCR = null;
+        }
+        _closeCallCR = StartCoroutine(CloseCallSlowMoRoutine());
+
+        // Camera slight zoom pulse (no shake)
+        if (cameraFollow != null && closeCallZoomDeltaFOV > 0f)
+        {
+            cameraFollow.ZoomPulse(closeCallZoomDeltaFOV, closeCallZoomDuration);
+        }
+
+        // Temporarily boost car handling/turn speed
+        var active = ActiveCar;
+        if (active != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
+        {
+            active.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
+        }
+    }
+
+    private IEnumerator CloseCallSlowMoRoutine()
+    {
+        // Enter slow-mo (realtime safe)
+        TimeScaleHub.Begin(this, Mathf.Clamp(closeCallSlowMoScale, 0.05f, 1f), affectFixedDelta: true);
+
+        float holdEnd = Time.realtimeSinceStartup + Mathf.Max(0f, closeCallSlowMoHold);
+        while (Time.realtimeSinceStartup < holdEnd)
+            yield return null;
+
+        float ease = Mathf.Max(0f, closeCallSlowMoEaseOut);
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + ease;
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float t = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float scale = Mathf.Lerp(closeCallSlowMoScale, 1f, t);
+            TimeScaleHub.Begin(this, scale, affectFixedDelta: true);
+            yield return null;
+        }
+
+        TimeScaleHub.End(this);
+        _closeCallCR = null;
+    }
+
     private void StartCrashSlowMo(float severity)
     {
         // kill any previous crash slow-mo
@@ -477,7 +663,34 @@ public class GameManager_Racing : MonoBehaviour
         return null;
     }
 
+    /// <summary>
+    /// Call when the UI flow returns the player to the skill tree (e.g. "Back to Skill Tree" button).
+    /// Plays the deposit sound only if the run awarded currency and the player's bank increased.
+    /// This prevents the sound on first app boot or when nothing was deposited.
+    /// </summary>
+    public void ReturnToSkillTree()
+    {
+        // Show the skill tree root (same as existing flow)
+        if (skillTreeRoot != null)
+            skillTreeRoot.SetActive(true);
 
+        // Hide run UI if present
+        uiManager?.HideRunComplete();
+
+        // Only play deposit sound if run awarded currency and we haven't played it yet for this run
+        if (_depositSoundPlayed) return;
+        if (!_currencyAwarded) return; // nothing was awarded this run
+
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        int deposited = mgr.Currency - _startingCurrency;
+        if (deposited > 0)
+        {
+            PlayDepositCoinsSound();
+            _depositSoundPlayed = true;
+        }
+    }
 
     private void EnsureRefs()
     {
@@ -525,6 +738,7 @@ public class GameManager_Racing : MonoBehaviour
 
         carController = carInstance.GetComponent<CarController>();
         crossObstacleDirector.SetCar(carController);
+        thrownObstacleDirector.SetCar(carController);
 
         // NEW: reset distance tracking for the new run
         runDistanceMeters = 0f;
@@ -553,4 +767,35 @@ public class GameManager_Racing : MonoBehaviour
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
     }
+
+    private void PlayRunCompleteCoinSound()
+    {
+        if (runCompleteCoinClip == null) return;
+        Play2DClip(runCompleteCoinClip, runCompleteCoinVolume);
+    }
+    public void PlayDepositCoinsSound()
+    {
+        if (depositCoinsClip == null) return;
+        Play2DClip(depositCoinsClip, depositCoinsVolume);
+    }
+
+    private void Play2DClip(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+        GameObject go = new GameObject("SFX_2D_" + clip.name);
+        // Attach to camera if available so it's logically grouped in the hierarchy (optional)
+        if (mainCam != null) go.transform.SetParent(mainCam.transform, false);
+
+        var src = go.AddComponent<AudioSource>();
+        src.clip = clip;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.spatialBlend = 0f; // 2D — no panning
+        src.volume = Mathf.Clamp01(volume);
+        src.dopplerLevel = 0f;
+        src.rolloffMode = AudioRolloffMode.Linear; // irrelevant for 2D but harmless
+        src.Play();
+        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
 }

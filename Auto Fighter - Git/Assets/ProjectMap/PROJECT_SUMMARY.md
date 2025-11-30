@@ -1,111 +1,240 @@
 # Project Summary
-- Generated: 2025-10-25T22:21:48.8337007Z (UTC)
+- Generated: 2025-11-29T16:32:27.6909427Z (UTC)
 - Unity: 2022.3.62f2
-- Assemblies: 13
-- MonoBehaviours: 54
-- ScriptableObjects: 22
+- Assemblies: 12
+- MonoBehaviours: 121
+- ScriptableObjects: 27
 - IPowerup implementations:
   - CollectAllXPPowerup
   - NukeBumpersPowerup
-  - RandomFlingPowerup
+  - RicochetPowerup
 - *Powerup classes:
   - CollectAllXPPowerup
   - IPowerup
   - NukeBumpersPowerup
-  - RandomFlingPowerup
+  - RicochetPowerup
 - Pinball types:
   - Pinball
 - RunContext-related types:
   - IRunContext
 
+## Anonymously Hosted DynamicMethods Assembly
+
 ## Assembly-CSharp
 - <PrivateImplementationDetails>
-- <PrivateImplementationDetails>+__StaticArrayInitTypeSize=2649
-- <PrivateImplementationDetails>+__StaticArrayInitTypeSize=5021
+- <PrivateImplementationDetails>+__StaticArrayInitTypeSize=4682
+- <PrivateImplementationDetails>+__StaticArrayInitTypeSize=8762
 - Assassin
+- BackdropClickCatcher (MonoBehaviour)
 - Ball (MonoBehaviour)
 - BallDuplicateRewardSO (ScriptableObject)
 - BallElementalState (MonoBehaviour)
 - BallGrowRewardSO (ScriptableObject)
 - BallShrinkRewardSO (ScriptableObject)
+- BallUIEntry (MonoBehaviour)
 - BallXPBar (MonoBehaviour)
 - BaseCharacter
+- BluePad (MonoBehaviour)
+- BluePad+<PostActivationDisable>d__45
+- BluePad+<SlowMoRoutine>d__44
 - Brawler
 - Bumper (MonoBehaviour)
 - BumperAnimScript (MonoBehaviour)
 - BumperElementalState (MonoBehaviour)
+- BumperLightController (MonoBehaviour)
+- BumperLightController+<>c__DisplayClass26_0
 - BumperState
 - BumperType
+- CameraFollow (MonoBehaviour)
+- CameraFollow+<BoostZoomDuringBoostCoroutine>d__58
+- CameraFollow+<ZoomPulseCoroutine>d__66
+- CameraFollowSimple (MonoBehaviour)
+- CarController (MonoBehaviour)
+- CarController+<ReturnPooledVFXLater>d__243
+- CarForcefield (MonoBehaviour)
+- CarForcefield+<LaunchSlowMoRoutine>d__56
+- CarForcefield+<ReenableCollisionsLater>d__53
+- CarForcefield+ForcefieldTriggerProxy (MonoBehaviour)
+- CarTurretController (MonoBehaviour)
 - CharacterStat
 - CharacterUI (MonoBehaviour)
 - ChatController (MonoBehaviour)
+- CoinPickup (MonoBehaviour)
+- CoinPickup+<ReturnPooledVFXLater>d__10
+- CoinPickup+VFXColorEntry
 - CollectAllXPPowerup (IPowerup)
-- CollectAllXPPowerup+<VacuumToAnchor>d__8
+- CollectAllXPPowerup+<>c__DisplayClass16_0
+- CollectAllXPPowerup+<VacuumToAnchor>d__16
+- CollectAllXPPowerup+FFState
 - CollectXP (MonoBehaviour)
 - CollectXP+<>c
-- CollectXP+<RebindNextFrame>d__13
+- CollectXP+<RebindNextFrame>d__14
+- CrossObstacleDirector (MonoBehaviour)
+- CrossTrackObstacle (MonoBehaviour)
 - DamageNumbers
 - DamageNumberStyleSO (ScriptableObject)
 - DamagePerBounceRewardSO (ScriptableObject)
 - DamageRewardSO (ScriptableObject)
 - DropdownSample (MonoBehaviour)
 - Druid
+- DullPad (MonoBehaviour)
+- DullPad+<DisabledCooldownRoutine>d__57
+- DullPad+<InactivityRoutine>d__55
+- DullPad+PadState
+- DullPad+UpgradeKind
+- DynamicPadManager (MonoBehaviour)
 - EarthPaddleRewardSO (ScriptableObject)
 - ElectricPaddleRewardSO (ScriptableObject)
 - ElementalState
 - EndGame (MonoBehaviour)
 - EnvMapAnimator (MonoBehaviour)
 - EnvMapAnimator+<Start>d__4
+- ExhaustVFXController (MonoBehaviour)
 - FirePaddleRewardSO (ScriptableObject)
+- FireVelocityFeeder (MonoBehaviour)
+- ForcefieldLaunchTag (MonoBehaviour)
+- ForcefieldPostFXController (MonoBehaviour)
+- ForcefieldPostFXController+<BurstRoutine>d__25
+- ForcefieldPostFXController+<BurstRoutineCustom>d__26
+- ForcefieldSkillHook (MonoBehaviour)
+- ForcefieldVisualPulse (MonoBehaviour)
+- FuelPickup (MonoBehaviour)
 - Game.Combat.CombatSystem
 - GameManager (MonoBehaviour)
+- GameManager_Racing (MonoBehaviour)
+- GameManager_Racing+<CloseCallSlowMoRoutine>d__79
+- GameManager_Racing+<CoBeginRun>d__71
+- GameManager_Racing+<CrashSlowMoRoutine>d__81
 - GameMode
 - GameState
+- GreenPad (MonoBehaviour)
+- GreenPad+<RestoreCameraZoomAfter>d__20
+- GreenPad+<RevertAfterAimWindow>d__21
+- GrenadeAbilityRewardSO (ScriptableObject)
+- GrenadeController (MonoBehaviour)
+- GrenadeProjectile (MonoBehaviour)
+- GrenadeProjectile+<>c__DisplayClass10_0
+- GrenadeProjectile+<>c__DisplayClass11_0
+- GrenadeProjectile+<FuseCoroutine>d__8
+- GrenadeProjectile+Params
+- GrenadeRewardRuntime (MonoBehaviour)
+- GroundRing (MonoBehaviour)
+- GroundRing+<PlayRoutine>d__8
+- GroundSurface (MonoBehaviour)
+- HPPickup (MonoBehaviour)
+- IDamageable
 - IDamageNumberSystem
+- IPadVariant
 - IPowerup
 - IRunContext
 - Item
+- IXPNumberSystem
+- LaunchImmunityMarker (MonoBehaviour)
 - LifeRewardSO (ScriptableObject)
 - Mage
 - NukeBumpersPowerup (IPowerup)
+- ObstacleType
 - PaddleEffectData
 - PaddleElementalState (MonoBehaviour)
 - PaddleState
+- PadLightFX (MonoBehaviour)
 - Pinball (MonoBehaviour)
-- Pinball+<>c__DisplayClass175_0
-- Pinball+<>c__DisplayClass176_0
-- Pinball+<>c__DisplayClass177_0
-- Pinball+<>c__DisplayClass180_0
-- Pinball+<>c__DisplayClass181_0
-- Pinball+<>c__DisplayClass184_0
-- Pinball+<GetUsableBalls>d__145
-- Pinball+<RegCheck>d__166
-- Pinball+<ResetLBumper>d__167
-- Pinball+<ResetRBumper>d__168
-- Pinball+<RespawnRoutine>d__165
-- Pinball+<Start>d__139
+- Pinball+<>c
+- Pinball+<>c__DisplayClass234_0
+- Pinball+<>c__DisplayClass236_0
+- Pinball+<>c__DisplayClass254_0
+- Pinball+<>c__DisplayClass255_0
+- Pinball+<>c__DisplayClass260_0
+- Pinball+<>c__DisplayClass261_0
+- Pinball+<>c__DisplayClass264_0
+- Pinball+<GetUsableBalls>d__213
+- Pinball+<InvokeLevelUpAfterSkillAim>d__240
+- Pinball+<RegCheck>d__244
+- Pinball+<ResetLBumper>d__245
+- Pinball+<ResetRBumper>d__246
+- Pinball+<RespawnRoutine>d__249
+- Pinball+<ResumeFromLevelUpFlow>d__233
+- Pinball+<Start>d__191
+- Pinball+SkillAimRequest
 - PinballFlipper (MonoBehaviour)
 - PinballMusic (MonoBehaviour)
 - PinballState
 - PinballUIM (MonoBehaviour)
-- PinballUIM+<>c__DisplayClass20_0
+- PinballUIM+<>c__DisplayClass31_0
 - PinballUIM+RewardSlot
+- PortalWarpController (MonoBehaviour)
+- PortalWarpController+<SlowMoPulseRealtime>d__57
+- PortalWarpController+<TempIgnorePortalWalls>d__56
+- PortalWarpController+AxisSide
+- PortalWarpRewardRuntime (MonoBehaviour)
+- PortalWarpRewardSO (ScriptableObject)
+- PostFXController (MonoBehaviour)
+- PostFXController+<>c__DisplayClass16_0
+- PostFXController+<>c__DisplayClass18_0
 - PowerupPickup (MonoBehaviour)
 - PowerupPickupTween (MonoBehaviour)
+- PowerupPickupTween+<CollectSequence>d__29
+- PowerupPickupTween+<ScaleDownAndDisable>d__30
 - PowerupSystem
 - PowerupSystem+<>c__DisplayClass5_0
 - PowerupSystem+ListPool`1
-- RandomFlingPowerup (IPowerup)
+- ProceduralTrackGenerator (MonoBehaviour)
+- ProceduralTrackGenerator+ProceduralTrackGeneratorEditor (ScriptableObject)
+- ProceduralTrackGenerator+ProceduralTrackGeneratorEditor+<>c__DisplayClass0_0
+- ProceduralTrackGenerator+Segment2D
+- ProjectileHitReceiver (MonoBehaviour)
+- ProjectilePool (MonoBehaviour)
+- RacingBullet (MonoBehaviour)
+- RacingCurrencyCheat (MonoBehaviour)
+- RacingObstacle (MonoBehaviour)
+- RacingSkillDetailPanel (MonoBehaviour)
+- RacingSkillTreeManager (MonoBehaviour)
+- RacingSkillUI (MonoBehaviour)
+- RacingSkillUI+<>c__DisplayClass37_0
+- RacingSkillUIEntry (MonoBehaviour)
 - RewardCatalogSO (ScriptableObject)
 - RewardCategory
 - RewardRarity
 - RewardSO (ScriptableObject)
+- RicochetAssist (MonoBehaviour)
+- RicochetAssist+<RestoreCollision>d__34
+- RicochetAssist+<WindowWatcher>d__33
+- RicochetPowerup (IPowerup)
 - ScoreMultiplierRewardSO (ScriptableObject)
+- ShuttleTrackObstacle (MonoBehaviour)
+- ShuttleTrackObstacle+<WaitThenResume>d__23
+- SimpleSpin (MonoBehaviour)
+- SkidDebugStamp (MonoBehaviour)
+- SkidMarkSegment (MonoBehaviour)
+- SkidMaskClearer (MonoBehaviour)
+- SkidMaskFader (MonoBehaviour)
+- SkillApplicationMode
+- SkillDefinition (ScriptableObject)
+- SkillDefinition+<GetUnlocksForLevel>d__15
+- SkillDefinition+ProgressiveUnlock
+- SkillTreeState
+- SkillType
+- SpawnUtils
+- SpeedTrailFollower (MonoBehaviour)
 - StatModifier
 - StatModType
 - StatType
+- SurfaceType
 - Tank
 - Test (MonoBehaviour)
+- ThrownObstacle (MonoBehaviour)
+- ThrownObstacle+<>c__DisplayClass34_0
+- ThrownObstacle+<AutoTimeoutCoroutine>d__31
+- ThrownObstacle+<DeactivateNextFrame>d__37
+- ThrownObstacle+<EnableColliderNextFixedUpdate>d__30
+- ThrownObstacle+<ReturnPooledVFXLater>d__44
+- ThrownObstacleDirector (MonoBehaviour)
+- ThrownObstacleDirector+<>c
+- ThrownObstacleDirector+<>c__DisplayClass46_0
+- TimeScaleHub (MonoBehaviour)
+- TimeScaleHub+Req
+- TireMarkPainter (MonoBehaviour)
+- TireTrailController (MonoBehaviour)
 - TMPro.Examples.Benchmark01 (MonoBehaviour)
 - TMPro.Examples.Benchmark01+<Start>d__10
 - TMPro.Examples.Benchmark01_UGUI (MonoBehaviour)
@@ -166,18 +295,33 @@
 - TMPro.TMP_TextEventHandler+LinkSelectionEvent
 - TMPro.TMP_TextEventHandler+SpriteSelectionEvent
 - TMPro.TMP_TextEventHandler+WordSelectionEvent
+- TrackCoinSpawner (MonoBehaviour)
+- TrackDistanceMeter (MonoBehaviour)
+- TrackDistanceMeter+DisplayMode
+- TrackFuelSpawner (MonoBehaviour)
+- TrackHPSpawner (MonoBehaviour)
+- TrackObstacleSpawner (MonoBehaviour)
 - TraitType
+- TurretUnlockBinding (MonoBehaviour)
 - TweenDamageNumberSystem (MonoBehaviour)
-- TweenDamageNumberSystem+<>c__DisplayClass31_0
+- TweenDamageNumberSystem+<>c__DisplayClass42_0
+- TweenXPNumberSystem (MonoBehaviour)
+- TweenXPNumberSystem+<>c__DisplayClass26_0
+- TweenXPNumberSystem+<>c__DisplayClass27_0
+- UIManager_Racing (MonoBehaviour)
 - UIRaycastInspector (MonoBehaviour)
 - UnitySourceGeneratedAssemblyMonoScriptTypes_v1
 - UnitySourceGeneratedAssemblyMonoScriptTypes_v1+MonoScriptData
 - Warrior
 - WaterPaddleRewardSO (ScriptableObject)
+- WheelSkidSpawner (MonoBehaviour)
+- WheelSkidSpawner+WheelData
 - XPCollectorRegistry (MonoBehaviour)
 - XPFormula
 - XPGravityRewardSO (ScriptableObject)
 - XPMultiplierRewardSO (ScriptableObject)
+- XPNumbers
+- XPNumberStyleSO (ScriptableObject)
 
 ## Assembly-CSharp-Editor
 - <PrivateImplementationDetails>
@@ -519,104 +663,6 @@
 - DG.DOTweenEditor.UtilityWindowModificationProcessor
 - DG.DOTweenEditor.UtilityWindowPostProcessor
 - DG.DOTweenEditor.UtilityWindowPostProcessor+<>c
-
-## ExCSS.Unity
-- <PrivateImplementationDetails>{86B0B9C3-60BB-4231-A2C2-3DB7A64E29AB}
-- ExCSS.AggregateRule
-- ExCSS.AggregateSelectorList
-- ExCSS.BaseSelector
-- ExCSS.BrowserPrefixes
-- ExCSS.CharacterSetRule
-- ExCSS.Combinator
-- ExCSS.CombinatorSelector
-- ExCSS.Comma
-- ExCSS.ComplexSelector
-- ExCSS.ConditionalRule
-- ExCSS.DirectionMode
-- ExCSS.DocumentFunction
-- ExCSS.DocumentRule
-- ExCSS.EqualSign
-- ExCSS.ErrorMessages
-- ExCSS.FirstChildSelector
-- ExCSS.FontFaceRule
-- ExCSS.GenericFunction
-- ExCSS.GenericRule
-- ExCSS.GrammarSegment
-- ExCSS.HtmlColor
-- ExCSS.ImportRule
-- ExCSS.InheritTerm
-- ExCSS.IRuleContainer
-- ExCSS.IToString
-- ExCSS.KeyframeRule
-- ExCSS.KeyframesRule
-- ExCSS.KeyframesRule+<>c__DisplayClass1
-- ExCSS.LastChildSelector
-- ExCSS.Lexer
-- ExCSS.Lexer+<get_Tokens>d__2
-- ExCSS.MediaRule
-- ExCSS.MediaRule+<>c__DisplayClass1
-- ExCSS.MediaTypeList
-- ExCSS.Model.Extensions.CharacterExtensions
-- ExCSS.Model.Extensions.StringExtensions
-- ExCSS.Model.FunctionBuffer
-- ExCSS.Model.HtmlEncoding
-- ExCSS.Model.ISupportsDeclarations
-- ExCSS.Model.ISupportsMedia
-- ExCSS.Model.ISupportsRuleSets
-- ExCSS.Model.ISupportsSelector
-- ExCSS.Model.Specification
-- ExCSS.Model.TextBlocks.Block
-- ExCSS.Model.TextBlocks.BracketBlock
-- ExCSS.Model.TextBlocks.CharacterBlock
-- ExCSS.Model.TextBlocks.CommentBlock
-- ExCSS.Model.TextBlocks.DelimiterBlock
-- ExCSS.Model.TextBlocks.MatchBlock
-- ExCSS.Model.TextBlocks.NumericBlock
-- ExCSS.Model.TextBlocks.PipeBlock
-- ExCSS.Model.TextBlocks.RangeBlock
-- ExCSS.Model.TextBlocks.SpecialCharacter
-- ExCSS.Model.TextBlocks.StringBlock
-- ExCSS.Model.TextBlocks.SymbolBlock
-- ExCSS.Model.TextBlocks.UnitBlock
-- ExCSS.MultipleSelectorList
-- ExCSS.NamespaceRule
-- ExCSS.NthChildSelector
-- ExCSS.NthFirstChildSelector
-- ExCSS.NthLastChildSelector
-- ExCSS.NthLastOfTypeSelector
-- ExCSS.NthOfTypeSelector
-- ExCSS.PageRule
-- ExCSS.ParseErrorEventHandler
-- ExCSS.Parser
-- ExCSS.ParserError
-- ExCSS.ParsingContext
-- ExCSS.PrimitiveTerm
-- ExCSS.Property
-- ExCSS.PseudoSelectorPrefix
-- ExCSS.RuleSet
-- ExCSS.RuleType
-- ExCSS.RuleTypes
-- ExCSS.SelectorFactory
-- ExCSS.SelectorList
-- ExCSS.SelectorOperation
-- ExCSS.SimpleSelector
-- ExCSS.StyleDeclaration
-- ExCSS.StyleDeclaration+<>c__DisplayClass2
-- ExCSS.StyleRule
-- ExCSS.StyleSheet
-- ExCSS.StyleSheet+<>c__DisplayClass3`1
-- ExCSS.StylesheetParseError
-- ExCSS.StylesheetReader
-- ExCSS.SupportsRule
-- ExCSS.SupportsRule+<>c__DisplayClass1
-- ExCSS.Term
-- ExCSS.TermList
-- ExCSS.TermList+TermSeparator
-- ExCSS.UnitType
-- ExCSS.Whitespace
-- System.StringBuilderExt
-- System.Tuple
-- System.Tuple`2
 
 ## JetBrains.Rider.PathLocator
 - JetBrains.Rider.PathLocator.IRiderLocatorEnvironment
@@ -4529,13 +4575,6 @@
 - ThisAssembly+Info
 - ThisAssembly+Metadata
 - ThisAssembly+Project
-
-## ScriptCompilationBuildProgram.Data
-- ScriptCompilationBuildProgram.Data.AssemblyData
-- ScriptCompilationBuildProgram.Data.AssemblyData_Out
-- ScriptCompilationBuildProgram.Data.Constants
-- ScriptCompilationBuildProgram.Data.ScriptCompilationData
-- ScriptCompilationBuildProgram.Data.ScriptCompilationData_Out
 
 ## unityplastic
 - <PrivateImplementationDetails>{54DA4867-CD52-476E-8489-FCEDBED1F8E5}

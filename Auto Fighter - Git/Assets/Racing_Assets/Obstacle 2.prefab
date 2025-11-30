@@ -125,6 +125,8 @@ MonoBehaviour:
   scalePunchTime: 0.15
   destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   rewardCurrency: 1
+  baseImpactVelocityThreshold: 8
+  impactDamageCooldown: 0.25
 --- !u!54 &6906296771749627853
 Rigidbody:
   m_ObjectHideFlags: 0

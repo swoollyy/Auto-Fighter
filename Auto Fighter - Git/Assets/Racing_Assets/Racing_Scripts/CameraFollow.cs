@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Collections;
+using UnityEngine;
 
 /// <summary>
 /// Camera follow with yaw‑only tracking, optional screen shake,
@@ -60,6 +62,65 @@ public class CameraFollow : MonoBehaviour
     // ★ runtime speed-FOV target
     private float _speedFovCurrent; // smoothed applied value
 
+    // NEW: suppression flag so ZoomPulse can block auto speed-FOV while doing its realtime tween
+    private bool _suppressAutoFov = false;
+
+    // Boost VFX + zoom
+    [Header("Boost VFX")]
+    [Tooltip("Optional GameObject (or ParticleSystem) parented to camera to play during boosts.")]
+    [SerializeField] private GameObject boostVFXObject;
+    [SerializeField, Tooltip("How many FOV degrees to increase for a boost pulse (zoom out).")]
+    private float boostZoomOutDeltaFOV = 6f;
+    [SerializeField, Tooltip("Total duration for boost zoom out pulse (seconds) - used for legacy quick pulses.")]
+    private float boostZoomOutDuration = 0.28f;
+
+    // New: smoothing controls for boost FOV ramp in/out
+    [SerializeField, Tooltip("Seconds to smoothly ramp the FOV up when boost starts (use small values, e.g. 0.08-0.18).")]
+    private float boostFovRampIn = 0.12f;
+    [SerializeField, Tooltip("Seconds to smoothly restore FOV after boost ends. If zero, uses the car's postBoostSlowdownDuration.")]
+    private float boostFovRampOut = 0.35f;
+
+    private ParticleSystem _boostPS;
+    private Coroutine _boostZoomCR;
+    private CarController _subscribedCar;
+
+    // Z-rotation ("roll") mapping to accentuate turns/drift
+    [Header("Turn-Driven Z-Rotation (Camera Roll)")]
+    [Tooltip("Enable roll mapping (camera Z rotation) based on car turning.")]
+    [SerializeField] private bool enableZRoll = true;
+
+    [Tooltip("Invert the Z roll sign (useful if you want opposite roll direction).")]
+    [SerializeField] private bool invertZRoll = false;
+
+    [Tooltip("Base scale applied to computed roll from yaw-rate (deg/sec -> degrees).")]
+    [SerializeField, Min(0f)] private float zRollScale = 0.06f; // deg roll per deg/sec
+
+    [Tooltip("Divider for converting yaw-rate (deg/sec) into a normalized [-1..1] before scaling.")]
+    [SerializeField, Min(1f)] private float zRollYawRateDivisor = 120f;
+
+    [Tooltip("How much drifting/lateral velocity amplifies roll (0 = none).")]
+    [SerializeField, Range(0f, 3f)] private float driftInfluence = 0.9f;
+
+    [Tooltip("Maximum allowed absolute roll angle in degrees.")]
+    [SerializeField, Range(0f, 45f)] private float maxRollDegrees = 18f;
+
+    [Tooltip("Smoothing speed for roll interpolation (higher = faster).")]
+    [SerializeField, Min(0f)] private float rollSmoothing = 8f;
+
+    [Tooltip("Scale used when using lateral velocity to detect drift influence. Higher = less influence from lateral speed.")]
+    [SerializeField, Min(0.1f)] private float lateralVelocityNormalization = 6f;
+
+
+
+
+    // internal roll state
+    private float _currentZRoll = 0f;
+    private Vector3 _prevTargetForwardFlat = Vector3.forward;
+    private bool _carIsBoosting;
+    private float _boostEndTime;
+    private float _boostPostDuration;
+
+
     private void Awake()
     {
         if (cam == null)
@@ -76,7 +137,171 @@ public class CameraFollow : MonoBehaviour
         if (car == null && target != null)
             car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();
 
+        // cache particle system if VFX object present
+        if (boostVFXObject != null)
+            _boostPS = boostVFXObject.GetComponent<ParticleSystem>();
+
+        _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
         _speedFovCurrent = defaultFOV;
+
+        // initialize prev forward
+        if (target != null)
+        {
+            var tf = target.forward;
+            tf.y = 0f;
+            if (tf.sqrMagnitude < 0.0001f) tf = Vector3.forward;
+            _prevTargetForwardFlat = tf.normalized;
+        }
+
+        SubscribeToCarBoosts();
+    }
+
+    private void OnDisable()
+    {
+        UnsubscribeFromCarBoosts();
+    }
+
+    private void SubscribeToCarBoosts()
+    {
+        // Unsubscribe previous
+        if (_subscribedCar != null)
+        {
+            try { _subscribedCar.OnBoostStarted -= HandleBoostStarted; } catch { }
+            try { _subscribedCar.OnBoostEnded -= HandleBoostEnded; } catch { }
+            _subscribedCar = null;
+        }
+
+        // Prefer explicit car reference, else try target
+        if (car == null && target != null)
+            car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();
+
+        if (car != null)
+        {
+            _subscribedCar = car;
+            try { _subscribedCar.OnBoostStarted += HandleBoostStarted; } catch { }
+            try { _subscribedCar.OnBoostEnded += HandleBoostEnded; } catch { }
+        }
+    }
+
+    private void UnsubscribeFromCarBoosts()
+    {
+        if (_subscribedCar != null)
+        {
+            try { _subscribedCar.OnBoostStarted -= HandleBoostStarted; } catch { }
+            try { _subscribedCar.OnBoostEnded -= HandleBoostEnded; } catch { }
+            _subscribedCar = null;
+        }
+    }
+
+    private void HandleBoostStarted()
+    {
+        // Play VFX
+        if (boostVFXObject != null)
+        {
+            if (_boostPS != null)
+            {
+                _boostPS.Play(true);
+            }
+            else
+            {
+                boostVFXObject.SetActive(true);
+            }
+        }
+
+        Debug.Log($"[CameraFollow] Received OnBoostStarted. Starting FOV pulse + VFX. deltaFOV={boostZoomOutDeltaFOV:F2} dur={boostZoomOutDuration:F2}");
+
+        // mark boosting state
+        _carIsBoosting = true;
+
+        // restart coroutine (ensures latest boost lifecycle is used)
+        if (_boostZoomCR != null) StopCoroutine(_boostZoomCR);
+        _boostZoomCR = StartCoroutine(BoostZoomDuringBoostCoroutine(Mathf.Abs(boostZoomOutDeltaFOV)));
+    }
+
+    private void HandleBoostEnded()
+    {
+        // Stop VFX (graceful)
+        if (boostVFXObject != null)
+        {
+            if (_boostPS != null)
+            {
+                _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+            else
+            {
+                boostVFXObject.SetActive(false);
+            }
+        }
+
+        // mark boosting ended and record timestamp + post duration (read from CarController via reflection)
+        _carIsBoosting = false;
+        _boostEndTime = Time.time;
+        _boostPostDuration = GetPrivateFloat(_subscribedCar, "postBoostSlowdownDuration", 0.25f);
+    }
+
+    // NEW: zoom out pulse coroutine (unscaled realtime safe)
+    private IEnumerator BoostZoomDuringBoostCoroutine(float deltaFOV)
+    {
+        if (cam == null) yield break;
+
+        _suppressAutoFov = true;
+
+        // sample current FOV and compute target
+        float startFOV = cam.fieldOfView;
+        float targetOut = Mathf.Clamp(startFOV + deltaFOV, 1f, 179f);
+
+        // ramp in (smooth)
+        float rampIn = Mathf.Max(0.01f, boostFovRampIn);
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + rampIn;
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(startFOV, targetOut, eased);
+            yield return null;
+        }
+        cam.fieldOfView = targetOut;
+
+        // HOLD: wait while the car reports boosting
+        while (_carIsBoosting)
+            yield return null;
+
+        // Determine restore duration: prefer explicit ramp-out if >0, else use car's postBoostSlowdownDuration
+        float restoreDuration = boostFovRampOut > 0f ? boostFovRampOut : Mathf.Max(0.01f, _boostPostDuration);
+        float fromFOV = cam.fieldOfView;
+        float restoreStart = Time.realtimeSinceStartup;
+        float restoreEnd = restoreStart + restoreDuration;
+
+        // smooth restore back to the auto-FOV target (sample current auto target)
+        float autoTarget = _speedFovCurrent;
+        while (Time.realtimeSinceStartup < restoreEnd)
+        {
+            float u = Mathf.InverseLerp(restoreStart, restoreEnd, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, autoTarget, eased);
+            yield return null;
+        }
+
+        // final snap & hand-off to auto-FOV
+        cam.fieldOfView = _speedFovCurrent;
+        _suppressAutoFov = false;
+        _boostZoomCR = null;
+    }
+
+    // Reflection helper to read private float fields from CarController (safe fallback)
+    private float GetPrivateFloat(object obj, string fieldName, float fallback = 0f)
+    {
+        if (obj == null) return fallback;
+        try
+        {
+            var fi = obj.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (fi != null && fi.FieldType == typeof(float))
+                return (float)fi.GetValue(obj);
+        }
+        catch { /* ignore reflection errors */ }
+        return fallback;
     }
 
     private void LateUpdate()
@@ -103,6 +328,45 @@ public class CameraFollow : MonoBehaviour
         // Rotation with fixed pitch
         Vector3 e = yawOnly.eulerAngles;
         e.x = cameraPitch;
+
+        // Compute Z roll based on recent turn sharpness + lateral velocity (drift)
+        float rollAngle = 0f;
+        if (enableZRoll)
+        {
+            // Yaw-rate estimate (deg/sec) by comparing previous flat forward to current
+            float signedYawDelta = Vector3.SignedAngle(_prevTargetForwardFlat, targetForwardFlat, Vector3.up);
+            float yawRateDegPerSec = signedYawDelta / Mathf.Max(1e-6f, Time.deltaTime);
+
+            // normalize yawRate
+            float yawNorm = Mathf.Clamp(yawRateDegPerSec / zRollYawRateDivisor, -1f, 1f);
+
+            // lateral velocity factor from Rigidbody (if available) to amplify when drifting
+            float lateralFactor = 0f;
+            if (target != null)
+            {
+                var rb = target.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    // use target.right (vehicle local lateral) to sample lateral component
+                    float lateralVel = Vector3.Dot(rb.velocity, target.right);
+                    lateralFactor = Mathf.Clamp01(Mathf.Abs(lateralVel) / lateralVelocityNormalization);
+                }
+            }
+
+            // combine into roll target (signed)
+            float sign = invertZRoll ? -1f : 1f;
+            float baseRoll = yawNorm * zRollScale * 180f * sign; // yawNorm * (zRollScale * 180) -> degrees
+            float driftAmp = 1f + (driftInfluence * lateralFactor);
+            float rollTarget = Mathf.Clamp(baseRoll * driftAmp, -maxRollDegrees, maxRollDegrees);
+
+            // smooth
+            _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmoothing * Time.deltaTime));
+            rollAngle = _currentZRoll;
+        }
+
+        // apply roll (Z) into Euler before creating quaternion
+        e.z = rollAngle;
+
         Quaternion desiredRot = Quaternion.Euler(e);
         Quaternion baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotationFollowSpeed * Time.deltaTime);
 
@@ -146,8 +410,8 @@ public class CameraFollow : MonoBehaviour
         // Manual animation step
         UpdateFOV(Time.deltaTime);
 
-        // ★ Auto speed FOV (only when not manually animating)
-        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null)
+        // ★ Auto speed FOV (only when not manually animating) and not suppressed by ZoomPulse
+        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null && !_suppressAutoFov)
         {
             float speed = car.CurrentSpeed;
             float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
@@ -157,6 +421,9 @@ public class CameraFollow : MonoBehaviour
             _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, target, speedFovSmooth * Time.deltaTime);
             cam.fieldOfView = _speedFovCurrent;
         }
+
+        // record previous forward for next frame yaw-rate estimate
+        _prevTargetForwardFlat = targetForwardFlat;
     }
 
     public void SetTarget(Transform t)
@@ -165,6 +432,8 @@ public class CameraFollow : MonoBehaviour
         smoothedForward = Vector3.zero;
         if (car == null && t != null)
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
+
+        SubscribeToCarBoosts();
     }
 
     public void StartShake(float duration, float strength, int vibrato, float randomness)
@@ -174,7 +443,7 @@ public class CameraFollow : MonoBehaviour
         shakeStrength = Mathf.Max(0f, strength);
         shakeVibrato = Mathf.Max(1, vibrato);
         shakeRandomness = Mathf.Max(0f, randomness);
-        shakeSeed = Random.value * 1000f;
+        shakeSeed = UnityEngine.Random.value * 1000f;
     }
 
     // FOV API
@@ -202,6 +471,60 @@ public class CameraFollow : MonoBehaviour
     public void ResetFieldOfView(float duration = 0f)
     {
         SetFieldOfView(defaultFOV, duration);
+    }
+
+    // existing ZoomPulse (zoom in) left intact
+    public void ZoomPulse(float deltaFOV, float totalDuration)
+    {
+        if (cam == null) return;
+        if (totalDuration <= 0f || Mathf.Approximately(deltaFOV, 0f)) return;
+        StartCoroutine(ZoomPulseCoroutine(Mathf.Abs(deltaFOV), Mathf.Max(0.05f, totalDuration)));
+    }
+
+    private IEnumerator ZoomPulseCoroutine(float deltaFOV, float totalDuration)
+    {
+        if (cam == null) yield break;
+
+        // Remember current auto-FOV target so we can return to it exactly
+        float autoFovBefore = _speedFovCurrent;
+
+        // Suppress automatic FOV updates while we run the realtime pulse
+        _suppressAutoFov = true;
+
+        float half = Mathf.Max(0.01f, totalDuration * 0.5f);
+        float startFOV = cam.fieldOfView;
+        float targetOut = Mathf.Clamp(startFOV + deltaFOV, 1f, 179f);
+
+        // quick out (unscaled so slow-mo doesn't stall)
+        float startRealtime = Time.realtimeSinceStartup;
+        float endRealtime = startRealtime + half;
+        while (Time.realtimeSinceStartup < endRealtime)
+        {
+            float u = Mathf.InverseLerp(startRealtime, endRealtime, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(startFOV, targetOut, eased);
+            yield return null;
+        }
+
+        // ensure arrived exactly
+        cam.fieldOfView = targetOut;
+
+        // back in (unscaled) — return to the remembered auto FOV target
+        startRealtime = Time.realtimeSinceStartup;
+        endRealtime = startRealtime + half;
+        while (Time.realtimeSinceStartup < endRealtime)
+        {
+            float u = Mathf.InverseLerp(startRealtime, endRealtime, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(targetOut, autoFovBefore, eased);
+            yield return null;
+        }
+
+        // Finalize: restore the auto-FOV target and resume auto updates
+        cam.fieldOfView = autoFovBefore;
+        _speedFovCurrent = autoFovBefore;
+        _suppressAutoFov = false;
+        _boostZoomCR = null;
     }
 
     private void UpdateFOV(float dt)

@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,7 +17,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
     [SerializeField] private float spawnCooldownSeconds = 5f;
     [SerializeField] private float minLeadDistance = 15f;
     [Tooltip("LEGACY: No longer used to block spawning near end of track. You can remove this safely.")]
-    [SerializeField] private float maxLeadDistance = 80f; // legacy – kept for serialized data
+    [SerializeField] private float maxLeadDistance = 80f; // legacy ï¿½ kept for serialized data
     [SerializeField] private float maxCurvatureHorizonScale = 0.65f;
 
     [Header("Cross Speed")]
@@ -165,7 +165,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         float intervalScale = Mathf.Clamp(spawnIntervalCurve.Evaluate(distanceNorm), 0.05f, 10f);
 
-        // NEW: randomize cooldown so spawns aren’t perfectly periodic
+        // NEW: randomize cooldown so spawns arenï¿½t perfectly periodic
         float cooldownJitter = 1f;
         if (spawnCooldownRandomRange.x != 1f || spawnCooldownRandomRange.y != 1f)
         {
@@ -238,12 +238,26 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         }
 
         // Center point of the cross (where it tries to hit car)
-        SampleSpline(sSpawn, out Vector3 spawnPos, out Vector3 spawnTan);
+        SampleSpline(sSpawn, out Vector3 spawnSplinePos, out Vector3 spawnTan);
 
-        // Build basis
+        // --- Project the spline center down to the actual surface first ---
+        // Try common road layer names then fall back to any collider
+        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
+        float upOffsetForCast = 5f; // generous so tall/scaled prefabs are handled
+        float maxDown = 50f;
+
+        Vector3 spawnSurface = SpawnUtils.ProjectOntoSurface(spawnSplinePos + Vector3.up * upOffsetForCast, out Vector3 spawnNormal, upOffsetForCast, maxDown, roadMask);
+        // if no hit on preferred mask, try any collider
+        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
+            spawnSurface = SpawnUtils.ProjectOntoSurface(spawnSplinePos + Vector3.up * upOffsetForCast, out spawnNormal, upOffsetForCast, maxDown, null);
+
+        // Build basis using the horizontal part of the spline tangent so lateral is truly ground-parallel
         Vector3 up = Vector3.up;
-        Vector3 forward = spawnTan.normalized;
-        if (forward.sqrMagnitude < 0.0001f) forward = transform.forward;
+        Vector3 forward = new Vector3(spawnTan.x, 0f, spawnTan.z);
+        if (forward.sqrMagnitude < 1e-6f)
+            forward = Vector3.forward;
+        forward.Normalize();
+
         Vector3 lateral = Vector3.Cross(up, forward).normalized;
 
         // Apply yaw to lateral so we get a bit of angle variation
@@ -254,16 +268,23 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         bool startLeft = UnityEngine.Random.value < 0.5f;
         float sideSign = startLeft ? -1f : 1f;
 
+        // How far off the road to start/end (purely geometric, no car/edge ï¿½fixingï¿½)
+        float offTrackOffset = halfRoad + 5.0f; // 5 units beyond road edge
+
+        // Create start/target anchored at the projected surface center (use spawnSurface.y)
+        // This ensures both endpoints share a valid surface Y before any instantiation scaling occurs.
+        Vector3 startWS = new Vector3(spawnSurface.x, spawnSurface.y, spawnSurface.z) + lateral * sideSign * offTrackOffset;
+        Vector3 targetWS = new Vector3(spawnSurface.x, spawnSurface.y, spawnSurface.z) - lateral * sideSign * offTrackOffset;
+
+
         // Size scaling
         float sizeEval = sizeCurve.Evaluate(distanceNorm);
         float sizeRand = UnityEngine.Random.Range(obstacleScaleRange.x, obstacleScaleRange.y);
         float finalScale = sizeRand * sizeEval;
 
-        // How far off the road to start/end (purely geometric, no car/edge “fixing”)
-        float offTrackOffset = halfRoad + 5.0f; // 5 units beyond road edge
 
-        Vector3 startWS = spawnPos + lateral * sideSign * offTrackOffset;
-        Vector3 targetWS = spawnPos - lateral * sideSign * offTrackOffset;
+
+
 
         // Initial delay fairness
         float initialDelay = Mathf.Clamp(tCenter * 0.15f, 0f, 1.25f);
@@ -273,22 +294,37 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         if (moveDir.sqrMagnitude < 0.0001f)
             moveDir = lateral;
 
-        Quaternion spawnRot = Quaternion.LookRotation(moveDir, up);
+        // Project start/target again (safe) to ensure they rest on the surface (use a slightly larger up offset)
+        float endpointUpOffset = upOffsetForCast + 1f;
+        Vector3 adjustedStart = SpawnUtils.ProjectOntoSurface(startWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, roadMask);
+        if (Mathf.Approximately(adjustedStart.y, startWS.y))
+            adjustedStart = SpawnUtils.ProjectOntoSurface(startWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, null);
+        Vector3 adjustedTarget = SpawnUtils.ProjectOntoSurface(targetWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, roadMask);
+        if (Mathf.Approximately(adjustedTarget.y, targetWS.y))
+            adjustedTarget = SpawnUtils.ProjectOntoSurface(targetWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, null);
 
-        // Instantiate directly at the OFF-TRACK start
-        var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
+
+        // Recompute moveDir and spawn rotation from projected positions to match surface
+        Vector3 actualMoveDir = (new Vector3(adjustedTarget.x, 0f, adjustedTarget.z) - new Vector3(adjustedStart.x, 0f, adjustedStart.z)).normalized;
+        if (actualMoveDir.sqrMagnitude < 0.0001f)
+            actualMoveDir = moveDir; // fallback
+        Quaternion spawnRot = Quaternion.LookRotation(actualMoveDir, up);
+
+        // Instantiate at the projected start. IMPORTANT: scale first then bump up by renderer/collider bounds
+        var inst = Instantiate(crossObstaclePrefab, adjustedStart, spawnRot);
+
+        // Apply runtime scale
+        inst.transform.localScale *= finalScale;
+        // Pass the adjustedTarget (with Y aligned using same bottom offset) to the obstacle
         var cross = inst.GetComponent<CrossTrackObstacle>();
         if (cross)
         {
-            inst.transform.localScale *= finalScale;
-
-            // Just give it the path; it will not try to “correct” anything
-            cross.InitializeDirect(startWS, targetWS, crossSpeed, initialDelay);
+            cross.InitializeDirect(inst.transform.position, adjustedTarget, crossSpeed, initialDelay);
         }
 
         // For cyan debug line in the editor
-        _lastDebugStart = startWS;
-        _lastDebugEnd = targetWS;
+        _lastDebugStart = inst.transform.position;
+        _lastDebugEnd = adjustedTarget;
         _hasDebugPath = true;
 
         _cooldownRemain = effectiveCooldown;
