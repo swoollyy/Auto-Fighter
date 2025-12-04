@@ -84,6 +84,22 @@ public sealed class CarForcefield : MonoBehaviour
     [SerializeField, Tooltip("ForcefieldPostFXController driving Chromatic Aberration and Lens Distortion.")]
     private ForcefieldPostFXController postFX;
 
+    // NEW: Audio
+    [Header("Audio (Forcefield)")]
+    [SerializeField, Tooltip("3D sound played when the forcefield intercepts / launches an obstacle.")]
+    private AudioClip forcefieldUseClip;
+    [SerializeField, Range(0f, 1f)]
+    private float forcefieldUseVolume = 1f;
+    [SerializeField, Tooltip("3D sound played when the forcefield re-arms after cooldown.")]
+    private AudioClip forcefieldRearmClip;
+    [SerializeField, Range(0f, 1f)]
+    private float forcefieldRearmVolume = 0.9f;
+
+    // NEW: start behavior
+    [Header("Spawn / Startup")]
+    [SerializeField, Tooltip("If true the forcefield will start on its base cooldown when the car spawns instead of being instantly armed.")]
+    private bool startOnCooldown = true;
+
     // Runtime
     private SphereCollider _trigger;
     private bool _armed;
@@ -118,7 +134,19 @@ public sealed class CarForcefield : MonoBehaviour
         postFX = FindObjectOfType<ForcefieldPostFXController>();
 
         EnsureTrigger();
-        SetArmed(startsArmed);
+
+        // Maintain existing serialized startsArmed default, but optionally enforce base cooldown on spawn.
+        if (startOnCooldown && cooldownSeconds > 0f)
+        {
+            // start disarmed and begin cooldown so skill upgrades that reduce cooldown are honored before first arm
+            SetArmed(false);
+            _cooldownRemain = cooldownSeconds;
+        }
+        else
+        {
+            SetArmed(startsArmed);
+        }
+
         SyncVisual(true);
     }
 
@@ -213,6 +241,7 @@ public sealed class CarForcefield : MonoBehaviour
 
     public void SetArmed(bool v)
     {
+        bool wasArmed = _armed;
         _armed = v;
         if (disableVisualOnUse && visualRoot)
             visualRoot.gameObject.SetActive(v);
@@ -221,6 +250,13 @@ public sealed class CarForcefield : MonoBehaviour
             _trigger.enabled = v;
 
         SyncVisual(true);
+
+        // Play rearm sound only when transitioning from disarmed -> armed
+        if (v && !wasArmed)
+        {
+            // play rearm SFX at the car position
+            Play3DClipAtPoint(forcefieldRearmClip, transform.position, forcefieldRearmVolume);
+        }
     }
 
     private void SyncVisual(bool instant)
@@ -283,6 +319,9 @@ public sealed class CarForcefield : MonoBehaviour
 
             if (enableLaunchSlowMo)
                 StartLaunchSlowMo();
+
+            Play3DClipAtPoint(forcefieldUseClip, vfxPos, forcefieldUseVolume);
+
 
             // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
             if (postFX != null)
@@ -399,6 +438,9 @@ public sealed class CarForcefield : MonoBehaviour
         if (enableLaunchSlowMo)
             StartLaunchSlowMo();
 
+        Play3DClipAtPoint(forcefieldUseClip, vfxPos2, forcefieldUseVolume);
+
+
         // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
         if (postFX != null)
             postFX.PlayBurst();
@@ -470,6 +512,25 @@ public sealed class CarForcefield : MonoBehaviour
     {
         if (_slowMoRoutine != null) return;
         _slowMoRoutine = StartCoroutine(LaunchSlowMoRoutine());
+    }
+
+    private void Play3DClipAtPoint(AudioClip clip, Vector3 pos, float volume = 1f)
+    {
+        if (clip == null) return;
+        GameObject go = new GameObject("SFX_Forcefield_" + (clip ? clip.name : "null"));
+        go.transform.position = pos;
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f; // 3D
+        src.clip = clip;
+        src.volume = Mathf.Clamp01(volume);
+        src.rolloffMode = AudioRolloffMode.Logarithmic;
+        src.minDistance = 0.5f;
+        src.maxDistance = 50f;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.dopplerLevel = 0f;
+        src.Play();
+        Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
     }
 
     private IEnumerator LaunchSlowMoRoutine()

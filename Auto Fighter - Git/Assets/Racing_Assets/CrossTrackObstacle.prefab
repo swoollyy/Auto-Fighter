@@ -175,6 +175,9 @@ MonoBehaviour:
   reactLayers:
     serializedVersion: 2
     m_Bits: 133121
+  massComparisonTolerance: 0.01
+  defaultAddedMass: 4
+  pushDeltaVRange: {x: 0, y: 0}
   massByScaleCurve:
     serializedVersion: 2
     m_Curve:
@@ -199,10 +202,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  defaultMassIfCurveMissing: 10
-  pushDeltaVRange: {x: 3, y: 5}
-  massComparisonTolerance: 0.01
-  defaultAddedMass: 4
+  fallbackMass: 10
 --- !u!1 &6997271744506107842
 GameObject:
   m_ObjectHideFlags: 0

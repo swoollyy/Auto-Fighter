@@ -135,7 +135,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 569cce6c7ea09c74ea844ca7e5d774cc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  visualRoot: {fileID: 0}
+  visualRoot: {fileID: 5761057072866981172}
   playerTransform: {fileID: 0}
   autoFindVisualRoot: 1
   playIdleHover: 1

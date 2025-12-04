@@ -15,7 +15,7 @@ MonoBehaviour:
   type: 11
   displayName: Boost Max Speed Multiplier
   description: Temporarily increases the max speed of your car during the boost duration
-    by .05
+    by .1
   maxLevel: 5
   costCurve:
     serializedVersion: 2
@@ -44,7 +44,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.05
+  perLevelAdd: 0.1
   uiPosition: {x: -375, y: 75}
   revealedAtStart: 0
   progressiveUnlocks: []

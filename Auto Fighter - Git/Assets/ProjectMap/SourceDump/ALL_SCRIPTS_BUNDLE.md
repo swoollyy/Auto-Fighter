@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2025-11-30T02:22:59.0038799Z (UTC)
+- Generated: 2025-12-04T01:16:51.0201331Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 181
 
@@ -467,6 +467,16 @@ public class CarTurretController : MonoBehaviour
     [SerializeField] private KeyCode fireKey = KeyCode.Mouse0;
     [SerializeField] private float fireCooldown = 0.25f; // seconds between shots
 
+    [Header("Audio (Turret)")]
+    [SerializeField, Tooltip("One-shot SFX played when the turret fires.")]
+    private AudioClip turretFireClip;
+    [SerializeField, Range(0f, 1f), Tooltip("Volume for turret fire SFX.")]
+    private float turretFireVolume = 1f;
+
+    [Header("Spawn / Startup")]
+    [SerializeField, Tooltip("If true the turret will start on its base cooldown when the car spawns instead of being immediately ready.")]
+    private bool startOnCooldown = true;
+
     [Header("Bullet Stats")]
     [SerializeField] private float bulletSpeed = 80f;
     [SerializeField] private float bulletDamage = 10f;
@@ -533,6 +543,9 @@ public class CarTurretController : MonoBehaviour
         baseScanRadius = targetScanRadius;
 
         ApplySkillStats();
+
+        // NEW: set initial cooldown on spawn to avoid immediate fire spam
+        _cooldownTimer = startOnCooldown ? fireCooldown : 0f;
     }
 
     private void OnEnable()
@@ -842,6 +855,12 @@ public class CarTurretController : MonoBehaviour
                 owner: ownerCollider
             );
         }
+
+        // Play turret fire SFX (spatialized at muzzle/origin)
+        if (turretFireClip != null)
+        {
+            AudioSource.PlayClipAtPoint(turretFireClip, origin, Mathf.Clamp01(turretFireVolume));
+        }
     }
 
     private void ApplySkillStats()
@@ -952,6 +971,13 @@ public class CoinPickup : MonoBehaviour
 
         var mgr = RacingSkillTreeManager.Instance;
         int finalValue = value;
+
+        if (mgr != null)
+        {
+            int baseAdd = mgr.GetCoinBaseAdd();
+            if (baseAdd > 0)
+                finalValue += baseAdd;
+        }
 
         // NEW: play coin SFX (random selection + slight pitch variance)
         PlayRandomCoinSfx(transform.position);
@@ -5371,7 +5397,7 @@ public class CarController : MonoBehaviour
 
 
     [Header("Drift Neutral Behavior")]
-    [Tooltip("Require a non‑zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
+    [Tooltip("Require a non-zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
     [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
     [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
     [SerializeField] private float driftNeutralDrainRate = 4.2f;
@@ -5389,9 +5415,9 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float steerFlipRebuildDelay = 0.15f;
 
     [Header("Drift Glide (Ice Feel)")]
-    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice‑like glide).")]
+    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice-like glide).")]
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
-    [Tooltip("Per‑second decay while gliding (very small to keep speed).")]
+    [Tooltip("Per-second decay while gliding (very small to keep speed).")]
     [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
 
     private bool _driftGlideActive;          // NEW: glide mode (holding drift, no steer)
@@ -5432,6 +5458,9 @@ public class CarController : MonoBehaviour
     [SerializeField] private float torquePerUnitSpeed = 0.45f;
     [SerializeField] private float crashDragMultiplier = 2f;
     [SerializeField] private float crashAngularDrag = 1.5f;
+
+    public float MinImpactSpeed => minImpactSpeed;
+    public float MaxImpactSpeed => maxImpactSpeed;
 
     [Header("Crash Spin Tuning")]
     [SerializeField] private float crashYawTorqueMultiplier = 1f;
@@ -5534,11 +5563,17 @@ public class CarController : MonoBehaviour
     private Vector2 driftBoostDurationRange = new Vector2(0.35f, 1.50f);
     [SerializeField, Tooltip("Max speed multiplier range mapped from min→max hold.")]
     private Vector2 driftBoostMaxSpeedMultRange = new Vector2(1.10f, 1.60f);
-    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers.")]
+    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers (currently ignored: drift boost is free).")]
     private float driftBoostFuelCost = 0f;
+
+    [Header("Drift-held Boost Cooldown")]
+    [SerializeField, Tooltip("Cooldown (seconds) applied after using a drift-held boost (separate from normal boost cooldown).")]
+    private float driftBoostCooldown = 1.25f; // default; can be overridden via skill tree
+
 
     // Runtime boost state
     private float _boostCooldownTimer;
+    private float _driftBoostCooldownTimer;          // NEW: separate drift boost cooldown
     private bool _boostRequested;
     private bool _isBoosting;
     private float _boostTimer;
@@ -5554,17 +5589,23 @@ public class CarController : MonoBehaviour
     private float baseBoostMaxSpeedMult;
     private float baseBoostCooldown;
     private float baseBoostFuelCost;
+    private float baseDriftBoostCooldown;
 
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
     private bool _driftWasActiveLastFrame;
 
-    // Overrides per boost activation (allows custom parameters from drift-held boost)
+    // Overrides for *next* boost activation (drift-held boost)
     private bool _boostOverrideActive;
+    private bool _overrideIsDriftBoost;         // NEW: marks override as drift-held boost
     private float _boostOverrideForce;
     private float _boostOverrideDuration;
     private float _boostOverrideMaxMult;
+
+    // Active boost runtime characteristics
+    private bool _activeBoostIsDrift;           // NEW: tracks current boost type
+    private float _activeBoostMaxMult = 1f;     // NEW: max speed multiplier during current boost
 
     private Quaternion _initialRotation;
     private bool _isReorienting;
@@ -5650,6 +5691,12 @@ public class CarController : MonoBehaviour
     [SerializeField] private float brakeForwardFactor = 0.7f;
     [SerializeField] private float reverseAccelFactor = 0.8f;
     [SerializeField] private float brakeToReverseSpeed = 0.5f;
+
+    // NEW: caps so braking can’t be insanely hard at low max speeds
+    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
+    private float maxBrakeDecelPerSecond = 5f;
+    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
+    private float maxReverseAccelPerSecond = 4f;
 
     [SerializeField] private float baseSteeringDamp = 1f;
     private float currentSteeringDamp;
@@ -5770,6 +5817,7 @@ public class CarController : MonoBehaviour
         baseBoostDuration = boostDuration;
         baseBoostMaxSpeedMult = boostMaxSpeedMultiplier;
         baseBoostCooldown = boostCooldown;
+        baseDriftBoostCooldown = driftBoostCooldown;
         baseBoostFuelCost = boostFuelCost;
         boostUnlocked = !requireBoostUnlock;
 
@@ -5929,107 +5977,125 @@ public class CarController : MonoBehaviour
         }
     }
 
+    // BOOST HANDLER – now fully decouples drift boost from normal boost
     private void HandleBoost()
     {
-        if (_boostCooldownTimer > 0f)
-            _boostCooldownTimer -= Time.fixedDeltaTime;
+        float dt = Time.fixedDeltaTime;
 
+        // Separate cooldown timers
+        if (_boostCooldownTimer > 0f)
+            _boostCooldownTimer -= dt;
+        if (_driftBoostCooldownTimer > 0f)
+            _driftBoostCooldownTimer -= dt;
+
+        // Active boost sustain
         if (_isBoosting)
         {
-            _boostTimer -= Time.fixedDeltaTime;
+            _boostTimer -= dt;
 
-            float sustainAccel = _boostOverrideActive ? driftBoostSustainAcceleration : boostSustainAcceleration;
+            float sustainAccel = _activeBoostIsDrift ? driftBoostSustainAcceleration : boostSustainAcceleration;
             if (sustainAccel > 0f)
                 rb.AddForce(transform.forward * sustainAccel, ForceMode.Acceleration);
 
             if (_boostTimer <= 0f)
             {
-                // Transition out of boosting
                 _isBoosting = false;
                 try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
 
                 _isPostBoost = postBoostSlowdownDuration > 0f;
                 _postBoostTimer = postBoostSlowdownDuration;
 
-                // Clear any override once boost ends
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
+                // Clear active type
+                _activeBoostIsDrift = false;
+                _activeBoostMaxMult = 1f;
             }
         }
         else if (_isPostBoost)
         {
-            _postBoostTimer -= Time.fixedDeltaTime;
+            _postBoostTimer -= dt;
             if (_postBoostTimer <= 0f)
                 _isPostBoost = false;
         }
 
+        // New boost request (normal or drift-held override)
         if (_boostRequested)
         {
             _boostRequested = false;
 
-            // Unlock check:
-            // - If normal boost is locked, allow the request ONLY if it was supplied as an override
-            //   (drift-held boost sets _boostOverrideActive true). This unbinds drift boost from
-            //   the regular boost unlock.
-            if (!boostUnlocked && !_boostOverrideActive)
+            bool isOverride = _boostOverrideActive;
+            bool isDriftBoost = isOverride && _overrideIsDriftBoost;
+
+            // Unlock: only blocks normal boost, drift boost ignores boost unlock
+            if (!boostUnlocked && !isDriftBoost)
             {
                 Debug.Log("[CarController] Boost request ignored: Boost locked in inspector/skill tree.");
-                return;
+                ClearBoostOverride();
+                goto SpeedCapClamp;
             }
 
-            if (_boostCooldownTimer <= 0f)
+            // Cooldowns: separate for normal vs drift
+            if (isDriftBoost)
             {
-                float cost = boostFuelCost;
-                if (cost > 0f && (isOutOfFuel || currentFuel < cost))
+                if (_driftBoostCooldownTimer > 0f)
                 {
-                    // Clear any pending override if we can't pay the cost so it doesn't persist.
-                    _boostOverrideActive = false;
-                    _boostOverrideForce = 0f;
-                    _boostOverrideDuration = 0f;
-                    _boostOverrideMaxMult = 0f;
-
-                    Debug.Log("[CarController] Boost request ignored: not enough fuel.");
-                    return;
+                    Debug.Log($"[CarController] Drift boost ignored: cooldown {_driftBoostCooldownTimer:F2}s remaining.");
+                    ClearBoostOverride();
+                    goto SpeedCapClamp;
                 }
-
-                float impulseForce = _boostOverrideActive ? _boostOverrideForce : boostForce;
-                rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
-
-                if (boostSustainAcceleration > 0f)
-                    rb.AddForce(transform.forward * boostSustainAcceleration, ForceMode.Acceleration);
-
-                if (cost > 0f) ConsumeFuel(cost);
-
-                // Transition into boosting
-                _isBoosting = true;
-                try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
-
-                Debug.Log($"[CarController] Boost STARTED: impulse={impulseForce:F2}, sustain={boostSustainAcceleration:F2}, duration={(_boostOverrideActive ? _boostOverrideDuration : boostDuration):F2}");
-
-                _boostTimer = Mathf.Max(0f, _boostOverrideActive ? _boostOverrideDuration : boostDuration);
-                _isPostBoost = false;
-                _boostCooldownTimer = boostCooldown;
-
-                // Clear override (we consumed it)
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
             }
             else
             {
-                // Clear override if request rejected due to cooldown to avoid sticky override state
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
-
-                Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
+                if (_boostCooldownTimer > 0f)
+                {
+                    Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
+                    ClearBoostOverride();
+                    goto SpeedCapClamp;
+                }
             }
+
+            // Fuel cost: drift boost is FREE (no fuel usage)
+            float cost = isDriftBoost ? 0f : boostFuelCost;
+            if (cost > 0f && (isOutOfFuel || currentFuel < cost))
+            {
+                Debug.Log("[CarController] Boost request ignored: not enough fuel.");
+                ClearBoostOverride();
+                goto SpeedCapClamp;
+            }
+
+            float impulseForce = isOverride ? _boostOverrideForce : boostForce;
+            rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
+
+            float sustain = isDriftBoost ? driftBoostSustainAcceleration : boostSustainAcceleration;
+            if (sustain > 0f)
+                rb.AddForce(transform.forward * sustain, ForceMode.Acceleration);
+
+            if (cost > 0f)
+                ConsumeFuel(cost);
+
+            // Activate boost
+            _isBoosting = true;
+            _activeBoostIsDrift = isDriftBoost;
+            _activeBoostMaxMult = isOverride
+                ? Mathf.Max(1f, _boostOverrideMaxMult)
+                : Mathf.Max(1f, boostMaxSpeedMultiplier);
+
+            try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
+
+            // Per-type cooldown
+            if (isDriftBoost)
+                _driftBoostCooldownTimer = Mathf.Max(0.01f, driftBoostCooldown);
+            else
+                _boostCooldownTimer = Mathf.Max(0.01f, boostCooldown);
+
+            _boostTimer = Mathf.Max(0f, isOverride ? _boostOverrideDuration : boostDuration);
+            _isPostBoost = false;
+
+            Debug.Log($"[CarController] Boost STARTED: drift={isDriftBoost}, impulse={impulseForce:F2}, sustain={sustain:F2}, duration={_boostTimer:F2}, maxMult={_activeBoostMaxMult:F2}");
+
+            ClearBoostOverride();
         }
 
+    SpeedCapClamp:
         float cap = GetCurrentSpeedCap();
         float speed = rb.velocity.magnitude;
         if (speed > cap)
@@ -6039,9 +6105,7 @@ public class CarController : MonoBehaviour
     private float GetCurrentSpeedCap()
     {
         float normalCap = effectiveMaxSpeed;
-        float maxMult = _isBoosting
-            ? (_boostOverrideActive ? Mathf.Max(1f, _boostOverrideMaxMult) : Mathf.Max(1f, boostMaxSpeedMultiplier))
-            : 1f;
+        float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
         float boostedCap = normalCap * maxMult;
 
@@ -6051,6 +6115,15 @@ public class CarController : MonoBehaviour
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
         return _isBoosting ? boostedCap : normalCap;
+    }
+
+    private void ClearBoostOverride()
+    {
+        _boostOverrideActive = false;
+        _overrideIsDriftBoost = false;
+        _boostOverrideForce = 0f;
+        _boostOverrideDuration = 0f;
+        _boostOverrideMaxMult = 0f;
     }
 
     private void WireManagerEvents()
@@ -6343,7 +6416,7 @@ public class CarController : MonoBehaviour
 
         float force = Mathf.Lerp(driftBoostForceRange.x, driftBoostForceRange.y, norm);
         float duration = Mathf.Lerp(driftBoostDurationRange.x, driftBoostDurationRange.y, norm);
-        float maxMult = Mathf.Lerp(driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, norm); // preserve intent if curves change
+        float maxMult = Mathf.Lerp(driftBoostMaxSpeedMultRange.x, driftBoostMaxSpeedMultRange.y, norm);
 
         // Apply skill scaling and gate by skill unlock (if a manager is present)
         var mgr = RacingSkillTreeManager.Instance;
@@ -6366,22 +6439,12 @@ public class CarController : MonoBehaviour
         }
 
         _boostOverrideActive = true;
+        _overrideIsDriftBoost = true;
         _boostOverrideForce = force;
         _boostOverrideDuration = duration;
         _boostOverrideMaxMult = maxMult;
 
-        if (driftBoostFuelCost > 0f)
-        {
-            if (!isOutOfFuel && currentFuel >= driftBoostFuelCost)
-                ConsumeFuel(driftBoostFuelCost);
-            else
-            {
-                _boostOverrideActive = false;
-                Debug.Log("[CarController] Drift-held boost aborted: not enough fuel.");
-                return;
-            }
-        }
-
+        // Drift-held boost is FREE: no fuel deduction here.
         _boostRequested = true;
         Debug.Log($"[CarController] Drift-held boost REQUESTED -> force={force:F2}, duration={duration:F2}, maxMult={maxMult:F2}");
     }
@@ -6582,65 +6645,50 @@ public class CarController : MonoBehaviour
                 }
                 else if (brakingOrReverse)
                 {
-                    // --- smoother braking/reverse: move longitudinal velocity toward targets instead of instant AddForce ---
-                    float brakeAccel = currentBrakingForce * brakeForwardFactor;          // units: m/s^2 used as max delta
-                    float reverseAccel = effectiveAcceleration * reverseAccelFactor;     // units: m/s^2 used as max delta
-
-                    // current forward/backward speed (signed)
+                    float dt = Time.fixedDeltaTime;
                     float currentLong = Vector3.Dot(rb.velocity, forward);
 
-                    if (currentLong > brakeToReverseSpeed)
+                    // 1) Moving forward: just ease toward 0 with a fixed decel rate.
+                    if (currentLong > 0f)
                     {
-                        // braking: smoothly approach 0 (stop) at most brakeAccel * dt per fixed step
-                        float targetLong = 0f;
-                        float maxDelta = brakeAccel * Time.fixedDeltaTime;
-                        float newLong = Mathf.MoveTowards(currentLong, targetLong, maxDelta);
+                        // Use maxBrakeDecelPerSecond as the only brake strength knob.
+                        float decel = maxBrakeDecelPerSecond > 0f
+                            ? maxBrakeDecelPerSecond
+                            : 1.0f; // fallback if not set
 
-                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
-                        rb.velocity = newVel;
-
-                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                        float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
+                        SetLongitudinalVelocityClamped(forward, newLong);
                     }
+                    // 2) Once we're basically stopped or moving backward, gently build up reverse.
                     else
                     {
-                        // reversing: smoothly approach a modest reverse target speed (tweak targetReverseSpeed to taste)
-                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f); // inspector-tuneable if desired
-                        float maxDelta = reverseAccel * Time.fixedDeltaTime;
-                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, maxDelta);
+                        float reverseAccel = maxReverseAccelPerSecond > 0f
+                            ? maxReverseAccelPerSecond
+                            : 1.0f; // fallback
 
-                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
-                        rb.velocity = newVel;
-
-                        ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
+                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
+                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
+                        SetLongitudinalVelocityClamped(forward, newLong);
                     }
+
+                    // Keep fuel usage simple
+                    ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                 }
                 else
                 {
-                    // Arcade gradual slowdown (no artificial drag slam).
+                    // --- PATCH 2: super gentle, constant coasting (no speed-based ramp) ---
                     float currentSpeed = rb.velocity.magnitude;
                     if (currentSpeed > 0.01f)
                     {
-                        float maxRef = Mathf.Max(1f, effectiveMaxSpeed);
-                        float speedFrac = Mathf.Clamp01(currentSpeed / maxRef);
-                        float highBlend = Mathf.Clamp01((speedFrac - coastHighSpeedFraction) / Mathf.Max(0.0001f, 1f - coastHighSpeedFraction));
-                        float decelPerSecond = Mathf.Lerp(coastLowDecelPerSecond, coastHighDecelPerSecond, highBlend);
+                        // Treat coastLowDecelPerSecond as a simple "coast decel" knob.
+                        // For a max speed of ~4, something like 0.2–0.5 feels like a long, smooth roll.
+                        float decel = coastLowDecelPerSecond;
 
-                        if (useExponentialCoast)
-                        {
-                            float k = Mathf.Max(0f, coastDampingPerSecond);
-                            float damp = Mathf.Exp(-k * Time.fixedDeltaTime);
-                            float targetMag = currentSpeed * damp;
-                            targetMag = Mathf.Max(0f, targetMag - decelPerSecond * 0.15f * Time.fixedDeltaTime);
-                            rb.velocity = rb.velocity.normalized * targetMag;
-                        }
-                        else
-                        {
-                            float newMag = Mathf.Max(0f, currentSpeed - decelPerSecond * Time.fixedDeltaTime);
-                            rb.velocity = rb.velocity.normalized * newMag;
-                        }
+                        float newMag = Mathf.Max(0f, currentSpeed - decel * Time.fixedDeltaTime);
+                        rb.velocity = rb.velocity.normalized * newMag;
                     }
 
-                    // NEW: Steering traction while coasting (unchanged)
+                    // Steering traction while coasting (unchanged)
                     if (enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
                     {
                         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
@@ -6677,6 +6725,7 @@ public class CarController : MonoBehaviour
                 // NEW: gentle deceleration while drifting when holding S (no harsh brake force)
                 if (brakingOrReverse && isDrifting)
                 {
+                    // Only fuel cost here; actual decel controlled by driftBrakeDecayPerSecond below
                     ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                 }
                 // No passive coast drag while drifting/gliding.
@@ -6709,6 +6758,9 @@ public class CarController : MonoBehaviour
                 bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
                 bool noThrottleNoBrake = (!forwardKey && !reverseKey);
 
+                // Drift speed clamp evolution:
+                // - S while drifting = controlled decay by driftBrakeDecayPerSecond
+                // - No input = decay by driftSpeedDecayPerSecond or driftGlideDecayPerSecond
                 if (gentleBrakeWhileDrifting)
                 {
                     driftClampSpeed -= driftBrakeDecayPerSecond * Time.fixedDeltaTime;
@@ -6730,7 +6782,7 @@ public class CarController : MonoBehaviour
 
                 float steerInfluence = Mathf.Clamp01(Mathf.Abs(steeringInput));
                 const float driftAlignStrength = 2f;
-                float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.fixedDeltaTime);
+                float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.deltaTime);
 
                 Vector3 finalDir = (_driftGlideActive && !isDrifting)
                     ? flatVel
@@ -6759,11 +6811,8 @@ public class CarController : MonoBehaviour
 
                 rb.velocity = finalDir.normalized * Mathf.Max(0f, targetMagnitude);
 
-                if (isDrifting && brakingDrift && currentMag > 0.1f)
-                {
-                    float assist = currentBrakingForce * 0.15f; // gentle
-                    rb.AddForce(-flatForward * assist, ForceMode.Acceleration);
-                }
+                // Note: the old extra brake AddForce while drifting+S is removed.
+                // All drift braking now flows through driftClampSpeed & driftBrakeDecayPerSecond.
 
                 if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f)
                 {
@@ -7102,6 +7151,18 @@ public class CarController : MonoBehaviour
             boostFuelCost = mgr.ApplyStatChain(baseBoostFuelCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
             boostFuelCost = Mathf.Max(0f, boostFuelCost);
 
+            boostCooldown = mgr != null
+            ? mgr.ApplyStatChain(baseBoostCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul)
+            : baseBoostCooldown;
+            boostCooldown = Mathf.Max(0.05f, boostCooldown);
+
+            // NEW: compute the drift-held boost cooldown separately (unbind from regular boostCooldown)
+            float driftCd = baseDriftBoostCooldown;
+            if (mgr != null)
+                driftCd = mgr.GetDriftHeldBoostCooldownScaled(baseDriftBoostCooldown);
+            // store runtime value in a private runtime field (reuse driftBoostCooldown as runtime)
+            driftBoostCooldown = Mathf.Max(0.01f, driftCd);
+
         }
 
         ApplyDamageDegradationToPerformance();
@@ -7135,44 +7196,39 @@ public class CarController : MonoBehaviour
 #endif
     }
 
-    public void ApplyExternalCrashDamage(float severity)
+    public void ApplyExternalCrashDamage(
+        Vector3 hitDirection,
+        float impactSpeed,
+        Vector3 contactPointWS,
+        float severity)
     {
-        // Respect internal cooldown so external callers can't bypass invulnerability windows.
-        if (Time.time < _nextCrashAllowedTime)
+        if (rb == null)
             return;
 
+        // Respect internal cooldown so external callers can't bypass invulnerability windows.
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
         float sev01 = Mathf.Clamp01(severity);
 
-        // Apply HP loss similar to TriggerCrash's applyDamage block
-        if (hpCrashDamageAtSeverity1 > 0f)
+        // Clamp the impact speed into the same range used by normal crashes
+        impactSpeed = Mathf.Clamp(impactSpeed, minImpactSpeed, maxImpactSpeed);
+
+        // Let GameManager handle camera shake / slowmo / SFX if damage is allowed
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && damageWindowOpen)
         {
-            float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
-            hpLoss = Mathf.Min(hpLoss, currentHP);
-            currentHP = Mathf.Max(0f, currentHP - hpLoss);
-#if UNITY_EDITOR
-            Debug.Log($"[CarController] External crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
-#endif
+            gm.OnCarCrash(impactSpeed, sev01);
         }
 
-        // Apply fuel loss similar to TriggerCrash
-        if (fuelLossAtSeverity1 > 0f)
-        {
-            float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
-            float before = currentFuel;
-            ConsumeFuel(requestedFuelLoss);
-            float consumed = Mathf.Max(0f, before - currentFuel);
-            if (consumed + 1e-3f < minFuelLossPerCrash)
-            {
-                float shortfall = minFuelLossPerCrash - consumed;
-                currentFuel = Mathf.Max(0f, currentFuel - shortfall);
-            }
-#if UNITY_EDITOR
-            Debug.Log($"[CarController] External crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
-#endif
-        }
+        // Compute crash duration & magnitudes using the same formulas as OnCollisionEnter
+        float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
+        float impulseMag = impactSpeed * impulsePerUnitSpeed;
+        float torqueMag = impactSpeed * torquePerUnitSpeed;
 
-        // Set cooldown after applying damage so subsequent crashes are gated
-        _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+        // Delegate to the central crash handler, which will:
+        // - apply physics reaction
+        // - apply HP/Fuel (if damageWindowOpen)
+        // - set cooldown
+        TriggerCrash(hitDirection, crashDuration, impulseMag, torqueMag, sev01, contactPointWS, damageWindowOpen);
     }
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
@@ -7519,6 +7575,7 @@ public class CarController : MonoBehaviour
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CarForcefield.cs
@@ -7610,6 +7667,22 @@ public sealed class CarForcefield : MonoBehaviour
     [SerializeField, Tooltip("ForcefieldPostFXController driving Chromatic Aberration and Lens Distortion.")]
     private ForcefieldPostFXController postFX;
 
+    // NEW: Audio
+    [Header("Audio (Forcefield)")]
+    [SerializeField, Tooltip("3D sound played when the forcefield intercepts / launches an obstacle.")]
+    private AudioClip forcefieldUseClip;
+    [SerializeField, Range(0f, 1f)]
+    private float forcefieldUseVolume = 1f;
+    [SerializeField, Tooltip("3D sound played when the forcefield re-arms after cooldown.")]
+    private AudioClip forcefieldRearmClip;
+    [SerializeField, Range(0f, 1f)]
+    private float forcefieldRearmVolume = 0.9f;
+
+    // NEW: start behavior
+    [Header("Spawn / Startup")]
+    [SerializeField, Tooltip("If true the forcefield will start on its base cooldown when the car spawns instead of being instantly armed.")]
+    private bool startOnCooldown = true;
+
     // Runtime
     private SphereCollider _trigger;
     private bool _armed;
@@ -7644,7 +7717,19 @@ public sealed class CarForcefield : MonoBehaviour
         postFX = FindObjectOfType<ForcefieldPostFXController>();
 
         EnsureTrigger();
-        SetArmed(startsArmed);
+
+        // Maintain existing serialized startsArmed default, but optionally enforce base cooldown on spawn.
+        if (startOnCooldown && cooldownSeconds > 0f)
+        {
+            // start disarmed and begin cooldown so skill upgrades that reduce cooldown are honored before first arm
+            SetArmed(false);
+            _cooldownRemain = cooldownSeconds;
+        }
+        else
+        {
+            SetArmed(startsArmed);
+        }
+
         SyncVisual(true);
     }
 
@@ -7739,6 +7824,7 @@ public sealed class CarForcefield : MonoBehaviour
 
     public void SetArmed(bool v)
     {
+        bool wasArmed = _armed;
         _armed = v;
         if (disableVisualOnUse && visualRoot)
             visualRoot.gameObject.SetActive(v);
@@ -7747,6 +7833,13 @@ public sealed class CarForcefield : MonoBehaviour
             _trigger.enabled = v;
 
         SyncVisual(true);
+
+        // Play rearm sound only when transitioning from disarmed -> armed
+        if (v && !wasArmed)
+        {
+            // play rearm SFX at the car position
+            Play3DClipAtPoint(forcefieldRearmClip, transform.position, forcefieldRearmVolume);
+        }
     }
 
     private void SyncVisual(bool instant)
@@ -7809,6 +7902,9 @@ public sealed class CarForcefield : MonoBehaviour
 
             if (enableLaunchSlowMo)
                 StartLaunchSlowMo();
+
+            Play3DClipAtPoint(forcefieldUseClip, vfxPos, forcefieldUseVolume);
+
 
             // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
             if (postFX != null)
@@ -7925,6 +8021,9 @@ public sealed class CarForcefield : MonoBehaviour
         if (enableLaunchSlowMo)
             StartLaunchSlowMo();
 
+        Play3DClipAtPoint(forcefieldUseClip, vfxPos2, forcefieldUseVolume);
+
+
         // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
         if (postFX != null)
             postFX.PlayBurst();
@@ -7996,6 +8095,25 @@ public sealed class CarForcefield : MonoBehaviour
     {
         if (_slowMoRoutine != null) return;
         _slowMoRoutine = StartCoroutine(LaunchSlowMoRoutine());
+    }
+
+    private void Play3DClipAtPoint(AudioClip clip, Vector3 pos, float volume = 1f)
+    {
+        if (clip == null) return;
+        GameObject go = new GameObject("SFX_Forcefield_" + (clip ? clip.name : "null"));
+        go.transform.position = pos;
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f; // 3D
+        src.clip = clip;
+        src.volume = Mathf.Clamp01(volume);
+        src.rolloffMode = AudioRolloffMode.Logarithmic;
+        src.minDistance = 0.5f;
+        src.maxDistance = 50f;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.dopplerLevel = 0f;
+        src.Play();
+        Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
     }
 
     private IEnumerator LaunchSlowMoRoutine()
@@ -8251,20 +8369,19 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField, Tooltip("Layers this cross will react to. Colliders on other layers will be ignored (e.g. Terrain).")]
     private LayerMask reactLayers = ~0;
 
-    // NEW: bottom offset (distance from transform.position.y to lowest renderer/collider world min)
-    private float _bottomOffset = 0f;
-    private float _safeMargin = 0.02f; // keeps a tiny clearance over the ground
-
-    // cached rb
+    // Cached Rigidbody
     private Rigidbody _rb;
+
+    // -------------------------- INITIALIZATION --------------------------
 
     /// <summary>
     /// Called by CrossObstacleDirector right after Instantiate.
-    /// Places object on surface and prepares scripted motion.
+    /// Director is responsible for grounding start/target.
+    /// We just follow that path.
     /// </summary>
     public void InitializeDirect(Vector3 startWorld, Vector3 targetWorld, float crossSpeed, float delayBeforeMove)
     {
-        // store XZ targets (Y will be controlled to fit surface)
+        // Trust director's start/target completely, including Y
         _startWS = startWorld;
         _targetWS = targetWorld;
         speed = Mathf.Max(0.5f, crossSpeed);
@@ -8272,29 +8389,15 @@ public class CrossTrackObstacle : MonoBehaviour
         _initialDelay = Mathf.Max(0f, delayBeforeMove);
         _spawnedAt = Time.time;
 
-        // compute bottom offset based on renderers/colliders after scale applied
-        _bottomOffset = ComputeBottomOffset();
+        transform.position = _startWS;
 
-        // Project start onto surface robustly (raycast down from high Y)
-        Vector3 startProj = ProjectOntoSurfaceXZ(_startWS);
-        float desiredY = startProj.y - _bottomOffset + _safeMargin;
-        transform.position = new Vector3(_startWS.x, desiredY, _startWS.z);
-
-        // Project target onto surface similarly
-        Vector3 targetProj = ProjectOntoSurfaceXZ(_targetWS);
-        float targetDesiredY = targetProj.y - _bottomOffset + _safeMargin;
-
-        // store internal start/target with correct Y
-        _startWS = new Vector3(_startWS.x, desiredY, _startWS.z);
-        _targetWS = new Vector3(_targetWS.x, targetDesiredY, _targetWS.z);
-
-        // Ensure rb mass from designer curve
         EnsureRigidbody();
-        float computed = ComputeMassFromScale();
-        if (_rb != null)
-            _rb.mass = Mathf.Max(0.01f, computed);
 
-        // initialize velocity tracking
+        // Mass from scale curve
+        float computedMass = ComputeMassFromScale();
+        _rb.mass = Mathf.Max(0.01f, computedMass);
+
+        // init velocity tracking
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
 
@@ -8304,11 +8407,7 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void Awake()
     {
-        // Basic alive check
-        if (debugMassComparison)
-            Debug.Log($"[CrossTrackObstacle] Awake: name={gameObject.name}, layer={LayerMask.LayerToName(gameObject.layer)}");
-
-        // Ensure Rigidbody exists and default it to kinematic so scripted motion doesn't get physics-driven
+        // Ensure we have a Rigidbody and default it to kinematic (scripted path)
         _rb = GetComponent<Rigidbody>();
         if (_rb == null)
             _rb = gameObject.AddComponent<Rigidbody>();
@@ -8319,209 +8418,110 @@ public class CrossTrackObstacle : MonoBehaviour
         _rb.interpolation = RigidbodyInterpolation.None;
         _rb.constraints = RigidbodyConstraints.FreezeRotation;
 
-        // If reactLayers was left at default (all bits), auto-exclude common ground layers so terrain
-        // collisions don't trigger mass-handling by default.
-        if (reactLayers == (LayerMask)(-1))
+        // If reactLayers is untouched (~0 = everything), auto-ignore common ground
+        if (reactLayers == ~0)
         {
-            int terrainLayer = LayerMask.NameToLayer("Terrain");
-            if (terrainLayer >= 0) reactLayers &= ~(1 << terrainLayer);
-
-            int roadLayer = LayerMask.NameToLayer("RoadSurface");
-            if (roadLayer >= 0) reactLayers &= ~(1 << roadLayer);
-
-            if (debugMassComparison)
-                Debug.Log($"[CrossTrackObstacle] reactLayers auto-adjusted to exclude Terrain/RoadSurface when present. mask=0x{reactLayers.value:X}");
+            int road = LayerMask.NameToLayer("RoadSurface");
+            int terrain = LayerMask.NameToLayer("Terrain");
+            if (road >= 0) reactLayers &= ~(1 << road);
+            if (terrain >= 0) reactLayers &= ~(1 << terrain);
         }
-
-        // init position/velocity tracking
-        _prevPosition = transform.position;
-        _lastVelocity = Vector3.zero;
     }
 
-    private void Start()
+    // -------------------------- MOVEMENT --------------------------
+
+    private void FixedUpdate()
     {
-        // If nobody initialized us, don't try to move
-        if (!_initialized)
+        if (!_initialized || !_active)
+            return;
+
+        if (Time.time < _spawnedAt + _initialDelay)
+        {
+            _prevPosition = transform.position;
+            _lastVelocity = Vector3.zero;
+            return;
+        }
+
+        Vector3 current = transform.position;
+        Vector3 toTarget = _targetWS - current;
+        float dist = toTarget.magnitude;
+
+        if (dist < 0.01f)
+        {
+            OnReachedEnd();
+            return;
+        }
+
+        Vector3 dir = toTarget / dist;
+        float step = speed * Time.fixedDeltaTime;
+        step = Mathf.Min(step, dist);
+        Vector3 nextPos = current + dir * step;
+
+        // NO MORE re-projecting onto the surface here.
+        // We trust the director's path (start/target) fully.
+        _lastVelocity = (nextPos - _prevPosition) / Mathf.Max(Time.fixedDeltaTime, 0.0001f);
+        _prevPosition = nextPos;
+
+        if (_rb != null && _rb.isKinematic)
+        {
+            _rb.MovePosition(nextPos);
+        }
+        else
+        {
+            transform.position = nextPos;
+        }
+    }
+
+    private void OnReachedEnd()
+    {
+        _active = false;
+        if (destroyOnExit)
+            Destroy(gameObject);
+        else
             enabled = false;
     }
 
-    // Use FixedUpdate + Rigidbody.MovePosition so collisions are registered reliably.
-    private void FixedUpdate()
-    {
-        if (!_active) return;
-
-        // Respect initial delay when spawned predictively
-        if (Time.time - _spawnedAt < _initialDelay) return;
-
-        float step = Mathf.Max(0.01f, speed) * Time.fixedDeltaTime;
-
-        // current XZ from rigidbody (physics-aware)
-        Vector2 curXZ = new Vector2(_rb.position.x, _rb.position.z);
-        Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
-
-        Vector2 nextXZ = Vector2.MoveTowards(curXZ, targetXZ, step);
-
-        // sample surface at the new XZ and set Y so the object's bottom sits on the surface
-        Vector3 samplePos = new Vector3(nextXZ.x, _rb.position.y + Mathf.Abs(_bottomOffset) + 5f, nextXZ.y);
-        Vector3 surface = ProjectOntoSurfaceXZ(samplePos);
-        float newY = surface.y - _bottomOffset + _safeMargin;
-
-        Vector3 newPos = new Vector3(nextXZ.x, newY, nextXZ.y);
-
-        // compute last scripted velocity (world units/sec)
-        _lastVelocity = (newPos - _prevPosition) / Mathf.Max(Time.fixedDeltaTime, 1e-6f);
-
-        // move via physics so kinematic collisions are detected
-        _rb.MovePosition(newPos);
-
-        // update previous position
-        _prevPosition = newPos;
-
-        // reached target?
-        if ((new Vector2(newPos.x, newPos.z) - targetXZ).sqrMagnitude <= 0.0001f)
-        {
-            _active = false;
-            if (destroyOnExit) Destroy(gameObject);
-            else enabled = false;
-        }
-    }
+    // -------------------------- COLLISION LOGIC --------------------------
 
     private void OnCollisionEnter(Collision collision)
     {
-        var col = collision.collider;
-        if (col == null) return;
-
-        if (debugMassComparison)
-            Debug.Log($"[CrossTrackObstacle] OnCollisionEnter: hit '{col.gameObject.name}' layer={LayerMask.LayerToName(col.gameObject.layer)}");
-
-        // Ignore collisions from layers not in reactLayers -- use robust layer check
-        if (!ColliderMatchesReactLayer(col))
-        {
-            if (debugMassComparison)
-                Debug.Log($"[CrossTrackObstacle] Ignored collision with {col.gameObject.name} (layer {LayerMask.LayerToName(col.gameObject.layer)}) — not in reactLayers.");
-            return;
-        }
-
-        // If colliding with a projectile, convert self to physics so it behaves naturally
-        if (IsProjectileCollider(col))
-        {
-            ConvertToPhysicsOnHit();
-            return;
-        }
-
-        HandleImpactWithCollider(col, collision);
+        if (!_initialized || !_active) return;
+        if (collision == null || collision.collider == null) return;
+        HandleImpactWithCollider(collision.collider, collision);
     }
 
     private void OnTriggerEnter(Collider other)
     {
+        if (!_initialized || !_active) return;
         if (other == null) return;
-
-        if (debugMassComparison)
-            Debug.Log($"[CrossTrackObstacle] OnTriggerEnter: triggeredWith='{other.gameObject.name}' layer={LayerMask.LayerToName(other.gameObject.layer)}");
-
-        // Ignore triggers from layers not in reactLayers
-        if (!ColliderMatchesReactLayer(other))
-        {
-            if (debugMassComparison)
-                Debug.Log($"[CrossTrackObstacle] Ignored trigger with {other.gameObject.name} — not in reactLayers.");
-            return;
-        }
-
-        if (IsProjectileCollider(other))
-        {
-            ConvertToPhysicsOnHit();
-            return;
-        }
-
         HandleImpactWithCollider(other, null);
     }
 
-    /// <summary>
-    /// Convert this cross obstacle to a physics-driven object so collisions can
-    /// respond with realistic impulses/rotations when obstructed.
-    /// </summary>
-    public void ConvertToPhysicsOnHit()
-    {
-        // Stop scripted motion
-        enabled = false;
-        _active = false;
-
-        var rb = GetComponent<Rigidbody>();
-        if (!rb) rb = gameObject.AddComponent<Rigidbody>();
-
-        // Ensure mass is consistent with designer mapping
-        float myMass = ComputeMassFromScale();
-        rb.mass = Mathf.Max(0.01f, myMass);
-
-        // Configure physics state
-        rb.isKinematic = false;
-        rb.useGravity = true;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-        rb.constraints = RigidbodyConstraints.None;
-        rb.WakeUp();
-
-        // Seed velocity using the last scripted velocity
-        Vector3 initialVel = _lastVelocity;
-        if (initialVel.sqrMagnitude < 1e-6f)
-            initialVel = transform.forward * Mathf.Max(0.01f, speed);
-
-        rb.velocity = initialVel;
-        rb.angularVelocity = Vector3.zero;
-
-        Physics.SyncTransforms();
-
-        _rb = rb;
-    }
-
-    private void TryMakeOtherDynamicGeneral(GameObject root)
-    {
-        if (root == null) return;
-
-        if (root.layer == LayerMask.NameToLayer("RoadSurface"))
-            return;
-
-        Rigidbody rb = root.GetComponent<Rigidbody>() ?? root.GetComponentInChildren<Rigidbody>();
-        if (rb == null)
-        {
-            rb = root.gameObject.AddComponent<Rigidbody>();
-            rb.mass = Mathf.Max(0.1f, defaultAddedMass);
-        }
-
-        if (rb.isKinematic)
-            rb.isKinematic = false;
-
-        rb.useGravity = true;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-        rb.WakeUp();
-        Physics.SyncTransforms();
-    }
+    [Header("Mass Comparison")]
+    [SerializeField] private float massComparisonTolerance = 0.05f;
+    [Tooltip("Extra mass added to the curve result (e.g., for metal shells, etc.).")]
+    [SerializeField] private float defaultAddedMass = 0f;
+    [Tooltip("Impulse Δv range applied to the other object when we are heavier.")]
+    [SerializeField] private Vector2 pushDeltaVRange = new Vector2(1.5f, 3.0f);
 
     private void HandleImpactWithCollider(Collider other, Collision collision)
     {
-        if (other == null) return;
+        // Check layer mask first – if this collider isn't in reactLayers, ignore.
+        if (!IsOnReactLayer(other))
+            return;
 
-        // contact info (best-effort)
-        Vector3 contactNormal = Vector3.up;
-        Vector3 contactPoint = other.bounds.ClosestPoint(transform.position);
-        if (collision != null && collision.contactCount > 0)
-        {
-            var c = collision.GetContact(0);
-            contactNormal = c.normal;
-            contactPoint = c.point;
-        }
-
-        // Use designer curve for decision to avoid touching our Rigidbody if possible
-        float myMass = ComputeMassFromScale();
-
-        // Player special-case: ALWAYS let cross keep its path; push player and return.
+        // Player special-case: ALWAYS keep path, never convert to physics.
         var car = other.GetComponentInParent<CarController>();
         if (car != null)
         {
             var playerRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
+            float myMass = ComputeMassFromScale();
+
             if (debugMassComparison)
-                Debug.Log($"[CrossTrackObstacle] COLLIDE player: crossMass={myMass:F2}, playerRb={(playerRb != null ? playerRb.mass.ToString("F2") : "(no rb)")}, cross keeps path");
+            {
+                Debug.Log($"[CrossTrackObstacle] COLLIDE player: crossMass={myMass:F2}, " +
+                          $"playerRb={(playerRb != null ? playerRb.mass.ToString("F2") : "(no rb)")} cross keeps path");
+            }
 
             if (playerRb != null)
             {
@@ -8534,50 +8534,96 @@ public class CrossTrackObstacle : MonoBehaviour
                 Vector3 deltaV = away * dv;
                 playerRb.AddForce(deltaV * Mathf.Max(0.01f, playerRb.mass), ForceMode.Impulse);
             }
-            return;
+
+            return; // DO NOT convert this obstacle
         }
 
-        // Determine other mass: prefer other CrossTrackObstacle mapping, else Rigidbody.mass, else static -> infinite.
+        // Non-player collision: mass comparison rules.
+        float obstCurveMass = ComputeMassFromScale();
+        float obstMass = obstCurveMass;
+
         Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
         var otherCross = other.GetComponentInParent<CrossTrackObstacle>();
+
         float otherMass;
         string otherMassSource;
+
         if (otherCross != null && otherCross != this)
         {
             otherMass = Mathf.Max(0.0001f, otherCross.ComputeMassFromScale());
             otherMassSource = "otherCrossCurve";
         }
-        else if (otherRb != null)
-        {
-            otherMass = Mathf.Max(0.0001f, otherRb.mass);
-            otherMassSource = "otherRb.mass";
-        }
-        else
-        {
-            otherMass = float.MaxValue;
-            otherMassSource = "static(infinite)";
-        }
-
-        if (debugMassComparison)
-        {
-            string otherName = other.transform.root != null ? other.transform.root.name : other.gameObject.name;
-            bool otherKinematic = otherRb != null ? otherRb.isKinematic : false;
-            Debug.Log($"[CrossTrackObstacle] COLLIDE '{gameObject.name}' -> '{otherName}': crossMass={myMass:F2} otherMass={otherMass:F2} (src={otherMassSource}) otherHasRb={(otherRb != null)} otherKinematic={otherKinematic} tolerance={massComparisonTolerance:F3}");
-        }
-
-        // If we are strictly heavier (with tolerance), DO NOT convert or change our Rigidbody/state.
-        if (myMass > otherMass + massComparisonTolerance)
-        {
-            var root = other.transform.root;
-            if (root != null && root.gameObject.layer != LayerMask.NameToLayer("RoadSurface"))
+            else if (otherRb != null)
             {
-                TryMakeOtherDynamicGeneral(root.gameObject);
-                otherRb = root.GetComponent<Rigidbody>() ?? otherRb;
+                otherMass = Mathf.Max(0.0001f, otherRb.mass);
+                otherMassSource = "otherRb.mass";
+            }
+            else
+            {
+                // treat static geometry as effectively infinite mass
+                otherMass = float.MaxValue;
+                otherMassSource = "static(infinite)";
+            }
+
+            if (debugMassComparison)
+            {
+                string otherName = other.transform.root != null ? other.transform.root.name : other.gameObject.name;
+                bool otherKinematic = otherRb != null && otherRb.isKinematic;
+                Debug.Log($"[CrossTrackObstacle] COLLIDE '{gameObject.name}' -> '{otherName}': " +
+                          $"crossMass={obstMass:F2} otherMass={otherMass:F2} (src={otherMassSource}) otherHasRb={(otherRb != null)} " +
+                          $"otherKinematic={otherKinematic} tolerance={massComparisonTolerance:F3}");
+            }
+
+            // If we are strictly heavier, we KEEP our kinematic scripted path.
+            if (obstMass > otherMass + massComparisonTolerance)
+            {
+                var root = other.transform.root;
+                if (root != null && root.gameObject.layer != LayerMask.NameToLayer("RoadSurface"))
+                {
+                    TryMakeOtherDynamicGeneral(root.gameObject);
+                    otherRb = root.GetComponent<Rigidbody>() ?? otherRb;
+                }
+
+                if (otherRb != null)
+                {
+                    Vector3 away = otherRb.position - transform.position;
+                    away.y = 0f;
+                    if (away.sqrMagnitude < 1e-6f) away = transform.forward;
+                    away.Normalize();
+
+                    float dv = Random.Range(pushDeltaVRange.x, pushDeltaVRange.y);
+                    Vector3 deltaV = away * dv;
+                    otherRb.AddForce(deltaV * Mathf.Max(0.01f, otherRb.mass), ForceMode.Impulse);
+
+                    if (debugMassComparison)
+                        Debug.Log($"[CrossTrackObstacle] ACTION: cross heavier -> kept path, pushed other ({otherRb.gameObject.name}).");
+                }
+                else if (debugMassComparison)
+                {
+                    Debug.Log("[CrossTrackObstacle] ACTION: cross heavier -> kept path, but other had no rigidbody.");
+                }
+
+                return;
+            }
+
+            // Otherwise, we are lighter or equal → convert THIS obstacle to physics.
+            if (debugMassComparison)
+                Debug.Log("[CrossTrackObstacle] ACTION: cross lighter or equal -> converting self to physics.");
+
+            EnsureRigidbody();
+            ConvertToPhysicsOnHit();
+
+            // Optionally push the other body a bit as well (reaction effect).
+            var otherRootObj = other.transform.root;
+            if (otherRootObj != null && otherRootObj.gameObject.layer != LayerMask.NameToLayer("RoadSurface"))
+            {
+                TryMakeOtherDynamicGeneral(otherRootObj.gameObject);
+                otherRb = otherRootObj.GetComponent<Rigidbody>() ?? otherRb;
             }
 
             if (otherRb != null)
             {
-                Vector3 away = (otherRb.position - transform.position);
+                Vector3 away = otherRb.position - transform.position;
                 away.y = 0f;
                 if (away.sqrMagnitude < 1e-6f) away = transform.forward;
                 away.Normalize();
@@ -8585,180 +8631,46 @@ public class CrossTrackObstacle : MonoBehaviour
                 float dv = Random.Range(pushDeltaVRange.x, pushDeltaVRange.y);
                 Vector3 deltaV = away * dv;
                 otherRb.AddForce(deltaV * Mathf.Max(0.01f, otherRb.mass), ForceMode.Impulse);
-
-                if (debugMassComparison)
-                    Debug.Log($"[CrossTrackObstacle] ACTION: cross heavier -> kept scripted path. Applied impulse to other ({otherRb.gameObject.name}).");
             }
-            else if (debugMassComparison)
-            {
-                Debug.Log($"[CrossTrackObstacle] ACTION: cross heavier -> kept scripted path. Other had no Rigidbody and was not made dynamic (root/road surface?).");
-            }
-
-            return;
         }
 
-        // Otherwise we are lighter or equal → convert *this* to physics and apply reaction impulses.
-        if (debugMassComparison) Debug.Log($"[CrossTrackObstacle] ACTION: cross lighter or equal -> converting to physics.");
+    private bool IsOnReactLayer(Collider col)
+    {
+        if (col == null) return false;
+        int layer = col.gameObject.layer;
+        if (((reactLayers.value) & (1 << layer)) != 0) return true;
 
-        EnsureRigidbody();
-        ConvertToPhysicsOnHit();
-
-        // Make other dynamic and apply reaction impulse if possible
-        var otherRoot = other.transform.root;
-        if (otherRoot != null && otherRoot.gameObject.layer != LayerMask.NameToLayer("RoadSurface"))
+        // also check the root in case of nested colliders
+        if (col.transform.root != null)
         {
-            TryMakeOtherDynamicGeneral(otherRoot.gameObject);
-            otherRb = otherRoot.GetComponent<Rigidbody>() ?? otherRb;
+            int layerRoot = col.transform.root.gameObject.layer;
+            if (((reactLayers.value) & (1 << layerRoot)) != 0) return true;
         }
-
-        if (otherRb != null)
-        {
-            Vector3 away = (otherRb.position - transform.position);
-            away.y = 0f;
-            if (away.sqrMagnitude < 1e-6f) away = transform.forward;
-            away.Normalize();
-
-            float dv = Random.Range(pushDeltaVRange.x, pushDeltaVRange.y);
-            Vector3 deltaV = away * dv;
-            otherRb.AddForce(deltaV * Mathf.Max(0.01f, otherRb.mass), ForceMode.Impulse);
-
-            if (debugMassComparison)
-                Debug.Log($"[CrossTrackObstacle] Applied reaction impulse to other ({otherRb.gameObject.name}).");
-        }
-
-        ApplyImpulseToSelf(-transform.forward * 0.2f, new Vector2(0.06f, 0.12f));
-    }
-
-    private void ApplyImpulseToRigidbody(Rigidbody target, Vector3 direction, Vector2 deltaVRange)
-    {
-        if (target == null) return;
-        float dv = Random.Range(deltaVRange.x, deltaVRange.y);
-        float mass = Mathf.Max(0.01f, target.mass);
-        Vector3 impulse = direction.normalized * (dv * mass);
-        target.AddForce(impulse, ForceMode.Impulse);
-    }
-
-    private void ApplyImpulseToSelf(Vector3 direction, Vector2 deltaVRange)
-    {
-        EnsureRigidbody();
-        if (_rb == null) return;
-        float dv = Random.Range(deltaVRange.x, deltaVRange.y);
-        float mass = Mathf.Max(0.01f, _rb.mass);
-        Vector3 impulse = direction.normalized * (dv * mass);
-        _rb.AddForce(impulse, ForceMode.Impulse);
-    }
-
-    // Helper that checks if the incoming collider belongs to a "Projectile" object.
-    private bool IsProjectileCollider(Collider other)
-    {
-        if (other == null) return false;
-
-        int projectileLayer = LayerMask.NameToLayer("Projectile");
-        if (projectileLayer == -1) return false;
-
-        Transform root = other.attachedRigidbody ? other.attachedRigidbody.transform : other.transform.root;
-        if (root != null && root.gameObject.layer == projectileLayer)
-            return true;
-
-        if (other.gameObject.layer == projectileLayer)
-            return true;
 
         return false;
     }
 
-    // Compute bottom offset: distance from transform.position.y to lowest renderer/collider world min,
-    // computed in local space so pivot/world Y doesn't produce incorrect offsets.
-    private float ComputeBottomOffset()
+    private void ConvertToPhysicsOnHit()
     {
-        float localMinY = float.MaxValue;
-        bool found = false;
+        _active = false;           // stop scripted motion
+        enabled = false;           // disable this script completely
 
-        // Prefer renderers (include inactive)
-        var rends = GetComponentsInChildren<Renderer>(true);
-        if (rends != null && rends.Length > 0)
-        {
-            foreach (var r in rends)
-            {
-                if (r == null) continue;
-                try
-                {
-                    // Convert the world-space renderer bounds min to local space and track the minimum local Y
-                    Vector3 worldMin = r.bounds.min;
-                    float localY = transform.InverseTransformPoint(worldMin).y;
-                    localMinY = Mathf.Min(localMinY, localY);
-                    found = true;
-                }
-                catch { }
-            }
-        }
+        if (_rb == null) return;
 
-        // Fall back to colliders (include inactive)
-        if (!found)
-        {
-            var cols = GetComponentsInChildren<Collider>(true);
-            foreach (var c in cols)
-            {
-                if (c == null) continue;
-                try
-                {
-                    Vector3 worldMin = c.bounds.min;
-                    float localY = transform.InverseTransformPoint(worldMin).y;
-                    localMinY = Mathf.Min(localMinY, localY);
-                    found = true;
-                }
-                catch { }
-            }
-        }
+        _rb.isKinematic = false;
+        _rb.useGravity = true;
+        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        if (!found)
-            return 0f;
+        // give it its last kinematic velocity so physics continues smoothly
+        _rb.velocity = _lastVelocity;
 
-        // localMinY is the lowest point in local space relative to this transform.
-        // If the model's lowest point is below the pivot, localMinY will be negative.
-        // We want a positive offset = distance from pivot down to that lowest point.
-        float bottomOffset = Mathf.Max(0f, -localMinY);
-        return bottomOffset;
+        // small upward nudge to avoid it being clipped inside surfaces
+        _rb.position += Vector3.up * 0.01f;
     }
 
-    private Vector3 ProjectOntoSurfaceXZ(Vector3 sampleXZ)
-    {
-        // Prefer RoadSurface and Terrain layers for placement; use GetMask for readability.
-        int mask = LayerMask.GetMask("RoadSurface", "Terrain");
+    // -------------------------- MASS / HELPERS --------------------------
 
-        RaycastHit hit;
-        Vector3 high = new Vector3(sampleXZ.x, sampleXZ.y + 100f, sampleXZ.z);
-
-        if (mask != 0)
-        {
-            if (Physics.Raycast(high, Vector3.down, out hit, 300f, mask, QueryTriggerInteraction.Ignore))
-                return hit.point;
-        }
-
-        // fallback to any collider
-        if (Physics.Raycast(high, Vector3.down, out hit, 300f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-            return hit.point;
-
-        // no surface found — return original XZ with same Y
-        return new Vector3(sampleXZ.x, sampleXZ.y, sampleXZ.z);
-    }
-
-    // Ensure cached Rigidbody reference exists
-    private void EnsureRigidbody()
-    {
-        if (_rb == null)
-        {
-            _rb = GetComponent<Rigidbody>();
-            if (_rb == null)
-            {
-                _rb = gameObject.AddComponent<Rigidbody>();
-                _rb.isKinematic = true;
-                _rb.useGravity = false;
-                _rb.constraints = RigidbodyConstraints.FreezeRotation;
-            }
-        }
-    }
-
-    // Compute mass from current local scale using the configured curve (hard mapping)
     [Header("Size → Mass (hard mapping)")]
     [SerializeField]
     private AnimationCurve massByScaleCurve = new AnimationCurve(
@@ -8766,60 +8678,63 @@ public class CrossTrackObstacle : MonoBehaviour
         new Keyframe(1f, 12f),
         new Keyframe(2f, 30f)
     );
-    [Tooltip("Fallback mass used if the curve is empty.")]
-    [SerializeField] private float defaultMassIfCurveMissing = 10f;
 
-    public float ComputeMassFromScale()
+    [Tooltip("Fallback mass if the curve is invalid.")]
+    [SerializeField] private float fallbackMass = 10f;
+
+    private float ComputeMassFromScale()
     {
-        float scaleParam = transform.localScale.x;
-        if (massByScaleCurve != null && massByScaleCurve.keys.Length > 0)
-            return Mathf.Max(0.01f, massByScaleCurve.Evaluate(scaleParam));
-        return Mathf.Max(0.01f, defaultMassIfCurveMissing);
+        float scale = transform.localScale.x; // assume uniform
+        if (massByScaleCurve == null || massByScaleCurve.length == 0)
+            return Mathf.Max(0.01f, fallbackMass);
+
+        float curveMass = massByScaleCurve.Evaluate(scale);
+        return Mathf.Max(0.01f, curveMass + defaultAddedMass);
     }
 
-    // Collision push tuning
-    [Header("Collision Push")]
-    [SerializeField] private Vector2 pushDeltaVRange = new Vector2(1.2f, 3.6f);
-    [SerializeField] private float massComparisonTolerance = 0.01f;
-    [SerializeField] private float defaultAddedMass = 12f;
+    private void EnsureRigidbody()
+    {
+        if (_rb != null) return;
+
+        _rb = GetComponent<Rigidbody>();
+        if (_rb == null)
+            _rb = gameObject.AddComponent<Rigidbody>();
+
+        _rb.isKinematic = true;
+        _rb.useGravity = false;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+        _rb.interpolation = RigidbodyInterpolation.None;
+        _rb.constraints = RigidbodyConstraints.FreezeRotation;
+    }
+
+    private void TryMakeOtherDynamicGeneral(GameObject obj)
+    {
+        if (!obj) return;
+        var rb = obj.GetComponent<Rigidbody>();
+        if (rb == null) return;
+
+        rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+    }
 
 #if UNITY_EDITOR
-    private void OnDrawGizmosSelected()
+    private void OnDrawGizmos()
     {
-        if (!drawPathGizmos || !_initialized) return;
+        if (!drawPathGizmos) return;
+        if (!_initialized && Application.isPlaying == false) return;
 
         Gizmos.color = Color.cyan;
+        Gizmos.DrawSphere(_startWS, 0.15f);
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawSphere(_targetWS, 0.15f);
+        Gizmos.color = Color.yellow;
         Gizmos.DrawLine(_startWS, _targetWS);
-        Gizmos.DrawSphere(_startWS, 0.2f);
-        Gizmos.DrawSphere(_targetWS, 0.2f);
     }
 #endif
-
-    // Robust layer check: compare collider layer, its root layer, and attachedRigidbody root layer
-    private bool ColliderMatchesReactLayer(Collider col)
-    {
-        if (col == null) return false;
-
-        int layerA = col.gameObject.layer;
-        if (((reactLayers.value) & (1 << layerA)) != 0) return true;
-
-        // check attached rigidbody root
-        if (col.attachedRigidbody != null)
-        {
-            int layerB = col.attachedRigidbody.gameObject.layer;
-            if (((reactLayers.value) & (1 << layerB)) != 0) return true;
-        }
-
-        // check root transform layer
-        if (col.transform.root != null)
-        {
-            int layerC = col.transform.root.gameObject.layer;
-            if (((reactLayers.value) & (1 << layerC)) != 0) return true;
-        }
-
-        return false;
-    }
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/Debug/SkidDebugStamp.cs
@@ -9501,6 +9416,12 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Duration (seconds) of the temporary handling boost applied to the car on close-call.")]
     private float closeCallHandlingDuration = 2.0f;
 
+    [Header("Close-Call Audio")]
+    [SerializeField, Tooltip("One-shot SFX played when a close-call (near miss) occurs.")]
+    private AudioClip closeCallClip;
+    [SerializeField, Range(0f, 1f)]
+    private float closeCallVolume = 0.9f;
+
     [Header("Audio Clips")]
     [SerializeField] private AudioClip runCompleteCoinClip;
     [SerializeField] private float runCompleteCoinVolume = 1f;
@@ -9940,6 +9861,12 @@ public class GameManager_Racing : MonoBehaviour
             float chroma = closeCallChromatic;
             float lens = closeCallLens;
             postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
+        }
+
+        // NEW: play close-call SFX (2D or attach to camera so it sounds consistent)
+        if (closeCallClip != null)
+        {
+            Play2DClip(closeCallClip, closeCallVolume);
         }
 
         // Start a gentle slow-mo for the close-call
@@ -12189,6 +12116,27 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0f, v);
     }
 
+
+    // ------------------------------------------------------------------------
+    // NEW: Coin base value additive helper
+    // Returns integer amount to add to each coin's configured value (default base 0)
+    // ------------------------------------------------------------------------
+    public int GetCoinBaseAdd()
+    {
+        // start from 0 (no base add); apply add/mul chain (mul on 0 is neutral, but kept for symmetry)
+        float v = ApplyStatChain(0f, SkillType.CoinBase_Add, SkillType.CoinBase_Mul);
+        return Mathf.RoundToInt(Mathf.Max(0f, v));
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑held boost cooldown helper (returns seconds)
+    // ------------------------------------------------------------------------
+    public float GetDriftHeldBoostCooldownScaled(float baseCooldown)
+    {
+        float v = ApplyStatChain(baseCooldown, SkillType.DriftHeldBoostCooldown_Add, SkillType.DriftHeldBoostCooldown_Mul);
+        return Mathf.Max(0.01f, v);
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();
@@ -12244,15 +12192,44 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [SerializeField] private bool autoHalfWidthFromRenderer = true;
     [SerializeField] private float manualHalfWidth = 0.5f;
 
+    [Header("Impact Fling")]
+    [Tooltip("Enable extra fling impulse when converting to physics.")]
+    [SerializeField] private bool enableImpactFling = true;
+    [Tooltip("Horizontal impulse scale based on impact speed.")]
+    [SerializeField] private float impactHorizontalMultiplier = 0.6f;
+    [Tooltip("Upward impulse scale based on impact speed.")]
+    [SerializeField] private float impactUpwardMultiplier = 0.35f;
+    [Tooltip("Maximum extra speed added by the fling (clamps the boost).")]
+    [SerializeField] private float impactMaxExtraSpeed = 10f;
+
     [Header("Motion")]
     [SerializeField] private float speed = 5f;
+    [Tooltip("If true, choose a random speed from speedRange at startup.")]
+    [SerializeField] private bool useRandomSpeed = false;
+    [Tooltip("Random speed range (min–max) used when useRandomSpeed is enabled.")]
+    [SerializeField] private Vector2 speedRange = new Vector2(3f, 8f);
     [Tooltip("Start from left bound heading right (if false, starts from right heading left).")]
     [SerializeField] private bool startOnLeft = true;
     [Tooltip("Wait at each end before reversing direction.")]
     [SerializeField] private float waitAtEndSeconds = 0.25f;
 
+    [Tooltip("If true, use a random wait time at each end instead of a fixed value.")]
+    [SerializeField] private bool useRandomWaitAtEnd = false;
+    [Tooltip("Random wait range (min–max seconds) at each end.")]
+    [SerializeField] private Vector2 waitAtEndRange = new Vector2(0.1f, 0.6f);
+
     [Header("Track Binding (optional)")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
+
+    [Header("Path Length Randomization")]
+    [Tooltip("If true, each shuttle picks a random fraction of the full lane width for its travel path on spawn.")]
+    [SerializeField] private bool randomizePathLength = true;
+
+    [Tooltip("Minimum fraction of the full usable lane width used for this shuttle's travel path.")]
+    [SerializeField, Range(0.1f, 1f)] private float minPathFraction = 0.4f;
+
+    [Tooltip("Maximum fraction of the full usable lane width used for this shuttle's travel path.")]
+    [SerializeField, Range(0.1f, 1f)] private float maxPathFraction = 1f;
 
     // runtime
     private Vector3 _originWS;
@@ -12260,7 +12237,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private Vector3 _targetWS;
     private bool _waiting;
     private float _halfRoad, _selfHalf;
-
+    private Vector3 _impactDir;
+    private bool _hasImpactDir;
     private bool _convertedToPhysics;
 
     // NEW: cached Rigidbody reference so we can default to kinematic until conversion
@@ -12270,6 +12248,65 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private float _bottomOffset = 0f;
     private float _safeMargin = 0.02f;
 
+    // NEW: configurable layers that cause conversion to dynamic physics (set in inspector)
+    [Header("Collision → Convert To Physics")]
+    [Tooltip("When colliding with any collider on these layers the shuttle will drop its scripted path and convert to physics.")]
+    [SerializeField] private LayerMask convertOnCollisionLayers = ~0;
+    [Tooltip("When enabled, ignore RoadSurface/Terrain layer collisions to avoid accidental conversions.")]
+    [SerializeField] private bool ignoreRoadAndTerrain = true;
+    [Tooltip("Minimum movement speed (m/s) used when transferring scripted motion into Rigidbody velocity on conversion.")]
+    [SerializeField] private float minTransferVelocity = 0.25f;
+
+    // NEW: overlap-based detection fallback (helps detect collisions while kinematic/moved-by-transform)
+    [Tooltip("Enable an overlap-check fallback that detects colliders touching this obstacle even when it's moved via transform.")]
+    [SerializeField] private bool enableOverlapDetection = true;
+    [Tooltip("How often (seconds) to run the overlap check. Lower = more responsive, higher = cheaper.")]
+    [SerializeField] private float overlapCheckInterval = 0.05f;
+
+    [Header("Telegraphing & FX")]
+    [Tooltip("Optional light used to telegraph when the shuttle is about to move again.")]
+    [SerializeField] private Light telegraphLight;
+    [Tooltip("Enable or disable telegraph light behavior.")]
+    [SerializeField] private bool useTelegraphLight = true;
+    [Tooltip("Fraction of the wait duration after which the light turns on (0 = immediately, 1 = never).")]
+    [SerializeField, Range(0f, 1f)] private float telegraphStartPercent = 0.5f;
+    [Tooltip("Light color at the moment it turns on.")]
+    [SerializeField] private Color telegraphStartColor = Color.green;
+    [Tooltip("Light color right before the shuttle starts moving again.")]
+    [SerializeField] private Color telegraphEndColor = Color.red;
+
+    [Tooltip("Optional particle system to play right before the shuttle starts moving again.")]
+    [SerializeField] private ParticleSystem launchParticles;
+    [Tooltip("Optional audio source to play a sound right before the shuttle starts moving again.")]
+    [SerializeField] private AudioSource launchAudio;
+
+    [Header("Final Launch Warning")]
+    [Tooltip("Seconds before movement resumes to trigger a strong warning (light flash, particles, sound).")]
+    [SerializeField, Min(0f)] private float launchWarningLeadTime = 0.2f;
+
+    [Tooltip("Multiplier applied to the base light intensity during the final warning flash.")]
+    [SerializeField] private float launchWarningIntensityMultiplier = 2.5f;
+
+    [Tooltip("Color of the light during the final warning flash. Set this equal to Travel Light Color if you want them matching.")]
+    [SerializeField] private Color launchWarningColor = Color.yellow;
+
+    [Header("Travel Light State")]
+    [Tooltip("If true, the light is on and yellow while the shuttle is moving.")]
+    [SerializeField] private bool useTravelLightDuringMotion = true;
+    [Tooltip("Color of the light while the shuttle is moving.")]
+    [SerializeField] private Color travelLightColor = Color.yellow;
+    [Tooltip("Multiplier applied to the original light intensity while moving. 1 = same, 2 = double, etc.")]
+    [SerializeField] private float travelLightIntensityMultiplier = 1.5f;
+
+    // NEW: track previous position / last velocity to produce a physical velocity on conversion
+    private Vector3 _prevPosition;
+    private Vector3 _lastVelocity;
+
+    // cached child colliders used for overlap sampling
+    private Collider[] _childColliders;
+    private float _overlapTimer;
+    private float _baseLightIntensity = 3.5f;
+
     public void SetGenerator(ProceduralTrackGenerator gen) => trackGenerator = gen;
 
     private void Awake()
@@ -12277,21 +12314,28 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (!trackGenerator)
             trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
 
-        // Ensure a Rigidbody exists and default it to kinematic so spawning/placement
-        // doesn't produce weird rotations from physics while the obstacle is scripted.
+        // Ensure a Rigidbody exists ...
         _rb = GetComponent<Rigidbody>();
         if (_rb == null)
         {
             _rb = gameObject.AddComponent<Rigidbody>();
         }
 
-        // By default keep it kinematic and non-gravity so the Update-driven motion is stable.
         _rb.isKinematic = true;
         _rb.useGravity = false;
         _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
         _rb.interpolation = RigidbodyInterpolation.None;
-        // Freeze rotations to avoid any runtime tumbling while kinematic
         _rb.constraints = RigidbodyConstraints.FreezeRotation;
+
+        _prevPosition = transform.position;
+        _lastVelocity = Vector3.zero;
+        _overlapTimer = 0f;
+
+        if (telegraphLight)
+        {
+            _baseLightIntensity = telegraphLight.intensity;
+            telegraphLight.enabled = false;
+        }
     }
 
     private void Start()
@@ -12300,6 +12344,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         _halfRoad = DetermineHalfRoadWidth();
         _selfHalf = DetermineSelfHalfWidth();
+
+        // capture child colliders for overlap checks
+        _childColliders = GetComponentsInChildren<Collider>();
 
         // Compute world-space half height of this obstacle (use renderers first, then colliders)
         float halfHeightWorld = 0f;
@@ -12339,19 +12386,29 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _leftWS = SpawnUtils.ProjectOntoSurface(_leftWS, out _, upOffsetForCast, 25f, roadMask);
         _rightWS = SpawnUtils.ProjectOntoSurface(_rightWS, out _, upOffsetForCast, 25f, roadMask);
 
-        // Place at start and set initial target
-        float usableLeft = -(_halfRoad - edgeMargin - _selfHalf);
-        float usableRight = +(_halfRoad - edgeMargin - _selfHalf);
+        // Randomize path length (shrink from both sides toward midpoint)
+        if (randomizePathLength)
+        {
+            float minF = Mathf.Clamp01(minPathFraction);
+            float maxF = Mathf.Clamp01(maxPathFraction);
+            if (maxF < minF)
+            {
+                float tmp = minF;
+                minF = maxF;
+                maxF = tmp;
+            }
 
-        // Decide initial start/target along the lateral axis derived from the track tangent
-        Vector3 lateral = (_rightWS - _leftWS).normalized;
-        if (lateral.sqrMagnitude < 1e-6f)
-            lateral = transform.right;
+            float f = Random.Range(minF, maxF);
+            Vector3 mid = (_leftWS + _rightWS) * 0.5f;
+            _leftWS = Vector3.Lerp(mid, _leftWS, f);
+            _rightWS = Vector3.Lerp(mid, _rightWS, f);
+        }
 
-        Vector3 startWS = _originWS + lateral * (startOnLeft ? usableLeft : usableRight);
-        Vector3 targetWS = _originWS + lateral * (startOnLeft ? usableRight : usableLeft);
+        // Decide initial start/target directly from the (possibly randomized) edges
+        Vector3 startWS = startOnLeft ? _leftWS : _rightWS;
+        Vector3 targetWS = startOnLeft ? _rightWS : _leftWS;
 
-        // ensure start/target are projected too (use same mask and upOffset)
+        // Re-project these endpoints to keep them cleanly on the road surface
         startWS = SpawnUtils.ProjectOntoSurface(startWS, out Vector3 startNormal, upOffsetForCast, 25f, roadMask);
         _targetWS = SpawnUtils.ProjectOntoSurface(targetWS, out Vector3 targetNormal, upOffsetForCast, 25f, roadMask);
 
@@ -12360,13 +12417,43 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         // Set start position and target XZ; Y will be set to same startDesiredY (we move only in XZ)
         transform.position = new Vector3(startWS.x, startDesiredY, startWS.z);
-        // target keeps its X/Z, but Y set to startDesiredY to avoid interpolating into ground while moving
         _targetWS = new Vector3(_targetWS.x, startDesiredY, _targetWS.z);
+
+        if (useRandomSpeed)
+        {
+            float min = Mathf.Min(speedRange.x, speedRange.y);
+            float max = Mathf.Max(speedRange.x, speedRange.y);
+            speed = Random.Range(min, max);
+        }
+
+        _prevPosition = transform.position;
+        _lastVelocity = Vector3.zero;
     }
 
     private void Update()
     {
+        if (_convertedToPhysics)
+            return;
+
+        if (enableOverlapDetection)
+        {
+            _overlapTimer -= Time.deltaTime;
+            if (_overlapTimer <= 0f)
+            {
+                _overlapTimer = Mathf.Max(0.01f, overlapCheckInterval);
+                CheckForOverlapAndConvert();
+            }
+        }
+
         if (_waiting) return;
+
+        // >>> TRAVEL LIGHT STATE WHILE MOVING <<<
+        if (useTelegraphLight && useTravelLightDuringMotion && telegraphLight)
+        {
+            telegraphLight.enabled = true;
+            telegraphLight.color = travelLightColor;
+            telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0f, travelLightIntensityMultiplier);
+        }
 
         float step = Mathf.Max(0.01f, speed) * Time.deltaTime;
 
@@ -12375,25 +12462,113 @@ public class ShuttleTrackObstacle : MonoBehaviour
         Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
         Vector2 nextXZ = Vector2.MoveTowards(curXZ, targetXZ, step);
 
-        // sample terrain height under the new XZ and set Y accordingly (keeps it snug)
         float sampleY = SampleTerrainHeightUnderXZ(nextXZ, Mathf.Abs(_bottomOffset) + 1f);
         float newY = sampleY - _bottomOffset + _safeMargin;
 
-        transform.position = new Vector3(nextXZ.x, newY, nextXZ.y);
+        Vector3 newPos = new Vector3(nextXZ.x, newY, nextXZ.y);
+
+        _lastVelocity = (newPos - _prevPosition) / Mathf.Max(Time.deltaTime, 1e-6f);
+        _prevPosition = newPos;
+
+        transform.position = newPos;
 
         if ((new Vector2(transform.position.x, transform.position.z) - targetXZ).sqrMagnitude <= 0.0001f)
         {
-            // Flip target (ping-pong)
+            // Flip the shuttle target
             _targetWS = (_targetWS == _leftWS) ? _rightWS : _leftWS;
-            if (waitAtEndSeconds > 0f)
-                StartCoroutine(WaitThenResume(waitAtEndSeconds));
+
+            // Randomize speed for this leg, if enabled
+            if (useRandomSpeed)
+            {
+                float sMin = Mathf.Min(speedRange.x, speedRange.y);
+                float sMax = Mathf.Max(speedRange.x, speedRange.y);
+                speed = Random.Range(sMin, sMax);
+            }
+
+            // Determine wait duration for this endpoint
+            float pauseTime = waitAtEndSeconds;
+
+            if (useRandomWaitAtEnd)
+            {
+                float wMin = Mathf.Min(waitAtEndRange.x, waitAtEndRange.y);
+                float wMax = Mathf.Max(waitAtEndRange.x, waitAtEndRange.y);
+                pauseTime = Random.Range(wMin, wMax);
+            }
+
+            if (pauseTime > 0f)
+                StartCoroutine(WaitThenResume(pauseTime));
         }
     }
 
     private IEnumerator WaitThenResume(float seconds)
     {
         _waiting = true;
-        yield return new WaitForSeconds(seconds);
+
+        bool telegraphOn = false;
+        bool launchWarningFired = false;
+
+        if (telegraphLight)
+            telegraphLight.enabled = false;
+
+        float totalWait = Mathf.Max(0.0001f, seconds);
+        float telegraphStartTime = totalWait * Mathf.Clamp01(telegraphStartPercent);
+        float telegraphDuration = Mathf.Max(0.0001f, totalWait - telegraphStartTime);
+
+        float elapsed = 0f;
+
+        while (elapsed < totalWait)
+        {
+            elapsed += Time.deltaTime;
+            float clampedElapsed = Mathf.Min(elapsed, totalWait);
+            float timeRemaining = totalWait - clampedElapsed;
+
+            // Handle telegraph light behavior
+            if (useTelegraphLight && telegraphLight)
+            {
+                // Turn on telegraph light at the configured start fraction
+                if (!telegraphOn && clampedElapsed >= telegraphStartTime)
+                {
+                    telegraphOn = true;
+                    telegraphLight.enabled = true;
+                    telegraphLight.color = telegraphStartColor;
+                    telegraphLight.intensity = _baseLightIntensity;
+                }
+
+                // Normal lerp phase (only if we haven't hit the final warning yet)
+                if (telegraphOn && !launchWarningFired)
+                {
+                    float tNorm = Mathf.Clamp01((clampedElapsed - telegraphStartTime) / telegraphDuration);
+                    telegraphLight.color = Color.Lerp(telegraphStartColor, telegraphEndColor, tNorm);
+                    telegraphLight.intensity = _baseLightIntensity;
+                }
+
+                // FINAL WARNING WINDOW: fire right before launch
+                if (!launchWarningFired &&
+                    launchWarningLeadTime > 0f &&
+                    timeRemaining <= launchWarningLeadTime)
+                {
+                    launchWarningFired = true;
+
+                    telegraphLight.enabled = true;
+                    telegraphLight.color = launchWarningColor;
+                    telegraphLight.intensity =
+                        _baseLightIntensity * Mathf.Max(1f, launchWarningIntensityMultiplier);
+
+                    if (launchParticles)
+                        launchParticles.Play();
+
+                    if (launchAudio)
+                        launchAudio.Play();
+                }
+            }
+
+            yield return null;
+        }
+
+        // Right when movement actually starts, turn off the telegraph light.
+        if (telegraphLight)
+            telegraphLight.enabled = false;
+
         _waiting = false;
     }
 
@@ -12415,12 +12590,37 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (rends != null && rends.Length > 0)
         {
             Vector3 r = transform.right;
-            Bounds wb = rends[0].bounds;
-            for (int i = 1; i < rends.Length; i++) wb.Encapsulate(rends[i].bounds);
-            // compute width along local right
-            float widthAlongRight = Vector3.Project(wb.size, r).magnitude;
-            approx = widthAlongRight * 0.5f;
+            Bounds wb = default;
+            bool hasBounds = false;
+
+            for (int i = 0; i < rends.Length; i++)
+            {
+                var rend = rends[i];
+                if (!rend) continue;
+
+                // Ignore FX / telegraph meshes
+                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) &&
+                    rend.CompareTag(bottomOffsetIgnoreTag))
+                    continue;
+
+                if (!hasBounds)
+                {
+                    wb = rend.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    wb.Encapsulate(rend.bounds);
+                }
+            }
+
+            if (hasBounds)
+            {
+                float widthAlongRight = Vector3.Project(wb.size, r).magnitude;
+                approx = widthAlongRight * 0.5f;
+            }
         }
+
         return Mathf.Max(0f, approx);
     }
 
@@ -12429,89 +12629,165 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (_convertedToPhysics) return;
         _convertedToPhysics = true;
 
-        // Stop shuttling
+        Debug.Log($"[ShuttleTrackObstacle] Converting to physics on {gameObject.name}");
+
+        // Stop scripted movement
         enabled = false;
         _waiting = false;
 
-        // Add / configure Rigidbody so normal physics applies
-        var rb = GetComponent<Rigidbody>();
-        if (!rb)
-            rb = gameObject.AddComponent<Rigidbody>();
+        if (telegraphLight)
+            telegraphLight.enabled = false;
 
-        // We now allow physics to control motion/rotation
-        rb.isKinematic = false;
-        rb.useGravity = true;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-        // Allow rotations provided by physics (clear freeze rotation)
-        rb.constraints = RigidbodyConstraints.None;
+        if (!_rb)
+            _rb = GetComponent<Rigidbody>() ?? gameObject.AddComponent<Rigidbody>();
 
-        // Wake up
-        rb.WakeUp();
+        _rb.isKinematic = false;
+        _rb.useGravity = true;
+        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        _rb.constraints = RigidbodyConstraints.None;
+
+        // Base transfer velocity from shuttle motion
+        Vector3 transferVel = _lastVelocity;
+        if (transferVel.magnitude < minTransferVelocity)
+            transferVel = transform.forward * Mathf.Max(minTransferVelocity, speed * 0.5f);
+
+        // --- IMPACT FLING ADD-ON ---
+        if (enableImpactFling)
+        {
+            Vector3 dir;
+            if (_hasImpactDir && _impactDir.sqrMagnitude > 1e-6f)
+            {
+                dir = _impactDir.normalized;
+            }
+            else if (transferVel.sqrMagnitude > 1e-6f)
+            {
+                dir = transferVel.normalized;
+            }
+            else
+            {
+                dir = transform.forward;
+            }
+
+            float speedMag = transferVel.magnitude;
+
+            float horizBoostMag = Mathf.Min(speedMag * impactHorizontalMultiplier, impactMaxExtraSpeed);
+            float vertBoostMag = speedMag * impactUpwardMultiplier;
+
+            Vector3 extra = dir * horizBoostMag + Vector3.up * vertBoostMag;
+            transferVel += extra;
+
+            _hasImpactDir = false;
+        }
+        // --- END IMPACT FLING ---
+
+        _rb.velocity = transferVel;
+        _rb.position += Vector3.up * 0.01f;
+        _rb.WakeUp();
         Physics.SyncTransforms();
     }
 
-    // Helper that checks if the incoming collider belongs to a "Projectile" object.
-    // Returns true only when a valid Projectile layer exists and the collider (or its root/attachedRigidbody root)
-    // is on that layer. This avoids reacting to road/terrain collisions at spawn.
-    private bool IsProjectileCollider(Collider other)
+    private bool ShouldConvertForCollider(Collider other)
     {
         if (other == null) return false;
 
-        int projectileLayer = LayerMask.NameToLayer("Projectile");
-        if (projectileLayer == -1)
+        if (ignoreRoadAndTerrain)
         {
-            // If the project doesn't define a "Projectile" layer, be conservative and do NOT convert automatically.
-            // This prevents accidental conversion on road collision. If you intentionally removed the layer,
-            // consider updating logic here.
-            return false;
+            int road = LayerMask.NameToLayer("RoadSurface");
+            int terrain = LayerMask.NameToLayer("Terrain");
+            if (road >= 0 && other.gameObject.layer == road) return false;
+            if (terrain >= 0 && other.gameObject.layer == terrain) return false;
+            if (road >= 0 && other.transform.root != null && other.transform.root.gameObject.layer == road) return false;
+            if (terrain >= 0 && other.transform.root != null && other.transform.root.gameObject.layer == terrain) return false;
         }
 
-        // Check attached rigidbody root first (common for pooled/projectile prefabs)
-        Transform root = other.attachedRigidbody ? other.attachedRigidbody.transform : other.transform.root;
-        if (root != null && root.gameObject.layer == projectileLayer)
-            return true;
+        if (((convertOnCollisionLayers.value) & (1 << other.gameObject.layer)) != 0) return true;
 
-        // Fallback: check collider's own layer
-        if (other.gameObject.layer == projectileLayer)
-            return true;
+        if (other.transform.root != null)
+        {
+            if (((convertOnCollisionLayers.value) & (1 << other.transform.root.gameObject.layer)) != 0) return true;
+        }
 
         return false;
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        // Only convert to physics if we collided with an object on the Projectile layer.
-        if (IsProjectileCollider(collision.collider))
-            ConvertToPhysicsOnHit();
+        if (_convertedToPhysics) return;
+        if (collision == null || collision.collider == null) return;
+
+        Debug.Log($"[ShuttleTrackObstacle] OnCollisionEnter with {collision.collider.name} (layer={collision.collider.gameObject.layer})");
+
+        if (!IsInConvertLayers(collision.collider.gameObject))
+            return;
+
+        if (ignoreRoadAndTerrain)
+        {
+            int road = LayerMask.NameToLayer("RoadSurface");
+            int terrain = LayerMask.NameToLayer("Terrain");
+            int l = collision.collider.gameObject.layer;
+            if (l == road || l == terrain) return;
+        }
+
+        Vector3 dir = Vector3.zero;
+        if (_lastVelocity.sqrMagnitude > 1e-6f)
+        {
+            dir = _lastVelocity.normalized;
+        }
+        else if (collision.contactCount > 0)
+        {
+            dir = -collision.GetContact(0).normal;
+        }
+        else
+        {
+            dir = transform.forward;
+        }
+
+        _impactDir = dir;
+        _hasImpactDir = true;
+
+        ConvertToPhysicsOnHit();
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        // Only convert to physics if the trigger source is a Projectile.
-        if (IsProjectileCollider(other))
-            ConvertToPhysicsOnHit();
+        if (_convertedToPhysics) return;
+        if (other == null) return;
+
+        Debug.Log($"[ShuttleTrackObstacle] OnTriggerEnter with {other.name} (layer={other.gameObject.layer})");
+
+        if (!IsInConvertLayers(other.gameObject))
+            return;
+
+        if (ignoreRoadAndTerrain)
+        {
+            int road = LayerMask.NameToLayer("RoadSurface");
+            int terrain = LayerMask.NameToLayer("Terrain");
+            int l = other.gameObject.layer;
+            if (l == road || l == terrain) return;
+        }
+
+        Vector3 dir;
+        if (_lastVelocity.sqrMagnitude > 1e-6f)
+            dir = _lastVelocity.normalized;
+        else
+            dir = transform.forward;
+
+        _impactDir = dir;
+        _hasImpactDir = true;
+
+        ConvertToPhysicsOnHit();
     }
 
-    /// <summary>
-    /// If the collider's root has a Rigidbody that is kinematic, make it non-kinematic and configure it for physics.
-    /// If no Rigidbody exists, add one so the collided object becomes movable by physics.
-    /// </summary>
     private void TryMakeOtherDynamic(Collider other)
     {
         if (other == null) return;
-
-        // Ignore triggers
         if (other.isTrigger) return;
 
-        // Find root transform to operate on the whole obstacle
         Transform root = other.attachedRigidbody ? other.attachedRigidbody.transform : other.transform.root;
         if (!root) root = other.transform;
-
-        // Don't try to convert ourselves
         if (root == transform) return;
 
-        // Only handle objects on the "Projectile" layer to avoid converting terrain/level geometry
         int projectileLayer = LayerMask.NameToLayer("Projectile");
         if (projectileLayer == -1) return;
         bool otherIsProjectile = root.gameObject.layer == projectileLayer || other.gameObject.layer == projectileLayer;
@@ -12520,12 +12796,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
         Rigidbody rb = root.GetComponent<Rigidbody>() ?? root.GetComponentInChildren<Rigidbody>();
         if (rb == null)
         {
-            // Add a Rigidbody so the obstacle can be affected by physics
             rb = root.gameObject.AddComponent<Rigidbody>();
             rb.mass = Mathf.Max(0.1f, 10f);
         }
 
-        // If it was kinematic, enable dynamic physics
         if (rb.isKinematic)
             rb.isKinematic = false;
 
@@ -12536,15 +12810,42 @@ public class ShuttleTrackObstacle : MonoBehaviour
         Physics.SyncTransforms();
     }
 
+    private void CheckForOverlapAndConvert()
+    {
+        if (_convertedToPhysics) return;
+        if (_childColliders == null || _childColliders.Length == 0) return;
+
+        Bounds combined = new Bounds(_childColliders[0].bounds.center, _childColliders[0].bounds.size);
+        for (int i = 1; i < _childColliders.Length; i++)
+        {
+            if (_childColliders[i] == null) continue;
+            combined.Encapsulate(_childColliders[i].bounds);
+        }
+
+        combined.Expand(0.01f);
+
+        int mask = convertOnCollisionLayers.value;
+        Collider[] hits = Physics.OverlapBox(combined.center, combined.extents, transform.rotation, mask);
+        if (hits == null || hits.Length == 0) return;
+
+        foreach (var hit in hits)
+        {
+            if (hit == null) continue;
+            if (System.Array.IndexOf(_childColliders, hit) >= 0) continue;
+            if (hit.isTrigger) continue;
+
+            Debug.Log($"[ShuttleTrackObstacle] Overlap hit {hit.name} (layer={hit.gameObject.layer}) – converting.");
+            ConvertToPhysicsOnHit();
+            return;
+        }
+    }
+
     private void ComputeEdgeWorldPositions(out Vector3 leftWS, out Vector3 rightWS)
     {
-        // Attempt to compute lateral axis based on the nearest track tangent when we have a track generator.
-        // This is more robust than using this object's transform.right which may not align with the track.
         Vector3 lateral = transform.right; // fallback
 
         if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
         {
-            // Find closest segment to origin and use its tangent
             float bestDist = float.MaxValue;
             int bestIndex = 0;
             for (int i = 0; i < trackGenerator.PathPoints.Count - 1; i++)
@@ -12567,10 +12868,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 lateral = Vector3.Cross(Vector3.up, forward).normalized;
         }
 
-        float usableLeft = -(_halfRoad - edgeMargin - _selfHalf);
-        float usableRight = +(_halfRoad - edgeMargin - _selfHalf);
-        leftWS = _originWS + lateral * usableLeft;
-        rightWS = _originWS + lateral * usableRight;
+        if (lateral.sqrMagnitude < 1e-6f)
+            lateral = transform.right;
+
+        float roadInnerHalf = Mathf.Max(0.1f, _halfRoad - edgeMargin);
+        float obstacleHalf = Mathf.Max(0f, _selfHalf);
+        float usableOffset = Mathf.Max(0.1f, roadInnerHalf - obstacleHalf);
+
+        leftWS = _originWS + lateral * -usableOffset;
+        rightWS = _originWS + lateral * usableOffset;
     }
 
     private static Vector3 ClosestPointOnSegment(Vector3 p, Vector3 a, Vector3 b)
@@ -12583,21 +12889,28 @@ public class ShuttleTrackObstacle : MonoBehaviour
         return a + ab * t;
     }
 
-    // sample surface Y under a given XZ (fallback to currentY if none)
     private float SampleTerrainHeightUnderXZ(Vector2 xz, float upOffset = 2f)
     {
         Vector3 probe = new Vector3(xz.x, transform.position.y + upOffset, xz.y);
         Vector3 normal;
         Vector3 projected = SpawnUtils.ProjectOntoSurface(probe, out normal, upOffset, 50f, LayerMask.GetMask("RoadSurface"));
-        if (projected == probe) // ProjectOntoSurface returns probe if nothing found
+        if (projected == probe)
         {
-            // fallback try any collider
             projected = SpawnUtils.ProjectOntoSurface(probe, out normal, upOffset, 50f, null);
         }
         return projected.y;
     }
 
-    // compute bottom offset like in CrossTrackObstacle
+    private bool IsInConvertLayers(GameObject go)
+    {
+        int layer = go.layer;
+        return (convertOnCollisionLayers.value & (1 << layer)) != 0;
+    }
+
+    [SerializeField]
+    [Tooltip("Renderers/Colliders with this tag are ignored when computing bottom offset (e.g., FX, lights, etc.).")]
+    private string bottomOffsetIgnoreTag = "FXIgnoreBottom";
+
     private float ComputeBottomOffset()
     {
         float worldMinY = float.MaxValue;
@@ -12609,6 +12922,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
             foreach (var r in rends)
             {
                 if (r == null) continue;
+                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) && r.CompareTag(bottomOffsetIgnoreTag))
+                    continue;
+
                 try
                 {
                     worldMinY = Mathf.Min(worldMinY, r.bounds.min.y);
@@ -12624,6 +12940,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
             foreach (var c in cols)
             {
                 if (c == null) continue;
+                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) && c.CompareTag(bottomOffsetIgnoreTag))
+                    continue;
+
                 try
                 {
                     worldMinY = Mathf.Min(worldMinY, c.bounds.min.y);
@@ -12668,6 +12987,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     }
 #endif
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/SkillDefinition.cs
@@ -12948,12 +13268,18 @@ public enum SkillType
     DriftHeldBoostDuration_Mul = 4321,
     DriftHeldBoostMaxSpeedMult_Add = 4330,
     DriftHeldBoostMaxSpeedMult_Mul = 4331,
+    DriftHeldBoostCooldown_Add = 4340,
+    DriftHeldBoostCooldown_Mul = 4341,
+
 
     // ------------------------------------------------------------------------
     // NEW: Distance coins per meter skill chains
     // ------------------------------------------------------------------------
     DistanceCoinsPerMeter_Add = 4400,
-    DistanceCoinsPerMeter_Mul = 4401
+    DistanceCoinsPerMeter_Mul = 4401,
+
+    CoinBase_Add = 4450,
+    CoinBase_Mul = 4451
 }
 
 
@@ -13319,33 +13645,41 @@ public class ThrownObstacle : MonoBehaviour
         {
             if (c == null) continue;
 
-            // Car
+            // -------------------------
+            // CAR HIT (AoE explosion)
+            // -------------------------
             var car = c.GetComponentInParent<CarController>();
             if (car)
             {
-                // if car center is inside radius do full crash: call GameManager.OnCarCrash for camera/coin penalty
                 float d = Vector3.Distance(car.transform.position, pos);
                 if (d <= _explosionRadius)
                 {
-                    float severity = 1f; // binary full
+                    // Full blast severity for now (you can scale by distance if you want)
+                    float severity = 1f - Mathf.Clamp01(d / _explosionRadius);
 
-                    // Notify GameManager (visuals, coins penalties, slow-mo, etc.)
-                    gm?.OnCarCrash(0f, severity);
+                    // Direction the car is pushed: from explosion center toward the car
+                    Vector3 hitDir = (car.transform.position - pos);
+                    if (hitDir.sqrMagnitude < 0.0001f)
+                        hitDir = -car.transform.forward;  // fallback if somehow on top of center
+                    hitDir.Normalize();
 
-                    // Prefer using CarController public API so internal cooldown / HP/fuel logic is used
-                    try
-                    {
-                        car.ApplyExternalCrashDamage(severity);
-                    }
-                    catch (Exception)
-                    {
-                        // Fallback: try reflection-only approach if the public API isn't available for some reason
-                        TryApplyCarDamageViaReflection(car, severity);
-                    }
+                    // Contact point: closest point on the car collider to explosion center
+                    var carCol = car.GetComponent<Collider>();
+                    Vector3 contactPoint = carCol != null
+                        ? carCol.ClosestPoint(pos)
+                        : car.transform.position;
+
+                    // Approximate impact speed: at least current speed, plus a floor so it feels impactful
+                    float impactSpeed = Mathf.Max(car.CurrentSpeed, 12f);
+
+                    // Let CarController handle the full crash: physics, HP/fuel, cooldown, GM.OnCarCrash, etc.
+                    car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
                 }
             }
 
+            // -------------------------
             // Obstacles (RacingObstacle)
+            // -------------------------
             var obstacle = c.GetComponentInParent<RacingObstacle>();
             if (obstacle)
             {
@@ -13365,9 +13699,11 @@ public class ThrownObstacle : MonoBehaviour
                 obstacle.ApplyDamage(_explosionRadius > 0f ? 10f : 5f); // simple flat value – tweakable
             }
 
-            // Apply impulse to any other rigidbody in radius (for emergent physics)
+            // -------------------------
+            // Generic rigidbodies in radius
+            // -------------------------
             var rb = c.attachedRigidbody;
-            if (rb && (obstacle == null))
+            if (rb && obstacle == null)
             {
                 // Ensure it's non-kinematic before applying force
                 if (rb.isKinematic)
@@ -13385,6 +13721,7 @@ public class ThrownObstacle : MonoBehaviour
 
         ExplodeOrDeactivate();
     }
+
 
     private void ExplodeOrDeactivate()
     {
@@ -13471,35 +13808,30 @@ public class ThrownObstacle : MonoBehaviour
             }
         }
 
-        // If collided with a car, apply crash/damage now (non-explosive should still hurt)
-        var car = other.GetComponentInParent<CarController>();
-        if (car != null)
+        if (collision.collider.TryGetComponent<CarController>(out var car))
         {
-            // If suppressed by forcefield, skip applying crash/damage to the car
-            if (Time.time < _suppressExplodeUntil)
-            {
-                // spawn a harmless impact VFX and deactivate
-                SpawnImpactVFX(transform.position, Vector3.up);
-                ExplodeOrDeactivate();
-                return;
-            }
+            _hasImpacted = true;
 
-            var gm = GameManager_Racing.Instance;
+            // Compute impact speed from relative velocity
             float impactSpeed = collision.relativeVelocity.magnitude;
-            // severity scaled reasonably (tweak divisor to taste)
-            float severity = Mathf.Clamp01(impactSpeed / 20f);
-            gm?.OnCarCrash(impactSpeed, severity);
 
-            // Prefer public API to apply HP/fuel changes and respect cooldowns
-            try
-            {
-                car.ApplyExternalCrashDamage(severity);
-            }
-            catch (Exception)
-            {
-                // fallback to reflection if something unexpected happens
-                TryApplyCarDamageViaReflection(car, severity);
-            }
+            // Clamp to car's expected range
+            impactSpeed = Mathf.Clamp(impactSpeed, car.MinImpactSpeed, car.MaxImpactSpeed); // if min/max are public/internal, or just use your own clamp
+
+            // Hit direction: from obstacle toward car → impulse on car
+            Vector3 hitDir = (car.transform.position - transform.position).normalized;
+
+            // Contact point
+            Vector3 contactPoint = collision.contactCount > 0
+                ? collision.GetContact(0).point
+                : car.transform.position;
+
+            // Convert impactSpeed → severity 0..1 using the same mapping as CarController
+            float severity = Mathf.InverseLerp(car.MinImpactSpeed, car.MaxImpactSpeed, impactSpeed);
+
+            // Let the car handle the full crash (physics + HP/Fuel + FX)
+            car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
+
         }
 
         // For all other cases treat as arrival
@@ -14072,13 +14404,35 @@ public class ThrownObstacleDirector : MonoBehaviour
             }
         }
 
+        // --- PATCH: project onto road *before* adding vertical spawn height ---
+        // Use the track center as the projection anchor, then rebuild origin above ground.
         LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        origin = SpawnUtils.ProjectOntoSurface(origin, 2f, 25f, roadMask);
-        interceptPos = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
+
+        // Project the center of the lane down to the road
+        Vector3 groundCenter = SpawnUtils.ProjectOntoSurface(spawnCenter, 2f, 25f, roadMask);
+
+        // Project the landing point onto the road
+        Vector3 groundLanding = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
+
+        // Rebuild origin so it’s offset sideways + up from the *grounded* center
+        origin = groundCenter + right * sideSign * sideOffset + Vector3.up * spawnHeight;
+
+        // Use the grounded landing point
+        interceptPos = groundLanding;
 
         // Spawn
-        SpawnProjectile(origin, interceptPos, (interceptPos - origin).normalized, explosive, chosenPrefab, finalSpeed, test, interceptTime, previewSpawned, distanceNorm);
-
+        SpawnProjectile(
+            origin,
+            interceptPos,
+            (interceptPos - origin).normalized,
+            explosive,
+            chosenPrefab,
+            finalSpeed,
+            test,
+            interceptTime,
+            previewSpawned,
+            distanceNorm
+        );
         // compute cooldown scaled by distance travelled (decreases as distance increases) with some jitter
         float baseCd = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, distanceNorm);
         float jitter = UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
@@ -14091,9 +14445,6 @@ public class ThrownObstacleDirector : MonoBehaviour
 
         var go = ProjectilePool.Instance.Get(chosenPrefab);
         if (go == null) return;
-
-        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        landPoint = SpawnUtils.ProjectOntoSurface(landPoint, 2f, 25f, roadMask);
 
         // Position and rotate before activation to avoid any visible 'pop' at an unexpected world pos
         go.transform.position = origin;

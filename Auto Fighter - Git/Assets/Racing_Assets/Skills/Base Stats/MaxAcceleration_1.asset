@@ -14,25 +14,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 17
   displayName: Max Acceleration
-  description: Boosts Max Acceleration
-  maxLevel: 5
+  description: Boosts acceleration by .25
+  maxLevel: 10
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 5
-      outSlope: 5
+      inSlope: 4
+      outSlope: 4
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 10
-      value: 50
-      inSlope: 5
-      outSlope: 5
+      value: 40
+      inSlope: 4
+      outSlope: 4
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -43,10 +43,10 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
+  perLevelAdd: 0.25
   uiPosition: {x: -75, y: 0}
   revealedAtStart: 0
   progressiveUnlocks:
-  - requiredLevel: 1
+  - requiredLevel: 3
     unlocks:
-    - {fileID: 11400000, guid: dfa677e04a7d0424ca684535bbee7c21, type: 2}
+    - {fileID: 11400000, guid: 3b595d30a2572a14191d488e2b50e51d, type: 2}

@@ -172,6 +172,8 @@ MonoBehaviour:
   impactVFXPrefab: {fileID: 208115153821778408, guid: fd8c411fa565e1c479a780420a1f5983, type: 3}
   impactVFXLifetime: 0.4
   orientToMotion: 0
+  closeCallThreshold: 3.5
+  enableCloseCall: 1
 --- !u!114 &1215463017983121784
 MonoBehaviour:
   m_ObjectHideFlags: 0

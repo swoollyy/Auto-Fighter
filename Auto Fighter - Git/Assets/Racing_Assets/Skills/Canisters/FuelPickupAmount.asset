@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 48
   displayName: Big Tanks
-  description: Increase amount of fuel given in canisters by 2.5
+  description: Increase amount of fuel given in canisters by 5
   maxLevel: 5
   costCurve:
     serializedVersion: 2
@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 2.5
+  perLevelAdd: 5
   uiPosition: {x: 0, y: -150}
   revealedAtStart: 0
   progressiveUnlocks: []

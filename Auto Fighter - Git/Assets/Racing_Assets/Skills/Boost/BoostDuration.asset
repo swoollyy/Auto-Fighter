@@ -14,9 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 9
   displayName: Boost Duration
-  description: 'Increases duration of the boost by .02
-
-'
+  description: Increases duration of the boost by .1
   maxLevel: 10
   costCurve:
     serializedVersion: 2
@@ -45,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.02
+  perLevelAdd: 0.1
   uiPosition: {x: -225, y: 0}
   revealedAtStart: 0
   progressiveUnlocks:

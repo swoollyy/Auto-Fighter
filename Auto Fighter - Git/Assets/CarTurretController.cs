@@ -14,6 +14,16 @@ public class CarTurretController : MonoBehaviour
     [SerializeField] private KeyCode fireKey = KeyCode.Mouse0;
     [SerializeField] private float fireCooldown = 0.25f; // seconds between shots
 
+    [Header("Audio (Turret)")]
+    [SerializeField, Tooltip("One-shot SFX played when the turret fires.")]
+    private AudioClip turretFireClip;
+    [SerializeField, Range(0f, 1f), Tooltip("Volume for turret fire SFX.")]
+    private float turretFireVolume = 1f;
+
+    [Header("Spawn / Startup")]
+    [SerializeField, Tooltip("If true the turret will start on its base cooldown when the car spawns instead of being immediately ready.")]
+    private bool startOnCooldown = true;
+
     [Header("Bullet Stats")]
     [SerializeField] private float bulletSpeed = 80f;
     [SerializeField] private float bulletDamage = 10f;
@@ -80,6 +90,9 @@ public class CarTurretController : MonoBehaviour
         baseScanRadius = targetScanRadius;
 
         ApplySkillStats();
+
+        // NEW: set initial cooldown on spawn to avoid immediate fire spam
+        _cooldownTimer = startOnCooldown ? fireCooldown : 0f;
     }
 
     private void OnEnable()
@@ -388,6 +401,12 @@ public class CarTurretController : MonoBehaviour
                 lifetime: bulletLifetime,
                 owner: ownerCollider
             );
+        }
+
+        // Play turret fire SFX (spatialized at muzzle/origin)
+        if (turretFireClip != null)
+        {
+            AudioSource.PlayClipAtPoint(turretFireClip, origin, Mathf.Clamp01(turretFireVolume));
         }
     }
 

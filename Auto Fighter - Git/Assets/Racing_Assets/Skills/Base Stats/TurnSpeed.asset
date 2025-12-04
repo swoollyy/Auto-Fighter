@@ -15,24 +15,24 @@ MonoBehaviour:
   type: 27
   displayName: Turn Speed
   description: Helps Turning Speed
-  maxLevel: 5
+  maxLevel: 10
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 10
-      outSlope: 10
+      inSlope: 4
+      outSlope: 4
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 10
-      value: 100
-      inSlope: 10
-      outSlope: 10
+      value: 40
+      inSlope: 4
+      outSlope: 4
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -47,6 +47,6 @@ MonoBehaviour:
   uiPosition: {x: 75, y: 75}
   revealedAtStart: 0
   progressiveUnlocks:
-  - requiredLevel: 1
+  - requiredLevel: 3
     unlocks:
     - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}

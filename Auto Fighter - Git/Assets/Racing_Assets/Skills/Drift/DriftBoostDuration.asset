@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 4320
   displayName: Drift Boost Duration
-  description: Increases duration of drift boost by .02
+  description: Increases duration of drift boost by .1
   maxLevel: 5
   costCurve:
     serializedVersion: 2
@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 1
   baseValue: 0
-  perLevelAdd: 0.02
+  perLevelAdd: 0.1
   uiPosition: {x: 150, y: 225}
   revealedAtStart: 0
   progressiveUnlocks: []

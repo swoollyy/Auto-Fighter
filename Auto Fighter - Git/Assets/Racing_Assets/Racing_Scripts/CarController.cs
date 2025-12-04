@@ -54,10 +54,14 @@ public class CarController : MonoBehaviour
 
 
     [Header("Drift Neutral Behavior")]
-    [Tooltip("Require a non‑zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
+    [Tooltip("Require a non-zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
     [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
     [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
     [SerializeField] private float driftNeutralDrainRate = 4.2f;
+
+    [Header("Drift Neutral Reset")]
+    [Tooltip("If you let go of steering for this long while holding drift, driftCharge fully resets so re-engaging is a fresh drift.")]
+    [SerializeField] private float driftNeutralFullResetDelay = 0.15f;
 
     [Header("Drift Direction Change Reset")]
     [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
@@ -72,12 +76,14 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float steerFlipRebuildDelay = 0.15f;
 
     [Header("Drift Glide (Ice Feel)")]
-    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice‑like glide).")]
+    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice-like glide).")]
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
-    [Tooltip("Per‑second decay while gliding (very small to keep speed).")]
+    [Tooltip("Per-second decay while gliding (very small to keep speed).")]
     [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
 
     private bool _driftGlideActive;          // NEW: glide mode (holding drift, no steer)
+
+    private float _driftNeutralTimer = 0f;
 
     private float _lastRawSteerValue;
     private int _driftCurrentSteerSign = 0;
@@ -115,6 +121,9 @@ public class CarController : MonoBehaviour
     [SerializeField] private float torquePerUnitSpeed = 0.45f;
     [SerializeField] private float crashDragMultiplier = 2f;
     [SerializeField] private float crashAngularDrag = 1.5f;
+
+    public float MinImpactSpeed => minImpactSpeed;
+    public float MaxImpactSpeed => maxImpactSpeed;
 
     [Header("Crash Spin Tuning")]
     [SerializeField] private float crashYawTorqueMultiplier = 1f;
@@ -217,11 +226,17 @@ public class CarController : MonoBehaviour
     private Vector2 driftBoostDurationRange = new Vector2(0.35f, 1.50f);
     [SerializeField, Tooltip("Max speed multiplier range mapped from min→max hold.")]
     private Vector2 driftBoostMaxSpeedMultRange = new Vector2(1.10f, 1.60f);
-    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers.")]
+    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers (currently ignored: drift boost is free).")]
     private float driftBoostFuelCost = 0f;
+
+    [Header("Drift-held Boost Cooldown")]
+    [SerializeField, Tooltip("Cooldown (seconds) applied after using a drift-held boost (separate from normal boost cooldown).")]
+    private float driftBoostCooldown = 1.25f; // default; can be overridden via skill tree
+
 
     // Runtime boost state
     private float _boostCooldownTimer;
+    private float _driftBoostCooldownTimer;          // NEW: separate drift boost cooldown
     private bool _boostRequested;
     private bool _isBoosting;
     private float _boostTimer;
@@ -237,23 +252,31 @@ public class CarController : MonoBehaviour
     private float baseBoostMaxSpeedMult;
     private float baseBoostCooldown;
     private float baseBoostFuelCost;
+    private float baseDriftBoostCooldown;
 
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
     private bool _driftWasActiveLastFrame;
 
-    // Overrides per boost activation (allows custom parameters from drift-held boost)
+    // Overrides for *next* boost activation (drift-held boost)
     private bool _boostOverrideActive;
+    private bool _overrideIsDriftBoost;         // NEW: marks override as drift-held boost
     private float _boostOverrideForce;
     private float _boostOverrideDuration;
     private float _boostOverrideMaxMult;
+
+    // Active boost runtime characteristics
+    private bool _activeBoostIsDrift;           // NEW: tracks current boost type
+    private float _activeBoostMaxMult = 1f;     // NEW: max speed multiplier during current boost
 
     private Quaternion _initialRotation;
     private bool _isReorienting;
     private float _reorientElapsed;
     private Quaternion _reorientStartRot;
     private Quaternion _reorientTargetRot;
+
+    private bool IsCrashInvulnerable => _inCrash || _isReorienting;
 
     private bool _inCrash;
     private float _crashTimer;
@@ -300,6 +323,7 @@ public class CarController : MonoBehaviour
     private float currentFuelUseMultiplier = 1f;
 
     private float currentHP;
+    private bool isOutOfHP = false;
     private float _malfunctionTimer;
     private float _malfunctionCooldownRemain;
 
@@ -333,6 +357,12 @@ public class CarController : MonoBehaviour
     [SerializeField] private float brakeForwardFactor = 0.7f;
     [SerializeField] private float reverseAccelFactor = 0.8f;
     [SerializeField] private float brakeToReverseSpeed = 0.5f;
+
+    // NEW: caps so braking can’t be insanely hard at low max speeds
+    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
+    private float maxBrakeDecelPerSecond = 5f;
+    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
+    private float maxReverseAccelPerSecond = 4f;
 
     [SerializeField] private float baseSteeringDamp = 1f;
     private float currentSteeringDamp;
@@ -402,12 +432,30 @@ public class CarController : MonoBehaviour
     private float crashPitchMax = 1.05f;
 
 
-    // runtime cooldown map (root instance id -> last triggered time)
     private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
+
+    // NEW: per-root tracking while inside close-call radius (for exit-based near-misses)
+    private class CloseCallTrack
+    {
+        public Vector3 lastPos;
+        public float lastDistance;
+        public float minDistance;
+        public bool isInside;
+        public float lastSeenTime;
+    }
+
+    private readonly Dictionary<int, CloseCallTrack> _closeCallTracking = new Dictionary<int, CloseCallTrack>();
+
+    // NEW: record roots we actually crashed into recently so they never award a near-miss
+    private readonly Dictionary<int, float> _recentCrashRootTime = new Dictionary<int, float>();
 
     // NEW helper to limit overlap sphere frequency (cheap throttle)
     private float _lastCloseCallSweep = 0f;
     private float _closeCallSweepInterval = 0.18f;
+
+    [Header("Close-Call vs Crash Resolution")]
+    [SerializeField, UnityEngine.Min(0f), Tooltip("After crashing into an obstacle, block near-miss rewards for that root for this many seconds.")]
+    private float closeCallAfterCrashBlockTime = 1.0f;
 
     // NEW: split for steering traction code etc.
     private void Awake()
@@ -441,6 +489,7 @@ public class CarController : MonoBehaviour
 
         currentFuel = maxFuel;
         isOutOfFuel = false;
+        isOutOfHP = false;
         currentFuelUseMultiplier = 1f;
 
         baseMaxFuel = maxFuel;
@@ -453,6 +502,7 @@ public class CarController : MonoBehaviour
         baseBoostDuration = boostDuration;
         baseBoostMaxSpeedMult = boostMaxSpeedMultiplier;
         baseBoostCooldown = boostCooldown;
+        baseDriftBoostCooldown = driftBoostCooldown;
         baseBoostFuelCost = boostFuelCost;
         boostUnlocked = !requireBoostUnlock;
 
@@ -493,6 +543,9 @@ public class CarController : MonoBehaviour
         {
             currentHP = Mathf.Min(maxHP, currentHP + hpRegenPerSecond * Time.deltaTime);
         }
+
+        if (currentHP <= 0f)
+            isOutOfHP = true;
 
         UpdateDamageVFXImmediate();
     }
@@ -541,178 +594,246 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // NEW: Detect nearby obstacles and fire close-call effects via GameManager_Racing.HandleProjectileCloseCall
+    // NEW: Detect nearby obstacles and fire close-call ONLY when exiting the radius
     private void CheckNearbyObstaclesForCloseCall()
     {
         if (!enableCloseCallNearMisses) return;
         if (carCollider == null || rb == null) return;
 
-        // Speed guard (do not trigger when almost stopped)
+        // Speed guard – no near-miss when basically stopped.
         if (rb.velocity.magnitude < closeCallMinSpeed) return;
 
-        // Overlap nearby colliders in crashLayers
-        Collider[] hits = Physics.OverlapSphere(transform.position, Mathf.Max(0.01f, closeCallDistance), crashLayers, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0) return;
-
         var gm = GameManager_Racing.Instance;
+        float now = Time.time;
 
-        // Ensure we only trigger once per root object per sweep
-        var seenRoots = new HashSet<int>();
+        // Overlap nearby colliders in crashLayers
+        Collider[] hits = Physics.OverlapSphere(
+            transform.position,
+            Mathf.Max(0.01f, closeCallDistance),
+            crashLayers,
+            QueryTriggerInteraction.Ignore
+        );
 
-        for (int i = 0; i < hits.Length; i++)
+        // Roots currently inside the radius this sweep
+        var rootsInsideNow = new HashSet<int>();
+
+        if (hits != null && hits.Length > 0)
         {
-            var other = hits[i];
-            if (other == null) continue;
-
-            // Ignore our own collider(s)
-            if (other == carCollider) continue;
-            if (other.transform.root == transform.root) continue;
-
-            int rootId = other.transform.root.GetInstanceID();
-
-            // Skip duplicates in this sweep (multiple child colliders)
-            if (seenRoots.Contains(rootId)) continue;
-            seenRoots.Add(rootId);
-
-            // Per-root cooldown
-            if (_lastCloseCallTime.TryGetValue(rootId, out float lastT))
+            for (int i = 0; i < hits.Length; i++)
             {
-                float cooldownToUse = closeCallRootCooldown > 0f ? closeCallRootCooldown : closeCallCooldown;
-                if (Time.time - lastT < cooldownToUse) continue;
-            }
+                var other = hits[i];
+                if (other == null) continue;
 
-            // Skip if overlapping / penetrating (that's an actual collision, not a near-miss)
-            bool penetrates = false;
-            if (carCollider != null && other != null)
-            {
-                Vector3 dir; float dist;
-                penetrates = Physics.ComputePenetration(
-                    carCollider, carCollider.transform.position, carCollider.transform.rotation,
-                    other, other.transform.position, other.transform.rotation,
-                    out dir, out dist
-                );
-                if (penetrates) continue;
-            }
+                // Ignore our own collider(s)
+                if (other == carCollider) continue;
+                if (other.transform.root == transform.root) continue;
 
-            // Compute closest point & distance to car center (planar distance is fine, but use 3D)
-            Vector3 closest = other.bounds.ClosestPoint(transform.position);
-            float d = Vector3.Distance(closest, transform.position);
+                int rootId = other.transform.root.GetInstanceID();
+                rootsInsideNow.Add(rootId);
 
-            if (d <= closeCallDistance)
-            {
-                // Register timestamp to cooldown map (keyed by root)
-                _lastCloseCallTime[rootId] = Time.time;
-
-                // Fire close-call -- reuse existing GM API which plays slowmo/postFX/zoom
-                if (gm != null)
+                // Skip if currently overlapping/penetrating (this is an actual collision, not a near-miss)
+                bool penetrates = false;
+                if (carCollider != null && other != null)
                 {
-                    gm.HandleProjectileCloseCall(closest, d);
+                    Vector3 dir; float dist;
+                    penetrates = Physics.ComputePenetration(
+                        carCollider, carCollider.transform.position, carCollider.transform.rotation,
+                        other, other.transform.position, other.transform.rotation,
+                        out dir, out dist
+                    );
+                    if (penetrates) continue;
                 }
+
+                // Compute closest point & distance to car center
+                Vector3 closest = other.bounds.ClosestPoint(transform.position);
+                float d = Vector3.Distance(closest, transform.position);
+
+                if (d > closeCallDistance) continue;
+
+                // Update or create tracking state for this root
+                if (!_closeCallTracking.TryGetValue(rootId, out var track))
+                {
+                    track = new CloseCallTrack
+                    {
+                        lastPos = closest,
+                        lastDistance = d,
+                        minDistance = d,
+                        isInside = true,
+                        lastSeenTime = now
+                    };
+                    _closeCallTracking[rootId] = track;
+                }
+                else
+                {
+                    track.lastPos = closest;
+                    track.lastDistance = d;
+                    track.minDistance = (track.minDistance <= 0f) ? d : Mathf.Min(track.minDistance, d);
+                    track.isInside = true;
+                    track.lastSeenTime = now;
+                }
+            }
+        }
+
+        // Now look for roots that WERE inside but are no longer in the radius (exit event)
+        // We iterate over a copy because we may remove entries.
+        var keys = new List<int>(_closeCallTracking.Keys);
+        foreach (int rootId in keys)
+        {
+            var track = _closeCallTracking[rootId];
+            bool stillInside = rootsInsideNow.Contains(rootId);
+
+            if (track.isInside && !stillInside)
+            {
+                // We've just exited this root's close-call radius.
+                // Check that we didn't recently crash into it.
+                bool crashedRecently = _recentCrashRootTime.TryGetValue(rootId, out float crashTime) &&
+                                       (now - crashTime) < closeCallAfterCrashBlockTime;
+
+                if (!crashedRecently && gm != null)
+                {
+                    // Per-root cooldown
+                    float cooldownToUse = closeCallRootCooldown > 0f ? closeCallRootCooldown : closeCallCooldown;
+                    if (!_lastCloseCallTime.TryGetValue(rootId, out float lastT) || now - lastT >= cooldownToUse)
+                    {
+                        // Fire near-miss at the last known closest position / distance
+                        gm.HandleProjectileCloseCall(track.lastPos, track.minDistance);
+                        _lastCloseCallTime[rootId] = now;
+
+                        Debug.Log($"[CarController] Close-call NEAR-MISS triggered on EXIT for root {rootId}, minDist={track.minDistance:F2}");
+                    }
+                }
+
+                // Remove tracking after exit
+                _closeCallTracking.Remove(rootId);
+            }
+            else
+            {
+                // If still inside, ensure flag is consistent
+                track.isInside = stillInside;
             }
         }
     }
 
+
+    // BOOST HANDLER – now fully decouples drift boost from normal boost
     private void HandleBoost()
     {
-        if (_boostCooldownTimer > 0f)
-            _boostCooldownTimer -= Time.fixedDeltaTime;
+        float dt = Time.fixedDeltaTime;
 
+        // Separate cooldown timers
+        if (_boostCooldownTimer > 0f)
+            _boostCooldownTimer -= dt;
+        if (_driftBoostCooldownTimer > 0f)
+            _driftBoostCooldownTimer -= dt;
+
+        // Active boost sustain
         if (_isBoosting)
         {
-            _boostTimer -= Time.fixedDeltaTime;
+            _boostTimer -= dt;
 
-            float sustainAccel = _boostOverrideActive ? driftBoostSustainAcceleration : boostSustainAcceleration;
+            float sustainAccel = _activeBoostIsDrift ? driftBoostSustainAcceleration : boostSustainAcceleration;
             if (sustainAccel > 0f)
                 rb.AddForce(transform.forward * sustainAccel, ForceMode.Acceleration);
 
             if (_boostTimer <= 0f)
             {
-                // Transition out of boosting
                 _isBoosting = false;
                 try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
 
                 _isPostBoost = postBoostSlowdownDuration > 0f;
                 _postBoostTimer = postBoostSlowdownDuration;
 
-                // Clear any override once boost ends
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
+                // Clear active type
+                _activeBoostIsDrift = false;
+                _activeBoostMaxMult = 1f;
             }
         }
         else if (_isPostBoost)
         {
-            _postBoostTimer -= Time.fixedDeltaTime;
+            _postBoostTimer -= dt;
             if (_postBoostTimer <= 0f)
                 _isPostBoost = false;
         }
 
+        // New boost request (normal or drift-held override)
         if (_boostRequested)
         {
             _boostRequested = false;
 
-            // Unlock check:
-            // - If normal boost is locked, allow the request ONLY if it was supplied as an override
-            //   (drift-held boost sets _boostOverrideActive true). This unbinds drift boost from
-            //   the regular boost unlock.
-            if (!boostUnlocked && !_boostOverrideActive)
+            bool isOverride = _boostOverrideActive;
+            bool isDriftBoost = isOverride && _overrideIsDriftBoost;
+
+            // Unlock: only blocks normal boost, drift boost ignores boost unlock
+            if (!boostUnlocked && !isDriftBoost)
             {
                 Debug.Log("[CarController] Boost request ignored: Boost locked in inspector/skill tree.");
-                return;
+                ClearBoostOverride();
+                goto SpeedCapClamp;
             }
 
-            if (_boostCooldownTimer <= 0f)
+            // Cooldowns: separate for normal vs drift
+            if (isDriftBoost)
             {
-                float cost = boostFuelCost;
-                if (cost > 0f && (isOutOfFuel || currentFuel < cost))
+                if (_driftBoostCooldownTimer > 0f)
                 {
-                    // Clear any pending override if we can't pay the cost so it doesn't persist.
-                    _boostOverrideActive = false;
-                    _boostOverrideForce = 0f;
-                    _boostOverrideDuration = 0f;
-                    _boostOverrideMaxMult = 0f;
-
-                    Debug.Log("[CarController] Boost request ignored: not enough fuel.");
-                    return;
+                    Debug.Log($"[CarController] Drift boost ignored: cooldown {_driftBoostCooldownTimer:F2}s remaining.");
+                    ClearBoostOverride();
+                    goto SpeedCapClamp;
                 }
-
-                float impulseForce = _boostOverrideActive ? _boostOverrideForce : boostForce;
-                rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
-
-                if (boostSustainAcceleration > 0f)
-                    rb.AddForce(transform.forward * boostSustainAcceleration, ForceMode.Acceleration);
-
-                if (cost > 0f) ConsumeFuel(cost);
-
-                // Transition into boosting
-                _isBoosting = true;
-                try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
-
-                Debug.Log($"[CarController] Boost STARTED: impulse={impulseForce:F2}, sustain={boostSustainAcceleration:F2}, duration={(_boostOverrideActive ? _boostOverrideDuration : boostDuration):F2}");
-
-                _boostTimer = Mathf.Max(0f, _boostOverrideActive ? _boostOverrideDuration : boostDuration);
-                _isPostBoost = false;
-                _boostCooldownTimer = boostCooldown;
-
-                // Clear override (we consumed it)
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
             }
             else
             {
-                // Clear override if request rejected due to cooldown to avoid sticky override state
-                _boostOverrideActive = false;
-                _boostOverrideForce = 0f;
-                _boostOverrideDuration = 0f;
-                _boostOverrideMaxMult = 0f;
-
-                Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
+                if (_boostCooldownTimer > 0f)
+                {
+                    Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
+                    ClearBoostOverride();
+                    goto SpeedCapClamp;
+                }
             }
+
+            // Fuel cost: drift boost is FREE (no fuel usage)
+            float cost = isDriftBoost ? 0f : boostFuelCost;
+            if (cost > 0f && (isOutOfFuel || currentFuel < cost))
+            {
+                Debug.Log("[CarController] Boost request ignored: not enough fuel.");
+                ClearBoostOverride();
+                goto SpeedCapClamp;
+            }
+
+            float impulseForce = isOverride ? _boostOverrideForce : boostForce;
+            rb.AddForce(transform.forward * impulseForce, ForceMode.Acceleration);
+
+            float sustain = isDriftBoost ? driftBoostSustainAcceleration : boostSustainAcceleration;
+            if (sustain > 0f)
+                rb.AddForce(transform.forward * sustain, ForceMode.Acceleration);
+
+            if (cost > 0f)
+                ConsumeFuel(cost);
+
+            // Activate boost
+            _isBoosting = true;
+            _activeBoostIsDrift = isDriftBoost;
+            _activeBoostMaxMult = isOverride
+                ? Mathf.Max(1f, _boostOverrideMaxMult)
+                : Mathf.Max(1f, boostMaxSpeedMultiplier);
+
+            try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
+
+            // Per-type cooldown
+            if (isDriftBoost)
+                _driftBoostCooldownTimer = Mathf.Max(0.01f, driftBoostCooldown);
+            else
+                _boostCooldownTimer = Mathf.Max(0.01f, boostCooldown);
+
+            _boostTimer = Mathf.Max(0f, isOverride ? _boostOverrideDuration : boostDuration);
+            _isPostBoost = false;
+
+            Debug.Log($"[CarController] Boost STARTED: drift={isDriftBoost}, impulse={impulseForce:F2}, sustain={sustain:F2}, duration={_boostTimer:F2}, maxMult={_activeBoostMaxMult:F2}");
+
+            ClearBoostOverride();
         }
 
+    SpeedCapClamp:
         float cap = GetCurrentSpeedCap();
         float speed = rb.velocity.magnitude;
         if (speed > cap)
@@ -722,9 +843,7 @@ public class CarController : MonoBehaviour
     private float GetCurrentSpeedCap()
     {
         float normalCap = effectiveMaxSpeed;
-        float maxMult = _isBoosting
-            ? (_boostOverrideActive ? Mathf.Max(1f, _boostOverrideMaxMult) : Mathf.Max(1f, boostMaxSpeedMultiplier))
-            : 1f;
+        float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
         float boostedCap = normalCap * maxMult;
 
@@ -734,6 +853,15 @@ public class CarController : MonoBehaviour
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
         return _isBoosting ? boostedCap : normalCap;
+    }
+
+    private void ClearBoostOverride()
+    {
+        _boostOverrideActive = false;
+        _overrideIsDriftBoost = false;
+        _boostOverrideForce = 0f;
+        _boostOverrideDuration = 0f;
+        _boostOverrideMaxMult = 0f;
     }
 
     private void WireManagerEvents()
@@ -804,38 +932,70 @@ public class CarController : MonoBehaviour
                 rawHorizontal > steerFlipThreshold ? 1 :
                 rawHorizontal < -steerFlipThreshold ? -1 : 0;
 
+            // NEW: track how long we've been neutral on the stick while holding drift
             if (driftButtonHeld)
             {
+                if (currentSign == 0)
+                {
+                    _driftNeutralTimer += Time.deltaTime;
+
+                    // If we've been neutral long enough, treat this as a full drift reset
+                    if (driftCharge > 0f && _driftNeutralTimer >= driftNeutralFullResetDelay)
+                    {
+                        driftCharge = 0f;
+                        _driftCurrentSteerSign = 0;
+                        driftEntrySpeed = 0f;
+                        driftClampSpeed = 0f;
+                        driftPeakSpeed = 0f;
+                        _driftFlipBlockUntil = 0f;
+
+                        // NEW: also reset drift-held boost accumulation
+                        if (enableDriftHeldBoost)
+                            ResetDriftHeldTimer();
+                    }
+                }
+                else
+                {
+                    // As soon as we push a direction again, clear the neutral timer
+                    _driftNeutralTimer = 0f;
+                }
+            }
+            else
+            {
+                // Not even holding drift: no neutral accumulation
+                _driftNeutralTimer = 0f;
+            }
+
+            if (driftButtonHeld)
+            {
+                // Only care about non-zero steer
                 if (currentSign != 0)
                 {
                     if (resetDriftChargeOnSteerFlip &&
                         _driftCurrentSteerSign != 0 &&
                         currentSign != _driftCurrentSteerSign &&
-                        driftCharge >= minChargeForFlipReset)
+                        driftCharge >= minChargeForFlipReset &&
+                        Time.time >= _driftFlipBlockUntil)
                     {
-                        // Direction flip: retain some charge but reset drift-held boost accumulation
-                        driftCharge = Mathf.Clamp01(steerFlipRetainedCharge);
-
-                        // Reset drift-held timer on flip
-                        ResetDriftHeldTimer();
-
-                        if (rb != null)
-                        {
-                            float currentSpeed = rb.velocity.magnitude;
-                            if (driftEntrySpeed <= 0.01f)
-                                driftEntrySpeed = currentSpeed;
-
-                            driftClampSpeed = Mathf.Max(driftClampSpeed, currentSpeed);
-                            driftPeakSpeed = Mathf.Max(driftPeakSpeed, currentSpeed);
-                        }
-
+                        // Hard direction flip while drifting:
+                        // reduce/reset charge and briefly block rebuild
+                        driftCharge *= steerFlipRetainedCharge;
                         _driftFlipBlockUntil = Time.time + steerFlipRebuildDelay;
+
+                        // Also restart drift-held timer so the new direction is "fresh"
+                        if (enableDriftHeldBoost)
+                            ResetDriftHeldTimer();
                     }
+
+                    // Update active steering sign (used by drift-held boost)
                     _driftCurrentSteerSign = currentSign;
                 }
+                // If currentSign == 0 we *keep* the last sign for a short time;
+                // neutral-full reset above will clear it if we stay neutral.
             }
             else
             {
+                // Not holding drift at all: clear steer sign
                 _driftCurrentSteerSign = 0;
             }
 
@@ -922,10 +1082,6 @@ public class CarController : MonoBehaviour
             }
             else if (!isDrifting && wasDrifting)
             {
-                // Drift ended – evaluate boost
-                if (enableDriftHeldBoost)
-                    TryTriggerDriftHeldBoost();
-
                 driftEntrySpeed = 0f;
                 driftClampSpeed = 0f;
                 driftPeakSpeed = 0f;
@@ -1026,7 +1182,7 @@ public class CarController : MonoBehaviour
 
         float force = Mathf.Lerp(driftBoostForceRange.x, driftBoostForceRange.y, norm);
         float duration = Mathf.Lerp(driftBoostDurationRange.x, driftBoostDurationRange.y, norm);
-        float maxMult = Mathf.Lerp(driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, driftBoostMaxHoldSeconds > 0f ? driftBoostMaxHoldSeconds : 1f, norm); // preserve intent if curves change
+        float maxMult = Mathf.Lerp(driftBoostMaxSpeedMultRange.x, driftBoostMaxSpeedMultRange.y, norm);
 
         // Apply skill scaling and gate by skill unlock (if a manager is present)
         var mgr = RacingSkillTreeManager.Instance;
@@ -1049,22 +1205,12 @@ public class CarController : MonoBehaviour
         }
 
         _boostOverrideActive = true;
+        _overrideIsDriftBoost = true;
         _boostOverrideForce = force;
         _boostOverrideDuration = duration;
         _boostOverrideMaxMult = maxMult;
 
-        if (driftBoostFuelCost > 0f)
-        {
-            if (!isOutOfFuel && currentFuel >= driftBoostFuelCost)
-                ConsumeFuel(driftBoostFuelCost);
-            else
-            {
-                _boostOverrideActive = false;
-                Debug.Log("[CarController] Drift-held boost aborted: not enough fuel.");
-                return;
-            }
-        }
-
+        // Drift-held boost is FREE: no fuel deduction here.
         _boostRequested = true;
         Debug.Log($"[CarController] Drift-held boost REQUESTED -> force={force:F2}, duration={duration:F2}, maxMult={maxMult:F2}");
     }
@@ -1075,11 +1221,22 @@ public class CarController : MonoBehaviour
         _driftHoldDirectionSign = 0;
     }
 
-    private void TriggerCrash(Vector3 hitDirection, float crashDuration, float impulseMagnitude, float torqueMagnitude, float severity, Vector3 contactPointWS, bool applyDamage)
+    private void TriggerCrash(
+        Vector3 hitDirection,
+        float crashDuration,
+        float impulseMagnitude,
+        float torqueMagnitude,
+        float severity,
+        Vector3 contactPointWS,
+        bool applyDamage)
     {
         if (rb == null)
             return;
 
+        // Clamp severity once and reuse
+        float sev01 = Mathf.Clamp01(severity);
+
+        // Flatten & normalize incoming hit direction
         hitDirection.y = 0f;
         if (hitDirection.sqrMagnitude < 0.0001f)
             hitDirection = -transform.forward;
@@ -1092,28 +1249,51 @@ public class CarController : MonoBehaviour
         rb.drag = _baseDrag * crashDragMultiplier;
         rb.angularDrag = crashAngularDrag;
 
+        // Current velocity
         Vector3 v = rb.velocity;
         Vector3 flatVel = new Vector3(v.x, 0f, v.z);
 
+        // We'll decide the impulse direction here
+        Vector3 impulseDir = hitDirection;
+
         if (flatVel.sqrMagnitude > 0.01f)
         {
-            Vector3 normal = hitDirection.normalized;
+            // Reflect current velocity around a "surface normal" (hitDirection)
+            Vector3 normal = hitDirection;
             Vector3 reflected = Vector3.Reflect(flatVel, normal);
 
-            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, Mathf.Clamp01(severity));
+            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, sev01);
             Vector3 newFlatVel = Vector3.Lerp(flatVel, reflected, deflectAmount);
 
-            float slowMul = Mathf.Lerp(0.9f, 0.6f, Mathf.Clamp01(severity));
+            float slowMul = Mathf.Lerp(0.9f, 0.6f, sev01);
             newFlatVel *= slowMul;
 
             rb.velocity = new Vector3(newFlatVel.x, v.y, newFlatVel.z);
+
+            // MAIN IDEA: base impulse opposite previous motion
+            impulseDir = -flatVel.normalized;
         }
         else
         {
+            // If we were basically stopped, just kick along the hit direction
             rb.velocity = hitDirection * impulseMagnitude * 0.5f;
+            impulseDir = hitDirection;
         }
 
-        rb.AddForce(hitDirection * impulseMagnitude, ForceMode.VelocityChange);
+        // ─────────────────────────────────────────────
+        // NEW: add a vertical "bump" so we don't get glued to static stuff
+        // ─────────────────────────────────────────────
+        // Stronger bump at higher severity; tweak 0.15f / 0.45f to taste.
+        float verticalBoost = Mathf.Lerp(0.15f, 0.45f, sev01);
+
+        Vector3 bumpDir = impulseDir;
+        bumpDir.y += verticalBoost;
+        bumpDir.Normalize();
+
+        // Apply the crash impulse with vertical pop
+        rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
+
+        // --- Torque (spin) stays as you had it ---
 
         Vector3 toObstacleWorld = -hitDirection;
         Vector3 toObstacleLocal = transform.InverseTransformDirection(toObstacleWorld);
@@ -1133,32 +1313,36 @@ public class CarController : MonoBehaviour
 
         rb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
 
-        float sev01 = Mathf.Clamp01(severity);
+        // Damage / fuel handling
+        float sev01ForDamage = sev01;
 
         if (applyDamage)
         {
             if (hpCrashDamageAtSeverity1 > 0f)
             {
-                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
+                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
                 hpLoss = Mathf.Min(hpLoss, currentHP);
                 currentHP = Mathf.Max(0f, currentHP - hpLoss);
-                Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
+                Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01ForDamage:F2}). HP={currentHP}/{maxHP}");
             }
+
             if (fuelLossAtSeverity1 > 0f)
             {
-                float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
+                float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01ForDamage);
                 float before = currentFuel;
                 ConsumeFuel(requestedFuelLoss);
                 float consumed = Mathf.Max(0f, before - currentFuel);
+
                 if (consumed + 1e-3f < minFuelLossPerCrash)
                 {
                     float shortfall = minFuelLossPerCrash - consumed;
                     currentFuel = Mathf.Max(0f, currentFuel - shortfall);
                 }
-                Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
+
+                Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
 
-            // Set cooldown timer AFTER applying damage
+            // Start cooldown AFTER damage
             _nextCrashAllowedTime = Time.time + crashDamageCooldown;
         }
         else
@@ -1166,6 +1350,7 @@ public class CarController : MonoBehaviour
             Debug.Log($"[CarController] Crash occurred but damage skipped (cooldown active, {Mathf.Max(0f, _nextCrashAllowedTime - Time.time):F2}s remain).");
         }
     }
+
 
     private void HandleSteering()
     {
@@ -1265,65 +1450,50 @@ public class CarController : MonoBehaviour
                 }
                 else if (brakingOrReverse)
                 {
-                    // --- smoother braking/reverse: move longitudinal velocity toward targets instead of instant AddForce ---
-                    float brakeAccel = currentBrakingForce * brakeForwardFactor;          // units: m/s^2 used as max delta
-                    float reverseAccel = effectiveAcceleration * reverseAccelFactor;     // units: m/s^2 used as max delta
-
-                    // current forward/backward speed (signed)
+                    float dt = Time.fixedDeltaTime;
                     float currentLong = Vector3.Dot(rb.velocity, forward);
 
-                    if (currentLong > brakeToReverseSpeed)
+                    // 1) Moving forward: just ease toward 0 with a fixed decel rate.
+                    if (currentLong > 0f)
                     {
-                        // braking: smoothly approach 0 (stop) at most brakeAccel * dt per fixed step
-                        float targetLong = 0f;
-                        float maxDelta = brakeAccel * Time.fixedDeltaTime;
-                        float newLong = Mathf.MoveTowards(currentLong, targetLong, maxDelta);
+                        // Use maxBrakeDecelPerSecond as the only brake strength knob.
+                        float decel = maxBrakeDecelPerSecond > 0f
+                            ? maxBrakeDecelPerSecond
+                            : 1.0f; // fallback if not set
 
-                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
-                        rb.velocity = newVel;
-
-                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                        float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
+                        SetLongitudinalVelocityClamped(forward, newLong);
                     }
+                    // 2) Once we're basically stopped or moving backward, gently build up reverse.
                     else
                     {
-                        // reversing: smoothly approach a modest reverse target speed (tweak targetReverseSpeed to taste)
-                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f); // inspector-tuneable if desired
-                        float maxDelta = reverseAccel * Time.fixedDeltaTime;
-                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, maxDelta);
+                        float reverseAccel = maxReverseAccelPerSecond > 0f
+                            ? maxReverseAccelPerSecond
+                            : 1.0f; // fallback
 
-                        Vector3 newVel = forward * newLong + Vector3.up * rb.velocity.y;
-                        rb.velocity = newVel;
-
-                        ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
+                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
+                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
+                        SetLongitudinalVelocityClamped(forward, newLong);
                     }
+
+                    // Keep fuel usage simple
+                    ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                 }
                 else
                 {
-                    // Arcade gradual slowdown (no artificial drag slam).
+                    // --- PATCH 2: super gentle, constant coasting (no speed-based ramp) ---
                     float currentSpeed = rb.velocity.magnitude;
                     if (currentSpeed > 0.01f)
                     {
-                        float maxRef = Mathf.Max(1f, effectiveMaxSpeed);
-                        float speedFrac = Mathf.Clamp01(currentSpeed / maxRef);
-                        float highBlend = Mathf.Clamp01((speedFrac - coastHighSpeedFraction) / Mathf.Max(0.0001f, 1f - coastHighSpeedFraction));
-                        float decelPerSecond = Mathf.Lerp(coastLowDecelPerSecond, coastHighDecelPerSecond, highBlend);
+                        // Treat coastLowDecelPerSecond as a simple "coast decel" knob.
+                        // For a max speed of ~4, something like 0.2–0.5 feels like a long, smooth roll.
+                        float decel = coastLowDecelPerSecond;
 
-                        if (useExponentialCoast)
-                        {
-                            float k = Mathf.Max(0f, coastDampingPerSecond);
-                            float damp = Mathf.Exp(-k * Time.fixedDeltaTime);
-                            float targetMag = currentSpeed * damp;
-                            targetMag = Mathf.Max(0f, targetMag - decelPerSecond * 0.15f * Time.fixedDeltaTime);
-                            rb.velocity = rb.velocity.normalized * targetMag;
-                        }
-                        else
-                        {
-                            float newMag = Mathf.Max(0f, currentSpeed - decelPerSecond * Time.fixedDeltaTime);
-                            rb.velocity = rb.velocity.normalized * newMag;
-                        }
+                        float newMag = Mathf.Max(0f, currentSpeed - decel * Time.fixedDeltaTime);
+                        rb.velocity = rb.velocity.normalized * newMag;
                     }
 
-                    // NEW: Steering traction while coasting (unchanged)
+                    // Steering traction while coasting (unchanged)
                     if (enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
                     {
                         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
@@ -1360,6 +1530,7 @@ public class CarController : MonoBehaviour
                 // NEW: gentle deceleration while drifting when holding S (no harsh brake force)
                 if (brakingOrReverse && isDrifting)
                 {
+                    // Only fuel cost here; actual decel controlled by driftBrakeDecayPerSecond below
                     ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                 }
                 // No passive coast drag while drifting/gliding.
@@ -1392,6 +1563,9 @@ public class CarController : MonoBehaviour
                 bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
                 bool noThrottleNoBrake = (!forwardKey && !reverseKey);
 
+                // Drift speed clamp evolution:
+                // - S while drifting = controlled decay by driftBrakeDecayPerSecond
+                // - No input = decay by driftSpeedDecayPerSecond or driftGlideDecayPerSecond
                 if (gentleBrakeWhileDrifting)
                 {
                     driftClampSpeed -= driftBrakeDecayPerSecond * Time.fixedDeltaTime;
@@ -1413,7 +1587,7 @@ public class CarController : MonoBehaviour
 
                 float steerInfluence = Mathf.Clamp01(Mathf.Abs(steeringInput));
                 const float driftAlignStrength = 2f;
-                float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.fixedDeltaTime);
+                float blend = Mathf.Clamp01(steerInfluence * driftAlignStrength * Time.deltaTime);
 
                 Vector3 finalDir = (_driftGlideActive && !isDrifting)
                     ? flatVel
@@ -1442,11 +1616,8 @@ public class CarController : MonoBehaviour
 
                 rb.velocity = finalDir.normalized * Mathf.Max(0f, targetMagnitude);
 
-                if (isDrifting && brakingDrift && currentMag > 0.1f)
-                {
-                    float assist = currentBrakingForce * 0.15f; // gentle
-                    rb.AddForce(-flatForward * assist, ForceMode.Acceleration);
-                }
+                // Note: the old extra brake AddForce while drifting+S is removed.
+                // All drift braking now flows through driftClampSpeed & driftBrakeDecayPerSecond.
 
                 if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f)
                 {
@@ -1785,6 +1956,18 @@ public class CarController : MonoBehaviour
             boostFuelCost = mgr.ApplyStatChain(baseBoostFuelCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
             boostFuelCost = Mathf.Max(0f, boostFuelCost);
 
+            boostCooldown = mgr != null
+            ? mgr.ApplyStatChain(baseBoostCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul)
+            : baseBoostCooldown;
+            boostCooldown = Mathf.Max(0.05f, boostCooldown);
+
+            // NEW: compute the drift-held boost cooldown separately (unbind from regular boostCooldown)
+            float driftCd = baseDriftBoostCooldown;
+            if (mgr != null)
+                driftCd = mgr.GetDriftHeldBoostCooldownScaled(baseDriftBoostCooldown);
+            // store runtime value in a private runtime field (reuse driftBoostCooldown as runtime)
+            driftBoostCooldown = Mathf.Max(0.01f, driftCd);
+
         }
 
         ApplyDamageDegradationToPerformance();
@@ -1818,45 +2001,55 @@ public class CarController : MonoBehaviour
 #endif
     }
 
-    public void ApplyExternalCrashDamage(float severity)
+    public void ApplyExternalCrashDamage(
+        Vector3 hitDirection,
+        float impactSpeed,
+        Vector3 contactPointWS,
+        float severity)
     {
-        // Respect internal cooldown so external callers can't bypass invulnerability windows.
-        if (Time.time < _nextCrashAllowedTime)
+        if (rb == null)
             return;
 
+        if (IsCrashInvulnerable)
+            return;
+
+        // Respect internal cooldown so external callers can't bypass invulnerability windows.
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
         float sev01 = Mathf.Clamp01(severity);
 
-        // Apply HP loss similar to TriggerCrash's applyDamage block
-        if (hpCrashDamageAtSeverity1 > 0f)
+        // Clamp impact speed into the same range used elsewhere
+        impactSpeed = Mathf.Clamp(impactSpeed, minImpactSpeed, maxImpactSpeed);
+
+        // Camera shake / slow-mo / coin penalties, etc.
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && damageWindowOpen)
         {
-            float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
-            hpLoss = Mathf.Min(hpLoss, currentHP);
-            currentHP = Mathf.Max(0f, currentHP - hpLoss);
-#if UNITY_EDITOR
-            Debug.Log($"[CarController] External crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
-#endif
+            gm.OnCarCrash(impactSpeed, sev01);
         }
 
-        // Apply fuel loss similar to TriggerCrash
-        if (fuelLossAtSeverity1 > 0f)
+        // 🔊 NEW: play default crash SFX + impact VFX for external hits too
+        if (damageWindowOpen)
         {
-            float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
-            float before = currentFuel;
-            ConsumeFuel(requestedFuelLoss);
-            float consumed = Mathf.Max(0f, before - currentFuel);
-            if (consumed + 1e-3f < minFuelLossPerCrash)
-            {
-                float shortfall = minFuelLossPerCrash - consumed;
-                currentFuel = Mathf.Max(0f, currentFuel - shortfall);
-            }
-#if UNITY_EDITOR
-            Debug.Log($"[CarController] External crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
-#endif
+            // Use default crash clip for projectiles / generic hits
+            PlayCrashSfx(crashClipDefault, contactPointWS, crashSfxVolume);
+
+            // Approximate a surface normal from the incoming hit direction
+            Vector3 normal = hitDirection.sqrMagnitude > 0.0001f
+                ? -hitDirection.normalized        // "surface" pushing back against hitDir
+                : Vector3.up;
+
+            SpawnCrashImpactVFX(contactPointWS, normal);
         }
 
-        // Set cooldown after applying damage so subsequent crashes are gated
-        _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+        // Duration and impulse magnitudes consistent with normal collisions
+        float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
+        float impulseMag = impactSpeed * impulsePerUnitSpeed;
+        float torqueMag = impactSpeed * torquePerUnitSpeed;
+
+        // Let the central crash handler do physics + HP/Fuel + cooldown, etc.
+        TriggerCrash(hitDirection, crashDuration, impulseMag, torqueMag, sev01, contactPointWS, damageWindowOpen);
     }
+
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
     {
@@ -1922,6 +2115,10 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        // NEW: if we're already crashing or reorienting, ignore new crash logic entirely.
+        if (IsCrashInvulnerable)
+            return;
+
         // --- NEW: skip crash logic if obstacle has active forcefield immunity ---
         var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
         if (immunity != null && immunity.IsImmune) return;
@@ -1972,6 +2169,9 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
         }
 
+        int rootId = collision.collider.transform.root.GetInstanceID();
+        _recentCrashRootTime[rootId] = Time.time;
+        _closeCallTracking.Remove(rootId);
 
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
@@ -2024,6 +2224,10 @@ public class CarController : MonoBehaviour
                 return;
         }
 
+        // NEW: if we're already crashing or reorienting, ignore new crash logic entirely.
+        if (IsCrashInvulnerable)
+            return;
+
         var immunity = other.GetComponentInParent<LaunchImmunityMarker>();
         if (immunity != null && immunity.IsImmune) return;
 
@@ -2063,6 +2267,10 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipHonk, contactPoint, crashSfxVolume);
         else
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
+
+        int rootId = other.transform.root.GetInstanceID();
+        _recentCrashRootTime[rootId] = Time.time;
+        _closeCallTracking.Remove(rootId);
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
         if (damageWindowOpen)
@@ -2194,6 +2402,7 @@ public class CarController : MonoBehaviour
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
     public float CurrentFuel => currentFuel;
     public bool IsOutOfFuel => isOutOfFuel;
+    public bool IsOutOfHP => isOutOfHP;
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;

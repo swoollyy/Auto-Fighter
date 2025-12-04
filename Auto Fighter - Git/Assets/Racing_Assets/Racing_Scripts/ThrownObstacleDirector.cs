@@ -333,13 +333,35 @@ public class ThrownObstacleDirector : MonoBehaviour
             }
         }
 
+        // --- PATCH: project onto road *before* adding vertical spawn height ---
+        // Use the track center as the projection anchor, then rebuild origin above ground.
         LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        origin = SpawnUtils.ProjectOntoSurface(origin, 2f, 25f, roadMask);
-        interceptPos = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
+
+        // Project the center of the lane down to the road
+        Vector3 groundCenter = SpawnUtils.ProjectOntoSurface(spawnCenter, 2f, 25f, roadMask);
+
+        // Project the landing point onto the road
+        Vector3 groundLanding = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
+
+        // Rebuild origin so it’s offset sideways + up from the *grounded* center
+        origin = groundCenter + right * sideSign * sideOffset + Vector3.up * spawnHeight;
+
+        // Use the grounded landing point
+        interceptPos = groundLanding;
 
         // Spawn
-        SpawnProjectile(origin, interceptPos, (interceptPos - origin).normalized, explosive, chosenPrefab, finalSpeed, test, interceptTime, previewSpawned, distanceNorm);
-
+        SpawnProjectile(
+            origin,
+            interceptPos,
+            (interceptPos - origin).normalized,
+            explosive,
+            chosenPrefab,
+            finalSpeed,
+            test,
+            interceptTime,
+            previewSpawned,
+            distanceNorm
+        );
         // compute cooldown scaled by distance travelled (decreases as distance increases) with some jitter
         float baseCd = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, distanceNorm);
         float jitter = UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
@@ -352,9 +374,6 @@ public class ThrownObstacleDirector : MonoBehaviour
 
         var go = ProjectilePool.Instance.Get(chosenPrefab);
         if (go == null) return;
-
-        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        landPoint = SpawnUtils.ProjectOntoSurface(landPoint, 2f, 25f, roadMask);
 
         // Position and rotate before activation to avoid any visible 'pop' at an unexpected world pos
         go.transform.position = origin;

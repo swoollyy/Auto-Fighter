@@ -388,6 +388,9 @@ MonoBehaviour:
   autoFire: 1
   fireKey: 323
   fireCooldown: 1.5
+  turretFireClip: {fileID: 8300000, guid: 66a710fec0e002449b541e48142e302e, type: 3}
+  turretFireVolume: 0.541
+  startOnCooldown: 1
   bulletSpeed: 8
   bulletDamage: 1
   bulletRange: 100
@@ -652,7 +655,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
+  m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 7028588804215208312}
@@ -752,11 +755,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 10
-  baseMaxSpeed: 4
-  baseBrakingForce: 0.3
-  turnSpeed: 12
-  lowSpeedSteerMultiplier: 11.76
+  baseAcceleration: 5
+  baseMaxSpeed: 3
+  baseBrakingForce: 0.01
+  turnSpeed: 10
+  lowSpeedSteerMultiplier: 8
   highSpeedSteerMultiplier: 1
   speedForSteerCurve: 4.25
   steeringInputSmooth: 5
@@ -764,27 +767,28 @@ MonoBehaviour:
   autoAlignStrength: 3
   requireDriftUnlock: 1
   driftKey: 304
-  driftMinSpeed: 2.9
-  maxDriftSteerMultiplier: 7.44
-  driftBuildRate: 0.84
+  driftMinSpeed: 2.15
+  maxDriftSteerMultiplier: 5.31
+  driftBuildRate: 0.48
   driftReleaseRate: 16
   driftSideForce: 0.35
-  driftSpeedDecayPerSecond: 0
+  driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
   lockToDriftPeakSpeed: 1
   driftBrakeDecayPerSecond: 0.001
   requireDirectionalInputForDriftCharge: 0
-  driftNeutralDrainRate: 3.15
+  driftNeutralDrainRate: 2.07
+  driftNeutralFullResetDelay: 1.78
   resetDriftChargeOnSteerFlip: 1
-  steerFlipRetainedCharge: 0.119
+  steerFlipRetainedCharge: 0.055
   steerFlipThreshold: 0.15
   minChargeForFlipReset: 0
   steerFlipRebuildDelay: 0
   allowDriftGlideWithoutSteer: 1
   driftGlideDecayPerSecond: 0
-  baseDrag: 0
+  baseDrag: 0.13
   groundLayers:
     serializedVersion: 2
     m_Bits: 81920
@@ -802,17 +806,17 @@ MonoBehaviour:
   crashLayers:
     serializedVersion: 2
     m_Bits: 2048
-  minImpactSpeed: 2.6
-  maxImpactSpeed: 8
-  minCrashDuration: 0.87
-  maxCrashDuration: 1.5
-  impulsePerUnitSpeed: 1.01
-  torquePerUnitSpeed: 3.26
+  minImpactSpeed: 2.73
+  maxImpactSpeed: 2.73
+  minCrashDuration: 1.08
+  maxCrashDuration: 2.66
+  impulsePerUnitSpeed: 1.49
+  torquePerUnitSpeed: 18.8
   crashDragMultiplier: 1
   crashAngularDrag: 1
-  crashYawTorqueMultiplier: 4.32
-  crashRollTorqueMultiplier: 2.52
-  crashPitchTorqueMultiplier: 0.35
+  crashYawTorqueMultiplier: 7.6
+  crashRollTorqueMultiplier: 5.49
+  crashPitchTorqueMultiplier: 5.26
   reorientDuration: 0.25
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
@@ -844,31 +848,34 @@ MonoBehaviour:
   boostKey: 32
   boostForce: 30
   boostSustainAcceleration: 30
-  boostDuration: 0.6
+  boostDuration: 0.35
   boostMaxSpeedMultiplier: 1.65
-  postBoostSlowdownDuration: 0.94
+  postBoostSlowdownDuration: 2
   boostCooldown: 5
   boostFuelCost: 15
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
-  driftBoostMinHoldSeconds: 0.8
-  driftBoostMaxHoldSeconds: 2.2
-  driftBoostForceRange: {x: 2, y: 3}
-  driftBoostDurationRange: {x: 0.15, y: 0.3}
+  driftBoostMinHoldSeconds: 1.1
+  driftBoostMaxHoldSeconds: 2.5
+  driftBoostForceRange: {x: 0.5, y: 0.5}
+  driftBoostDurationRange: {x: 0.4, y: 0.7}
   driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.25}
   driftBoostFuelCost: 0
+  driftBoostCooldown: 3.3
   grassFuelUseMultiplier: 3
   offDefaultFraction: 0
   grassFraction: 0
-  coastLowDecelPerSecond: 0.48
+  coastLowDecelPerSecond: 0.81
   coastHighDecelPerSecond: 5.55
   coastHighSpeedFraction: 1
   useExponentialCoast: 0
-  coastDampingPerSecond: 2
-  coastDecelFactor: 0.35
+  coastDampingPerSecond: 4.48
+  coastDecelFactor: 0.65
   brakeForwardFactor: 0.7
   reverseAccelFactor: 1.06
   brakeToReverseSpeed: 0.5
+  maxBrakeDecelPerSecond: 1
+  maxReverseAccelPerSecond: 5.06
   baseSteeringDamp: 8
   enableSteerTraction: 1
   steerTractionReorientRate: 6
@@ -877,8 +884,8 @@ MonoBehaviour:
   lateralFrictionWhileSteering: 3.5
   enableCloseCallNearMisses: 1
   closeCallDistance: 0.5
-  closeCallMinSpeed: 3.64
-  closeCallCooldown: 2.46
+  closeCallMinSpeed: 2.88
+  closeCallCooldown: 1.42
   closeCallRootCooldown: 4.39
   crashClipDefault: {fileID: 8300000, guid: aaede3ddebda1c04f86f7a075ecad0b7, type: 3}
   crashClipHonk: {fileID: 8300000, guid: f872c86f5efa11742ad39e82fc14cb6f, type: 3}
@@ -889,8 +896,9 @@ MonoBehaviour:
   crashMinDistance: 1
   crashMaxDistance: 50
   crashVolumeMultiplier: 2.63
-  crashPitchMin: 0.95
-  crashPitchMax: 1.05
+  crashPitchMin: 0.976
+  crashPitchMax: 1.141
+  closeCallAfterCrashBlockTime: 1
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1027,6 +1035,11 @@ MonoBehaviour:
   launchSlowMoHold: 0.15
   launchSlowMoEaseOut: 0.2
   postFX: {fileID: 0}
+  forcefieldUseClip: {fileID: 8300000, guid: 95cca097aec1d484c8f6e4bb32ff4e8e, type: 3}
+  forcefieldUseVolume: 0.379
+  forcefieldRearmClip: {fileID: 8300000, guid: 20682cd13ca66a04d9e9b0ffe79879d1, type: 3}
+  forcefieldRearmVolume: 0.379
+  startOnCooldown: 1
 --- !u!114 &2006204842711436354
 MonoBehaviour:
   m_ObjectHideFlags: 0

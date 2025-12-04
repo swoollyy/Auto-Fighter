@@ -298,33 +298,41 @@ public class ThrownObstacle : MonoBehaviour
         {
             if (c == null) continue;
 
-            // Car
+            // -------------------------
+            // CAR HIT (AoE explosion)
+            // -------------------------
             var car = c.GetComponentInParent<CarController>();
             if (car)
             {
-                // if car center is inside radius do full crash: call GameManager.OnCarCrash for camera/coin penalty
                 float d = Vector3.Distance(car.transform.position, pos);
                 if (d <= _explosionRadius)
                 {
-                    float severity = 1f; // binary full
+                    // Full blast severity for now (you can scale by distance if you want)
+                    float severity = 1f - Mathf.Clamp01(d / _explosionRadius);
 
-                    // Notify GameManager (visuals, coins penalties, slow-mo, etc.)
-                    gm?.OnCarCrash(0f, severity);
+                    // Direction the car is pushed: from explosion center toward the car
+                    Vector3 hitDir = (car.transform.position - pos);
+                    if (hitDir.sqrMagnitude < 0.0001f)
+                        hitDir = -car.transform.forward;  // fallback if somehow on top of center
+                    hitDir.Normalize();
 
-                    // Prefer using CarController public API so internal cooldown / HP/fuel logic is used
-                    try
-                    {
-                        car.ApplyExternalCrashDamage(severity);
-                    }
-                    catch (Exception)
-                    {
-                        // Fallback: try reflection-only approach if the public API isn't available for some reason
-                        TryApplyCarDamageViaReflection(car, severity);
-                    }
+                    // Contact point: closest point on the car collider to explosion center
+                    var carCol = car.GetComponent<Collider>();
+                    Vector3 contactPoint = carCol != null
+                        ? carCol.ClosestPoint(pos)
+                        : car.transform.position;
+
+                    // Approximate impact speed: at least current speed, plus a floor so it feels impactful
+                    float impactSpeed = Mathf.Max(car.CurrentSpeed, 12f);
+
+                    // Let CarController handle the full crash: physics, HP/fuel, cooldown, GM.OnCarCrash, etc.
+                    car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
                 }
             }
 
+            // -------------------------
             // Obstacles (RacingObstacle)
+            // -------------------------
             var obstacle = c.GetComponentInParent<RacingObstacle>();
             if (obstacle)
             {
@@ -344,9 +352,11 @@ public class ThrownObstacle : MonoBehaviour
                 obstacle.ApplyDamage(_explosionRadius > 0f ? 10f : 5f); // simple flat value – tweakable
             }
 
-            // Apply impulse to any other rigidbody in radius (for emergent physics)
+            // -------------------------
+            // Generic rigidbodies in radius
+            // -------------------------
             var rb = c.attachedRigidbody;
-            if (rb && (obstacle == null))
+            if (rb && obstacle == null)
             {
                 // Ensure it's non-kinematic before applying force
                 if (rb.isKinematic)
@@ -364,6 +374,7 @@ public class ThrownObstacle : MonoBehaviour
 
         ExplodeOrDeactivate();
     }
+
 
     private void ExplodeOrDeactivate()
     {
@@ -463,23 +474,29 @@ public class ThrownObstacle : MonoBehaviour
                 return;
             }
 
-            var gm = GameManager_Racing.Instance;
+            // Compute impact speed from relative velocity
             float impactSpeed = collision.relativeVelocity.magnitude;
-            // severity scaled reasonably (tweak divisor to taste)
-            float severity = Mathf.Clamp01(impactSpeed / 20f);
-            gm?.OnCarCrash(impactSpeed, severity);
 
-            // Prefer public API to apply HP/fuel changes and respect cooldowns
-            try
-            {
-                car.ApplyExternalCrashDamage(severity);
-            }
-            catch (Exception)
-            {
-                // fallback to reflection if something unexpected happens
-                TryApplyCarDamageViaReflection(car, severity);
-            }
+            // Clamp into the car's expected crash speed range
+            float min = car.MinImpactSpeed;
+            float max = car.MaxImpactSpeed;
+            impactSpeed = Mathf.Clamp(impactSpeed, min, max);
+
+            // Direction from projectile toward car → impulse pushes car away
+            Vector3 hitDir = (car.transform.position - transform.position).normalized;
+
+            // Best available contact point
+            Vector3 contactPoint = collision.contactCount > 0
+                ? collision.GetContact(0).point
+                : car.transform.position;
+
+            // Map impact speed to 0..1 severity like CarController does
+            float severity = Mathf.InverseLerp(min, max, impactSpeed);
+
+            // Let the car handle EVERYTHING: physics, HP/fuel, SFX, cooldown, etc.
+            car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
         }
+
 
         // For all other cases treat as arrival
         _hasImpacted = true;

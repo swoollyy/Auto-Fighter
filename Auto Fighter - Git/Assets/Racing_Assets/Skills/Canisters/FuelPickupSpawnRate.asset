@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 46
   displayName: More Canisters!
-  description: Increases spawn rate of fuel canisters by 1%
+  description: Increases spawn rate of fuel canisters by 1.5%
   maxLevel: 5
   costCurve:
     serializedVersion: 2
@@ -52,7 +52,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
+  perLevelAdd: 0.15
   uiPosition: {x: 0, y: -225}
   revealedAtStart: 0
   progressiveUnlocks: []

@@ -282,6 +282,27 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0f, v);
     }
 
+
+    // ------------------------------------------------------------------------
+    // NEW: Coin base value additive helper
+    // Returns integer amount to add to each coin's configured value (default base 0)
+    // ------------------------------------------------------------------------
+    public int GetCoinBaseAdd()
+    {
+        // start from 0 (no base add); apply add/mul chain (mul on 0 is neutral, but kept for symmetry)
+        float v = ApplyStatChain(0f, SkillType.CoinBase_Add, SkillType.CoinBase_Mul);
+        return Mathf.RoundToInt(Mathf.Max(0f, v));
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑held boost cooldown helper (returns seconds)
+    // ------------------------------------------------------------------------
+    public float GetDriftHeldBoostCooldownScaled(float baseCooldown)
+    {
+        float v = ApplyStatChain(baseCooldown, SkillType.DriftHeldBoostCooldown_Add, SkillType.DriftHeldBoostCooldown_Mul);
+        return Mathf.Max(0.01f, v);
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();

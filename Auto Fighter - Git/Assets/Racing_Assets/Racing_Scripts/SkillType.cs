@@ -102,12 +102,18 @@
     DriftHeldBoostDuration_Mul = 4321,
     DriftHeldBoostMaxSpeedMult_Add = 4330,
     DriftHeldBoostMaxSpeedMult_Mul = 4331,
+    DriftHeldBoostCooldown_Add = 4340,
+    DriftHeldBoostCooldown_Mul = 4341,
+
 
     // ------------------------------------------------------------------------
     // NEW: Distance coins per meter skill chains
     // ------------------------------------------------------------------------
     DistanceCoinsPerMeter_Add = 4400,
-    DistanceCoinsPerMeter_Mul = 4401
+    DistanceCoinsPerMeter_Mul = 4401,
+
+    CoinBase_Add = 4450,
+    CoinBase_Mul = 4451
 }
 
 

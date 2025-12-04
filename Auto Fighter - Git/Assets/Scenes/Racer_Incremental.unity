@@ -1221,18 +1221,18 @@ MonoBehaviour:
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 0
-  fovSpeedMax: 30
+  fovSpeedMax: 10
   fovAtMinSpeed: 50
-  fovAtMaxSpeed: 80
+  fovAtMaxSpeed: 70
   speedFovSmooth: 2.6
   positionFollowSpeed: 3.24
   rotationFollowSpeed: 13.89
   rotationLag: 4.75
   boostVFXObject: {fileID: 115066103}
-  boostZoomOutDeltaFOV: 3.54
-  boostZoomOutDuration: 0.64
+  boostZoomOutDeltaFOV: 6.57
+  boostZoomOutDuration: 0.82
   boostFovRampIn: 0.12
-  boostFovRampOut: 0.95
+  boostFovRampOut: 1.88
   enableZRoll: 1
   invertZRoll: 0
   zRollScale: 0.16
@@ -2155,8 +2155,8 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   playerTransform: {fileID: 0}
   fuelPrefab: {fileID: 4645873251185170008, guid: 403c3ff804b0c8c439a0b011150f59cd, type: 3}
-  pickupSpacing: 18
-  maxActivePickups: 3
+  pickupSpacing: 13
+  maxActivePickups: 5
   minSpawnDistanceAhead: 60
   maxSpawnDistanceAhead: 60
   despawnBehindDistance: 25
@@ -2198,7 +2198,7 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   updateInterval: 0.25
-  distanceJitter: 1.5
+  distanceJitter: 2.61
   verboseDebug: 0
 --- !u!114 &796779777
 MonoBehaviour:
@@ -2215,8 +2215,8 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   playerTransform: {fileID: 0}
   hpPrefab: {fileID: 4645873251185170008, guid: eecceaf21c3d53543bd78025c6e420a4, type: 3}
-  pickupSpacing: 18
-  maxActivePickups: 3
+  pickupSpacing: 47
+  maxActivePickups: 2
   minSpawnDistanceAhead: 60
   maxSpawnDistanceAhead: 60
   despawnBehindDistance: 25
@@ -2258,7 +2258,7 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   updateInterval: 0.25
-  distanceJitter: 1.5
+  distanceJitter: 2.75
   verboseDebug: 0
 --- !u!1 &804777573
 GameObject:
@@ -2356,6 +2356,8 @@ MonoBehaviour:
   closeCallZoomDuration: 0.801
   closeCallHandlingTurnMultiplier: 1.7
   closeCallHandlingDuration: 1.5
+  closeCallClip: {fileID: 8300000, guid: 384c765ebdc60d54c94210079f976a1d, type: 3}
+  closeCallVolume: 0.376
   runCompleteCoinClip: {fileID: 8300000, guid: 7284a8bf3288ca74f8b3bf4c3b5c4f39, type: 3}
   runCompleteCoinVolume: 0.24
   depositCoinsClip: {fileID: 8300000, guid: d3fbeb90926ad1a4fb8f91aedf0b2c26, type: 3}
@@ -3117,12 +3119,12 @@ MonoBehaviour:
   projectilePrefabExplosive: {fileID: 3874382558013832276, guid: 9da423cd4d7a2b54e975aab5b7d06cb2, type: 3}
   groundRingPrefab: {fileID: 4755968526300084011, guid: bd5f1d81c6813d348ab5258f434e3b15, type: 3}
   enabledSpawning: 1
-  spawnCooldownBase: 11.07
+  spawnCooldownBase: 8
   leadDistanceRange: {x: 8, y: 25}
   maxConcurrent: 6
   concurrentScaleByProgress: 1.5
   spawnEnableProgress: 0.1
-  minSpawnCooldown: 3
+  minSpawnCooldown: 8
   spawnCooldownRandomRange: {x: 0.85, y: 1.15}
   baseProjectileSpeed: 4.01
   travelAllowanceMultiplier: 14.47
@@ -3132,12 +3134,12 @@ MonoBehaviour:
     m_Bits: 2049
   explosiveByDefault: 0
   explosionRadius: 6
-  explosionKnockback: 12
-  projectileSizeRange: {x: 0.92, y: 1.12}
-  sizeGainOverDistance: 0.25
-  speedRandomMultiplierRange: {x: 0.5, y: 1.6}
+  explosionKnockback: 6
+  projectileSizeRange: {x: 1.1, y: 1.7}
+  sizeGainOverDistance: 0.334
+  speedRandomMultiplierRange: {x: 0.8, y: 1.8}
   spawnSideOffset: 6.5
-  spawnHeight: 8.07
+  spawnHeight: 6.7
   minLandingDistanceFromPlayer: 0
   minLeadDistance: 12.5
   allowCloseLandings: 1
@@ -3146,7 +3148,7 @@ MonoBehaviour:
   destroyReward: 12
   debugDraw: 1
   spawnTestKey: 113
-  baseAccuracy: 0.226
+  baseAccuracy: 0.045
   accuracyByDistance:
     serializedVersion: 2
     m_Curve:
@@ -3171,7 +3173,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  maxMissLateral: 10.61
+  maxMissLateral: 17.31
   explosionBaseChance: 0.01
   explosionChanceByDistance:
     serializedVersion: 2
@@ -4111,12 +4113,12 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
   enabledSpawning: 1
-  minPlayerSpeed: 4
+  minPlayerSpeed: 2.96
   spawnCooldownSeconds: 4.16
   minLeadDistance: 5
   maxLeadDistance: 29
   maxCurvatureHorizonScale: 0.65
-  crossSpeedRange: {x: 2, y: 9}
+  crossSpeedRange: {x: 5, y: 11}
   crossSpeedMultiplierCurve:
     serializedVersion: 2
     m_Curve:
@@ -4141,7 +4143,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  obstacleScaleRange: {x: 0.2, y: 1.3}
+  obstacleScaleRange: {x: 1, y: 2.2}
   sizeCurve:
     serializedVersion: 2
     m_Curve:
@@ -5276,6 +5278,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}
   - {fileID: 11400000, guid: b4aa38a2b1bf4074cb60234a6fa098c8, type: 2}
   - {fileID: 11400000, guid: ccb6450a343b3c64e884ac21a53342d3, type: 2}
+  - {fileID: 11400000, guid: 2eca3a7d7e6e7ff47b418ed49010e4a1, type: 2}
   - {fileID: 11400000, guid: 256576f8f95894d4eaf57f330a2ee43c, type: 2}
   - {fileID: 11400000, guid: 049ed5b3d640b7649bd8a9b441bf7bac, type: 2}
   - {fileID: 11400000, guid: 8c64c0af07b44f94fb994c99204a652f, type: 2}
@@ -5285,6 +5288,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 875b6182a5df9674c9740c90a0096494, type: 2}
   - {fileID: 11400000, guid: 19a51983ececf2145abca4a3360a6456, type: 2}
   - {fileID: 11400000, guid: e413e74ecb5b72a4d96aeca7792af177, type: 2}
+  - {fileID: 11400000, guid: 0c11f3a9689c46d4da1f5d94a9fe6e45, type: 2}
   - {fileID: 11400000, guid: 7f1947f49e16492438735f3571dfe260, type: 2}
   - {fileID: 11400000, guid: 8409043806f1b2b448dc15b9c410feb0, type: 2}
   - {fileID: 11400000, guid: 11cf876e738e0c84b9c25e95b7983a57, type: 2}
@@ -5300,6 +5304,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 664725f754fee0349b55c9e3307da656, type: 2}
   - {fileID: 11400000, guid: 1e81d9c8dcc1a7a4bacf84e73d1c7984, type: 2}
   - {fileID: 11400000, guid: ea08749df37753640a996086c76bc85c, type: 2}
+  - {fileID: 11400000, guid: 7aa8ab5729b47804e8f760302ba10e4d, type: 2}
   playerCurrency: 0
 --- !u!4 &1980186994
 Transform:

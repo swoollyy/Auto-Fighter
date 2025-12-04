@@ -65,6 +65,13 @@ public class CoinPickup : MonoBehaviour
         var mgr = RacingSkillTreeManager.Instance;
         int finalValue = value;
 
+        if (mgr != null)
+        {
+            int baseAdd = mgr.GetCoinBaseAdd();
+            if (baseAdd > 0)
+                finalValue += baseAdd;
+        }
+
         // NEW: play coin SFX (random selection + slight pitch variance)
         PlayRandomCoinSfx(transform.position);
 

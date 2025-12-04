@@ -90,6 +90,12 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Duration (seconds) of the temporary handling boost applied to the car on close-call.")]
     private float closeCallHandlingDuration = 2.0f;
 
+    [Header("Close-Call Audio")]
+    [SerializeField, Tooltip("One-shot SFX played when a close-call (near miss) occurs.")]
+    private AudioClip closeCallClip;
+    [SerializeField, Range(0f, 1f)]
+    private float closeCallVolume = 0.9f;
+
     [Header("Audio Clips")]
     [SerializeField] private AudioClip runCompleteCoinClip;
     [SerializeField] private float runCompleteCoinVolume = 1f;
@@ -206,7 +212,7 @@ public class GameManager_Racing : MonoBehaviour
             return;
 
         // Finalize run only when out of fuel AND forward/overall speed is tiny
-        if (!_currencyAwarded && carController.IsOutOfFuel)
+        if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
             float forwardSpeed = 0f;
             float speed = 0f;
@@ -529,6 +535,12 @@ public class GameManager_Racing : MonoBehaviour
             float chroma = closeCallChromatic;
             float lens = closeCallLens;
             postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
+        }
+
+        // NEW: play close-call SFX (2D or attach to camera so it sounds consistent)
+        if (closeCallClip != null)
+        {
+            Play2DClip(closeCallClip, closeCallVolume);
         }
 
         // Start a gentle slow-mo for the close-call

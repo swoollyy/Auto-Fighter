@@ -14,6 +14,7 @@ TagManager:
   - BallXPHolder
   - Paddle
   - Wall
+  - NoTouch
   layers:
   - Default
   - TransparentFX
