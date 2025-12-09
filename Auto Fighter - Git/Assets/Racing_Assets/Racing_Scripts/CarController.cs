@@ -431,6 +431,13 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0.5f, 2f), Tooltip("Maximum random pitch applied to crash SFX.")]
     private float crashPitchMax = 1.05f;
 
+    [Header("Surface Transition Smoothing")]
+    [SerializeField, Tooltip("How fast the surface max speed lerps toward a new, slower surface. Higher = faster, 0 = snap instantly.")]
+    private float surfaceMaxSpeedLerpRate = 2.0f;  // try 1.5–4 for a nice slide
+
+    private float _smoothedSurfaceMaxSpeed = -1f;
+
+
 
     private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
 
@@ -510,10 +517,15 @@ public class CarController : MonoBehaviour
 
         currentHP = Mathf.Max(1f, maxHP);
 
+
         RefreshSkillEffects();
         ApplySkillEffects();
 
         UpdateDamageVFXImmediate();
+
+        _smoothedSurfaceMaxSpeed = -1f;
+
+
     }
 
     private void OnEnable()
@@ -1670,6 +1682,8 @@ public class CarController : MonoBehaviour
         }
     }
 
+    private float surfaceTurnMultiplier = 1f; // runtime surface multiplier for steering (fixes lost multiplier when skills apply)
+
     private void SampleGroundAndUpdateMultipliers()
     {
         if (carCollider == null) return;
@@ -1800,8 +1814,12 @@ public class CarController : MonoBehaviour
         float fuelMul = 1f;
         bool isNonDefault = false;
 
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDistance, groundLayers, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDistance, groundLayers, QueryTriggerInteraction.Collide))
         {
+
+            if (debugSurfaceRays)
+                Debug.Log($"[Surface] Hit {hit.collider.name} (trigger={hit.collider.isTrigger})");
+
             GroundSurface surface =
                 hit.collider.GetComponent<GroundSurface>() ??
                 hit.collider.GetComponentInParent<GroundSurface>();
@@ -1834,12 +1852,41 @@ public class CarController : MonoBehaviour
 
     private void ApplySurfaceMultipliers(float maxSpeedMul, float accelMul, float turnMul, float dragMul)
     {
-        currentMaxSpeed = baseMaxSpeed * maxSpeedMul;
+        // Keep a record of the surface turn multiplier so later skill application does not clobber it.
+        surfaceTurnMultiplier = Mathf.Max(0f, turnMul);
+
+        float targetMaxSpeed = baseMaxSpeed * maxSpeedMul;
+
+        // First-time init just snaps.
+        if (_smoothedSurfaceMaxSpeed < 0f)
+        {
+            _smoothedSurfaceMaxSpeed = targetMaxSpeed;
+        }
+        else
+        {
+            // Moving onto a FASTER or equal surface: snap up so it feels responsive.
+            if (targetMaxSpeed >= _smoothedSurfaceMaxSpeed || surfaceMaxSpeedLerpRate <= 0f)
+            {
+                _smoothedSurfaceMaxSpeed = targetMaxSpeed;
+            }
+            else
+            {
+                // Moving onto a SLOWER surface: smooth back down with a lerp.
+                // This runs every FixedUpdate via SampleGroundAndUpdateMultipliers.
+                float t = surfaceMaxSpeedLerpRate * Time.fixedDeltaTime * 1.5f;
+                _smoothedSurfaceMaxSpeed = Mathf.Lerp(_smoothedSurfaceMaxSpeed, targetMaxSpeed, t);
+            }
+        }
+
+        // Use the smoothed surface cap as the base surface max.
+        currentMaxSpeed = _smoothedSurfaceMaxSpeed;
         currentAcceleration = baseAcceleration * accelMul;
         currentBrakingForce = baseBrakingForce;
-        currentTurnSpeed = baseTurnSpeed * turnMul;
+        currentTurnSpeed = baseTurnSpeed * surfaceTurnMultiplier;
         currentDrag = baseDrag * Mathf.Max(0f, dragMul);
     }
+
+
 
     private void RefreshSkillEffects()
     {
@@ -1928,13 +1975,17 @@ public class CarController : MonoBehaviour
             fuelUsePerSecondAtFullThrottle = Mathf.Max(0f, fuelUsePerSecondAtFullThrottle);
             fuelUsePerSecondBraking = Mathf.Max(0f, fuelUsePerSecondBraking);
 
+            // Apply skill chain to the base turn speed, then combine with surface multiplier.
             float newTurnSpeed = mgr.ApplyStatChain(
                 baseTurnSpeed,
                 SkillType.TurnSpeed_Add,
                 SkillType.TurnSpeed_Mul
             );
 
-            currentTurnSpeed = newTurnSpeed;
+            // IMPORTANT FIX:
+            // Combine skill-modified base turn speed with the surface multiplier so surface
+            // turnSpeedMultiplier (from GroundSurface) actually affects final steering.
+            currentTurnSpeed = newTurnSpeed * surfaceTurnMultiplier;
             effectiveTurnSpeed = currentTurnSpeed;
 
             // Force applies to BOTH main boost impulse and sustain acceleration

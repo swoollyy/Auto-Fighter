@@ -21,6 +21,7 @@ ScriptsOnlyBuild:
     - GroundRing
     - GroundSurface
     - HPPickup
+    - IcePathAccelerator
     - PowerupPickupTween
     - ProceduralTrackGenerator
     - ProjectileHitReceiver
@@ -45,6 +46,7 @@ ScriptsOnlyBuild:
     - TrackDistanceMeter
     - TrackFuelSpawner
     - TrackHPSpawner
+    - TrackIcePathSpawner
     - TrackObstacleSpawner
     - TurretUnlockBinding
     - UIButtonSfx
@@ -534,6 +536,10 @@ ScriptsOnlyBuild:
       Script: {instanceID: 12396}
     - Class: 114
       Script: {instanceID: 12464}
+    - Class: 114
+      Script: {instanceID: 33664}
+    - Class: 114
+      Script: {instanceID: 33708}
     - Class: 115
       Script: {instanceID: 0}
     - Class: 128
@@ -1513,7 +1519,7 @@ ScriptsOnlyBuild:
     className: CameraController
   - hash:
       serializedVersion: 2
-      Hash: 8c2a5681169bc236b7a9ad26d81d0d81
+      Hash: d1cee595f4ff80f8f7d63af6707afa50
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: CarController
@@ -2149,7 +2155,7 @@ ScriptsOnlyBuild:
     className: GrenadeAbilityRewardSO
   - hash:
       serializedVersion: 2
-      Hash: a4986fe8373b994c48742848d2604fe0
+      Hash: d783c9092037e598225f57e20875ce77
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: GameManager_Racing
@@ -2729,6 +2735,18 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnSliderValueChangedMessageListener
+  - hash:
+      serializedVersion: 2
+      Hash: 1ddd7407bec2636832ec3c965531da17
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: IcePathAccelerator
+  - hash:
+      serializedVersion: 2
+      Hash: 31b070ecd2d6f1d7507fbb7144ea913b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackIcePathSpawner
   platform: 19
   scenePathNames:
   - Assets/Scenes/Racer_Incremental.unity

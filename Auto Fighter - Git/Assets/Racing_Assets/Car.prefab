@@ -755,13 +755,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 5
-  baseMaxSpeed: 3
+  baseAcceleration: 4.7
+  baseMaxSpeed: 3.5
   baseBrakingForce: 0.01
   turnSpeed: 10
-  lowSpeedSteerMultiplier: 8
+  lowSpeedSteerMultiplier: 5.58
   highSpeedSteerMultiplier: 1
-  speedForSteerCurve: 4.25
+  speedForSteerCurve: 5.37
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
@@ -769,7 +769,7 @@ MonoBehaviour:
   driftKey: 304
   driftMinSpeed: 2.15
   maxDriftSteerMultiplier: 5.31
-  driftBuildRate: 0.48
+  driftBuildRate: 0.66
   driftReleaseRate: 16
   driftSideForce: 0.35
   driftSpeedDecayPerSecond: 0.06
@@ -791,7 +791,7 @@ MonoBehaviour:
   baseDrag: 0.13
   groundLayers:
     serializedVersion: 2
-    m_Bits: 81920
+    m_Bits: 90112
   samplesX: 6
   samplesZ: 6
   raycastHeightOffset: 0.5
@@ -810,7 +810,7 @@ MonoBehaviour:
   maxImpactSpeed: 2.73
   minCrashDuration: 1.08
   maxCrashDuration: 2.66
-  impulsePerUnitSpeed: 1.49
+  impulsePerUnitSpeed: 1.21
   torquePerUnitSpeed: 18.8
   crashDragMultiplier: 1
   crashAngularDrag: 1
@@ -855,7 +855,7 @@ MonoBehaviour:
   boostFuelCost: 15
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
-  driftBoostMinHoldSeconds: 1.1
+  driftBoostMinHoldSeconds: 0.8
   driftBoostMaxHoldSeconds: 2.5
   driftBoostForceRange: {x: 0.5, y: 0.5}
   driftBoostDurationRange: {x: 0.4, y: 0.7}
@@ -883,7 +883,7 @@ MonoBehaviour:
   minSpeedForSteerTraction: 0.1
   lateralFrictionWhileSteering: 3.5
   enableCloseCallNearMisses: 1
-  closeCallDistance: 0.5
+  closeCallDistance: 0.4
   closeCallMinSpeed: 2.88
   closeCallCooldown: 1.42
   closeCallRootCooldown: 4.39
@@ -898,6 +898,7 @@ MonoBehaviour:
   crashVolumeMultiplier: 2.63
   crashPitchMin: 0.976
   crashPitchMax: 1.141
+  surfaceMaxSpeedLerpRate: 2.78
   closeCallAfterCrashBlockTime: 1
 --- !u!54 &3673658427361466669
 Rigidbody:
@@ -1034,11 +1035,11 @@ MonoBehaviour:
   launchSlowMoScale: 0.371
   launchSlowMoHold: 0.15
   launchSlowMoEaseOut: 0.2
-  postFX: {fileID: 0}
+  postFX: {fileID: 3055004073125483376}
   forcefieldUseClip: {fileID: 8300000, guid: 95cca097aec1d484c8f6e4bb32ff4e8e, type: 3}
-  forcefieldUseVolume: 0.379
+  forcefieldUseVolume: 0.966
   forcefieldRearmClip: {fileID: 8300000, guid: 20682cd13ca66a04d9e9b0ffe79879d1, type: 3}
-  forcefieldRearmVolume: 0.379
+  forcefieldRearmVolume: 0.252
   startOnCooldown: 1
 --- !u!114 &2006204842711436354
 MonoBehaviour:
@@ -1158,10 +1159,10 @@ MonoBehaviour:
   driveClip: {fileID: 8300000, guid: 6cdec8850c7ea9242abc536c697deca4, type: 3}
   idleVolume: 0.118
   driveVolume: 0.247
-  driveMinPitch: 0.9
-  driveMaxPitch: 1.8
+  driveMinPitch: 0.8
+  driveMaxPitch: 2.7
   idlePitch: 1
-  speedForMaxPitch: 9
+  speedForMaxPitch: 7.29
   pitchCurve:
     serializedVersion: 2
     m_Curve:

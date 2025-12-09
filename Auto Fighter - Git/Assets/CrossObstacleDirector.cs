@@ -239,19 +239,27 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         // Center point of the cross (where it tries to hit car)
         SampleSpline(sSpawn, out Vector3 spawnSplinePos, out Vector3 spawnTan);
-
-        // --- Project the spline center down to the actual surface first ---
-        // Try common road layer names then fall back to any collider
         LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        float upOffsetForCast = 5f; // generous so tall/scaled prefabs are handled
+        float upOffsetForCast = 10f;
         float maxDown = 50f;
 
-        Vector3 spawnSurface = SpawnUtils.ProjectOntoSurface(spawnSplinePos + Vector3.up * upOffsetForCast, out Vector3 spawnNormal, upOffsetForCast, maxDown, roadMask);
-        // if no hit on preferred mask, try any collider
-        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
-            spawnSurface = SpawnUtils.ProjectOntoSurface(spawnSplinePos + Vector3.up * upOffsetForCast, out spawnNormal, upOffsetForCast, maxDown, null);
+        Vector3 spawnSurface = SpawnUtils.ProjectOntoSurface(
+            spawnSplinePos + Vector3.up * upOffsetForCast,
+            out Vector3 spawnNormal,
+            upOffsetForCast,
+            maxDown,
+            roadMask
+        );
 
-        // Build basis using the horizontal part of the spline tangent so lateral is truly ground-parallel
+        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
+            spawnSurface = SpawnUtils.ProjectOntoSurface(
+                spawnSplinePos + Vector3.up * upOffsetForCast,
+                out spawnNormal,
+                upOffsetForCast,
+                maxDown,
+                null
+            );
+
         Vector3 up = Vector3.up;
         Vector3 forward = new Vector3(spawnTan.x, 0f, spawnTan.z);
         if (forward.sqrMagnitude < 1e-6f)
@@ -260,69 +268,55 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         Vector3 lateral = Vector3.Cross(up, forward).normalized;
 
-        // Apply yaw to lateral so we get a bit of angle variation
         if (Mathf.Abs(appliedYaw) > 0.0001f)
             lateral = (Quaternion.AngleAxis(appliedYaw, up) * lateral).normalized;
 
-        // Decide start side
         bool startLeft = UnityEngine.Random.value < 0.5f;
         float sideSign = startLeft ? -1f : 1f;
+        float offTrackOffset = halfRoad + 5.0f;
 
-        // How far off the road to start/end (purely geometric, no car/edge �fixing�)
-        float offTrackOffset = halfRoad + 5.0f; // 5 units beyond road edge
+        // Create horizontal positions first
+        Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
+        Vector3 targetHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) - lateral * sideSign * offTrackOffset;
 
-        // Create start/target anchored at the projected surface center (use spawnSurface.y)
-        // This ensures both endpoints share a valid surface Y before any instantiation scaling occurs.
-        Vector3 startWS = new Vector3(spawnSurface.x, spawnSurface.y, spawnSurface.z) + lateral * sideSign * offTrackOffset;
-        Vector3 targetWS = new Vector3(spawnSurface.x, spawnSurface.y, spawnSurface.z) - lateral * sideSign * offTrackOffset;
+        // Project both endpoints to ground
+        Vector3 startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
+        if (Mathf.Approximately(startWS.y, startHorizontal.y))
+            startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
 
+        Vector3 targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
+        if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
+            targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
 
         // Size scaling
         float sizeEval = sizeCurve.Evaluate(distanceNorm);
         float sizeRand = UnityEngine.Random.Range(obstacleScaleRange.x, obstacleScaleRange.y);
         float finalScale = sizeRand * sizeEval;
 
-
-
-
-
-        // Initial delay fairness
         float initialDelay = Mathf.Clamp(tCenter * 0.15f, 0f, 1.25f);
 
-        // Direction for rotation
-        Vector3 moveDir = (targetWS - startWS).normalized;
-        if (moveDir.sqrMagnitude < 0.0001f)
-            moveDir = lateral;
-
-        // Project start/target again (safe) to ensure they rest on the surface (use a slightly larger up offset)
-        float endpointUpOffset = upOffsetForCast + 1f;
-        Vector3 adjustedStart = SpawnUtils.ProjectOntoSurface(startWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, roadMask);
-        if (Mathf.Approximately(adjustedStart.y, startWS.y))
-            adjustedStart = SpawnUtils.ProjectOntoSurface(startWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, null);
-        Vector3 adjustedTarget = SpawnUtils.ProjectOntoSurface(targetWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, roadMask);
-        if (Mathf.Approximately(adjustedTarget.y, targetWS.y))
-            adjustedTarget = SpawnUtils.ProjectOntoSurface(targetWS + Vector3.up * endpointUpOffset, out _, endpointUpOffset, maxDown, null);
-
-
-        // Recompute moveDir and spawn rotation from projected positions to match surface
-        Vector3 actualMoveDir = (new Vector3(adjustedTarget.x, 0f, adjustedTarget.z) - new Vector3(adjustedStart.x, 0f, adjustedStart.z)).normalized;
+        Vector3 actualMoveDir = (new Vector3(targetWS.x, 0f, targetWS.z) - new Vector3(startWS.x, 0f, startWS.z)).normalized;
         if (actualMoveDir.sqrMagnitude < 0.0001f)
-            actualMoveDir = moveDir; // fallback
+            actualMoveDir = lateral;
         Quaternion spawnRot = Quaternion.LookRotation(actualMoveDir, up);
 
-        // Instantiate at the projected start. IMPORTANT: scale first then bump up by renderer/collider bounds
-        var inst = Instantiate(crossObstaclePrefab, adjustedStart, spawnRot);
-
-        // Apply runtime scale
+        // Instantiate at start position
+        var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
         inst.transform.localScale *= finalScale;
-        // Pass the adjustedTarget (with Y aligned using same bottom offset) to the obstacle
+
+        // **NEW: Get parent's bottom offset and adjust position**
+        float bottomOffset = GetCrossObstacleBottomOffset(inst);
+        inst.transform.position = startWS + Vector3.up * bottomOffset;
+
+        // Also adjust target to account for bottom offset
+        Vector3 adjustedTarget = targetWS + Vector3.up * bottomOffset;
+
         var cross = inst.GetComponent<CrossTrackObstacle>();
         if (cross)
         {
             cross.InitializeDirect(inst.transform.position, adjustedTarget, crossSpeed, initialDelay);
         }
 
-        // For cyan debug line in the editor
         _lastDebugStart = inst.transform.position;
         _lastDebugEnd = adjustedTarget;
         _hasDebugPath = true;
@@ -349,6 +343,50 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         float angle = Vector3.Angle(tA, tB);
         return angle / 180f;
+    }
+
+    /// <summary>
+    /// Gets the offset needed to place the cross obstacle's parent bottom at ground level.
+    /// Only considers the parent's renderer/collider, not children.
+    /// </summary>
+    private float GetCrossObstacleBottomOffset(GameObject obj)
+    {
+        if (obj == null) return 0f;
+
+        Transform root = obj.transform;
+        float lowestPoint = 0f;
+        bool foundAny = false;
+
+        // Check parent's renderer only
+        Renderer parentRenderer = root.GetComponent<Renderer>();
+        if (parentRenderer != null)
+        {
+            Bounds localBounds = parentRenderer.bounds;
+            float bottom = localBounds.min.y - root.position.y;
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        // Check parent's colliders only
+        Collider[] parentColliders = root.GetComponents<Collider>();
+        foreach (var col in parentColliders)
+        {
+            if (col == null || col.isTrigger) continue;
+
+            Bounds localBounds = col.bounds;
+            float bottom = localBounds.min.y - root.position.y;
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        if (!foundAny) return 0.05f;
+        return Mathf.Abs(lowestPoint);
     }
 
     private void SampleSpline(float distance, out Vector3 position, out Vector3 tangent)

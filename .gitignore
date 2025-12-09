@@ -1,0 +1,90 @@
+# =============== #
+# Unity Generated #
+# =============== #
+
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+UserSettings/
+MemoryCaptures/
+Recordings/
+
+# Unity cache
+Artifacts/
+Assets/AssetStoreTools*
+ProjectSettings/Presets/Search/
+ProjectSettings/LastBuild.buildreport
+
+# DOTween (generated files)
+Assets/Demigiant/DOTween/Editor/Resources/DOTweenSettings.asset
+Assets/Demigiant/DOTween/Generated/
+
+# Addressables
+Assets/AddressableAssetsData/*/*.bin*
+Assets/AddressableAssetsData/*/*.json
+Assets/StreamingAssets/aa/*
+*/aa/*
+
+# ProBuilder (auto-generated caches)
+Assets/ProBuilder/TextureCaches/
+
+# Collaborate (legacy)
+.collabignore
+**/UnityCollaborate/
+
+# Rider / Visual Studio / IDE
+.vscode/
+.vs/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+
+# Logs / Crash
+*.log
+*.stacktrace
+*.dmp
+
+# ===== #
+# OS    #
+# ===== #
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# =================== #
+# Unity Build Outputs #
+# =================== #
+
+*.apk
+*.aab
+*.app
+*.exe
+*.zip
+*.ipa
+*.xcodeproj
+*.xcworkspace
+*.xcuserstate
+*.xcuserdata/
+
+# Misc
+*.tmp
+*.bak
+*.old
+*.orig
+*.swp
+*.unitypackage

@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2025-12-04T01:16:51.0201331Z (UTC)
+- Generated: 2025-12-06T20:52:55.6262148Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 181
 
@@ -5402,6 +5402,10 @@ public class CarController : MonoBehaviour
     [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
     [SerializeField] private float driftNeutralDrainRate = 4.2f;
 
+    [Header("Drift Neutral Reset")]
+    [Tooltip("If you let go of steering for this long while holding drift, driftCharge fully resets so re-engaging is a fresh drift.")]
+    [SerializeField] private float driftNeutralFullResetDelay = 0.15f;
+
     [Header("Drift Direction Change Reset")]
     [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
     [SerializeField] private bool resetDriftChargeOnSteerFlip = true;
@@ -5421,6 +5425,8 @@ public class CarController : MonoBehaviour
     [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
 
     private bool _driftGlideActive;          // NEW: glide mode (holding drift, no steer)
+
+    private float _driftNeutralTimer = 0f;
 
     private float _lastRawSteerValue;
     private int _driftCurrentSteerSign = 0;
@@ -5613,6 +5619,8 @@ public class CarController : MonoBehaviour
     private Quaternion _reorientStartRot;
     private Quaternion _reorientTargetRot;
 
+    private bool IsCrashInvulnerable => _inCrash || _isReorienting;
+
     private bool _inCrash;
     private float _crashTimer;
     private float _baseDrag;
@@ -5658,6 +5666,7 @@ public class CarController : MonoBehaviour
     private float currentFuelUseMultiplier = 1f;
 
     private float currentHP;
+    private bool isOutOfHP = false;
     private float _malfunctionTimer;
     private float _malfunctionCooldownRemain;
 
@@ -5766,12 +5775,30 @@ public class CarController : MonoBehaviour
     private float crashPitchMax = 1.05f;
 
 
-    // runtime cooldown map (root instance id -> last triggered time)
     private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
+
+    // NEW: per-root tracking while inside close-call radius (for exit-based near-misses)
+    private class CloseCallTrack
+    {
+        public Vector3 lastPos;
+        public float lastDistance;
+        public float minDistance;
+        public bool isInside;
+        public float lastSeenTime;
+    }
+
+    private readonly Dictionary<int, CloseCallTrack> _closeCallTracking = new Dictionary<int, CloseCallTrack>();
+
+    // NEW: record roots we actually crashed into recently so they never award a near-miss
+    private readonly Dictionary<int, float> _recentCrashRootTime = new Dictionary<int, float>();
 
     // NEW helper to limit overlap sphere frequency (cheap throttle)
     private float _lastCloseCallSweep = 0f;
     private float _closeCallSweepInterval = 0.18f;
+
+    [Header("Close-Call vs Crash Resolution")]
+    [SerializeField, UnityEngine.Min(0f), Tooltip("After crashing into an obstacle, block near-miss rewards for that root for this many seconds.")]
+    private float closeCallAfterCrashBlockTime = 1.0f;
 
     // NEW: split for steering traction code etc.
     private void Awake()
@@ -5805,6 +5832,7 @@ public class CarController : MonoBehaviour
 
         currentFuel = maxFuel;
         isOutOfFuel = false;
+        isOutOfHP = false;
         currentFuelUseMultiplier = 1f;
 
         baseMaxFuel = maxFuel;
@@ -5859,6 +5887,9 @@ public class CarController : MonoBehaviour
             currentHP = Mathf.Min(maxHP, currentHP + hpRegenPerSecond * Time.deltaTime);
         }
 
+        if (currentHP <= 0f)
+            isOutOfHP = true;
+
         UpdateDamageVFXImmediate();
     }
 
@@ -5906,76 +5937,126 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // NEW: Detect nearby obstacles and fire close-call effects via GameManager_Racing.HandleProjectileCloseCall
+    // NEW: Detect nearby obstacles and fire close-call ONLY when exiting the radius
     private void CheckNearbyObstaclesForCloseCall()
     {
         if (!enableCloseCallNearMisses) return;
         if (carCollider == null || rb == null) return;
 
-        // Speed guard (do not trigger when almost stopped)
+        // Speed guard – no near-miss when basically stopped.
         if (rb.velocity.magnitude < closeCallMinSpeed) return;
 
-        // Overlap nearby colliders in crashLayers
-        Collider[] hits = Physics.OverlapSphere(transform.position, Mathf.Max(0.01f, closeCallDistance), crashLayers, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0) return;
-
         var gm = GameManager_Racing.Instance;
+        float now = Time.time;
 
-        // Ensure we only trigger once per root object per sweep
-        var seenRoots = new HashSet<int>();
+        // Overlap nearby colliders in crashLayers
+        Collider[] hits = Physics.OverlapSphere(
+            transform.position,
+            Mathf.Max(0.01f, closeCallDistance),
+            crashLayers,
+            QueryTriggerInteraction.Ignore
+        );
 
-        for (int i = 0; i < hits.Length; i++)
+        // Roots currently inside the radius this sweep
+        var rootsInsideNow = new HashSet<int>();
+
+        if (hits != null && hits.Length > 0)
         {
-            var other = hits[i];
-            if (other == null) continue;
-
-            // Ignore our own collider(s)
-            if (other == carCollider) continue;
-            if (other.transform.root == transform.root) continue;
-
-            int rootId = other.transform.root.GetInstanceID();
-
-            // Skip duplicates in this sweep (multiple child colliders)
-            if (seenRoots.Contains(rootId)) continue;
-            seenRoots.Add(rootId);
-
-            // Per-root cooldown
-            if (_lastCloseCallTime.TryGetValue(rootId, out float lastT))
+            for (int i = 0; i < hits.Length; i++)
             {
-                float cooldownToUse = closeCallRootCooldown > 0f ? closeCallRootCooldown : closeCallCooldown;
-                if (Time.time - lastT < cooldownToUse) continue;
-            }
+                var other = hits[i];
+                if (other == null) continue;
 
-            // Skip if overlapping / penetrating (that's an actual collision, not a near-miss)
-            bool penetrates = false;
-            if (carCollider != null && other != null)
-            {
-                Vector3 dir; float dist;
-                penetrates = Physics.ComputePenetration(
-                    carCollider, carCollider.transform.position, carCollider.transform.rotation,
-                    other, other.transform.position, other.transform.rotation,
-                    out dir, out dist
-                );
-                if (penetrates) continue;
-            }
+                // Ignore our own collider(s)
+                if (other == carCollider) continue;
+                if (other.transform.root == transform.root) continue;
 
-            // Compute closest point & distance to car center (planar distance is fine, but use 3D)
-            Vector3 closest = other.bounds.ClosestPoint(transform.position);
-            float d = Vector3.Distance(closest, transform.position);
+                int rootId = other.transform.root.GetInstanceID();
+                rootsInsideNow.Add(rootId);
 
-            if (d <= closeCallDistance)
-            {
-                // Register timestamp to cooldown map (keyed by root)
-                _lastCloseCallTime[rootId] = Time.time;
-
-                // Fire close-call -- reuse existing GM API which plays slowmo/postFX/zoom
-                if (gm != null)
+                // Skip if currently overlapping/penetrating (this is an actual collision, not a near-miss)
+                bool penetrates = false;
+                if (carCollider != null && other != null)
                 {
-                    gm.HandleProjectileCloseCall(closest, d);
+                    Vector3 dir; float dist;
+                    penetrates = Physics.ComputePenetration(
+                        carCollider, carCollider.transform.position, carCollider.transform.rotation,
+                        other, other.transform.position, other.transform.rotation,
+                        out dir, out dist
+                    );
+                    if (penetrates) continue;
+                }
+
+                // Compute closest point & distance to car center
+                Vector3 closest = other.bounds.ClosestPoint(transform.position);
+                float d = Vector3.Distance(closest, transform.position);
+
+                if (d > closeCallDistance) continue;
+
+                // Update or create tracking state for this root
+                if (!_closeCallTracking.TryGetValue(rootId, out var track))
+                {
+                    track = new CloseCallTrack
+                    {
+                        lastPos = closest,
+                        lastDistance = d,
+                        minDistance = d,
+                        isInside = true,
+                        lastSeenTime = now
+                    };
+                    _closeCallTracking[rootId] = track;
+                }
+                else
+                {
+                    track.lastPos = closest;
+                    track.lastDistance = d;
+                    track.minDistance = (track.minDistance <= 0f) ? d : Mathf.Min(track.minDistance, d);
+                    track.isInside = true;
+                    track.lastSeenTime = now;
                 }
             }
         }
+
+        // Now look for roots that WERE inside but are no longer in the radius (exit event)
+        // We iterate over a copy because we may remove entries.
+        var keys = new List<int>(_closeCallTracking.Keys);
+        foreach (int rootId in keys)
+        {
+            var track = _closeCallTracking[rootId];
+            bool stillInside = rootsInsideNow.Contains(rootId);
+
+            if (track.isInside && !stillInside)
+            {
+                // We've just exited this root's close-call radius.
+                // Check that we didn't recently crash into it.
+                bool crashedRecently = _recentCrashRootTime.TryGetValue(rootId, out float crashTime) &&
+                                       (now - crashTime) < closeCallAfterCrashBlockTime;
+
+                if (!crashedRecently && gm != null)
+                {
+                    // Per-root cooldown
+                    float cooldownToUse = closeCallRootCooldown > 0f ? closeCallRootCooldown : closeCallCooldown;
+                    if (!_lastCloseCallTime.TryGetValue(rootId, out float lastT) || now - lastT >= cooldownToUse)
+                    {
+                        // Fire near-miss at the last known closest position / distance
+                        gm.HandleProjectileCloseCall(track.lastPos, track.minDistance);
+                        _lastCloseCallTime[rootId] = now;
+
+                        Debug.Log($"[CarController] Close-call NEAR-MISS triggered on EXIT for root {rootId}, minDist={track.minDistance:F2}");
+                    }
+                }
+
+                // Remove tracking after exit
+                _closeCallTracking.Remove(rootId);
+            }
+            else
+            {
+                // If still inside, ensure flag is consistent
+                track.isInside = stillInside;
+            }
+        }
     }
+
 
     // BOOST HANDLER – now fully decouples drift boost from normal boost
     private void HandleBoost()
@@ -6194,38 +6275,70 @@ public class CarController : MonoBehaviour
                 rawHorizontal > steerFlipThreshold ? 1 :
                 rawHorizontal < -steerFlipThreshold ? -1 : 0;
 
+            // NEW: track how long we've been neutral on the stick while holding drift
             if (driftButtonHeld)
             {
+                if (currentSign == 0)
+                {
+                    _driftNeutralTimer += Time.deltaTime;
+
+                    // If we've been neutral long enough, treat this as a full drift reset
+                    if (driftCharge > 0f && _driftNeutralTimer >= driftNeutralFullResetDelay)
+                    {
+                        driftCharge = 0f;
+                        _driftCurrentSteerSign = 0;
+                        driftEntrySpeed = 0f;
+                        driftClampSpeed = 0f;
+                        driftPeakSpeed = 0f;
+                        _driftFlipBlockUntil = 0f;
+
+                        // NEW: also reset drift-held boost accumulation
+                        if (enableDriftHeldBoost)
+                            ResetDriftHeldTimer();
+                    }
+                }
+                else
+                {
+                    // As soon as we push a direction again, clear the neutral timer
+                    _driftNeutralTimer = 0f;
+                }
+            }
+            else
+            {
+                // Not even holding drift: no neutral accumulation
+                _driftNeutralTimer = 0f;
+            }
+
+            if (driftButtonHeld)
+            {
+                // Only care about non-zero steer
                 if (currentSign != 0)
                 {
                     if (resetDriftChargeOnSteerFlip &&
                         _driftCurrentSteerSign != 0 &&
                         currentSign != _driftCurrentSteerSign &&
-                        driftCharge >= minChargeForFlipReset)
+                        driftCharge >= minChargeForFlipReset &&
+                        Time.time >= _driftFlipBlockUntil)
                     {
-                        // Direction flip: retain some charge but reset drift-held boost accumulation
-                        driftCharge = Mathf.Clamp01(steerFlipRetainedCharge);
-
-                        // Reset drift-held timer on flip
-                        ResetDriftHeldTimer();
-
-                        if (rb != null)
-                        {
-                            float currentSpeed = rb.velocity.magnitude;
-                            if (driftEntrySpeed <= 0.01f)
-                                driftEntrySpeed = currentSpeed;
-
-                            driftClampSpeed = Mathf.Max(driftClampSpeed, currentSpeed);
-                            driftPeakSpeed = Mathf.Max(driftPeakSpeed, currentSpeed);
-                        }
-
+                        // Hard direction flip while drifting:
+                        // reduce/reset charge and briefly block rebuild
+                        driftCharge *= steerFlipRetainedCharge;
                         _driftFlipBlockUntil = Time.time + steerFlipRebuildDelay;
+
+                        // Also restart drift-held timer so the new direction is "fresh"
+                        if (enableDriftHeldBoost)
+                            ResetDriftHeldTimer();
                     }
+
+                    // Update active steering sign (used by drift-held boost)
                     _driftCurrentSteerSign = currentSign;
                 }
+                // If currentSign == 0 we *keep* the last sign for a short time;
+                // neutral-full reset above will clear it if we stay neutral.
             }
             else
             {
+                // Not holding drift at all: clear steer sign
                 _driftCurrentSteerSign = 0;
             }
 
@@ -6312,10 +6425,6 @@ public class CarController : MonoBehaviour
             }
             else if (!isDrifting && wasDrifting)
             {
-                // Drift ended – evaluate boost
-                if (enableDriftHeldBoost)
-                    TryTriggerDriftHeldBoost();
-
                 driftEntrySpeed = 0f;
                 driftClampSpeed = 0f;
                 driftPeakSpeed = 0f;
@@ -6455,11 +6564,22 @@ public class CarController : MonoBehaviour
         _driftHoldDirectionSign = 0;
     }
 
-    private void TriggerCrash(Vector3 hitDirection, float crashDuration, float impulseMagnitude, float torqueMagnitude, float severity, Vector3 contactPointWS, bool applyDamage)
+    private void TriggerCrash(
+        Vector3 hitDirection,
+        float crashDuration,
+        float impulseMagnitude,
+        float torqueMagnitude,
+        float severity,
+        Vector3 contactPointWS,
+        bool applyDamage)
     {
         if (rb == null)
             return;
 
+        // Clamp severity once and reuse
+        float sev01 = Mathf.Clamp01(severity);
+
+        // Flatten & normalize incoming hit direction
         hitDirection.y = 0f;
         if (hitDirection.sqrMagnitude < 0.0001f)
             hitDirection = -transform.forward;
@@ -6472,28 +6592,51 @@ public class CarController : MonoBehaviour
         rb.drag = _baseDrag * crashDragMultiplier;
         rb.angularDrag = crashAngularDrag;
 
+        // Current velocity
         Vector3 v = rb.velocity;
         Vector3 flatVel = new Vector3(v.x, 0f, v.z);
 
+        // We'll decide the impulse direction here
+        Vector3 impulseDir = hitDirection;
+
         if (flatVel.sqrMagnitude > 0.01f)
         {
-            Vector3 normal = hitDirection.normalized;
+            // Reflect current velocity around a "surface normal" (hitDirection)
+            Vector3 normal = hitDirection;
             Vector3 reflected = Vector3.Reflect(flatVel, normal);
 
-            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, Mathf.Clamp01(severity));
+            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, sev01);
             Vector3 newFlatVel = Vector3.Lerp(flatVel, reflected, deflectAmount);
 
-            float slowMul = Mathf.Lerp(0.9f, 0.6f, Mathf.Clamp01(severity));
+            float slowMul = Mathf.Lerp(0.9f, 0.6f, sev01);
             newFlatVel *= slowMul;
 
             rb.velocity = new Vector3(newFlatVel.x, v.y, newFlatVel.z);
+
+            // MAIN IDEA: base impulse opposite previous motion
+            impulseDir = -flatVel.normalized;
         }
         else
         {
+            // If we were basically stopped, just kick along the hit direction
             rb.velocity = hitDirection * impulseMagnitude * 0.5f;
+            impulseDir = hitDirection;
         }
 
-        rb.AddForce(hitDirection * impulseMagnitude, ForceMode.VelocityChange);
+        // ─────────────────────────────────────────────
+        // NEW: add a vertical "bump" so we don't get glued to static stuff
+        // ─────────────────────────────────────────────
+        // Stronger bump at higher severity; tweak 0.15f / 0.45f to taste.
+        float verticalBoost = Mathf.Lerp(0.15f, 0.45f, sev01);
+
+        Vector3 bumpDir = impulseDir;
+        bumpDir.y += verticalBoost;
+        bumpDir.Normalize();
+
+        // Apply the crash impulse with vertical pop
+        rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
+
+        // --- Torque (spin) stays as you had it ---
 
         Vector3 toObstacleWorld = -hitDirection;
         Vector3 toObstacleLocal = transform.InverseTransformDirection(toObstacleWorld);
@@ -6513,32 +6656,36 @@ public class CarController : MonoBehaviour
 
         rb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
 
-        float sev01 = Mathf.Clamp01(severity);
+        // Damage / fuel handling
+        float sev01ForDamage = sev01;
 
         if (applyDamage)
         {
             if (hpCrashDamageAtSeverity1 > 0f)
             {
-                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01);
+                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
                 hpLoss = Mathf.Min(hpLoss, currentHP);
                 currentHP = Mathf.Max(0f, currentHP - hpLoss);
-                Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01:F2}). HP={currentHP}/{maxHP}");
+                Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01ForDamage:F2}). HP={currentHP}/{maxHP}");
             }
+
             if (fuelLossAtSeverity1 > 0f)
             {
-                float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01);
+                float requestedFuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * sev01ForDamage);
                 float before = currentFuel;
                 ConsumeFuel(requestedFuelLoss);
                 float consumed = Mathf.Max(0f, before - currentFuel);
+
                 if (consumed + 1e-3f < minFuelLossPerCrash)
                 {
                     float shortfall = minFuelLossPerCrash - consumed;
                     currentFuel = Mathf.Max(0f, currentFuel - shortfall);
                 }
-                Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01:F2}). Fuel={currentFuel}/{maxFuel}");
+
+                Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
 
-            // Set cooldown timer AFTER applying damage
+            // Start cooldown AFTER damage
             _nextCrashAllowedTime = Time.time + crashDamageCooldown;
         }
         else
@@ -6546,6 +6693,7 @@ public class CarController : MonoBehaviour
             Debug.Log($"[CarController] Crash occurred but damage skipped (cooldown active, {Mathf.Max(0f, _nextCrashAllowedTime - Time.time):F2}s remain).");
         }
     }
+
 
     private void HandleSteering()
     {
@@ -6865,6 +7013,8 @@ public class CarController : MonoBehaviour
         }
     }
 
+    private float surfaceTurnMultiplier = 1f; // runtime surface multiplier for steering (fixes lost multiplier when skills apply)
+
     private void SampleGroundAndUpdateMultipliers()
     {
         if (carCollider == null) return;
@@ -7029,10 +7179,14 @@ public class CarController : MonoBehaviour
 
     private void ApplySurfaceMultipliers(float maxSpeedMul, float accelMul, float turnMul, float dragMul)
     {
+        // Keep a record of the surface turn multiplier so later skill application doesn't clobber it.
+        surfaceTurnMultiplier = Mathf.Max(0f, turnMul);
+
         currentMaxSpeed = baseMaxSpeed * maxSpeedMul;
         currentAcceleration = baseAcceleration * accelMul;
         currentBrakingForce = baseBrakingForce;
-        currentTurnSpeed = baseTurnSpeed * turnMul;
+        // preserve baseTurnSpeed * surface mul here (ApplySkillEffects will later combine skills with surface mul)
+        currentTurnSpeed = baseTurnSpeed * surfaceTurnMultiplier;
         currentDrag = baseDrag * Mathf.Max(0f, dragMul);
     }
 
@@ -7123,13 +7277,17 @@ public class CarController : MonoBehaviour
             fuelUsePerSecondAtFullThrottle = Mathf.Max(0f, fuelUsePerSecondAtFullThrottle);
             fuelUsePerSecondBraking = Mathf.Max(0f, fuelUsePerSecondBraking);
 
+            // Apply skill chain to the base turn speed, then combine with surface multiplier.
             float newTurnSpeed = mgr.ApplyStatChain(
                 baseTurnSpeed,
                 SkillType.TurnSpeed_Add,
                 SkillType.TurnSpeed_Mul
             );
 
-            currentTurnSpeed = newTurnSpeed;
+            // IMPORTANT FIX:
+            // Combine skill-modified base turn speed with the surface multiplier so surface
+            // turnSpeedMultiplier (from GroundSurface) actually affects final steering.
+            currentTurnSpeed = newTurnSpeed * surfaceTurnMultiplier;
             effectiveTurnSpeed = currentTurnSpeed;
 
             // Force applies to BOTH main boost impulse and sustain acceleration
@@ -7205,31 +7363,46 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        if (IsCrashInvulnerable)
+            return;
+
         // Respect internal cooldown so external callers can't bypass invulnerability windows.
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
         float sev01 = Mathf.Clamp01(severity);
 
-        // Clamp the impact speed into the same range used by normal crashes
+        // Clamp impact speed into the same range used elsewhere
         impactSpeed = Mathf.Clamp(impactSpeed, minImpactSpeed, maxImpactSpeed);
 
-        // Let GameManager handle camera shake / slowmo / SFX if damage is allowed
+        // Camera shake / slow-mo / coin penalties, etc.
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
         {
             gm.OnCarCrash(impactSpeed, sev01);
         }
 
-        // Compute crash duration & magnitudes using the same formulas as OnCollisionEnter
+        // 🔊 NEW: play default crash SFX + impact VFX for external hits too
+        if (damageWindowOpen)
+        {
+            // Use default crash clip for projectiles / generic hits
+            PlayCrashSfx(crashClipDefault, contactPointWS, crashSfxVolume);
+
+            // Approximate a surface normal from the incoming hit direction
+            Vector3 normal = hitDirection.sqrMagnitude > 0.0001f
+                ? -hitDirection.normalized        // "surface" pushing back against hitDir
+                : Vector3.up;
+
+            SpawnCrashImpactVFX(contactPointWS, normal);
+        }
+
+        // Duration and impulse magnitudes consistent with normal collisions
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
 
-        // Delegate to the central crash handler, which will:
-        // - apply physics reaction
-        // - apply HP/Fuel (if damageWindowOpen)
-        // - set cooldown
+        // Let the central crash handler do physics + HP/Fuel + cooldown, etc.
         TriggerCrash(hitDirection, crashDuration, impulseMag, torqueMag, sev01, contactPointWS, damageWindowOpen);
     }
+
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
     {
@@ -7295,6 +7468,10 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        // NEW: if we're already crashing or reorienting, ignore new crash logic entirely.
+        if (IsCrashInvulnerable)
+            return;
+
         // --- NEW: skip crash logic if obstacle has active forcefield immunity ---
         var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
         if (immunity != null && immunity.IsImmune) return;
@@ -7345,6 +7522,9 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
         }
 
+        int rootId = collision.collider.transform.root.GetInstanceID();
+        _recentCrashRootTime[rootId] = Time.time;
+        _closeCallTracking.Remove(rootId);
 
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
@@ -7397,6 +7577,10 @@ public class CarController : MonoBehaviour
                 return;
         }
 
+        // NEW: if we're already crashing or reorienting, ignore new crash logic entirely.
+        if (IsCrashInvulnerable)
+            return;
+
         var immunity = other.GetComponentInParent<LaunchImmunityMarker>();
         if (immunity != null && immunity.IsImmune) return;
 
@@ -7436,6 +7620,10 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipHonk, contactPoint, crashSfxVolume);
         else
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
+
+        int rootId = other.transform.root.GetInstanceID();
+        _recentCrashRootTime[rootId] = Time.time;
+        _closeCallTracking.Remove(rootId);
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
         if (damageWindowOpen)
@@ -7567,6 +7755,7 @@ public class CarController : MonoBehaviour
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
     public float CurrentFuel => currentFuel;
     public bool IsOutOfFuel => isOutOfFuel;
+    public bool IsOutOfHP => isOutOfHP;
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;
@@ -7575,7 +7764,6 @@ public class CarController : MonoBehaviour
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
 }
-
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CarForcefield.cs
@@ -9538,7 +9726,7 @@ public class GameManager_Racing : MonoBehaviour
             return;
 
         // Finalize run only when out of fuel AND forward/overall speed is tiny
-        if (!_currencyAwarded && carController.IsOutOfFuel)
+        if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
             float forwardSpeed = 0f;
             float speed = 0f;
@@ -13808,31 +13996,42 @@ public class ThrownObstacle : MonoBehaviour
             }
         }
 
-        if (collision.collider.TryGetComponent<CarController>(out var car))
+        // If collided with a car, apply crash/damage now (non-explosive should still hurt)
+        var car = other.GetComponentInParent<CarController>();
+        if (car != null)
         {
-            _hasImpacted = true;
+            // If suppressed by forcefield, skip applying crash/damage to the car
+            if (Time.time < _suppressExplodeUntil)
+            {
+                // spawn a harmless impact VFX and deactivate
+                SpawnImpactVFX(transform.position, Vector3.up);
+                ExplodeOrDeactivate();
+                return;
+            }
 
             // Compute impact speed from relative velocity
             float impactSpeed = collision.relativeVelocity.magnitude;
 
-            // Clamp to car's expected range
-            impactSpeed = Mathf.Clamp(impactSpeed, car.MinImpactSpeed, car.MaxImpactSpeed); // if min/max are public/internal, or just use your own clamp
+            // Clamp into the car's expected crash speed range
+            float min = car.MinImpactSpeed;
+            float max = car.MaxImpactSpeed;
+            impactSpeed = Mathf.Clamp(impactSpeed, min, max);
 
-            // Hit direction: from obstacle toward car → impulse on car
+            // Direction from projectile toward car → impulse pushes car away
             Vector3 hitDir = (car.transform.position - transform.position).normalized;
 
-            // Contact point
+            // Best available contact point
             Vector3 contactPoint = collision.contactCount > 0
                 ? collision.GetContact(0).point
                 : car.transform.position;
 
-            // Convert impactSpeed → severity 0..1 using the same mapping as CarController
-            float severity = Mathf.InverseLerp(car.MinImpactSpeed, car.MaxImpactSpeed, impactSpeed);
+            // Map impact speed to 0..1 severity like CarController does
+            float severity = Mathf.InverseLerp(min, max, impactSpeed);
 
-            // Let the car handle the full crash (physics + HP/Fuel + FX)
+            // Let the car handle EVERYTHING: physics, HP/fuel, SFX, cooldown, etc.
             car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
-
         }
+
 
         // For all other cases treat as arrival
         _hasImpacted = true;

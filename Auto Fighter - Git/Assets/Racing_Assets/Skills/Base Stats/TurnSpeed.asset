@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 1
+  perLevelAdd: 2
   uiPosition: {x: 75, y: 75}
   revealedAtStart: 0
   progressiveUnlocks:

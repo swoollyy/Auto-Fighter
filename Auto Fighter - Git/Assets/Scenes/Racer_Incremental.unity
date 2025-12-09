@@ -784,6 +784,134 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &305780350
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 305780351}
+  - component: {fileID: 305780352}
+  m_Layer: 0
+  m_Name: Audio
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &305780351
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 305780350}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 804777575}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!82 &305780352
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 305780350}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 8300000, guid: 661a69b156089bd4fba461baaa1ecf47, type: 3}
+  m_PlayOnAwake: 1
+  m_Volume: 0.091
+  m_Pitch: 1
+  Loop: 1
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1 &399070301
 GameObject:
   m_ObjectHideFlags: 0
@@ -1215,17 +1343,17 @@ MonoBehaviour:
   offset: {x: 0, y: 4.52, z: -4.29}
   cameraPitch: 35.4
   cam: {fileID: 661794728}
-  defaultFOV: 60
+  defaultFOV: 50
   overrideDefaultFOVFromCamera: 1
   fovLerpSpeed: 0.03
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 0
-  fovSpeedMax: 10
+  fovSpeedMax: 13
   fovAtMinSpeed: 50
-  fovAtMaxSpeed: 70
-  speedFovSmooth: 2.6
-  positionFollowSpeed: 3.24
+  fovAtMaxSpeed: 120
+  speedFovSmooth: 3.25
+  positionFollowSpeed: 4.67
   rotationFollowSpeed: 13.89
   rotationLag: 4.75
   boostVFXObject: {fileID: 115066103}
@@ -1235,7 +1363,7 @@ MonoBehaviour:
   boostFovRampOut: 1.88
   enableZRoll: 1
   invertZRoll: 0
-  zRollScale: 0.16
+  zRollScale: 0.18
   zRollYawRateDivisor: 86
   driftInfluence: 2.34
   maxRollDegrees: 1.6
@@ -1499,6 +1627,7 @@ GameObject:
   - component: {fileID: 796779776}
   - component: {fileID: 796779777}
   - component: {fileID: 796779775}
+  - component: {fileID: 796779778}
   m_Layer: 14
   m_Name: TrackGen
   m_TagString: Untagged
@@ -1950,10 +2079,10 @@ MonoBehaviour:
   goldGlobalScale: 1
   coinSpacing: 3.9
   maxActiveCoins: 50
-  minSpawnDistanceAhead: 50
-  maxSpawnDistanceAhead: 50
+  minSpawnDistanceAhead: 20
+  maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 60
+  initialPreSpawnDistance: 150
   baseSpawnChance: 0.375
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2081,13 +2210,13 @@ MonoBehaviour:
     extraLateralPadding: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  obstacleSpacing: 4
-  maxActiveObstacles: 25
-  minSpawnDistanceAhead: 30
-  maxSpawnDistanceAhead: 80
-  initialPreSpawnDistance: 40
-  despawnBehindDistance: 15
-  distanceJitter: 3.5
+  obstacleSpacing: 4.6
+  maxActiveObstacles: 20
+  minSpawnDistanceAhead: 20
+  maxSpawnDistanceAhead: 150
+  initialPreSpawnDistance: 150
+  despawnBehindDistance: 20
+  distanceJitter: 4.1
   spawnChancePerSlot: 0.35
   globalSpawnChanceByDistance:
     serializedVersion: 2
@@ -2155,12 +2284,12 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   playerTransform: {fileID: 0}
   fuelPrefab: {fileID: 4645873251185170008, guid: 403c3ff804b0c8c439a0b011150f59cd, type: 3}
-  pickupSpacing: 13
+  pickupSpacing: 12
   maxActivePickups: 5
-  minSpawnDistanceAhead: 60
-  maxSpawnDistanceAhead: 60
+  minSpawnDistanceAhead: 30
+  maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 80
+  initialPreSpawnDistance: 150
   baseSpawnChance: 0
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2217,10 +2346,10 @@ MonoBehaviour:
   hpPrefab: {fileID: 4645873251185170008, guid: eecceaf21c3d53543bd78025c6e420a4, type: 3}
   pickupSpacing: 47
   maxActivePickups: 2
-  minSpawnDistanceAhead: 60
-  maxSpawnDistanceAhead: 60
+  minSpawnDistanceAhead: 30
+  maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 80
+  initialPreSpawnDistance: 150
   baseSpawnChance: 0
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2260,6 +2389,98 @@ MonoBehaviour:
   updateInterval: 0.25
   distanceJitter: 2.75
   verboseDebug: 0
+--- !u!114 &796779778
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796779766}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 76b36d7ee5cb72147ad7e995d5ff3d45, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  trackGenerator: {fileID: 796779767}
+  playerTransform: {fileID: 0}
+  icePathParent: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+  minIcePathLength: 5
+  maxIcePathLength: 25
+  icePathWidth: 1.1
+  icePathSpacing: 45
+  spawnChance: 0.562
+  spawnChanceByDistance:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.3
+      inSlope: 0
+      outSlope: 0.39999998
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.7
+      inSlope: 0.39999998
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  maxActiveIcePaths: 7
+  minSpawnDistanceAhead: 80
+  maxSpawnDistanceAhead: 150
+  despawnBehindDistance: 30
+  initialPreSpawnDistance: 200
+  baseLateralOffsetFraction: 0
+  maxLateralSway: 1.96
+  swayFrequency: 0.08
+  swayIntensityCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  segmentsPerMeter: 3.25
+  heightOffset: 0.0000001
+  iceMaterial: {fileID: 2100000, guid: f34365c4120c80241b3771827c67fc66, type: 2}
+  uvTiling: 0.2
+  iceGroundSurfaceTemplate: {fileID: 2078359054}
+  roadLayer:
+    serializedVersion: 2
+    m_Bits: 24576
+  boostAccumulationRate: 0.03
+  maxSpeedBoost: 39
+  boostDecayDelay: 1.03
+  boostDecayRate: 1.67
+  useSmoothing: 1
+  smoothingSubdivisionsPerSegment: 6
+  updateInterval: 0.2
+  verboseDebug: 1
 --- !u!1 &804777573
 GameObject:
   m_ObjectHideFlags: 0
@@ -2299,6 +2520,7 @@ MonoBehaviour:
   thrownObstacleDirector: {fileID: 1127221276}
   trackFuelSpawner: {fileID: 796779776}
   trackHPSpawner: {fileID: 796779777}
+  trackIcePathSpawner: {fileID: 796779778}
   mainCam: {fileID: 661794728}
   cameraFollow: {fileID: 661794730}
   enableCrashScreenShake: 1
@@ -2374,7 +2596,8 @@ Transform:
   m_LocalPosition: {x: -0.5816178, y: 3.0540447, z: 3.3584247}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 305780351}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &828558039
@@ -4113,12 +4336,12 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
   enabledSpawning: 1
-  minPlayerSpeed: 2.96
-  spawnCooldownSeconds: 4.16
+  minPlayerSpeed: 3.31
+  spawnCooldownSeconds: 5.45
   minLeadDistance: 5
   maxLeadDistance: 29
   maxCurvatureHorizonScale: 0.65
-  crossSpeedRange: {x: 5, y: 11}
+  crossSpeedRange: {x: 4, y: 11}
   crossSpeedMultiplierCurve:
     serializedVersion: 2
     m_Curve:
@@ -4143,7 +4366,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  obstacleScaleRange: {x: 1, y: 2.2}
+  obstacleScaleRange: {x: 1, y: 2.7}
   sizeCurve:
     serializedVersion: 2
     m_Curve:
@@ -4173,21 +4396,21 @@ MonoBehaviour:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 19
-      inSlope: -9.525442
-      outSlope: -9.525442
+      value: 0
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0.4125
+      outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 4
-      inSlope: -9.622645
-      outSlope: -9.622645
+      value: 1
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
-      inWeight: 0.14999998
+      inWeight: 0
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
@@ -4197,18 +4420,18 @@ MonoBehaviour:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0.9
-      inSlope: -0.09524648
-      outSlope: -0.09524648
+      value: 0
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0.21666667
+      outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.05
-      inSlope: -0.55
-      outSlope: -0.55
+      value: 1
+      inSlope: 0
+      outSlope: 0
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -4481,6 +4704,95 @@ MonoBehaviour:
   accelerationMultiplier: 0.9
   turnSpeedMultiplier: 1.8
   dragMultiplier: 2
+--- !u!1001 &1579674944
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 1674245470730250863, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: boostDecayDelay
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 1674245470730250863, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: maxSpeedMultiplierCap
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 1674245470730250863, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: baseMaxSpeedMultiplier
+      value: 1.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1674245470730250863, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: maxSpeedMultiplierIncreaseRate
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 3945844441968544140, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_Name
+      value: Ice Patch
+      objectReference: {fileID: 0}
+    - target: {fileID: 6589223409559689223, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: dragMultiplier
+      value: 0.64
+      objectReference: {fileID: 0}
+    - target: {fileID: 6589223409559689223, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: maxSpeedMultiplier
+      value: 6.23
+      objectReference: {fileID: 0}
+    - target: {fileID: 6589223409559689223, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: turnSpeedMultiplier
+      value: 1.81
+      objectReference: {fileID: 0}
+    - target: {fileID: 6589223409559689223, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: accelerationMultiplier
+      value: 0.96
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -5.750227
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 36.67901
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7161957547952217995, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
 --- !u!1 &1589862219
 GameObject:
   m_ObjectHideFlags: 0
@@ -5501,6 +5813,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 086ac5e5c4cf8304980831ad000488e7, type: 3}
+--- !u!114 &2078359054 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6589223409559689223, guid: c6a8e0208b461c74cbe350f53bd580e1, type: 3}
+  m_PrefabInstance: {fileID: 1579674944}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 392f2a5971013a341b2e673cd62d9d06, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &2110202237
 GameObject:
   m_ObjectHideFlags: 0
@@ -6399,3 +6722,4 @@ SceneRoots:
   - {fileID: 828558042}
   - {fileID: 1127221277}
   - {fileID: 294822566}
+  - {fileID: 1579674944}

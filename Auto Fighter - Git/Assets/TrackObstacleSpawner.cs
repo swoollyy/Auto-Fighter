@@ -279,7 +279,6 @@ public class TrackObstacleSpawner : MonoBehaviour
         float jitter = Random.Range(-distanceJitter, distanceJitter);
         float sampleDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
 
-        // Pick which obstacle type we want at this distance
         GameObject chosenPrefab = ChooseObstaclePrefab(sampleDist);
         if (chosenPrefab == null)
             return;
@@ -308,19 +307,15 @@ public class TrackObstacleSpawner : MonoBehaviour
 
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
         {
-            // Re-fetch type for per-type tweaks
             ObstacleType t = GetChosenTypeForDistance(sampleDist);
             float extraHeight = t != null ? t.extraHeightOffset : 0f;
             float extraPad = t != null ? t.extraLateralPadding : 0f;
 
-            // Orientation: align to road normal, face along path
             Quaternion rot = Quaternion.LookRotation(flatForward, hit.normal);
             Transform parent = obstacleParent ? obstacleParent : transform;
 
-            // Lateral placement (based on right vector derived from path tangent)
             Vector3 centered = hit.point;
-            float rawLateral = Vector3.Dot((pos - centered), right); // pos already had random lateral
-                                                                     // Clamp lateral if extra padding requested
+            float rawLateral = Vector3.Dot((pos - centered), right);
             float clampedUsable = usable;
             if (extraPad != 0f)
                 clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
@@ -328,18 +323,64 @@ public class TrackObstacleSpawner : MonoBehaviour
             float finalLateral = Mathf.Clamp(rawLateral, -clampedUsable, clampedUsable);
             Vector3 spawnPos = centered + right * finalLateral;
 
-            // Initial tiny lift (we'll resolve precisely next)
-            float desiredClearance = Mathf.Max(0f, obstacleHeightOffset + extraHeight);
-            spawnPos += hit.normal * Mathf.Max(0.005f, desiredClearance);
-
-            // Instantiate
+            // Instantiate at ground level first
             GameObject obstacle = Instantiate(chosenPrefab, spawnPos, rot, parent);
 
-            // Final precise placement: resolve any overlap with road, along road normal
-            ResolveGroundPenetration(obstacle, hit.collider, hit.normal);
+            // Get the parent object's renderer bounds (not children)
+            float parentBottomOffset = GetParentBottomOffset(obstacle);
+
+            // Position so the bottom of the parent sits exactly on the ground
+            obstacle.transform.position = hit.point + hit.normal * parentBottomOffset + right * finalLateral;
 
             _obstaclesBySlot[slot] = obstacle;
         }
+    }
+
+    /// <summary>
+    /// Gets the offset needed to place the parent object's bottom at world origin.
+    /// Only considers the parent's renderer/collider, not children.
+    /// </summary>
+    private float GetParentBottomOffset(GameObject obj)
+    {
+        if (obj == null) return 0f;
+
+        Transform root = obj.transform;
+        float lowestPoint = 0f;
+        bool foundAny = false;
+
+        // Check parent's renderer only
+        Renderer parentRenderer = root.GetComponent<Renderer>();
+        if (parentRenderer != null)
+        {
+            Bounds localBounds = parentRenderer.bounds;
+            float bottom = localBounds.min.y - root.position.y; // local space bottom
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        // Check parent's colliders only
+        Collider[] parentColliders = root.GetComponents<Collider>();
+        foreach (var col in parentColliders)
+        {
+            if (col == null || col.isTrigger) continue;
+
+            Bounds localBounds = col.bounds;
+            float bottom = localBounds.min.y - root.position.y; // local space bottom
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        // If nothing found, return a small default
+        if (!foundAny) return 0.05f;
+
+        // Return the absolute value (distance from pivot to bottom)
+        return Mathf.Abs(lowestPoint);
     }
 
 

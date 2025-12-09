@@ -20,6 +20,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private ThrownObstacleDirector thrownObstacleDirector;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
+    [SerializeField] private TrackIcePathSpawner trackIcePathSpawner;
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -740,6 +741,7 @@ public class GameManager_Racing : MonoBehaviour
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        trackIcePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)

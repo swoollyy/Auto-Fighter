@@ -520,12 +520,9 @@ public sealed class CarForcefield : MonoBehaviour
         GameObject go = new GameObject("SFX_Forcefield_" + (clip ? clip.name : "null"));
         go.transform.position = pos;
         var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f; // 3D
+        src.spatialBlend = 0f; // 3D
         src.clip = clip;
         src.volume = Mathf.Clamp01(volume);
-        src.rolloffMode = AudioRolloffMode.Logarithmic;
-        src.minDistance = 0.5f;
-        src.maxDistance = 50f;
         src.playOnAwake = false;
         src.loop = false;
         src.dopplerLevel = 0f;
