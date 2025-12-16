@@ -40,6 +40,17 @@ public sealed class CrossObstacleDirector : MonoBehaviour
     [Tooltip("Random multiplier applied to the spawn cooldown each time an obstacle is spawned.")]
     [SerializeField] private Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
 
+    [Header("Spawn Randomness (Improved)")]
+    [SerializeField, Tooltip("Extra random delay applied BEFORE the first ever spawn (seconds).")]
+    private Vector2 initialSpawnDelayRange = new Vector2(1.5f, 4.5f);
+
+    [SerializeField, Tooltip("If true, crossing distance uses the actual path length from side to side (recommended).")]
+    private bool useActualPathLengthForPrediction = true;
+
+    [Header("Cross Path Length")]
+    [SerializeField, Tooltip("How far beyond each road edge the obstacle starts/ends (meters). Higher = longer path.")]
+    private float offRoadPadding = 12f;  // was hardcoded via + 5.0f
+
     [Header("Curvature Sampling")]
     [SerializeField] private float curvatureSampleLength = 12f;
     [SerializeField] private float highCurvatureThreshold = 0.35f;
@@ -61,6 +72,8 @@ public sealed class CrossObstacleDirector : MonoBehaviour
     private float _smoothedSpeed;
     private float _nextCarSearchTime;
     private const float CarSearchInterval = 0.5f;
+    private bool _hasEverSpawned;
+    private bool _wasBelowSpeed = true;
 
     private Vector3 _lastDebugStart;
     private Vector3 _lastDebugEnd;
@@ -80,7 +93,16 @@ public sealed class CrossObstacleDirector : MonoBehaviour
             trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
             trackGenerator.OnTrackGeneratedSuccessfully += HandleTrackGenerated;
         }
+
         RebuildSplineCache();
+
+        // NEW: prevent predictable “spawns immediately at game start”
+        _hasEverSpawned = false;
+        _wasBelowSpeed = true;
+        _cooldownRemain = UnityEngine.Random.Range(
+            Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
+            Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
+        );
     }
 
     void OnDisable()
@@ -127,6 +149,19 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         float rawSpeed = car.CurrentSpeed;
         float smoothFactor = 1f - Mathf.Exp(-Time.deltaTime * 6f);
         _smoothedSpeed = Mathf.Lerp(_smoothedSpeed, rawSpeed, smoothFactor);
+
+        bool below = _smoothedSpeed < minPlayerSpeed;
+
+        // NEW: when we FIRST become eligible, delay a bit so it’s not “instant at threshold”
+        if (_wasBelowSpeed && !below && !_hasEverSpawned)
+        {
+            _cooldownRemain = Mathf.Max(_cooldownRemain, UnityEngine.Random.Range(
+                Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
+                Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
+            ));
+        }
+
+        _wasBelowSpeed = below;
 
         _cooldownRemain -= Time.deltaTime;
         if (_cooldownRemain <= 0f) TrySpawnPredictive();
@@ -175,7 +210,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
             );
         }
 
-        float effectiveCooldown = spawnCooldownSeconds * intervalScale;
+        float effectiveCooldown = spawnCooldownSeconds * intervalScale * cooldownJitter;
 
         float curvatureFactor = SampleCurvature(sCar, curvatureSampleLength);
         bool highCurvature = curvatureFactor > highCurvatureThreshold;
@@ -185,7 +220,13 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         float crossSpeed = baseCrossSpeed * speedMul;
 
         float halfRoad = trackGenerator.RoadWidth * 0.5f;
-        float traverseLength = 2f * halfRoad + 2f * 0.75f;
+
+        // NEW: match prediction to actual path length (start is beyond left edge, end beyond right edge)
+        float offTrackOffset = halfRoad + Mathf.Max(0f, offRoadPadding);
+        float traverseLength = useActualPathLengthForPrediction
+            ? (2f * offTrackOffset)
+            : (2f * halfRoad + 2f * 0.75f);
+
         float tCross = traverseLength / Mathf.Max(0.5f, crossSpeed);
         float tCenter = tCross * 0.5f;
         if (highCurvature)
@@ -273,7 +314,6 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         bool startLeft = UnityEngine.Random.value < 0.5f;
         float sideSign = startLeft ? -1f : 1f;
-        float offTrackOffset = halfRoad + 5.0f;
 
         // Create horizontal positions first
         Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
@@ -300,8 +340,8 @@ public sealed class CrossObstacleDirector : MonoBehaviour
             actualMoveDir = lateral;
         Quaternion spawnRot = Quaternion.LookRotation(actualMoveDir, up);
 
-        // Instantiate at start position
         var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
+        _hasEverSpawned = true;
         inst.transform.localScale *= finalScale;
 
         // **NEW: Get parent's bottom offset and adjust position**

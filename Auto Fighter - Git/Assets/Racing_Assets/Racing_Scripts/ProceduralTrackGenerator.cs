@@ -781,7 +781,6 @@ public class ProceduralTrackGenerator : MonoBehaviour
             verts[L] = leftPos;
             verts[R] = rightPos;
 
-            normals[L] = normals[R] = Vector3.up;
 
             if (i > 0)
                 length += Vector3.Distance(path[i], path[i - 1]);
@@ -818,11 +817,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
         {
             name = "ProceduralRoadMesh",
             vertices = verts,
-            normals = normals,
             uv = uvs,
             uv2 = uv2s,
             triangles = tris
         };
+        m.RecalculateNormals();
+        m.RecalculateTangents();
+        m.RecalculateBounds();
 
         _meshFilter.sharedMesh = m;
         if (_meshCollider != null)

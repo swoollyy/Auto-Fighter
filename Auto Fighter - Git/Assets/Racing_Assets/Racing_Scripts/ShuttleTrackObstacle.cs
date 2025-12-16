@@ -25,6 +25,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Maximum extra speed added by the fling (clamps the boost).")]
     [SerializeField] private float impactMaxExtraSpeed = 10f;
 
+    [Header("Physics Jump Rotation")]
+    [Tooltip("Enable cartoony random rotation when jumping to physics.")]
+    [SerializeField] private bool enableJumpRotation = true;
+    [Tooltip("Base angular velocity magnitude applied on jump (degrees/sec).")]
+    [SerializeField] private Vector2 jumpAngularSpeedRange = new Vector2(180f, 360f);
+    [Tooltip("How much impact severity scales the angular velocity (0 = constant, 1 = full scale).")]
+    [SerializeField, Range(0f, 1f)] private float impactAngularScale = 0.7f;
+
     [Header("Motion")]
     [SerializeField] private float speed = 5f;
     [Tooltip("If true, choose a random speed from speedRange at startup.")]
@@ -54,6 +62,23 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Maximum fraction of the full usable lane width used for this shuttle's travel path.")]
     [SerializeField, Range(0.1f, 1f)] private float maxPathFraction = 1f;
 
+    [Header("Screen Shake")]
+    [SerializeField] private bool enableScreenShake = true;
+
+    [SerializeField] private float moveShakeIntensity = 0.14f;
+    [SerializeField] private float moveShakeFrequency = 20f;
+
+    [SerializeField] private float waitShakeIntensity = 0.10f;
+    [SerializeField] private float waitShakeFrequency = 14f;
+
+    [SerializeField] private float snapShakeIntensity = 0.22f;
+    [SerializeField] private float snapShakeFrequency = 28f;
+
+    [SerializeField] private float shakeMaxDistance = 35f;
+    [SerializeField] private float shakeFullIntensityDistance = 6f;
+
+    private bool _didSnapShakeThisWait = false;
+
     // runtime
     private Vector3 _originWS;
     private Vector3 _leftWS, _rightWS;
@@ -61,17 +86,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private bool _waiting;
     private float _halfRoad, _selfHalf;
     private Vector3 _impactDir;
+    private float _impactSpeed; // NEW: track impact speed for rotation scaling
     private bool _hasImpactDir;
     private bool _convertedToPhysics;
 
-    // NEW: cached Rigidbody reference so we can default to kinematic until conversion
     private Rigidbody _rb;
-
-    // NEW: bottom offset (world-min relative to transform.position.y)
     private float _bottomOffset = 0f;
     private float _safeMargin = 0.02f;
 
-    // NEW: configurable layers that cause conversion to dynamic physics (set in inspector)
     [Header("Collision → Convert To Physics")]
     [Tooltip("When colliding with any collider on these layers the shuttle will drop its scripted path and convert to physics.")]
     [SerializeField] private LayerMask convertOnCollisionLayers = ~0;
@@ -80,7 +102,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Minimum movement speed (m/s) used when transferring scripted motion into Rigidbody velocity on conversion.")]
     [SerializeField] private float minTransferVelocity = 0.25f;
 
-    // NEW: overlap-based detection fallback (helps detect collisions while kinematic/moved-by-transform)
+    [Header("Collision Priority Frame Delay")]
+    [Tooltip("Extra FixedUpdate frames to wait after detecting collision before converting to physics. Gives more time for car crash logic.")]
+    [SerializeField, Range(0, 5)] private int collisionDelayFrames = 2;
+
     [Tooltip("Enable an overlap-check fallback that detects colliders touching this obstacle even when it's moved via transform.")]
     [SerializeField] private bool enableOverlapDetection = true;
     [Tooltip("How often (seconds) to run the overlap check. Lower = more responsive, higher = cheaper.")]
@@ -121,14 +146,16 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Multiplier applied to the original light intensity while moving. 1 = same, 2 = double, etc.")]
     [SerializeField] private float travelLightIntensityMultiplier = 1.5f;
 
-    // NEW: track previous position / last velocity to produce a physical velocity on conversion
     private Vector3 _prevPosition;
     private Vector3 _lastVelocity;
 
-    // cached child colliders used for overlap sampling
     private Collider[] _childColliders;
     private float _overlapTimer;
     private float _baseLightIntensity = 3.5f;
+
+    // NEW: collision tracking for delayed conversion
+    private int _pendingCollisionFrames = 0;
+    private Collider _pendingCollider;
 
     public void SetGenerator(ProceduralTrackGenerator gen) => trackGenerator = gen;
 
@@ -137,7 +164,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (!trackGenerator)
             trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
 
-        // Ensure a Rigidbody exists ...
         _rb = GetComponent<Rigidbody>();
         if (_rb == null)
         {
@@ -168,10 +194,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _halfRoad = DetermineHalfRoadWidth();
         _selfHalf = DetermineSelfHalfWidth();
 
-        // capture child colliders for overlap checks
         _childColliders = GetComponentsInChildren<Collider>();
 
-        // Compute world-space half height of this obstacle (use renderers first, then colliders)
         float halfHeightWorld = 0f;
         var rends = GetComponentsInChildren<Renderer>();
         if (rends != null && rends.Length > 0)
@@ -187,29 +211,21 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 if (c != null)
                     halfHeightWorld = Mathf.Max(halfHeightWorld, c.bounds.extents.y);
         }
-        // Fallback sensible value if nothing found
         if (halfHeightWorld <= 0f) halfHeightWorld = 0.5f;
 
-        // compute bottom offset (lowest world min relative to transform.position.y)
         _bottomOffset = ComputeBottomOffset();
 
-        // small clearance so object never touches the ground
         float safeMargin = _safeMargin;
 
-        // Prefer projecting the origin onto the road surface first so lateral offsets are computed from a valid surface height.
         LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        // use upOffset = halfHeightWorld + some padding so the raycast originates above the object top
         float upOffsetForCast = halfHeightWorld + 0.5f;
         _originWS = SpawnUtils.ProjectOntoSurface(_originWS, out _, upOffsetForCast, 25f, roadMask);
 
-        // Compute left/right using the track tangent when possible (more robust than using transform.right)
         ComputeEdgeWorldPositions(out _leftWS, out _rightWS);
 
-        // Project the lateral edge points down to surface (prefer Road layer) using the half-height based upOffset
         _leftWS = SpawnUtils.ProjectOntoSurface(_leftWS, out _, upOffsetForCast, 25f, roadMask);
         _rightWS = SpawnUtils.ProjectOntoSurface(_rightWS, out _, upOffsetForCast, 25f, roadMask);
 
-        // Randomize path length (shrink from both sides toward midpoint)
         if (randomizePathLength)
         {
             float minF = Mathf.Clamp01(minPathFraction);
@@ -227,18 +243,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
             _rightWS = Vector3.Lerp(mid, _rightWS, f);
         }
 
-        // Decide initial start/target directly from the (possibly randomized) edges
         Vector3 startWS = startOnLeft ? _leftWS : _rightWS;
         Vector3 targetWS = startOnLeft ? _rightWS : _leftWS;
 
-        // Re-project these endpoints to keep them cleanly on the road surface
         startWS = SpawnUtils.ProjectOntoSurface(startWS, out Vector3 startNormal, upOffsetForCast, 25f, roadMask);
         _targetWS = SpawnUtils.ProjectOntoSurface(targetWS, out Vector3 targetNormal, upOffsetForCast, 25f, roadMask);
 
-        // Choose a Y that keeps the object snug on the terrain at the start point.
         float startDesiredY = startWS.y - _bottomOffset + safeMargin;
 
-        // Set start position and target XZ; Y will be set to same startDesiredY (we move only in XZ)
         transform.position = new Vector3(startWS.x, startDesiredY, startWS.z);
         _targetWS = new Vector3(_targetWS.x, startDesiredY, _targetWS.z);
 
@@ -268,7 +280,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
             }
         }
 
-        if (_waiting) return;
+        if (_waiting)
+        {
+            if (enableScreenShake)
+            {
+                CarController.RequestWorldShake(transform.position, waitShakeIntensity, waitShakeFrequency,
+                    shakeMaxDistance, shakeFullIntensityDistance);
+            }
+            return;
+        }
 
         // >>> TRAVEL LIGHT STATE WHILE MOVING <<<
         if (useTelegraphLight && useTravelLightDuringMotion && telegraphLight)
@@ -280,10 +300,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         float step = Mathf.Max(0.01f, speed) * Time.deltaTime;
 
-        // move XZ only
         Vector2 curXZ = new Vector2(transform.position.x, transform.position.z);
         Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
         Vector2 nextXZ = Vector2.MoveTowards(curXZ, targetXZ, step);
+
+        if (enableScreenShake)
+        {
+            CarController.RequestWorldShake(transform.position, moveShakeIntensity, moveShakeFrequency,
+                shakeMaxDistance, shakeFullIntensityDistance);
+        }
 
         float sampleY = SampleTerrainHeightUnderXZ(nextXZ, Mathf.Abs(_bottomOffset) + 1f);
         float newY = sampleY - _bottomOffset + _safeMargin;
@@ -297,10 +322,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         if ((new Vector2(transform.position.x, transform.position.z) - targetXZ).sqrMagnitude <= 0.0001f)
         {
-            // Flip the shuttle target
             _targetWS = (_targetWS == _leftWS) ? _rightWS : _leftWS;
 
-            // Randomize speed for this leg, if enabled
             if (useRandomSpeed)
             {
                 float sMin = Mathf.Min(speedRange.x, speedRange.y);
@@ -308,7 +331,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 speed = Random.Range(sMin, sMax);
             }
 
-            // Determine wait duration for this endpoint
             float pauseTime = waitAtEndSeconds;
 
             if (useRandomWaitAtEnd)
@@ -319,7 +341,32 @@ public class ShuttleTrackObstacle : MonoBehaviour
             }
 
             if (pauseTime > 0f)
+            {
+                if (enableScreenShake)
+                {
+                    CarController.RequestWorldShake(transform.position, snapShakeIntensity, snapShakeFrequency,
+                        shakeMaxDistance, shakeFullIntensityDistance);
+                }
+
+                _didSnapShakeThisWait = true;
                 StartCoroutine(WaitThenResume(pauseTime));
+            }
+        }
+    }
+
+    private void FixedUpdate()
+    {
+        if (_convertedToPhysics) return;
+
+        // NEW: Process pending collision delay
+        if (_pendingCollisionFrames > 0)
+        {
+            _pendingCollisionFrames--;
+            if (_pendingCollisionFrames <= 0)
+            {
+                // Time's up - actually convert to physics now
+                ConvertToPhysicsOnHit();
+            }
         }
     }
 
@@ -330,6 +377,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         bool telegraphOn = false;
         bool launchWarningFired = false;
 
+        // NEW: Turn off light when waiting starts
         if (telegraphLight)
             telegraphLight.enabled = false;
 
@@ -345,10 +393,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
             float clampedElapsed = Mathf.Min(elapsed, totalWait);
             float timeRemaining = totalWait - clampedElapsed;
 
-            // Handle telegraph light behavior
             if (useTelegraphLight && telegraphLight)
             {
-                // Turn on telegraph light at the configured start fraction
                 if (!telegraphOn && clampedElapsed >= telegraphStartTime)
                 {
                     telegraphOn = true;
@@ -357,7 +403,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
                     telegraphLight.intensity = _baseLightIntensity;
                 }
 
-                // Normal lerp phase (only if we haven't hit the final warning yet)
                 if (telegraphOn && !launchWarningFired)
                 {
                     float tNorm = Mathf.Clamp01((clampedElapsed - telegraphStartTime) / telegraphDuration);
@@ -365,7 +410,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
                     telegraphLight.intensity = _baseLightIntensity;
                 }
 
-                // FINAL WARNING WINDOW: fire right before launch
                 if (!launchWarningFired &&
                     launchWarningLeadTime > 0f &&
                     timeRemaining <= launchWarningLeadTime)
@@ -388,7 +432,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
             yield return null;
         }
 
-        // Right when movement actually starts, turn off the telegraph light.
+        // NEW: Turn off light when movement starts
         if (telegraphLight)
             telegraphLight.enabled = false;
 
@@ -399,7 +443,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     {
         float roadWidth = (overrideRoadWidth > 0f)
             ? overrideRoadWidth
-            : (trackGenerator ? trackGenerator.RoadWidth : 8f); // fallback
+            : (trackGenerator ? trackGenerator.RoadWidth : 8f);
         return Mathf.Max(0.1f, roadWidth) * 0.5f;
     }
 
@@ -421,7 +465,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 var rend = rends[i];
                 if (!rend) continue;
 
-                // Ignore FX / telegraph meshes
                 if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) &&
                     rend.CompareTag(bottomOffsetIgnoreTag))
                     continue;
@@ -454,10 +497,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         Debug.Log($"[ShuttleTrackObstacle] Converting to physics on {gameObject.name}");
 
-        // Stop scripted movement
         enabled = false;
         _waiting = false;
 
+        // NEW: ENSURE LIGHT IS OFF when converting to physics
         if (telegraphLight)
             telegraphLight.enabled = false;
 
@@ -468,9 +511,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _rb.useGravity = true;
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
-        _rb.constraints = RigidbodyConstraints.None;
+        _rb.constraints = RigidbodyConstraints.None; // Allow rotation
 
-        // Base transfer velocity from shuttle motion
         Vector3 transferVel = _lastVelocity;
         if (transferVel.magnitude < minTransferVelocity)
             transferVel = transform.forward * Mathf.Max(minTransferVelocity, speed * 0.5f);
@@ -502,10 +544,28 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
             _hasImpactDir = false;
         }
-        // --- END IMPACT FLING ---
 
         _rb.velocity = transferVel;
         _rb.position += Vector3.up * 0.01f;
+
+        // NEW: Add cartoony random rotation based on impact
+        if (enableJumpRotation)
+        {
+            float impactSeverity = Mathf.Clamp01(_impactSpeed / 20f); // normalize impact speed to 0-1
+            float angularMag = Mathf.Lerp(jumpAngularSpeedRange.x, jumpAngularSpeedRange.y,
+                                          Mathf.Lerp(0.5f, 1f, impactSeverity * impactAngularScale));
+
+            // Create random rotation axis (favor Y and roll for cartoony effect)
+            Vector3 randomAxis = new Vector3(
+                Random.Range(-0.5f, 0.5f),  // some pitch
+                Random.Range(0.5f, 1f),     // always some yaw
+                Random.Range(-1f, 1f)       // lots of roll
+            ).normalized;
+
+            // Apply angular velocity in degrees/sec (Unity converts internally)
+            _rb.angularVelocity = randomAxis * (angularMag * Mathf.Deg2Rad);
+        }
+
         _rb.WakeUp();
         Physics.SyncTransforms();
     }
@@ -552,6 +612,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
             if (l == road || l == terrain) return;
         }
 
+        // NEW: Store impact data
         Vector3 dir = Vector3.zero;
         if (_lastVelocity.sqrMagnitude > 1e-6f)
         {
@@ -567,9 +628,18 @@ public class ShuttleTrackObstacle : MonoBehaviour
         }
 
         _impactDir = dir;
+        _impactSpeed = collision.relativeVelocity.magnitude;
         _hasImpactDir = true;
 
-        ConvertToPhysicsOnHit();
+        // NEW: Start delayed conversion to give car crash logic time to fire
+        _pendingCollider = collision.collider;
+        _pendingCollisionFrames = collisionDelayFrames;
+
+        // If delay is 0, convert immediately
+        if (collisionDelayFrames <= 0)
+        {
+            ConvertToPhysicsOnHit();
+        }
     }
 
     private void OnTriggerEnter(Collider other)
@@ -597,9 +667,17 @@ public class ShuttleTrackObstacle : MonoBehaviour
             dir = transform.forward;
 
         _impactDir = dir;
+        _impactSpeed = _lastVelocity.magnitude;
         _hasImpactDir = true;
 
-        ConvertToPhysicsOnHit();
+        // NEW: Start delayed conversion
+        _pendingCollider = other;
+        _pendingCollisionFrames = collisionDelayFrames;
+
+        if (collisionDelayFrames <= 0)
+        {
+            ConvertToPhysicsOnHit();
+        }
     }
 
     private void TryMakeOtherDynamic(Collider other)
@@ -658,6 +736,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
             if (hit.isTrigger) continue;
 
             Debug.Log($"[ShuttleTrackObstacle] Overlap hit {hit.name} (layer={hit.gameObject.layer}) – converting.");
+
+            // NEW: Set impact data for overlap case
+            _impactDir = _lastVelocity.sqrMagnitude > 1e-6f ? _lastVelocity.normalized : transform.forward;
+            _impactSpeed = _lastVelocity.magnitude;
+            _hasImpactDir = true;
+
             ConvertToPhysicsOnHit();
             return;
         }
@@ -665,7 +749,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
     private void ComputeEdgeWorldPositions(out Vector3 leftWS, out Vector3 rightWS)
     {
-        Vector3 lateral = transform.right; // fallback
+        Vector3 lateral = transform.right;
 
         if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
         {

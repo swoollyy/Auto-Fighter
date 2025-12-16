@@ -1,12 +1,13 @@
-﻿using UnityEngine;
-using DG.Tweening;
-using UnityEngine.Rendering.PostProcessing; // PPSv2
+﻿using DG.Tweening;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 [DisallowMultipleComponent]
 public class PostFXController : MonoBehaviour
 {
     [Header("Volume / Profile")]
-    [SerializeField] private PostProcessVolume volume;
+    [SerializeField] private Volume volume;
 
     [Header("Vignette")]
     [SerializeField, Range(0f, 1f)] private float vignetteMax = 0.55f;
@@ -29,16 +30,26 @@ public class PostFXController : MonoBehaviour
 
     void Awake()
     {
-        if (!volume) volume = GetComponent < PostProcessVolume>();
-        if (!volume || !volume.profile)
+        if (!volume) volume = GetComponent<Volume>();
+        if (!volume)
         {
-            Debug.LogWarning("[PostFXController_PPSv2] Assign a PostProcessVolume with a profile.");
+            Debug.LogWarning("[PostFXController_URP] Assign a Volume.");
             return;
         }
 
-        volume.profile.TryGetSettings(out _vig);
-        volume.profile.TryGetSettings(out _ca);
-        volume.profile.TryGetSettings(out _bloom); // NEW
+                // Make sure we have a runtime-editable profile (don’t mutate the shared asset).
+        if (volume.profile == null && volume.sharedProfile != null)
+            volume.profile = Instantiate(volume.sharedProfile);
+                if (volume.profile == null)
+                    {
+            Debug.LogWarning("[PostFXController_URP] Volume needs a profile (sharedProfile or profile).");
+                        return;
+                    }
+
+        EnsureOverridesExist(volume.profile);
+        volume.profile.TryGet(out _vig);
+        volume.profile.TryGet(out _ca);
+        volume.profile.TryGet(out _bloom);
 
         if (_vig != null)
         {
@@ -95,8 +106,15 @@ public class PostFXController : MonoBehaviour
             });
     }
 
-    // NEW: bloom pulse for explosions
-    public void BloomPulse(float peakFraction, float upTime, float downTime)
+        private static void EnsureOverridesExist(VolumeProfile profile)
+    {
+        if (!profile.TryGet<Vignette>(out _)) profile.Add<Vignette>(true);
+        if (!profile.TryGet<ChromaticAberration>(out _)) profile.Add<ChromaticAberration>(true);
+        if (!profile.TryGet<Bloom>(out _)) profile.Add<Bloom>(true);
+    }
+
+// NEW: bloom pulse for explosions
+public void BloomPulse(float peakFraction, float upTime, float downTime)
     {
         if (_bloom == null) return;
         peakFraction = Mathf.Clamp01(peakFraction);

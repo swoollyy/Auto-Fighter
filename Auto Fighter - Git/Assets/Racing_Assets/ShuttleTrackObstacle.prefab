@@ -67,7 +67,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -177,6 +177,9 @@ MonoBehaviour:
   impactHorizontalMultiplier: 1.08
   impactUpwardMultiplier: 1.11
   impactMaxExtraSpeed: 0
+  enableJumpRotation: 1
+  jumpAngularSpeedRange: {x: 180, y: 360}
+  impactAngularScale: 0.7
   speed: 8.56
   useRandomSpeed: 1
   speedRange: {x: 4, y: 7}
@@ -188,11 +191,21 @@ MonoBehaviour:
   randomizePathLength: 1
   minPathFraction: 0.404
   maxPathFraction: 1
+  enableScreenShake: 1
+  moveShakeIntensity: 0.09
+  moveShakeFrequency: 10
+  waitShakeIntensity: 0.04
+  waitShakeFrequency: 7
+  snapShakeIntensity: 0.6
+  snapShakeFrequency: 30
+  shakeMaxDistance: 14
+  shakeFullIntensityDistance: 3
   convertOnCollisionLayers:
     serializedVersion: 2
     m_Bits: 2049
   ignoreRoadAndTerrain: 1
   minTransferVelocity: 0
+  collisionDelayFrames: 3
   enableOverlapDetection: 1
   overlapCheckInterval: 0.05
   telegraphLight: {fileID: 5657507797861707123}
@@ -203,11 +216,11 @@ MonoBehaviour:
   launchParticles: {fileID: 65271612249896794}
   launchAudio: {fileID: 0}
   launchWarningLeadTime: 0.6
-  launchWarningIntensityMultiplier: 3
+  launchWarningIntensityMultiplier: 5
   launchWarningColor: {r: 1, g: 0.1563284, b: 0.015686274, a: 1}
   useTravelLightDuringMotion: 1
   travelLightColor: {r: 1, g: 0.05345215, b: 0.015686274, a: 1}
-  travelLightIntensityMultiplier: 1.62
+  travelLightIntensityMultiplier: 10
   bottomOffsetIgnoreTag: NoTouch
 --- !u!1 &4135711352931010964
 GameObject:
@@ -219,6 +232,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7127820065994800289}
   - component: {fileID: 5657507797861707123}
+  - component: {fileID: 372435811853544846}
   m_Layer: 2
   m_Name: Point Light
   m_TagString: NoTouch
@@ -235,7 +249,7 @@ Transform:
   m_GameObject: {fileID: 4135711352931010964}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0.81, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -253,7 +267,7 @@ Light:
   m_Type: 2
   m_Shape: 0
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_Intensity: 2.85
+  m_Intensity: 10
   m_Range: 6.24
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -303,6 +317,29 @@ Light:
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
   m_ShadowAngle: 0
+--- !u!114 &372435811853544846
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4135711352931010964}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Version: 3
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_LightLayerMask: 1
+  m_RenderingLayers: 1
+  m_CustomShadowLayers: 0
+  m_ShadowLayerMask: 1
+  m_ShadowRenderingLayers: 1
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
 --- !u!1001 &4425680454581617879
 PrefabInstance:
   m_ObjectHideFlags: 0

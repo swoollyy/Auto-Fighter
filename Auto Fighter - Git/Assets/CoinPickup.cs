@@ -53,7 +53,8 @@ public class CoinPickup : MonoBehaviour
         // Optional spinning so it's more readable in world
         if (rotateSpeed != 0f)
         {
-            transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
+            
+            transform.GetChild(0).transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
         }
     }
 

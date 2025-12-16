@@ -20,7 +20,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private ThrownObstacleDirector thrownObstacleDirector;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
-    [SerializeField] private TrackIcePathSpawner trackIcePathSpawner;
+    [SerializeField] private IcePathSpawner icePathSpawner;
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -103,6 +103,10 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private AudioClip depositCoinsClip;
     [SerializeField] private float depositCoinsVolume = 1f;
 
+    [Header("Run End Timing")]
+    [SerializeField, Tooltip("Extra delay after the car is fully stopped before showing the Run Complete screen.")]
+    private float runEndSettleDelay = .9f;
+
     // runtime
     private Coroutine _closeCallCR;
 
@@ -111,6 +115,10 @@ public class GameManager_Racing : MonoBehaviour
     private bool runEnded = false;
     private bool runStarted = false;
     private Coroutine beginRunRoutine;
+
+    private Coroutine _finalizeRunCR;
+    private bool _finalizePending;
+    private float _stopConditionBeganRealtime;
 
     private float runDistanceMeters = 0f;
     private Rigidbody _carRb;
@@ -217,15 +225,35 @@ public class GameManager_Racing : MonoBehaviour
         {
             float forwardSpeed = 0f;
             float speed = 0f;
-            if (_carRb != null)
+
+            if (_carRb != null && carInstance != null)
             {
                 speed = _carRb.velocity.magnitude;
                 forwardSpeed = Vector3.Dot(_carRb.velocity, carInstance.transform.forward);
             }
 
-            if (Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f)
+            bool stopped = Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+
+            if (stopped)
             {
-                FinalizeRun();
+                if (!_finalizePending)
+                {
+                    _finalizePending = true;
+                    _stopConditionBeganRealtime = Time.realtimeSinceStartup;
+
+                    if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+                    _finalizeRunCR = StartCoroutine(CoFinalizeRunAfterDelay());
+                }
+            }
+            else
+            {
+                // If the car moves again (tiny bounce, slope, etc.), cancel the pending finalize.
+                _finalizePending = false;
+                if (_finalizeRunCR != null)
+                {
+                    StopCoroutine(_finalizeRunCR);
+                    _finalizeRunCR = null;
+                }
             }
         }
 
@@ -648,7 +676,41 @@ public class GameManager_Racing : MonoBehaviour
         _crashSlowMoRoutine = null;
     }
 
+    private IEnumerator CoFinalizeRunAfterDelay()
+    {
+        float endTime = _stopConditionBeganRealtime + Mathf.Max(0f, runEndSettleDelay);
 
+        // Wait in REALTIME so slowmo / Time.timeScale does not mess with the delay.
+        while (Time.realtimeSinceStartup < endTime)
+        {
+            // Abort if conditions changed
+            if (_currencyAwarded || carController == null || carInstance == null || _carRb == null)
+            {
+                _finalizePending = false;
+                _finalizeRunCR = null;
+                yield break;
+            }
+
+            // If we started moving again, abort
+            float speed = _carRb.velocity.magnitude;
+            float forwardSpeed = Vector3.Dot(_carRb.velocity, carInstance.transform.forward);
+            bool stopped = Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+
+            if (!stopped)
+            {
+                _finalizePending = false;
+                _finalizeRunCR = null;
+                yield break;
+            }
+
+            yield return null;
+        }
+
+        _finalizePending = false;
+        _finalizeRunCR = null;
+
+        FinalizeRun();
+    }
 
     private bool TrackIsReady(ProceduralTrackGenerator gen)
     {
@@ -741,7 +803,8 @@ public class GameManager_Racing : MonoBehaviour
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        trackIcePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)

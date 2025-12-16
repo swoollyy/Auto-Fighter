@@ -49,3 +49,19 @@ Update Mode: updateDependencies
 
 The following packages were updated:
   com.unity.timeline from version 1.7.6 to 1.7.7
+
+=== Fri Dec 12 18:20:44 2025
+
+Packages were changed.
+Update Mode: updateDependencies
+
+The following packages were updated:
+  com.unity.cinemachine from version 2.10.0 to 2.10.3
+
+=== Fri Dec 12 18:20:44 2025
+
+Packages were changed.
+Update Mode: mergeDefaultDependencies
+
+The following packages were added:
+  com.unity.cinemachine@2.10.3

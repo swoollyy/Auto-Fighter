@@ -21,6 +21,17 @@ public class CameraFollow : MonoBehaviour
     [SerializeField] private float defaultFOV = 60f;
     [SerializeField] private bool overrideDefaultFOVFromCamera = true;
 
+    [Header("FOV Control")]
+    [SerializeField] private KeyCode fovIncreaseKey = KeyCode.Tab;
+
+    [Header("Map Peek (Hold Key)")]
+    [SerializeField] private float mapPeekMultiplier = 1.25f;   // 1.15–1.35 feels good
+    [SerializeField] private float mapPeekMaxFOV = 95f;         // safety cap
+    [SerializeField] private float mapPeekRampIn = 0.10f;       // seconds
+    [SerializeField] private float mapPeekRampOut = 0.18f;      // seconds
+
+
+
     [Header("FOV Animation")]
     [Tooltip("Curve speed for FOV lerp. Higher = faster.")]
     [SerializeField] private float fovLerpSpeed = 6f;
@@ -51,6 +62,8 @@ public class CameraFollow : MonoBehaviour
     private int shakeVibrato = 10;
     private float shakeRandomness = 0f;
     private float shakeSeed;
+    private Coroutine _mapPeekCR;
+    private bool _mapPeekHeld;
 
     // FOV animation state
     private float _startFOV;
@@ -119,7 +132,9 @@ public class CameraFollow : MonoBehaviour
     private bool _carIsBoosting;
     private float _boostEndTime;
     private float _boostPostDuration;
-
+    // Map peek cached values (prevents stacking)
+    private float _mapPeekPressBaseline;
+    private float _mapPeekPressTarget;
 
     private void Awake()
     {
@@ -411,19 +426,24 @@ public class CameraFollow : MonoBehaviour
         UpdateFOV(Time.deltaTime);
 
         // ★ Auto speed FOV (only when not manually animating) and not suppressed by ZoomPulse
-        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null && !_suppressAutoFov)
+        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null)
         {
             float speed = car.CurrentSpeed;
             float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
             float target = Mathf.Lerp(fovAtMinSpeed, fovAtMaxSpeed, norm);
 
-            // Smooth approach
+            // ALWAYS keep the baseline up to date
             _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, target, speedFovSmooth * Time.deltaTime);
-            cam.fieldOfView = _speedFovCurrent;
+
+            // Only APPLY it when we are not suppressed by peek/boost pulses
+            if (!_suppressAutoFov)
+                cam.fieldOfView = _speedFovCurrent;
         }
 
         // record previous forward for next frame yaw-rate estimate
         _prevTargetForwardFlat = targetForwardFlat;
+
+        HandleMapPeekInput();
     }
 
     public void SetTarget(Transform t)
@@ -468,6 +488,79 @@ public class CameraFollow : MonoBehaviour
         _fovAnimating = true;
     }
 
+    private void HandleMapPeekInput()
+    {
+        if (cam == null) return;
+
+        if (Input.GetKeyDown(fovIncreaseKey))
+        {
+            _mapPeekHeld = true;
+
+            if (_mapPeekCR != null) StopCoroutine(_mapPeekCR);
+
+            // Freeze APPLY (baseline still updates in LateUpdate)
+            _suppressAutoFov = true;
+
+            // Baseline decides the TARGET (prevents stacking)
+            _mapPeekPressBaseline = GetBaselineFov();
+            _mapPeekPressTarget = Mathf.Min(mapPeekMaxFOV, _mapPeekPressBaseline * mapPeekMultiplier);
+
+            // Start from CURRENT FOV (prevents ugly snap when re-pressing mid-return)
+            float from = cam.fieldOfView;
+
+            _mapPeekCR = StartCoroutine(MapPeekHoldCoroutine(
+                fromFOV: from,
+                toFOV: _mapPeekPressTarget,
+                rampIn: Mathf.Max(0.01f, mapPeekRampIn)
+            ));
+        }
+
+        if (Input.GetKeyUp(fovIncreaseKey))
+        {
+            _mapPeekHeld = false;
+
+            if (_mapPeekCR != null) StopCoroutine(_mapPeekCR);
+
+            _mapPeekCR = StartCoroutine(MapPeekReturnCoroutine(
+                fromFOV: cam.fieldOfView,
+                duration: Mathf.Max(0.01f, mapPeekRampOut)
+            ));
+        }
+    }
+
+
+
+
+    private IEnumerator MapPeekCoroutine(float fromFOV, float toFOV, float duration, bool holdUntilRelease)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + duration;
+
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, toFOV, eased);
+            yield return null;
+        }
+
+        cam.fieldOfView = toFOV;
+
+        if (holdUntilRelease)
+        {
+            // keep holding this FOV while key is held
+            while (_mapPeekHeld)
+                yield return null;
+        }
+
+
+        // re-enable auto only after we fully returned
+        if (!holdUntilRelease)
+            _suppressAutoFov = false;
+
+        _mapPeekCR = null;
+    }
+
     public void ResetFieldOfView(float duration = 0f)
     {
         SetFieldOfView(defaultFOV, duration);
@@ -479,6 +572,29 @@ public class CameraFollow : MonoBehaviour
         if (cam == null) return;
         if (totalDuration <= 0f || Mathf.Approximately(deltaFOV, 0f)) return;
         StartCoroutine(ZoomPulseCoroutine(Mathf.Abs(deltaFOV), Mathf.Max(0.05f, totalDuration)));
+    }
+
+    private IEnumerator MapPeekHoldCoroutine(float fromFOV, float toFOV, float rampIn)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + rampIn;
+
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, toFOV, eased);
+            yield return null;
+        }
+
+        cam.fieldOfView = toFOV;
+
+        // HOLD while key is held
+        while (_mapPeekHeld)
+            yield return null;
+
+        // If release happened while we were holding, LateUpdate KeyUp will start return coroutine.
+        _mapPeekCR = null;
     }
 
     private IEnumerator ZoomPulseCoroutine(float deltaFOV, float totalDuration)
@@ -525,6 +641,33 @@ public class CameraFollow : MonoBehaviour
         _speedFovCurrent = autoFovBefore;
         _suppressAutoFov = false;
         _boostZoomCR = null;
+    }
+
+    private float GetBaselineFov()
+    {
+        // If speed-FOV is on, baseline is the current speed-smoothed value.
+        // Otherwise baseline is the configured default.
+        return (useSpeedBasedFOV ? _speedFovCurrent : defaultFOV);
+    }
+
+    private IEnumerator MapPeekReturnCoroutine(float fromFOV, float duration)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + duration;
+
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+
+            float liveBaseline = GetBaselineFov();
+            cam.fieldOfView = Mathf.Lerp(fromFOV, liveBaseline, eased);
+            yield return null;
+        }
+
+        cam.fieldOfView = GetBaselineFov();
+        _suppressAutoFov = false;
+        _mapPeekCR = null;
     }
 
     private void UpdateFOV(float dt)

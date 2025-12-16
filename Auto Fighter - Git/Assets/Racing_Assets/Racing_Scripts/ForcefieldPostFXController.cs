@@ -1,17 +1,16 @@
 ﻿using System.Collections;
 using UnityEngine;
-using UnityEngine.Rendering.PostProcessing; // PPSv2
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 [DisallowMultipleComponent]
 public sealed class ForcefieldPostFXController : MonoBehaviour
 {
-    [Header("Setup (PPSv2)")]
-    [SerializeField] private PostProcessVolume volume;
     [SerializeField, Tooltip("Try to find any PostProcessVolume in the scene if none assigned.")]
     private bool autoFindVolume = true;
 
-    [Header("Chromatic Aberration (PPSv2)")]
-    [SerializeField, Range(0f, 1f)] private float chromaticIntensity = 0.6f;
+        [Header("Setup (URP Volume)")]
+    [SerializeField] private Volume volume;
 
     [Header("Lens Distortion (PPSv2 Funky)")]
     [SerializeField, Tooltip("[-100..100] (negative bulges outward, positive pin-cushions)")]
@@ -22,6 +21,9 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     [Range(-1f, 1f)] private float lensCenterX = 0f;
     [SerializeField, Tooltip("[-1..1] normalized lens center Y")]
     [Range(-1f, 1f)] private float lensCenterY = 0f;
+
+    [Header("Chromatic")]
+    [SerializeField, Range(0f, 1f)] private float chromaticIntensity = 0.55f;
 
     [Header("Funky Wobble (optional)")]
     [SerializeField] private bool wobbleCenter = true;
@@ -42,7 +44,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     [Header("Cleanup")]
     [SerializeField] private bool resetOnDisable = true;
 
-    // PPSv2 overrides
     private ChromaticAberration _ca;
     private LensDistortion _ld;
 
@@ -51,7 +52,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     void Awake()
     {
         if (!volume && autoFindVolume)
-            volume = FindObjectOfType<PostProcessVolume>();
+            volume = FindObjectOfType<Volume>();
 
         EnsureSettings();
         SnapToBase();
@@ -242,11 +243,10 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         SetLD(0f, 1f, 0f, 0f);
     }
 
-    // PPSv2 setters
     private void SetCA(float intensity)
     {
         if (_ca == null) return;
-        _ca.enabled.value = true;
+
         _ca.intensity.overrideState = true;
         _ca.intensity.value = Mathf.Clamp01(intensity);
     }
@@ -254,7 +254,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     private void SetLD(float intensity, float scale, float cx, float cy)
     {
         if (_ld == null) return;
-        _ld.enabled.value = true;
 
         _ld.intensity.overrideState = true;
         _ld.intensity.value = Mathf.Clamp(intensity, -100f, 100f);
@@ -262,49 +261,52 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         _ld.scale.overrideState = true;
         _ld.scale.value = Mathf.Clamp(scale, 0.01f, 1f);
 
-        _ld.centerX.overrideState = true;
-        _ld.centerX.value = Mathf.Clamp(cx, -1f, 1f);
-
-        _ld.centerY.overrideState = true;
-        _ld.centerY.value = Mathf.Clamp(cy, -1f, 1f);
+        _ld.center.overrideState = true;
+        _ld.center.value = new Vector2(
+            Mathf.Clamp(cx, -1f, 1f),
+            Mathf.Clamp(cy, -1f, 1f)
+        );
     }
 
     private bool EnsureSettings()
     {
-        if (!volume || !volume.profile) return false;
+        if (!volume) return false;
 
-        // Chromatic Aberration
-        if (!volume.profile.TryGetSettings(out _ca))
+        // Create a runtime instance so we don't mutate the asset
+        if (volume.profile == null && volume.sharedProfile != null)
+            volume.profile = Instantiate(volume.sharedProfile);
+        if (volume.profile == null) return false;
+
+        EnsureOverridesExist(volume.profile);
+
+        volume.profile.TryGet(out _ca);
+        volume.profile.TryGet(out _ld);
+
+        if (_ca != null)
         {
-            _ca = volume.profile.AddSettings<ChromaticAberration>();
+            _ca.intensity.overrideState = true;
+            _ca.intensity.value = 0f;
         }
-        _ca.enabled.overrideState = true;
-        _ca.enabled.value = true;
-        _ca.intensity.overrideState = true;
-        _ca.intensity.value = 0f;
-        _ca.fastMode.overrideState = true;
-        _ca.fastMode.value = true;
 
-        // Lens Distortion
-        if (!volume.profile.TryGetSettings(out _ld))
+        if (_ld != null)
         {
-            _ld = volume.profile.AddSettings<LensDistortion>();
+            _ld.intensity.overrideState = true;
+            _ld.intensity.value = 0f;
+
+            _ld.scale.overrideState = true;
+            _ld.scale.value = 1f;
+
+            _ld.center.overrideState = true;
+            _ld.center.value = Vector2.zero;
         }
-        _ld.enabled.overrideState = true;
-        _ld.enabled.value = true;
 
-        _ld.intensity.overrideState = true;
-        _ld.intensity.value = 0f;
-
-        _ld.scale.overrideState = true;
-        _ld.scale.value = 1f;
-
-        _ld.centerX.overrideState = true;
-        _ld.centerX.value = 0f;
-
-        _ld.centerY.overrideState = true;
-        _ld.centerY.value = 0f;
-
-        return true;
+        return (_ca != null) || (_ld != null);
     }
+
+    private static void EnsureOverridesExist(VolumeProfile profile)
+    {
+        if (!profile.TryGet<ChromaticAberration>(out _)) profile.Add<ChromaticAberration>(true);
+        if (!profile.TryGet<LensDistortion>(out _)) profile.Add<LensDistortion>(true);
+    }
+
 }
