@@ -25,6 +25,15 @@ public class CarController : MonoBehaviour
     [SerializeField] private bool useAutoAlignToVelocity = false;
     [SerializeField] private float autoAlignStrength = 3f;
 
+    [Header("Ice Steering Ramp")]
+    [SerializeField] private bool enableIceSteerRamp = true;
+    [SerializeField] private float iceSteerRampUpRate = 2.5f;     // how fast steering "builds"
+    [SerializeField] private float iceSteerRampDownRate = 6.0f;   // how fast it falls off when you stop steering
+    [SerializeField, Range(0f, 1f)] private float iceSteerMinFactor = 0.15f; // starting steering on ice
+    [SerializeField, Range(0f, 1f)] private float iceSteerFlipPenalty = 0.35f;
+
+
+
     [Header("Drift Unlock")]
     [SerializeField] private bool requireDriftUnlock = true; // if true, drift only works after skill unlocked
     private bool driftUnlocked; // runtime flag
@@ -295,6 +304,8 @@ public class CarController : MonoBehaviour
     private float _shakeFreq;
     private float _shakeBlendAmp;
     private Vector3 _lastAppliedShakeOffset = Vector3.zero;
+    private float _iceSteerCharge01 = 0f;
+    private int _iceSteerSign = 0;
 
     // Runtime boost state
     private float _boostCooldownTimer;
@@ -461,6 +472,14 @@ public class CarController : MonoBehaviour
     private float minSpeedForSteerTraction = 0.1f;
     [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
     private float lateralFrictionWhileSteering = 3.5f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
+    private float steerTractionBlendIn = 10f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
+    private float steerTractionBlendOut = 14f;
+
+    private float _steerTractionBlend = 0f;
 
     [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
     private float steerRollingAccelCoastMultiplier = 1f;
@@ -637,7 +656,7 @@ public class CarController : MonoBehaviour
 
         currentHP = Mathf.Max(1f, maxHP);
 
-
+        groundCheckLayers = groundLayers;
         RefreshSkillEffects();
         ApplySkillEffects();
 
@@ -1051,7 +1070,7 @@ public class CarController : MonoBehaviour
             {
                 Debug.Log("[CarController] Boost request ignored: Boost locked in inspector/skill tree.");
                 ClearBoostOverride();
-                goto SpeedCapClamp;
+                return;
             }
 
             // Cooldowns: separate for normal vs drift
@@ -1061,7 +1080,8 @@ public class CarController : MonoBehaviour
                 {
                     Debug.Log($"[CarController] Drift boost ignored: cooldown {_driftBoostCooldownTimer:F2}s remaining.");
                     ClearBoostOverride();
-                    goto SpeedCapClamp;
+                    return;
+
                 }
             }
             else
@@ -1070,7 +1090,8 @@ public class CarController : MonoBehaviour
                 {
                     Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
                     ClearBoostOverride();
-                    goto SpeedCapClamp;
+                    return;
+
                 }
             }
 
@@ -1080,7 +1101,8 @@ public class CarController : MonoBehaviour
             {
                 Debug.Log("[CarController] Boost request ignored: not enough fuel.");
                 ClearBoostOverride();
-                goto SpeedCapClamp;
+                return;
+
             }
 
             float impulseForce = isOverride ? _boostOverrideForce : boostForce;
@@ -1116,18 +1138,19 @@ public class CarController : MonoBehaviour
             ClearBoostOverride();
         }
 
-    SpeedCapClamp:
-        float cap = GetCurrentSpeedCap();
-        Vector3 v = rb.velocity;
-
-        // Clamp only horizontal (XZ) so vertical jump velocity never steals forward speed
-        Vector3 flat = new Vector3(v.x, 0f, v.z);
-        float flatSpeed = flat.magnitude;
-
-        if (flatSpeed > cap && flatSpeed > 0.0001f)
+        if (rb != null)
         {
-            Vector3 flatClamped = flat * (cap / flatSpeed);
-            rb.velocity = new Vector3(flatClamped.x, v.y, flatClamped.z);
+            float cap = GetCurrentSpeedCap();
+
+            Vector3 v = rb.velocity;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up); // ignore vertical
+            float horizSpeed = horiz.magnitude;
+
+            if (horizSpeed > cap && horizSpeed > 0.0001f)
+            {
+                Vector3 horizClamped = horiz * (cap / horizSpeed);
+                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+            }
         }
 
     }
@@ -1196,6 +1219,40 @@ public class CarController : MonoBehaviour
 
     private void HandleInput()
     {
+
+        if (isOutOfHP)
+        {
+            steeringInput = 0f;
+            driftCharge = 0f;
+            isDrifting = false;
+            driftButtonHeld = false;
+
+            _boostRequested = false;
+            _boostOverrideActive = false;
+
+            _inputsSuppressedThisFrame = true;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = true;
+            return;
+        }
+
+        if (isOutOfFuel)
+        {
+            driftCharge = 0f;
+            isDrifting = false;
+            driftButtonHeld = false;
+
+            _boostRequested = false;
+            _boostOverrideActive = false;
+
+            _inputsSuppressedThisFrame = true;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = false;
+
+            // IMPORTANT: do NOT return; we still want to read/update steeringInput below.
+        }
+
+
         if (_malfunctionTimer > 0f)
             _malfunctionTimer -= Time.deltaTime;
         if (_malfunctionCooldownRemain > 0f)
@@ -1683,7 +1740,31 @@ public class CarController : MonoBehaviour
 
         if (Mathf.Abs(steeringInput) > 0.001f)
         {
-            float steerAmount = steeringInput * steerDirection * steerSpeed * speedSteerMul * driftSteerMul * Time.deltaTime;
+            float iceSteerMul = 1f;
+
+            if (enableIceSteerRamp && _onIceSurface && speed > 0.25f)
+            {
+                float absIn = Mathf.Abs(steeringInput);
+                int signNow = absIn > 0.001f ? (steeringInput > 0f ? 1 : -1) : 0;
+
+                // If we flick directions, knock charge down a bit (prevents instant snap)
+                if (signNow != 0 && _iceSteerSign != 0 && signNow != _iceSteerSign)
+                    _iceSteerCharge01 = Mathf.Max(0f, _iceSteerCharge01 - iceSteerFlipPenalty);
+
+                if (signNow != 0) _iceSteerSign = signNow;
+
+                // Build while steering, decay when not
+                float target = absIn > 0.05f ? 1f : 0f;
+                float rate = target > _iceSteerCharge01 ? iceSteerRampUpRate : iceSteerRampDownRate;
+                _iceSteerCharge01 = Mathf.MoveTowards(_iceSteerCharge01, target, rate * Time.deltaTime);
+
+                // Convert charge -> usable steering factor
+                iceSteerMul = Mathf.Lerp(iceSteerMinFactor, 1f, _iceSteerCharge01);
+            }
+
+            float steerAmount = steeringInput * steerDirection * steerSpeed * speedSteerMul * driftSteerMul * iceSteerMul * Time.deltaTime;
+
+
             transform.Rotate(0f, steerAmount, 0f, Space.Self);
 
             if (isDrifting && speed > 0.1f)
@@ -1719,6 +1800,9 @@ public class CarController : MonoBehaviour
     {
         if (rb == null) return;
 
+        if (isOutOfFuel || isOutOfHP)
+            return;
+
         Vector3 forward = transform.forward;
         bool forwardKey = Input.GetKey(KeyCode.W);
         bool reverseKey = Input.GetKey(KeyCode.S);
@@ -1743,6 +1827,19 @@ public class CarController : MonoBehaviour
             bool accelerating = forwardKey;
             bool brakingOrReverse = reverseKey;
             bool nearIdleSpeed = speed <= idleSpeedThreshold + 0.001f;
+
+            bool wantsSteerTraction =
+    groundedNow &&
+    enableSteerTraction &&
+    !driftButtonHeld &&
+    Mathf.Abs(steeringInput) > 0.001f &&
+    !accelerating &&
+    !brakingOrReverse;
+
+            float blendSpeed = wantsSteerTraction ? steerTractionBlendIn : steerTractionBlendOut;
+            float blendTarget = wantsSteerTraction ? 1f : 0f;
+            _steerTractionBlend = Mathf.MoveTowards(_steerTractionBlend, blendTarget, blendSpeed * Time.fixedDeltaTime);
+
 
             if (!driftPhysicsActive)
             {
@@ -1791,7 +1888,7 @@ public class CarController : MonoBehaviour
                         }
 
                         // Steer rolling traction while coasting
-                        if (enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
+                        if (_steerTractionBlend > 0.0001f && enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
                         {
                             Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
                             Vector3 vel = rb.velocity;
@@ -1799,15 +1896,16 @@ public class CarController : MonoBehaviour
 
                             if (flatVel.sqrMagnitude > (minSpeedForSteerTraction * minSpeedForSteerTraction))
                             {
-                                Vector3 blendedDir =
-                                    Vector3.Slerp(flatVel.normalized, flatForward, steerTractionReorientRate * Time.fixedDeltaTime)
-                                    .normalized;
+                                float t = steerTractionReorientRate * _steerTractionBlend * Time.fixedDeltaTime;
+                                Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, flatForward, t).normalized;
 
                                 Vector3 fwdComp = flatForward * Vector3.Dot(flatVel, flatForward);
                                 Vector3 lateral = flatVel - fwdComp;
-                                lateral *= Mathf.Exp(-lateralFrictionWhileSteering * Time.fixedDeltaTime);
-                                float mag = (fwdComp + lateral).magnitude;
 
+                                float latDamp = lateralFrictionWhileSteering * _steerTractionBlend;
+                                lateral *= Mathf.Exp(-latDamp * Time.fixedDeltaTime);
+
+                                float mag = (fwdComp + lateral).magnitude;
                                 Vector3 newFlat = blendedDir * mag;
                                 rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
                             }
@@ -1816,7 +1914,7 @@ public class CarController : MonoBehaviour
                             if (_onIceSurface && !applySteerRollingAccelOnIce)
                                 coastMul = 0f;
 
-                            rb.AddForce(flatForward * (steerRollingAccel * coastMul), ForceMode.Acceleration);
+                            rb.AddForce(flatForward * (steerRollingAccel * coastMul * _steerTractionBlend), ForceMode.Acceleration);
                         }
                     }
                 }
@@ -1939,8 +2037,16 @@ public class CarController : MonoBehaviour
         else
         {
             float cap = GetCurrentSpeedCap();
-            if (speed > cap + 0.5f)
-                rb.velocity = rb.velocity.normalized * cap;
+
+            Vector3 v = rb.velocity;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+            float horizSpeed = horiz.magnitude;
+
+            if (horizSpeed > cap + 0.5f && horizSpeed > 0.0001f)
+            {
+                Vector3 horizClamped = horiz * (cap / horizSpeed);
+                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+            }
         }
     }
 
@@ -2406,7 +2512,7 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            float lerpSpeed = 8f; // adjust 4-12 for feel
+            float lerpSpeed = surfaceMaxSpeedLerpRate;
             _smoothedSurfaceMaxSpeed = Mathf.Lerp(_smoothedSurfaceMaxSpeed, targetMaxSpeed, lerpSpeed * Time.fixedDeltaTime);
         }
 
@@ -2578,10 +2684,17 @@ public class CarController : MonoBehaviour
 
         if (rb != null)
         {
-            float speed = rb.velocity.magnitude;
             float cap = GetCurrentSpeedCap();
-            if (speed > cap)
-                rb.velocity = rb.velocity.normalized * cap;
+
+            Vector3 v = rb.velocity;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up); // ignore vertical
+            float horizSpeed = horiz.magnitude;
+
+            if (horizSpeed > cap && horizSpeed > 0.0001f)
+            {
+                Vector3 horizClamped = horiz * (cap / horizSpeed);
+                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+            }
         }
 
 #if UNITY_EDITOR
@@ -2687,9 +2800,16 @@ public class CarController : MonoBehaviour
 
     private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)
     {
-        // Preserve vertical component (y)
-        Vector3 vel = rb.velocity;
-        rb.velocity = forwardDir.normalized * newLong + Vector3.up * vel.y;
+        Vector3 v = rb.velocity;
+
+        Vector3 fwd = forwardDir.normalized;
+        Vector3 flat = Vector3.ProjectOnPlane(v, Vector3.up);
+
+        // Keep lateral component on the ground plane
+        Vector3 lateral = flat - fwd * Vector3.Dot(flat, fwd);
+
+        Vector3 newFlat = fwd * newLong + lateral;
+        rb.velocity = new Vector3(newFlat.x, v.y, newFlat.z);
     }
 
     private void UpdateBoostUnlock()
@@ -2731,10 +2851,15 @@ public class CarController : MonoBehaviour
             return;
 
         float impactSpeed = collision.relativeVelocity.magnitude;
+
+
+
         if (impactSpeed < minImpactSpeed)
             return;
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
+
+        Debug.Log($"Impact Speed: {impactSpeed}");
 
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
 
@@ -2749,6 +2874,7 @@ public class CarController : MonoBehaviour
         Vector3 hitDir;
         Vector3 contactPoint = transform.position;
         Vector3 contactNormal = Vector3.up;
+
         if (collision.contactCount > 0)
         {
             var c = collision.GetContact(0);
@@ -2760,6 +2886,15 @@ public class CarController : MonoBehaviour
         {
             hitDir = (transform.position - collision.transform.position).normalized;
         }
+
+        // NOW shuttle calc (uses correct normal)
+        var shuttle = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttle != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttle.GetWorldVelocity();
+            impactSpeed = Mathf.Abs(Vector3.Dot(rel, contactNormal));
+        }
+
 
 
         var otherCol = collision.collider;

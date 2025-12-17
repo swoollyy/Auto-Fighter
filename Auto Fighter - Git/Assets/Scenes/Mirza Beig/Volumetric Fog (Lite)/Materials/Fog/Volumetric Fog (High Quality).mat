@@ -200,8 +200,8 @@ Material:
     - _Raymarch_Additional_Light_Self_Shadow_Steps: 8
     - _Raymarch_Depth_Fade: 0
     - _Raymarch_Depth_Fade_Power: 2
-    - _Raymarch_Distance: 863.87
-    - _Raymarch_Distance_Bias: 0.086
+    - _Raymarch_Distance: 1001.45
+    - _Raymarch_Distance_Bias: 0.119
     - _Raymarch_Height_Falloff: 0.456
     - _Raymarch_Height_Offset: 0
     - _Raymarch_Max_Depth: 0
@@ -256,7 +256,7 @@ Material:
     - _Simplex_Noise_Animation: {r: 0.2, g: 0.2, b: -0.25, a: -0.5}
     - _Simplex_Noise_Offset: {r: 0, g: 0, b: 0, a: 0}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
-    - _Tint: {r: 0.054467782, g: 0.0754717, b: 0.067833915, a: 1}
+    - _Tint: {r: 0.054467782, g: 0.0754717, b: 0.067833915, a: 0.5882353}
     - _Voronoi_Noise_Animation: {r: -0.08, g: 0.2, b: -0.2, a: 1}
     - _Voronoi_Noise_Offset: {r: 0, g: 0, b: 0, a: 45}
   m_BuildTextureStacks: []

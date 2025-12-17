@@ -903,12 +903,17 @@ MonoBehaviour:
   baseMaxSpeed: 3.5
   baseBrakingForce: 0.01
   turnSpeed: 10
-  lowSpeedSteerMultiplier: 7.4
-  highSpeedSteerMultiplier: 1
-  speedForSteerCurve: 5.37
+  lowSpeedSteerMultiplier: 10.3
+  highSpeedSteerMultiplier: 2
+  speedForSteerCurve: 3.45
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
+  enableIceSteerRamp: 1
+  iceSteerRampUpRate: 10
+  iceSteerRampDownRate: 1.83
+  iceSteerMinFactor: 0.755
+  iceSteerFlipPenalty: 0.35
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 2.15
@@ -957,7 +962,7 @@ MonoBehaviour:
   minImpactSpeed: 2.25
   maxImpactSpeed: 8
   minCrashDuration: 1.08
-  maxCrashDuration: 2.86
+  maxCrashDuration: 2.13
   impulsePerUnitSpeed: 1.12
   torquePerUnitSpeed: 18.8
   crashDragMultiplier: 1
@@ -974,7 +979,7 @@ MonoBehaviour:
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
   maxHP: 100
-  hpCrashDamageAtSeverity1: 100.1
+  hpCrashDamageAtSeverity1: 100
   hpRegenPerSecond: 0
   performanceAtZeroHP: 0.831
   degradeStartHPFraction: 0.422
@@ -1047,6 +1052,8 @@ MonoBehaviour:
   steerRollingAccel: 2.25
   minSpeedForSteerTraction: 0.1
   lateralFrictionWhileSteering: 3.5
+  steerTractionBlendIn: 10
+  steerTractionBlendOut: 14
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
   enableCloseCallNearMisses: 1

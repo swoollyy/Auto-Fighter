@@ -52,6 +52,10 @@ public class CrossTrackObstacle : MonoBehaviour
         // Trust director's start/target completely, including Y
         _startWS = startWorld;
         _targetWS = targetWorld;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) { preview.SetEndpoints(_startWS, _targetWS); preview.FadeIn(0.2f); }
+
         speed = Mathf.Max(0.5f, crossSpeed);
 
         _initialDelay = Mathf.Max(0f, delayBeforeMove);
@@ -513,6 +517,9 @@ public class CrossTrackObstacle : MonoBehaviour
         enabled = false;           // disable this script completely
 
         if (_rb == null) return;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) preview.FadeOut(0.2f);
 
         _rb.isKinematic = false;
         _rb.useGravity = true;

@@ -2217,7 +2217,7 @@ MonoBehaviour:
   - id: Boost Ramp
     prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
     baseWeight: 0.25
-    startAtNormalizedDist: 0.0005
+    startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
     extraHeightOffset: -0.5
@@ -2430,7 +2430,7 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 12
   icePathSpacing: 15
-  maxActiveIcePaths: 3
+  maxActiveIcePaths: 5
   minSpawnDistanceAhead: 10
   maxSpawnDistanceAhead: 150
   initialPreSpawnDistance: 150
@@ -2462,7 +2462,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   segmentsPerPath: 4
-  segmentLength: 4.15
+  segmentLength: 2.32
   icePathWidth: 1.16
   maxWiggleAngle: 6.67
   trackFollowStrength: 0.576
@@ -4515,7 +4515,7 @@ MonoBehaviour:
   minLeadDistance: 5
   maxLeadDistance: 29
   maxCurvatureHorizonScale: 0.65
-  crossSpeedRange: {x: 3, y: 13}
+  crossSpeedRange: {x: 5, y: 13}
   crossSpeedMultiplierCurve:
     serializedVersion: 2
     m_Curve:
@@ -4640,7 +4640,7 @@ MonoBehaviour:
   spawnCooldownRandomRange: {x: 0.3, y: 6.9}
   initialSpawnDelayRange: {x: 1.5, y: 4.5}
   useActualPathLengthForPrediction: 1
-  offRoadPadding: 12
+  offRoadPadding: 7
   curvatureSampleLength: 12
   highCurvatureThreshold: 0.35
   enableYawWeightedMisses: 1

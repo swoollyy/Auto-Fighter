@@ -226,6 +226,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _leftWS = SpawnUtils.ProjectOntoSurface(_leftWS, out _, upOffsetForCast, 25f, roadMask);
         _rightWS = SpawnUtils.ProjectOntoSurface(_rightWS, out _, upOffsetForCast, 25f, roadMask);
 
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) { preview.SetEndpoints(_leftWS, _rightWS); preview.FadeIn(0.2f); }
+
         if (randomizePathLength)
         {
             float minF = Mathf.Clamp01(minPathFraction);
@@ -465,19 +468,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 var rend = rends[i];
                 if (!rend) continue;
 
-                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) &&
-                    rend.CompareTag(bottomOffsetIgnoreTag))
+                // PATCH: ignore path preview line renderer when estimating obstacle width
+                if (rend is LineRenderer) continue;
+
+                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) && rend.CompareTag(bottomOffsetIgnoreTag))
                     continue;
 
-                if (!hasBounds)
-                {
-                    wb = rend.bounds;
-                    hasBounds = true;
-                }
-                else
-                {
-                    wb.Encapsulate(rend.bounds);
-                }
+                if (!hasBounds) { wb = rend.bounds; hasBounds = true; }
+                else wb.Encapsulate(rend.bounds);
             }
 
             if (hasBounds)
@@ -486,6 +484,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 approx = widthAlongRight * 0.5f;
             }
         }
+
 
         return Mathf.Max(0f, approx);
     }
@@ -499,6 +498,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         enabled = false;
         _waiting = false;
+
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) preview.FadeOut(0.2f);
 
         // NEW: ENSURE LIGHT IS OFF when converting to physics
         if (telegraphLight)
@@ -794,6 +797,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
         float t = Vector3.Dot(p - a, ab) / abSqr;
         t = Mathf.Clamp01(t);
         return a + ab * t;
+    }
+
+    public Vector3 GetWorldVelocity()
+    {
+        // While still on scripted motion, use the transform-derived velocity.
+        if (!_convertedToPhysics) return _lastVelocity;
+
+        // After conversion, use the real rigidbody velocity.
+        return _rb != null ? _rb.velocity : Vector3.zero;
     }
 
     private float SampleTerrainHeightUnderXZ(Vector2 xz, float upOffset = 2f)
