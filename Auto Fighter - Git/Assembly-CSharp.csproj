@@ -60,161 +60,193 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.62f2\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\Scripts\PostFXController.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\BallShrinkRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\LaunchImmunityMarker.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingSkillTreeManager.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\VolumetricFogRendererFeatureLite.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProceduralTrackGenerator.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventHandler.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\DamagePerBounceRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\VintageTVController.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexShakeA.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\FPSDisplay.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\PowerupPickupTween.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CoinPickup.cs" />
+    <Compile Include="Assets\Scripts\BallElements.cs" />
+    <Compile Include="Assets\Scripts\CharacterStat.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProjectilePool.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\ScoreMultiplierRewardSO.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\EnvMapAnimator.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossTrackObstacle.cs" />
+    <Compile Include="Assets\Scripts\RewardCategory.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireTrailController.cs" />
+    <Compile Include="Assets\Scripts\Druid.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_A.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\ElectricPaddleRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ExhaustVFXController.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01_UGUI.cs" />
+    <Compile Include="Assets\Scripts\PinballUIM.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SimpleScript.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark04.cs" />
+    <Compile Include="Assets\Scripts\EndGame.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\VolumetricFogControllerLite.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ChatController.cs" />
+    <Compile Include="Assets\Scripts\RewardCatalogSO.cs" />
+    <Compile Include="Assets\Scripts\CollectXP.cs" />
+    <Compile Include="Assets\Scripts\IXPNumberSystem.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldPostFXController.cs" />
+    <Compile Include="Assets\Scripts\GrenadeProjectile.cs" />
+    <Compile Include="Assets\Scripts\NukeBumpersPowerup.cs" />
+    <Compile Include="Assets\Scripts\RewardRarity.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillDefinition.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeState.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\DemoController.cs" />
+    <Compile Include="Assets\Scripts\TweenXPNumberSystem.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_DigitValidator.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_FrameRateCounter.cs" />
+    <Compile Include="Assets\DullPad.cs" />
+    <Compile Include="Assets\Scripts\SpeedTrailFollower.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshSpawner.cs" />
+    <Compile Include="Assets\Scripts\CombatSystem.cs" />
+    <Compile Include="Assets\Scripts\DynamicPadManager.cs" />
+    <Compile Include="Assets\Scripts\GrenadeController.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark02.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackGuideBeacon.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\WheelSkidSpawner.cs" />
+    <Compile Include="Assets\Scripts\StatModifier.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\CameraController.cs" />
+    <Compile Include="Assets\Scripts\XPNumberStyleSO.cs" />
+    <Compile Include="Assets\Scripts\Mage.cs" />
+    <Compile Include="Assets\Scripts\GreenPad.cs" />
+    <Compile Include="Assets\Scripts\PortalWarpRewardRuntime.cs" />
+    <Compile Include="Assets\Scripts\PadLightFX.cs" />
+    <Compile Include="Assets\Scripts\BallUIEntry.cs" />
+    <Compile Include="Assets\Scripts\Brawler.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SpawnUtils.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\FPSTest.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\BallGrowRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundRing.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkidMarkSegment.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingObstacle.cs" />
+    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark03.cs" />
+    <Compile Include="Assets\Scripts\CameraFollowSimple.cs" />
+    <Compile Include="Assets\Scripts\Pinball.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundSurface.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs" />
+    <Compile Include="Assets\Scripts\Level Up Rewards\XPGravityRewardSO.cs" />
+    <Compile Include="Assets\Scripts\XPCollectorRegistry.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarTurretController.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireMarkPainter.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldLaunchTag.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\UIManager_Racing.cs" />
+    <Compile Include="Assets\Scripts\PostFXController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackFuelSpawner.cs" />
     <Compile Include="Assets\Scripts\Bumper.cs" />
     <Compile Include="Assets\Scripts\BallXPBar.cs" />
     <Compile Include="Assets\Scripts\Ball.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackHPSpawner.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingSkillTreeManager.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\GrenadeAbilityRewardSO.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProceduralTrackGenerator.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\BallDuplicateRewardSO.cs" />
-    <Compile Include="Assets\TurretUnlockBinding.cs" />
     <Compile Include="Assets\Scripts\BumperElementalState.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventHandler.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\DamagePerBounceRewardSO.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexShakeA.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\IcePath.cs" />
     <Compile Include="Assets\Scripts\RewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\FogPulseColorDriver.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarForcefield.cs" />
     <Compile Include="Assets\Scripts\PinballFlipper.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillType.cs" />
     <Compile Include="Assets\Scripts\PowerupPickup.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillType.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_ExampleScript_01.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMPro_InstructionOverlay.cs" />
-    <Compile Include="Assets\Scripts\BallElements.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexShakeB.cs" />
-    <Compile Include="Assets\Scripts\CharacterStat.cs" />
-    <Compile Include="Assets\TrackObstacleSpawner.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\DropdownSample.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\UIButtonSFX.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexColorCycler.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\FirePaddleRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GameManager_Racing.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\ScoreMultiplierRewardSO.cs" />
-    <Compile Include="Assets\PowerupPickupTween.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\EnvMapAnimator.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackDistanceMeter.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossTrackObstacle.cs" />
-    <Compile Include="Assets\Scripts\RewardCategory.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireTrailController.cs" />
-    <Compile Include="Assets\SkidMarkSegment.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldVisualPulse.cs" />
+    <Compile Include="Assets\Racing_Assets\VintageTVRendererFeature.cs" />
     <Compile Include="Assets\Scripts\IPowerup.cs" />
     <Compile Include="Assets\Scripts\Assassin.cs" />
-    <Compile Include="Assets\Scripts\Druid.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_A.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TurretUnlockBinding.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\IcePathSpawner.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\WaterPaddleRewardSO.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\ElectricPaddleRewardSO.cs" />
     <Compile Include="Assets\UIRaycastInspector.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01_UGUI.cs" />
-    <Compile Include="Assets\Scripts\PinballUIM.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SimpleScript.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark04.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkidMaskFader.cs" />
     <Compile Include="Assets\Scripts\PowerupSystem.cs" />
-    <Compile Include="Assets\CrossObstacleDirector.cs" />
-    <Compile Include="Assets\Scripts\EndGame.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ChatController.cs" />
     <Compile Include="Assets\Scripts\BallElementalState.cs" />
-    <Compile Include="Assets\Scripts\RewardCatalogSO.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ObjectSpin.cs" />
     <Compile Include="Assets\BumperAnimScript.cs" />
-    <Compile Include="Assets\Scripts\CollectXP.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_PhoneNumberValidator.cs" />
     <Compile Include="Assets\Scripts\CollectAllXPPowerup.cs" />
-    <Compile Include="Assets\Scripts\IXPNumberSystem.cs" />
     <Compile Include="Assets\Scripts\XPFormula.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\DamageRewardSO.cs" />
-    <Compile Include="Assets\Scripts\GrenadeProjectile.cs" />
     <Compile Include="Assets\Scripts\PortalWarpController.cs" />
     <Compile Include="Assets\Scripts\BaseCharacter.cs" />
-    <Compile Include="Assets\Scripts\NukeBumpersPowerup.cs" />
-    <Compile Include="Assets\Scripts\RewardRarity.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexJitter.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillDefinition.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeState.cs" />
     <Compile Include="Assets\Scripts\IRunContext.cs" />
-    <Compile Include="Assets\Scripts\TweenXPNumberSystem.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\HPPickup.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_DigitValidator.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_FrameRateCounter.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextConsoleSimulator.cs" />
     <Compile Include="Assets\Scripts\PinballMusic.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TeleType.cs" />
     <Compile Include="Assets\Scripts\CharacterUI.cs" />
     <Compile Include="Assets\Scripts\PaddleElementalState.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ShuttleTrackObstacle.cs" />
-    <Compile Include="Assets\DullPad.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventCheck.cs" />
-    <Compile Include="Assets\Scripts\SpeedTrailFollower.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_UiFrameRateCounter.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshSpawner.cs" />
-    <Compile Include="Assets\WheelSkidSpawner.cs" />
-    <Compile Include="Assets\Scripts\CombatSystem.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker1.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexZoom.cs" />
     <Compile Include="Assets\Scripts\GameManager.cs" />
-    <Compile Include="Assets\Scripts\DynamicPadManager.cs" />
-    <Compile Include="Assets\Scripts\GrenadeController.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark02.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\Rotator.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProjectileHitReceiver.cs" />
+    <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\CameraControllerUI.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingSkillDetailPanel.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingCurrencyCheat.cs" />
-    <Compile Include="Assets\CoinPickup.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleSpawner.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUIEntry.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarController.cs" />
     <Compile Include="Assets\Scripts\BumperElements.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_B.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ThrownObstacleDirector.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkidMaskClearer.cs" />
     <Compile Include="Assets\Scripts\PaddleElements.cs" />
-    <Compile Include="Assets\Scripts\StatModifier.cs" />
-    <Compile Include="Assets\Scripts\Tank.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossObstacleDirector.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUI.cs" />
+    <Compile Include="Assets\Scripts\Tank.cs" />
     <Compile Include="Assets\Scripts\RicochetPowerup.cs" />
     <Compile Include="Assets\Scripts\IDamageNumberSystem.cs" />
-    <Compile Include="Assets\ExhaustVFXController.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SkewTextExample.cs" />
-    <Compile Include="Assets\Scripts\XPNumberStyleSO.cs" />
-    <Compile Include="Assets\Scripts\Mage.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Debug\SkidDebugStamp.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\WarpTextExample.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshProFloatingText.cs" />
     <Compile Include="Assets\Scripts\BluePad.cs" />
     <Compile Include="Assets\BumperLightController.cs" />
-    <Compile Include="Assets\Scripts\GreenPad.cs" />
-    <Compile Include="Assets\Scripts\PortalWarpRewardRuntime.cs" />
-    <Compile Include="Assets\Scripts\PadLightFX.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingUISoundManager.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\LifeRewardSO.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ShaderPropAnimator.cs" />
-    <Compile Include="Assets\SkidMaskFader.cs" />
-    <Compile Include="Assets\Scripts\BallUIEntry.cs" />
-    <Compile Include="Assets\Scripts\Brawler.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarVelocityAndPitch.cs" />
     <Compile Include="Assets\Scripts\TweenDamageNumberSystem.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CameraFollow.cs" />
     <Compile Include="Assets\Scripts\PaddleEffectData.cs" />
     <Compile Include="Assets\Scripts\Item.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\BallGrowRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ThrownObstacle.cs" />
     <Compile Include="Assets\Scripts\TimeScaleHub.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingObstacle.cs" />
-    <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark03.cs" />
-    <Compile Include="Assets\Scripts\CameraFollowSimple.cs" />
     <Compile Include="Assets\Scripts\DamageNumberStyleSO.cs" />
     <Compile Include="Assets\Scripts\GrenadeRewardRuntime.cs" />
-    <Compile Include="Assets\Scripts\Pinball.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\FuelPickup.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundSurface.cs" />
     <Compile Include="Assets\FireWispVelocityDriver.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingBullet.cs" />
     <Compile Include="Assets\Scripts\Warrior.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\EarthPaddleRewardSO.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs" />
-    <Compile Include="Assets\Scripts\Level Up Rewards\XPGravityRewardSO.cs" />
-    <Compile Include="Assets\Scripts\XPCollectorRegistry.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\PortalWarpRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackCoinSpawner.cs" />
     <Compile Include="Assets\Scripts\Test.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireMarkPainter.cs" />
-    <Compile Include="Assets\SkidMaskClearer.cs" />
-    <Compile Include="Assets\CarTurretController.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ObstaclePathPreview.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextInfoDebugTool.cs" />
-    <Compile Include="Assets\Racing_Assets\Racing_Scripts\UIManager_Racing.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldSkillHook.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\TextMesh Pro\Shaders\TMPro.cginc" />
@@ -226,6 +258,7 @@
     <None Include="Assets\TextMesh Pro\Shaders\TMPro_Mobile.cginc" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF SSD.shader" />
     <None Include="Assets\Racing_Assets\RoadFX\SkidDecal.shader" />
+    <None Include="Assets\Racing_Assets\VintageTV.shader" />
     <None Include="Assets\Racing_Assets\RoadFX\SkidMarkDraw.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Surface-Mobile.shader" />
     <None Include="Assets\ShaderEffects\Fire\FireShaderScript.shader" />
@@ -243,9 +276,12 @@
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_Bitmap-Mobile.shader" />
+    <None Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Shaders\Includes\CustomLighting.cginc" />
     <None Include="Assets\TextMesh Pro\Fonts\LiberationSans - OFL.txt" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Mobile.shader" />
+    <None Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Shaders\Includes\Compositing.cginc" />
     <None Include="Assets\Racing_Assets\RoadFX\SkidMark.shader" />
+    <None Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Shaders\Includes\VolumetricFogLite.cginc" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_Sprite.shader" />
     <None Include="Assets\TextMesh Pro\Examples &amp; Extras\Fonts\Bangers - OFL.txt" />
   </ItemGroup>
@@ -1082,6 +1118,94 @@
       <HintPath>C:\Program Files\Unity\Hub\Editor\2022.3.62f2\Editor\Data\NetStandard\compat\2.1.0\shims\netfx\System.Xml.Serialization.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="com.unity.cinemachine.editor">
+      <HintPath>Library\ScriptAssemblies\com.unity.cinemachine.editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Burst.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.Burst.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.ResourceManager">
+      <HintPath>Library\ScriptAssemblies\Unity.ResourceManager.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.ScriptableBuildPipeline">
+      <HintPath>Library\ScriptAssemblies\Unity.ScriptableBuildPipeline.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.ProBuilder.AddOns.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.ProBuilder.AddOns.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Rider.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.Rider.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Universal.Config.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Universal.Config.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.VisualScripting.Flow">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.Flow.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Mathematics.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.Mathematics.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.TestTools.CodeCoverage.Editor.OpenCover.Mono.Reflection">
+      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.OpenCover.Mono.Reflection.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Performance.Profile-Analyzer.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.Performance.Profile-Analyzer.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.ShaderLibrary">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.ShaderLibrary.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.TestTools.CodeCoverage.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.PlasticSCM.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.PlasticSCM.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Settings.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.Settings.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="PPv2URPConverters">
+      <HintPath>Library\ScriptAssemblies\PPv2URPConverters.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>Library\ScriptAssemblies\Unity.TextMeshPro.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.ProBuilder.AssetIdRemapUtility">
+      <HintPath>Library\ScriptAssemblies\Unity.ProBuilder.AssetIdRemapUtility.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.VSCode.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.VSCode.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Universal.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Universal.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary">
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.dll</HintPath>
       <Private>False</Private>
@@ -1090,16 +1214,12 @@
       <HintPath>Library\ScriptAssemblies\Unity.EditorCoroutines.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.RenderPipelines.Core.Runtime">
-      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
+    <Reference Include="Unity.RenderPipelines.Universal.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.Postprocessing.Runtime">
-      <HintPath>Library\ScriptAssemblies\Unity.Postprocessing.Runtime.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.ResourceManager">
-      <HintPath>Library\ScriptAssemblies\Unity.ResourceManager.dll</HintPath>
+    <Reference Include="Unity.Burst">
+      <HintPath>Library\ScriptAssemblies\Unity.Burst.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.ProBuilder">
@@ -1108,10 +1228,6 @@
     </Reference>
     <Reference Include="Unity.Timeline.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.Timeline.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.ScriptableBuildPipeline">
-      <HintPath>Library\ScriptAssemblies\Unity.ScriptableBuildPipeline.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.VisualScripting.Shared.Editor">
@@ -1138,28 +1254,20 @@
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.Core.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.ProBuilder.AddOns.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.ProBuilder.AddOns.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.Rider.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.Rider.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>Library\ScriptAssemblies\UnityEngine.UI.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.RenderPipelines.Core.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.VisualScripting.Flow">
-      <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.Flow.dll</HintPath>
+    <Reference Include="Unity.RenderPipelines.Universal.2D.Internal">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Universal.2D.Internal.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.VisualScripting.Flow.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.Flow.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipeline.Universal.ShaderLibrary">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipeline.Universal.ShaderLibrary.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.Timeline">
@@ -1170,52 +1278,28 @@
       <HintPath>Library\ScriptAssemblies\Unity.ProBuilder.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.TestTools.CodeCoverage.Editor.OpenCover.Mono.Reflection">
-      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.OpenCover.Mono.Reflection.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="Unity.VisualScripting.SettingsProvider.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.SettingsProvider.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.Performance.Profile-Analyzer.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.Performance.Profile-Analyzer.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.RenderPipelines.Core.ShaderLibrary">
-      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.ShaderLibrary.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.TestTools.CodeCoverage.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.TestTools.CodeCoverage.Editor.OpenCover.Model">
-      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.OpenCover.Model.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="Unity.PlasticSCM.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.PlasticSCM.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.Addressables.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.Addressables.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.Postprocessing.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.Postprocessing.Editor.dll</HintPath>
+    <Reference Include="Unity.TestTools.CodeCoverage.Editor.OpenCover.Model">
+      <HintPath>Library\ScriptAssemblies\Unity.TestTools.CodeCoverage.Editor.OpenCover.Model.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.VisualScripting.State.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.State.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.Settings.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.Settings.Editor.dll</HintPath>
+    <Reference Include="Unity.Mathematics">
+      <HintPath>Library\ScriptAssemblies\Unity.Mathematics.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.TextMeshPro">
-      <HintPath>Library\ScriptAssemblies\Unity.TextMeshPro.dll</HintPath>
+    <Reference Include="Unity.RenderPipelines.Universal.Shaders">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Universal.Shaders.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.TextMeshPro.Editor">
@@ -1226,16 +1310,12 @@
       <HintPath>Library\ScriptAssemblies\Unity.Searcher.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.ProBuilder.AssetIdRemapUtility">
-      <HintPath>Library\ScriptAssemblies\Unity.ProBuilder.AssetIdRemapUtility.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="Unity.VisualScripting.State">
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.State.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.VSCode.Editor">
-      <HintPath>Library\ScriptAssemblies\Unity.VSCode.Editor.dll</HintPath>
+    <Reference Include="Cinemachine">
+      <HintPath>Library\ScriptAssemblies\Cinemachine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.ScriptableBuildPipeline.Editor">

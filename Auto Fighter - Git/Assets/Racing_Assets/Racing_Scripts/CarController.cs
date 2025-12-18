@@ -331,6 +331,8 @@ public class CarController : MonoBehaviour
     private float baseBoostFuelCost;
     private float baseDriftBoostCooldown;
 
+    private float _rawSteer;   
+
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
@@ -687,7 +689,6 @@ public class CarController : MonoBehaviour
 
         UpdateCrashReorientation();
         HandleInput();
-        HandleSteering();
 
         if (Input.GetKeyDown(boostKey) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
             _boostRequested = true;
@@ -764,6 +765,8 @@ public class CarController : MonoBehaviour
         SampleGroundAndUpdateMultipliers();
         RefreshSkillEffects();
         ApplySkillEffects();
+        UpdateSteeringInputFixed();
+        HandleSteering();
         HandleMovement();
         HandleBoost();
         UpdateIcePhysicsTransitions();
@@ -1258,7 +1261,8 @@ public class CarController : MonoBehaviour
         if (_malfunctionCooldownRemain > 0f)
             _malfunctionCooldownRemain -= Time.deltaTime;
 
-        float rawHorizontal = Input.GetAxisRaw("Horizontal");
+        _rawSteer = Input.GetAxisRaw("Horizontal");
+        float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
 
@@ -3081,6 +3085,26 @@ public class CarController : MonoBehaviour
         Destroy(go, Mathf.Max(0.01f, crashImpactVFXLifetime));
     }
 
+    private void UpdateSteeringInputFixed()
+    {
+        // Steering should feel consistent with physics, not frames.
+        float dt = Time.fixedDeltaTime;
+
+        float targetSteer = _suppressSteeringThisFrame ? 0f : _rawSteer;
+
+        float smoothRate = steeringInputSmooth;
+        if (isDrifting) smoothRate *= 1.4f;
+
+        float handlingMult = GetTemporaryHandlingMultiplier();
+        if (handlingMult > 1f) smoothRate /= handlingMult;
+
+        float smoothDelta = smoothRate * dt;
+
+        if (Mathf.Abs(targetSteer - steeringInput) < 0.01f)
+            steeringInput = targetSteer;
+        else
+            steeringInput = Mathf.MoveTowards(steeringInput, targetSteer, smoothDelta);
+    }
     private void PlayDeathVFX()
     {
         if (_deathVfxPlayed) return;

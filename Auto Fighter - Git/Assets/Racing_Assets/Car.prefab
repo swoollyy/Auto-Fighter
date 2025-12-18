@@ -903,8 +903,8 @@ MonoBehaviour:
   baseMaxSpeed: 3.5
   baseBrakingForce: 0.01
   turnSpeed: 10
-  lowSpeedSteerMultiplier: 10.3
-  highSpeedSteerMultiplier: 2
+  lowSpeedSteerMultiplier: 8
+  highSpeedSteerMultiplier: 1.6
   speedForSteerCurve: 3.45
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
