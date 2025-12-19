@@ -15,6 +15,10 @@ public class CarController : MonoBehaviour
     [Header("Steering")]
     [SerializeField] private float turnSpeed = 90f;   // <<< THE ONE TURN SPEED SLIDER
 
+    [SerializeField] private float minSpeedToSteer = 0.6f; // tweak in Inspector
+    [SerializeField] private bool allowSteerWhenTryingToMove = true; // W/S lets you steer even if speed is tiny
+
+
     [Header("Steering Feel")]
     [SerializeField] private float lowSpeedSteerMultiplier = 1.2f;
     [SerializeField] private float highSpeedSteerMultiplier = 0.4f;
@@ -747,6 +751,15 @@ public class CarController : MonoBehaviour
                     rb.drag = _baseDrag;
                     rb.angularDrag = _baseAngularDrag;
                     rb.angularVelocity = Vector3.zero;
+                }
+
+                if (IsOutOfFuel || IsOutOfHP)
+                {
+                    _inCrash = false;           // exit crash state so timers stop
+                    rb.freezeRotation = false;  // keep physics natural (optional)
+                    rb.drag = _baseDrag;
+                    rb.angularDrag = _baseAngularDrag;
+                    return;
                 }
 
                 _isReorienting = true;
@@ -1685,6 +1698,11 @@ public class CarController : MonoBehaviour
 
         if (applyDamage)
         {
+
+            float hpBefore = currentHP;
+            float fuelBefore = currentFuel;
+
+
             if (hpCrashDamageAtSeverity1 > 0f)
             {
                 float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
@@ -1707,6 +1725,17 @@ public class CarController : MonoBehaviour
                 }
 
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
+            }
+
+            bool lethalFromThisCrash =
+    (hpBefore > 0f && currentHP <= 0f) ||
+    (fuelBefore > 0f && currentFuel <= 0f);
+
+            if (lethalFromThisCrash)
+            {
+                var gm = GameManager_Racing.Instance;
+                if (gm != null)
+                    gm.OnCarCrashLethal(sev01ForDamage);
             }
 
             // Start cooldown AFTER damage
@@ -1764,6 +1793,19 @@ public class CarController : MonoBehaviour
 
                 // Convert charge -> usable steering factor
                 iceSteerMul = Mathf.Lerp(iceSteerMinFactor, 1f, _iceSteerCharge01);
+            }
+
+
+
+            bool tryingToMove = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S);
+
+            if (speed < minSpeedToSteer && !(allowSteerWhenTryingToMove && tryingToMove))
+            {
+                // If you’re using the ice steer “charge”, force it to bleed off so it doesn’t feel sticky.
+                _iceSteerCharge01 = Mathf.MoveTowards(_iceSteerCharge01, 0f, iceSteerRampDownRate * Time.deltaTime);
+
+                // No turning-in-place.
+                return;
             }
 
             float steerAmount = steeringInput * steerDirection * steerSpeed * speedSteerMul * driftSteerMul * iceSteerMul * Time.deltaTime;
@@ -3121,8 +3163,44 @@ public class CarController : MonoBehaviour
                 GameObject inst = ProjectilePool.Instance.Get(deathVFX);
                 if (inst != null)
                 {
-                    inst.transform.position = spawnPos;
-                    inst.transform.rotation = Quaternion.identity;
+                    inst.transform.SetPositionAndRotation(
+                        spawnPos,
+                        deathVFX.transform.rotation // usually identity, but importantly: matches prefab root
+                    );
+                    inst.SetActive(true);
+                    StartCoroutine(ReturnPooledVFXLater(deathVFX, inst, deathVFXLifetime));
+                    return;
+                }
+            }
+        }
+        catch { /* fallback below */ }
+
+        GameObject go = Instantiate(
+            deathVFX,
+            spawnPos,
+            deathVFX.transform.rotation
+        );
+        Destroy(go, deathVFXLifetime);
+    }
+
+    public void PlayDeathVFXExtra()
+    {
+        if (deathVFX == null) return;
+
+        Vector3 spawnPos = transform.position;
+
+        // Intentionally BYPASS _deathVfxPlayed so we can “double explode”
+        try
+        {
+            if (ProjectilePool.Instance != null)
+            {
+                GameObject inst = ProjectilePool.Instance.Get(deathVFX);
+                if (inst != null)
+                {
+                    inst.transform.SetPositionAndRotation(
+                        spawnPos,
+                        deathVFX.transform.rotation // usually identity, but importantly: matches prefab root
+                    );
                     inst.SetActive(true);
                     StartCoroutine(ReturnPooledVFXLater(deathVFX, inst, deathVFXLifetime));
                     return;

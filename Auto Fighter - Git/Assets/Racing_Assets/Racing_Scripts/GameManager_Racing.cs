@@ -107,6 +107,14 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Tooltip("Extra delay after the car is fully stopped before showing the Run Complete screen.")]
     private float runEndSettleDelay = .9f;
 
+    [SerializeField] private float deathStopShakeMult = 1.35f;
+    [SerializeField] private float deathStopSlowMoSeverity = 1f;
+
+    [SerializeField] private float lethalCrashSlowMoHoldMultiplier = 2.25f; // longer hold if crash causes death
+
+
+    private bool _deathStopBurstPlayed = false;
+
     // runtime
     private Coroutine _closeCallCR;
 
@@ -220,6 +228,19 @@ public class GameManager_Racing : MonoBehaviour
         if (carController == null)
             return;
 
+
+        if (_finalizePending && Input.GetKeyDown(KeyCode.R))
+        {
+            if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+            _finalizeRunCR = null;
+            _finalizePending = false;
+
+            TryPlayDepositSoundOnReset();
+            RestartRun();
+            return;
+        }
+
+
         // Finalize run only when out of fuel AND forward/overall speed is tiny
         if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
@@ -239,6 +260,29 @@ public class GameManager_Racing : MonoBehaviour
                 if (!_finalizePending)
                 {
                     _finalizePending = true;
+
+                    if (!_deathStopBurstPlayed)
+                    {
+                        _deathStopBurstPlayed = true;
+
+                        // replay the explosion VFX on the stopped wreck
+                        carController?.PlayDeathVFXExtra();
+
+                        // screen shake + slowmo for the extra explosion
+                        if (enableCrashScreenShake && cameraFollow != null)
+                        {
+                            cameraFollow.StartShake(
+                                crashShakeDuration * deathStopShakeMult,
+                                crashShakeStrength * deathStopShakeMult,
+                                crashShakeVibrato,
+                                crashShakeRandomness
+                            );
+                        }
+
+                        if (enableCrashSlowMo)
+                            StartCrashSlowMo(deathStopSlowMoSeverity);
+                    }
+
                     _stopConditionBeganRealtime = Time.realtimeSinceStartup;
 
                     if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
@@ -618,9 +662,8 @@ public class GameManager_Racing : MonoBehaviour
         _closeCallCR = null;
     }
 
-    private void StartCrashSlowMo(float severity)
+    private void StartCrashSlowMo(float severity, float holdMultiplier = 1f)
     {
-        // kill any previous crash slow-mo
         if (_crashSlowMoRoutine != null)
         {
             StopCoroutine(_crashSlowMoRoutine);
@@ -633,32 +676,26 @@ public class GameManager_Racing : MonoBehaviour
             _ownsCrashSlowMo = false;
         }
 
-        _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity));
+        _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity, holdMultiplier));
     }
 
-    private IEnumerator CrashSlowMoRoutine(float severity)
+    private IEnumerator CrashSlowMoRoutine(float severity, float holdMultiplier)
     {
         _ownsCrashSlowMo = true;
 
-        // Map severity (0–1) through curve → strength multiplier
         float sev = Mathf.Clamp01(severity);
         float curveVal = crashSlowMoCurve != null ? crashSlowMoCurve.Evaluate(sev) : sev;
         float targetScale = Mathf.Lerp(1f, crashSlowMoScale, curveVal);
 
-        float hold = crashSlowMoHold;
+        float hold = crashSlowMoHold * Mathf.Max(1f, holdMultiplier);   // <<< ONLY CHANGE THAT MATTERS
         float easeOut = crashSlowMoEaseOut;
 
-        Debug.Log($"[GameManager_Racing] Crash SlowMo → severity={severity:F2}, curveVal={curveVal:F2}, scale={targetScale:F2}, hold={hold:F2}, easeOut={easeOut:F2}");
-
-        // ENTER SLOW-MO
         TimeScaleHub.Begin(this, targetScale, affectFixedDelta: true);
 
-        // Hold using realtime (unaffected by timeScale)
         float holdEnd = Time.realtimeSinceStartup + hold;
         while (Time.realtimeSinceStartup < holdEnd)
             yield return null;
 
-        // Ease-out blend back to normal time
         float start = Time.realtimeSinceStartup;
         float end = start + easeOut;
 
@@ -670,7 +707,6 @@ public class GameManager_Racing : MonoBehaviour
             yield return null;
         }
 
-        // FULL RESTORE
         TimeScaleHub.End(this);
         _ownsCrashSlowMo = false;
         _crashSlowMoRoutine = null;
@@ -790,6 +826,7 @@ public class GameManager_Racing : MonoBehaviour
 
         Quaternion spawnRot = Quaternion.LookRotation(startForward, Vector3.up);
 
+
         if (carInstance == null)
         {
             carInstance = Instantiate(carPrefab, spawnPos, spawnRot);
@@ -797,6 +834,8 @@ public class GameManager_Racing : MonoBehaviour
         }
         else
             carInstance.transform.SetPositionAndRotation(spawnPos, spawnRot);
+
+        _deathStopBurstPlayed = false;
 
 
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
@@ -843,6 +882,20 @@ public class GameManager_Racing : MonoBehaviour
         // Now hide the skill tree
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
+    }
+
+    public void OnCarCrashLethal(float severity)
+    {
+        if (!enabled) return;
+        if (!enableCrashSlowMo) return;
+
+        float sev = Mathf.Clamp01(severity);
+
+        // match OnCarCrash remap behavior
+        if (crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0)
+            sev = Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev));
+
+        StartCrashSlowMo(sev, lethalCrashSlowMoHoldMultiplier);
     }
 
     private void PlayRunCompleteCoinSound()

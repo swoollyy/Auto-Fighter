@@ -903,8 +903,10 @@ MonoBehaviour:
   baseMaxSpeed: 3.5
   baseBrakingForce: 0.01
   turnSpeed: 10
+  minSpeedToSteer: 0.4
+  allowSteerWhenTryingToMove: 1
   lowSpeedSteerMultiplier: 8
-  highSpeedSteerMultiplier: 1.6
+  highSpeedSteerMultiplier: 1
   speedForSteerCurve: 3.45
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
@@ -1052,8 +1054,8 @@ MonoBehaviour:
   steerRollingAccel: 2.25
   minSpeedForSteerTraction: 0.1
   lateralFrictionWhileSteering: 3.5
-  steerTractionBlendIn: 10
-  steerTractionBlendOut: 14
+  steerTractionBlendIn: 6
+  steerTractionBlendOut: 8
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
   enableCloseCallNearMisses: 1

@@ -295,12 +295,11 @@ public class CameraFollow : MonoBehaviour
         {
             float u = Mathf.InverseLerp(restoreStart, restoreEnd, Time.realtimeSinceStartup);
             float eased = Mathf.SmoothStep(0f, 1f, u);
-            cam.fieldOfView = Mathf.Lerp(fromFOV, autoTarget, eased);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, _speedFovCurrent, eased);
             yield return null;
         }
 
-        // final snap & hand-off to auto-FOV
-        cam.fieldOfView = _speedFovCurrent;
+        _speedFovCurrent = cam.fieldOfView;
         _suppressAutoFov = false;
         _boostZoomCR = null;
     }

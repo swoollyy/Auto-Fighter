@@ -2586,7 +2586,9 @@ MonoBehaviour:
   runCompleteCoinVolume: 0.24
   depositCoinsClip: {fileID: 8300000, guid: d3fbeb90926ad1a4fb8f91aedf0b2c26, type: 3}
   depositCoinsVolume: 0.16
-  runEndSettleDelay: 0.4
+  runEndSettleDelay: 0.5
+  deathStopShakeMult: 0.82
+  deathStopSlowMoSeverity: 0.7
 --- !u!4 &804777575
 Transform:
   m_ObjectHideFlags: 0
