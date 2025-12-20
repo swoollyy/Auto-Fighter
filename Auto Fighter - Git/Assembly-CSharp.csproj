@@ -61,6 +61,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\Scripts\Level Up Rewards\BallShrinkRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleBounceBack.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\LaunchImmunityMarker.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingSkillTreeManager.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\VolumetricFogRendererFeatureLite.cs" />

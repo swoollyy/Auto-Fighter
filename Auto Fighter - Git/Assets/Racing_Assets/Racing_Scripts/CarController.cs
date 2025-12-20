@@ -2545,6 +2545,37 @@ public class CarController : MonoBehaviour
         return groundHits >= 2;
     }
 
+    // Add inside CarController class
+    public void ApplyDirectDamage(float hpDamage, float fuelPercentOfMax)
+    {
+        // Flat HP
+        if (hpDamage > 0f)
+        {
+            currentHP = Mathf.Max(0f, currentHP - hpDamage);
+        }
+
+        // Fuel as % of max fuel
+        if (fuelPercentOfMax > 0f)
+        {
+            float fuelLoss = Mathf.Max(0f, maxFuel * fuelPercentOfMax);
+            ConsumeFuel(fuelLoss);
+        }
+
+        // If this hit causes death by HP or fuel, keep behavior consistent with your lethal hooks.
+        if (currentHP <= 0f && !isOutOfHP)
+        {
+            isOutOfHP = true;
+            PlayDeathVFX();
+        }
+
+        if (currentFuel <= 0f && !isOutOfFuel)
+        {
+            isOutOfFuel = true;
+            // if you have any “out of fuel” death handling elsewhere it will pick it up
+        }
+    }
+
+
     private void ApplySurfaceMultipliers(float maxSpeedMul, float accelMul, float turnMul, float dragMul)
     {
         surfaceTurnMultiplier = Mathf.Max(0f, turnMul);

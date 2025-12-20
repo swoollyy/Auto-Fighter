@@ -2222,6 +2222,14 @@ MonoBehaviour:
     stopAtNormalizedDist: 0.3
     extraHeightOffset: -0.5
     extraLateralPadding: 0
+  - id: Bouncing Rock
+    prefab: {fileID: 3874382558013832276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+    baseWeight: 1
+    startAtNormalizedDist: 0.02
+    fullWeightNormalizedDist: 0.05
+    stopAtNormalizedDist: 0.5
+    extraHeightOffset: 0
+    extraLateralPadding: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   obstacleSpacing: 4.6
@@ -2589,6 +2597,7 @@ MonoBehaviour:
   runEndSettleDelay: 0.5
   deathStopShakeMult: 0.82
   deathStopSlowMoSeverity: 0.7
+  lethalCrashSlowMoHoldMultiplier: 2.25
 --- !u!4 &804777575
 Transform:
   m_ObjectHideFlags: 0
