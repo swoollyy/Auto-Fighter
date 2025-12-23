@@ -135,6 +135,9 @@ public sealed class CarForcefield : MonoBehaviour
 
         EnsureTrigger();
 
+        // Safety: ensure trigger starts in the correct enabled state
+        if (_trigger) _trigger.enabled = _armed;
+
         // Maintain existing serialized startsArmed default, but optionally enforce base cooldown on spawn.
         if (startOnCooldown && cooldownSeconds > 0f)
         {
@@ -152,7 +155,8 @@ public sealed class CarForcefield : MonoBehaviour
 
     void OnEnable()
     {
-        if (_trigger) _trigger.enabled = true;
+        // Don't accidentally enable the bubble when we're disarmed/on cooldown.
+        if (_trigger) _trigger.enabled = _armed;
     }
 
     void OnDisable()

@@ -383,6 +383,7 @@
 "Assets/Racing_Assets/Racing_Scripts/TrackFuelSpawner.cs"
 "Assets/Racing_Assets/Racing_Scripts/TrackGuideBeacon.cs"
 "Assets/Racing_Assets/Racing_Scripts/TrackHPSpawner.cs"
+"Assets/Racing_Assets/Racing_Scripts/TrackObstacleBounceBack.cs"
 "Assets/Racing_Assets/Racing_Scripts/TrackObstacleSpawner.cs"
 "Assets/Racing_Assets/Racing_Scripts/TurretUnlockBinding.cs"
 "Assets/Racing_Assets/Racing_Scripts/UI/RacingSkillUI.cs"

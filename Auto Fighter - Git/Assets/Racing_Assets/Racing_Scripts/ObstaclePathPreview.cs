@@ -82,6 +82,22 @@ public class ObstaclePathPreview : MonoBehaviour
         _lr.SetPosition(1, p1);
     }
 
+    private void OnDisable()
+    {
+        if (_fadeCo != null) StopCoroutine(_fadeCo);
+        _fadeCo = null;
+
+        _alpha = 0f;
+        ApplyAlpha();
+
+        if (_lr) _lr.enabled = false;   // hard off
+    }
+
+    private void OnEnable()
+    {
+        if (_lr) _lr.enabled = true;
+    }
+
     private void ApplyAlpha()
     {
         if (_lr == null) return;

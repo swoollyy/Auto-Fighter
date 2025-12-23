@@ -12,6 +12,12 @@ public class RacingSkillUIEntry : MonoBehaviour
     [SerializeField] private TMP_Text costText;
     [SerializeField] private Button buyButton; // disabled (buy in detail panel)
 
+    [SerializeField] private Image button; // disabled (buy in detail panel)
+
+    [SerializeField] private Color affordableColor = Color.green;
+    [SerializeField] private Color unaffordableColor = Color.red;
+    [SerializeField] private Color maxedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
     private SkillDefinition def;
     private RacingSkillTreeManager mgr;
 
@@ -47,11 +53,51 @@ public class RacingSkillUIEntry : MonoBehaviour
     public void Refresh()
     {
         if (!def || mgr == null) return;
+
         int lvl = mgr.GetLevel(def.type);
+        bool isMaxed = lvl >= def.maxLevel;
+
         if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
         if (effectText) effectText.text = $"Effect: {FormatEffect(def.type)}";
-        if (costText)
-            costText.text = (lvl >= def.maxLevel) ? "Maxed" : $"Cost: {mgr.GetNextLevelCost(def.type)}";
+
+        if (!costText) return;
+
+        if (isMaxed)
+        {
+            costText.text = "Maxed";
+            costText.color = maxedColor;
+            return;
+        }
+
+
+
+
+    }
+
+    public void ColorChange()
+    {
+        int nextCost = mgr.GetNextLevelCost(def.type);
+        int lvl = mgr.GetLevel(def.type);
+        bool isMaxed = lvl >= def.maxLevel;
+        int currency = GetCurrency();
+        button.color = (currency >= nextCost) ? affordableColor : unaffordableColor;
+        Debug.Log($"Currency: {currency}, Next Cost: {nextCost}, Color: {button.color}");
+
+        if (button)
+        {
+            if (isMaxed) button.color = maxedColor;
+            else button.color = (GetCurrency() >= mgr.GetNextLevelCost(def.type)) ? affordableColor : unaffordableColor;
+        }
+    }
+
+    public void LateUpdate()
+    {
+        ColorChange();
+    }
+
+    private int GetCurrency()
+    {
+        return mgr != null ? mgr.Currency : 0;
     }
 
     private string FormatEffect(SkillType type)

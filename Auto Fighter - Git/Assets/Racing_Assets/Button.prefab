@@ -140,6 +140,10 @@ MonoBehaviour:
   effectText: {fileID: 0}
   costText: {fileID: 0}
   buyButton: {fileID: 0}
+  button: {fileID: 3767090994384272396}
+  affordableColor: {r: 0.4022784, g: 0.754717, b: 0.4022784, a: 1}
+  unaffordableColor: {r: 1, g: 0.4392157, b: 0.4392157, a: 1}
+  maxedColor: {r: 0.4245283, g: 0.4245283, b: 0.4245283, a: 1}
 --- !u!114 &9186470771314758172
 MonoBehaviour:
   m_ObjectHideFlags: 0

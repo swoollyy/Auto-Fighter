@@ -296,22 +296,31 @@ public class CrossTrackObstacle : MonoBehaviour
 
         Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
 
+        var otherShuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
+
         if (otherRb != null && otherRb.isKinematic)
         {
-            // avoid changing the road/terrain layers and avoid changing another active cross if you want
-            var root = other.transform.root != null ? other.transform.root.gameObject : other.gameObject;
-            int roadLayer = LayerMask.NameToLayer("RoadSurface");
-            int terrainLayer = LayerMask.NameToLayer("Terrain");
-
-            if (root.layer != roadLayer && root.layer != terrainLayer)
+            // If it's a shuttle, let it convert itself (handles preview/light correctly)
+            if (otherShuttle != null)
             {
-                ForceMakeDynamic(otherRb);
-                Physics.SyncTransforms();
+                otherShuttle.ConvertToPhysicsOnHit();
+            }
+            else
+            {
+                var root = other.transform.root != null ? other.transform.root.gameObject : other.gameObject;
+                int roadLayer = LayerMask.NameToLayer("RoadSurface");
+                int terrainLayer = LayerMask.NameToLayer("Terrain");
+
+                if (root.layer != roadLayer && root.layer != terrainLayer)
+                {
+                    ForceMakeDynamic(otherRb);
+                    Physics.SyncTransforms();
+                }
             }
         }
 
+
         var otherCross = other.GetComponentInParent<CrossTrackObstacle>();
-        var otherShuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
 
         float otherMass;
         string otherMassSource;

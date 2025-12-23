@@ -273,6 +273,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (_convertedToPhysics)
             return;
 
+        KillPathFxIfDynamic();
+
         if (enableOverlapDetection)
         {
             _overlapTimer -= Time.deltaTime;
@@ -360,6 +362,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void FixedUpdate()
     {
         if (_convertedToPhysics) return;
+        KillPathFxIfDynamic();
 
         // NEW: Process pending collision delay
         if (_pendingCollisionFrames > 0)
@@ -595,6 +598,24 @@ public class ShuttleTrackObstacle : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool _fxKilled = false;
+
+    private void KillPathFxIfDynamic()
+    {
+        if (_fxKilled) return;
+
+        // If anything made us dynamic, we are no longer "on path"
+        if (_rb != null && !_rb.isKinematic)
+        {
+            _fxKilled = true;
+
+            var preview = GetComponent<ObstaclePathPreview>();
+            if (preview) preview.FadeOut(0.2f);
+
+            if (telegraphLight) telegraphLight.enabled = false;
+        }
     }
 
     private void OnCollisionEnter(Collision collision)

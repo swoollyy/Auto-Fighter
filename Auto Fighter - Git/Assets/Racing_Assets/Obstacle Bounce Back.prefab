@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 3314179452664020840}
   - component: {fileID: 6906296771749627853}
   - component: {fileID: 6432184182409446683}
-  m_Layer: 11
+  m_Layer: 18
   m_Name: Obstacle Bounce Back
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -121,7 +121,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   destructible: 1
-  maxHealth: 1
+  maxHealth: 2
   scaleOnHit: 0.25
   scalePunchTime: 0.15
   destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
@@ -171,10 +171,10 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   bounceStepDistance: 4
-  bounceCooldown: 1
-  cooldownUsesUnscaledTime: 1
-  bounceJumpHeight: 1
   bounceDuration: 0.5
+  bounceCooldown: 1
+  useUnscaledTime: 1
+  bounceJumpHeight: 1
   clampToRoadWidth: 1
   lateralClampFraction: 0.95
   groundMask:
@@ -182,17 +182,29 @@ MonoBehaviour:
     m_Bits: 24576
   raycastStartHeight: 6
   raycastDownDistance: 20
-  heightOffset: 0.02
-  autoBottomOffsetFromCollider: 1
-  pivotBottomOffset: 0.2
-  useUpForHeight: 1
+  heightOffset: 0
   faceDirectionOfTravel: 1
-  enableForwardProbe: 1
-  blockerMask:
+  keepUpright: 1
+  noPhysicalCollisionMask:
     serializedVersion: 2
-    m_Bits: 2048
-  probeSkin: 0.03
+    m_Bits: 1
+  carDetectMask:
+    serializedVersion: 2
+    m_Bits: 1
+  carDetectRadius: 0.15
+  landingSettleTime: 0.06
+  landingLift: 0
+  reactToOtherObstacles: 1
+  obstacleReactMask:
+    serializedVersion: 2
+    m_Bits: 264192
+  obstacleImpulse: 9.9
+  obstacleUpImpulse: 2.8
+  obstacleImpactCooldown: 0.08
   damagePlayerOnHit: 1
   hitHpDamage: 30
   hitFuelPercent: 0.3
   hitDamageCooldown: 0.5
+  crashFxSeverity: 0.752
+  crashImpactSpeed: 17.9
+  ignoreCollisionSeconds: 0.25

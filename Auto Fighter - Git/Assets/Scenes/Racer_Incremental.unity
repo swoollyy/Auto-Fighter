@@ -1860,7 +1860,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
+      time: 0.002
       value: 1
       inSlope: 0
       outSlope: 0
@@ -1929,7 +1929,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
+      time: 0.002
       value: 0.15283203
       inSlope: 0
       outSlope: 0
@@ -1998,7 +1998,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0.0041656494
+      time: 0.002
       value: 0.024749756
       inSlope: 0
       outSlope: 0
@@ -2073,14 +2073,14 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   bronzeGlobalScale: 1.12
-  silverGlobalScale: 1
-  goldGlobalScale: 1
+  silverGlobalScale: 0.95
+  goldGlobalScale: 0.8
   coinSpacing: 3.9
   maxActiveCoins: 50
-  minSpawnDistanceAhead: 20
+  minSpawnDistanceAhead: 70
   maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 150
+  initialPreSpawnDistance: 70
   baseSpawnChance: 0.375
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2149,7 +2149,7 @@ MonoBehaviour:
   raycastStartHeight: 5
   raycastDownDistance: 15
   alignToSurfaceNormal: 1
-  distanceJitter: 0.9
+  distanceJitter: 1.38
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   updateInterval: 0.2
@@ -2184,7 +2184,7 @@ MonoBehaviour:
     extraLateralPadding: 0
   - id: Rock
     prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
-    baseWeight: 1.5
+    baseWeight: 3
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.002
     stopAtNormalizedDist: 0.8
@@ -2216,30 +2216,38 @@ MonoBehaviour:
     extraLateralPadding: 0
   - id: Boost Ramp
     prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
-    baseWeight: 0.25
+    baseWeight: 0.5
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
     extraHeightOffset: -0.5
     extraLateralPadding: 0
   - id: Bouncing Rock
-    prefab: {fileID: 3874382558013832276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+    prefab: {fileID: 7218115627756473360, guid: c79e89c8e2e15ee4ca4a516065c5e520, type: 3}
     baseWeight: 1
     startAtNormalizedDist: 0.02
     fullWeightNormalizedDist: 0.05
     stopAtNormalizedDist: 0.5
     extraHeightOffset: 0
     extraLateralPadding: 0
+  - id: Boost Pad
+    prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
+    baseWeight: 0.8
+    startAtNormalizedDist: 0.001
+    fullWeightNormalizedDist: 0.1
+    stopAtNormalizedDist: 0.5
+    extraHeightOffset: 0
+    extraLateralPadding: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   obstacleSpacing: 4.6
-  maxActiveObstacles: 20
-  minSpawnDistanceAhead: 20
+  maxActiveObstacles: 60
+  minSpawnDistanceAhead: 80
   maxSpawnDistanceAhead: 150
-  initialPreSpawnDistance: 150
+  initialPreSpawnDistance: 80
   despawnBehindDistance: 20
   distanceJitter: 4.1
-  spawnChancePerSlot: 0.35
+  spawnChancePerSlot: 0.6
   globalSpawnChanceByDistance:
     serializedVersion: 2
     m_Curve:
@@ -2314,10 +2322,10 @@ MonoBehaviour:
   fuelPrefab: {fileID: 4645873251185170008, guid: 403c3ff804b0c8c439a0b011150f59cd, type: 3}
   pickupSpacing: 12
   maxActivePickups: 5
-  minSpawnDistanceAhead: 30
+  minSpawnDistanceAhead: 70
   maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 150
+  initialPreSpawnDistance: 70
   baseSpawnChance: 0
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2374,10 +2382,10 @@ MonoBehaviour:
   hpPrefab: {fileID: 4645873251185170008, guid: eecceaf21c3d53543bd78025c6e420a4, type: 3}
   pickupSpacing: 47
   maxActivePickups: 2
-  minSpawnDistanceAhead: 30
+  minSpawnDistanceAhead: 70
   maxSpawnDistanceAhead: 150
   despawnBehindDistance: 25
-  initialPreSpawnDistance: 150
+  initialPreSpawnDistance: 70
   baseSpawnChance: 0
   spawnChanceDistanceCurve:
     serializedVersion: 2
@@ -2437,31 +2445,31 @@ MonoBehaviour:
   streamSpawnDuringRun: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 12
-  icePathSpacing: 15
-  maxActiveIcePaths: 5
-  minSpawnDistanceAhead: 10
+  icePathSpacing: 35
+  maxActiveIcePaths: 2
+  minSpawnDistanceAhead: 60
   maxSpawnDistanceAhead: 150
-  initialPreSpawnDistance: 150
+  initialPreSpawnDistance: 60
   despawnBehindDistance: 20
-  distanceJitter: 15
+  distanceJitter: 26
   spawnChancePerSlot: 0.89
   globalSpawnChanceByDistance:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
+      time: 0.03
       value: 0.2
-      inSlope: 0
-      outSlope: 0.40000004
+      inSlope: 0.24376334
+      outSlope: 0.24376334
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0
+      outWeight: 0.2985972
     - serializedVersion: 3
       time: 1
       value: 0.6
       inSlope: 0.40000004
-      outSlope: 0
+      outSlope: 0.40000004
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -2470,12 +2478,12 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   segmentsPerPath: 4
-  segmentLength: 2.32
+  segmentLength: 3.34
   icePathWidth: 1.16
   maxWiggleAngle: 6.67
   trackFollowStrength: 0.576
   miniTurnMaxYawDeg: 4
-  miniTurnFrequency: 0.015
+  miniTurnFrequency: 0.07
   miniTurnSmoothing: 0.15
   miniTurnSeed: 123.456
   roadLayer:
@@ -2595,6 +2603,7 @@ MonoBehaviour:
   depositCoinsClip: {fileID: 8300000, guid: d3fbeb90926ad1a4fb8f91aedf0b2c26, type: 3}
   depositCoinsVolume: 0.16
   runEndSettleDelay: 0.5
+  freezeAfterRunCompleteDelayRealtime: 0.75
   deathStopShakeMult: 0.82
   deathStopSlowMoSeverity: 0.7
   lethalCrashSlowMoHoldMultiplier: 2.25
@@ -3410,7 +3419,7 @@ MonoBehaviour:
   leadDistanceRange: {x: 8, y: 25}
   maxConcurrent: 6
   concurrentScaleByProgress: 1.5
-  spawnEnableProgress: 0.1
+  spawnEnableProgress: 0.05
   minSpawnCooldown: 8
   spawnCooldownRandomRange: {x: 0.85, y: 1.15}
   baseProjectileSpeed: 4.01
@@ -3423,7 +3432,7 @@ MonoBehaviour:
   explosionRadius: 6
   explosionKnockback: 6
   projectileSizeRange: {x: 1.1, y: 1.7}
-  sizeGainOverDistance: 0.334
+  sizeGainOverDistance: 0.028
   speedRandomMultiplierRange: {x: 0.8, y: 1.8}
   spawnSideOffset: 6.5
   spawnHeight: 6.7
@@ -3461,6 +3470,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   maxMissLateral: 17.31
+  maxMissForward: 6
   explosionBaseChance: 0.01
   explosionChanceByDistance:
     serializedVersion: 2

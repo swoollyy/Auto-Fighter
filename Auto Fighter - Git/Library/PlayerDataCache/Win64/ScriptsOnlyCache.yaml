@@ -51,6 +51,7 @@ ScriptsOnlyBuild:
     - TrackFuelSpawner
     - TrackGuideBeacon
     - TrackHPSpawner
+    - TrackObstacleBounceBack
     - TrackObstacleSpawner
     - TurretUnlockBinding
     - UIButtonSfx
@@ -548,13 +549,15 @@ ScriptsOnlyBuild:
     - Class: 114
       Script: {instanceID: 13298}
     - Class: 114
-      Script: {instanceID: 13730}
+      Script: {instanceID: 13336}
     - Class: 114
-      Script: {instanceID: 13772}
+      Script: {instanceID: 13732}
     - Class: 114
-      Script: {instanceID: 13854}
+      Script: {instanceID: 13774}
     - Class: 114
-      Script: {instanceID: 14118}
+      Script: {instanceID: 13856}
+    - Class: 114
+      Script: {instanceID: 14120}
     - Class: 115
       Script: {instanceID: 0}
     - Class: 120
@@ -1612,7 +1615,7 @@ ScriptsOnlyBuild:
     className: GrenadeAbilityRewardSO
   - hash:
       serializedVersion: 2
-      Hash: 689ea0d1c82b208b3f51a333037e20f2
+      Hash: 9beddd060fe891b38c57b7a3a2eaa6cb
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: GameManager_Racing
@@ -1666,7 +1669,7 @@ ScriptsOnlyBuild:
     className: TriggerBehaviour
   - hash:
       serializedVersion: 2
-      Hash: 12a7a4e02d873b6f300102c974f0d410
+      Hash: 6636f8e52d3158865db3e4af7cc245d7
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: ThrownObstacleDirector
@@ -2596,7 +2599,7 @@ ScriptsOnlyBuild:
     className: RectMask2D
   - hash:
       serializedVersion: 2
-      Hash: 9bbd5f5868ac223406a73ca0dcc6ad8b
+      Hash: 56532204797f5a2b1bc93ed565da5ea3
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: CarController
@@ -2908,7 +2911,7 @@ ScriptsOnlyBuild:
     className: XPMultiplierRewardSO
   - hash:
       serializedVersion: 2
-      Hash: 5872d901399671f485be0df125e3932c
+      Hash: c2603b6c5eab7153f3f6c3698f4d8df2
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: RacingSkillUIEntry
@@ -3128,6 +3131,12 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: ProjectilePool
+  - hash:
+      serializedVersion: 2
+      Hash: 4c82f30e8443afc39eacf3ec6ec4c3cf
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackObstacleBounceBack
   - hash:
       serializedVersion: 2
       Hash: e2734bcc7b3e94776ade5d59f54fec1e

@@ -95,6 +95,8 @@ public class ThrownObstacleDirector : MonoBehaviour
     [SerializeField] private AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
     [Tooltip("Maximum lateral miss offset (meters) applied when a shot misses; scaled by (1-accuracy).")]
     [SerializeField, Min(0f)] private float maxMissLateral = 4f;
+    [Tooltip("Maximum forward/back miss offset (meters) applied when a shot misses; scaled by (1-accuracy).")]
+    [SerializeField, Min(0f)] private float maxMissForward = 6f;
 
     [Header("Explosion Frequency")]
     [Tooltip("Base spawn chance for explosive variant (0..1).")]
@@ -255,12 +257,24 @@ public class ThrownObstacleDirector : MonoBehaviour
         // Accuracy: may miss. Higher accuracy -> less lateral error.
         float accuracy = Mathf.Clamp01(baseAccuracy * (accuracyByDistance != null ? accuracyByDistance.Evaluate(distanceNorm) : 1f));
         float missChance = 1f - accuracy;
-        if (UnityEngine.Random.value < missChance)
+        bool didMiss = UnityEngine.Random.value < missChance;
+        if (didMiss)
         {
-            // apply lateral miss proportional to (1-accuracy) and scaled by distance
-            float lateral = UnityEngine.Random.Range(-maxMissLateral, maxMissLateral) * (1f - accuracy) * Mathf.Lerp(0.6f, 1.4f, distanceNorm);
+            float missScale = (1f - accuracy) * Mathf.Lerp(0.6f, 1.4f, distanceNorm);
+
+            float lateral = UnityEngine.Random.Range(-maxMissLateral, maxMissLateral) * missScale;
             interceptPos += right * lateral;
-            if (debugDraw) Debug.DrawLine(interceptPos, interceptPos + Vector3.up * 1f, Color.magenta, 6f);
+
+            float forward = UnityEngine.Random.Range(-maxMissForward, maxMissForward) * missScale;
+            interceptPos += spawnFwd * forward;
+
+            if (debugDraw)
+                Debug.DrawLine(interceptPos, interceptPos + Vector3.up * 1f, Color.magenta, 6f);
+        }
+        else
+        {
+            float micro = 0.15f * (1f - accuracy);
+            interceptPos += spawnFwd * UnityEngine.Random.Range(-micro, micro);
         }
 
         // Explosion selection: chance increases with distance via curve

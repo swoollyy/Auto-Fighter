@@ -152,7 +152,7 @@ public class CarTurretController : MonoBehaviour
         if (targetLayers.value == 0)
             return forward;
 
-        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Ignore);
+        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Collide);
 
         if (hits == null || hits.Length == 0)
             return forward;

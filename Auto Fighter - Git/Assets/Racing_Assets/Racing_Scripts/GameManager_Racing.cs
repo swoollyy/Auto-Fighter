@@ -107,6 +107,9 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Tooltip("Extra delay after the car is fully stopped before showing the Run Complete screen.")]
     private float runEndSettleDelay = .9f;
 
+    [SerializeField, Min(0f)]
+    private float freezeAfterRunCompleteDelayRealtime = 0.75f;
+
     [SerializeField] private float deathStopShakeMult = 1.35f;
     [SerializeField] private float deathStopSlowMoSeverity = 1f;
 
@@ -139,6 +142,8 @@ public class GameManager_Racing : MonoBehaviour
 
     private bool _depositSoundPlayed = false;
 
+
+    public bool RunEnded => runEnded;
     public CarController ActiveCar => carController;
 
     private const string PREF_KEY_PLAY_DEPOSIT = "GM_PlayDepositOnLoad_v1";
@@ -418,7 +423,7 @@ public class GameManager_Racing : MonoBehaviour
         runEnded = true;
 
         // Pause so player can read
-        Time.timeScale = 0f;
+        StartCoroutine(CoFreezeAfterRunComplete());
 
         Debug.Log(
             $"[GameManager_Racing] Run complete. Distance={distanceInt} m, " +
@@ -772,6 +777,18 @@ public class GameManager_Racing : MonoBehaviour
                 return g;
         }
         return null;
+    }
+
+    private IEnumerator CoFreezeAfterRunComplete()
+    {
+        float end = Time.realtimeSinceStartup + Mathf.Max(0f, freezeAfterRunCompleteDelayRealtime);
+        while (Time.realtimeSinceStartup < end)
+            yield return null;
+
+        // Ensure any crash slowmo controller is not fighting the freeze
+        TimeScaleHub.End(this);
+
+        Time.timeScale = 0f;
     }
 
     /// <summary>

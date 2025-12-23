@@ -1,16 +1,13 @@
+﻿using DG.Tweening;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Obstacle that ONLY moves via repeated "bounce bursts" backwards along the track.
-/// Between bounces, it is stationary (but still glued to the track + lateral offset).
-///
-/// Key upgrades:
-/// - Uses a kinematic Rigidbody + MovePosition/MoveRotation (so it collides).
-/// - Lands on ROAD OR OTHER OBSTACLES via a configurable groundMask.
-/// - Bounce is a real arc (no "clamp-to-ground every frame" killing the hop).
-/// - Optional forward collision probing so it won't tunnel into solid obstacles.
-/// - Player hit applies adjustable HP + fuel% damage (via CarController method patch).
+/// AAA version:
+/// - Kinematic RB + non-trigger collider => real collisions (can land on other obstacles).
+/// - DOTween drives a smooth bounce param, FixedUpdate applies MovePosition/MoveRotation.
+/// - Always follows track path (cannot be pushed off path), but pushes OTHER obstacles on impact.
+/// - Car hit triggers full crash sim (shake/slowmo/fling/disable) without severity-based damage.
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -19,7 +16,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Header("Track Reference")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
 
-    [Header("Path Sampling (match TrackObstacleSpawner)")]
+    [Header("Path Sampling (match spawner)")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
@@ -27,95 +24,140 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("How far (meters) each bounce moves backward along the track.")]
     [SerializeField, Min(0.1f)] private float bounceStepDistance = 18f;
 
-    [Tooltip("Seconds to wait between bounces. Stationary during this time.")]
+    [Tooltip("Seconds per bounce (arc duration).")]
+    [SerializeField, Min(0.05f)] private float bounceDuration = 0.25f;
+
+    [Tooltip("Seconds to wait between bounces. Fully frozen during this time.")]
     [SerializeField, Min(0f)] private float bounceCooldown = 0.65f;
 
-    [Tooltip("If true, cooldown uses real time (ignores Time.timeScale).")]
-    [SerializeField] private bool cooldownUsesUnscaledTime = true;
+    [Tooltip("If true, bounce + cooldown uses real time (ignores Time.timeScale).")]
+    [SerializeField] private bool useUnscaledTime = true;
 
     [Header("Bounce Arc")]
     [Tooltip("Peak hop height during a bounce (meters).")]
     [SerializeField, Min(0f)] private float bounceJumpHeight = 1.0f;
 
-    [Tooltip("Seconds per bounce (arc duration).")]
-    [SerializeField, Min(0.05f)] private float bounceDuration = 0.25f;
-
-    [Header("Road Clamp")]
+    [Header("Lateral Clamp")]
     [SerializeField] private bool clampToRoadWidth = true;
     [Range(0.1f, 1f)]
     [SerializeField] private float lateralClampFraction = 0.95f;
 
     [Header("Grounding / Landing")]
-    [Tooltip("What counts as 'ground' for landing. INCLUDE road + obstacle layers you want it to sit on.")]
+    [Tooltip("What counts as 'ground' for landing. Include Road + Obstacle layers if you want it to land on obstacles.")]
     [SerializeField] private LayerMask groundMask;
 
-    [SerializeField] private float raycastStartHeight = 6f;
-    [SerializeField] private float raycastDownDistance = 25f;
+    [SerializeField, Min(0.1f)] private float raycastStartHeight = 8f;
+    [SerializeField, Min(0.1f)] private float raycastDownDistance = 40f;
 
-    [Tooltip("Extra gap above the hit surface normal so it doesn't z-fight / stick.")]
-    [SerializeField] private float heightOffset = 0.02f;
+    [Tooltip("Extra gap above the hit surface so it doesn't z-fight / stick.")]
+    [SerializeField, Min(0f)] private float heightOffset = 0.02f;
 
-    [Tooltip("If true, auto-compute bottom offset from collider bounds (recommended).")]
-    [SerializeField] private bool autoBottomOffsetFromCollider = true;
-
-    [Tooltip("Manual bottom offset from pivot to bottom of collider (meters). Used if autoBottomOffsetFromCollider=false.")]
-    [SerializeField] private float pivotBottomOffset = 0.0f;
-
-    [Tooltip("If true, use Vector3.up for height offset. If false, use hit.normal.")]
-    [SerializeField] private bool useUpForHeight = true;
-
+    [Header("Rotation")]
     [Tooltip("Face opposite the track forward (since we travel backward).")]
     [SerializeField] private bool faceDirectionOfTravel = true;
 
-    [Header("Collision While Moving")]
-    [Tooltip("If true, probe for solid obstacles during a bounce so we don't tunnel through them.")]
-    [SerializeField] private bool enableForwardProbe = true;
+    [Tooltip("Lock up axis to Vector3.up for stability (recommended).")]
+    [SerializeField] private bool keepUpright = true;
 
-    [Tooltip("Layers considered solid blockers during bounce motion (usually obstacles).")]
-    [SerializeField] private LayerMask blockerMask;
+    [Header("Collision Filtering (AAA)")]
+    [SerializeField, Tooltip("Layers this obstacle should NOT physically collide with (ex: Player/Car). We still detect hits via overlap query.")]
+    private LayerMask noPhysicalCollisionMask;
 
-    [Tooltip("Small skin distance for the probe cast.")]
-    [SerializeField, Min(0f)] private float probeSkin = 0.03f;
+    [SerializeField, Tooltip("Layers used to detect the car for damage/crash sim (usually same as Player/Car).")]
+    private LayerMask carDetectMask;
+
+    [SerializeField, Min(0.01f)] private float carDetectRadius = 0.6f;
+
+
+    [Header("Landing Settle (Fix Shake)")]
+    [SerializeField, Min(0f), Tooltip("Time in seconds to let physics settle after landing before freezing.")]
+    private float landingSettleTime = 0.06f;
+
+    [SerializeField, Min(0f), Tooltip("Extra upward lift on landing to avoid micro-penetration.")]
+    private float landingLift = 0.03f;
+
+    private float _settleUntil;
+    private bool _isSettling;
+
+
+    [Header("Obstacle Reactions")]
+    [SerializeField] private bool reactToOtherObstacles = true;
+
+    [Tooltip("Layers considered as other obstacles that should get pushed when hit.")]
+    [SerializeField] private LayerMask obstacleReactMask;
+
+    [SerializeField, Min(0f)] private float obstacleImpulse = 10f;
+    [SerializeField, Min(0f)] private float obstacleUpImpulse = 2f;
+
+    [Tooltip("Minimum time between applying impulse to other obstacles (prevents spam vibration).")]
+    [SerializeField, Min(0f)] private float obstacleImpactCooldown = 0.10f;
 
     [Header("Damage On Player Hit")]
     [SerializeField] private bool damagePlayerOnHit = true;
 
     [Tooltip("Flat HP damage applied on hit.")]
-    [SerializeField, Min(0f)] private float hitHpDamage = 15f;
+    [SerializeField, Min(0f)] private float hitHpDamage = 1f;
 
-    [Tooltip("Fuel damage as a FRACTION of max fuel. 0.10 = 10% of max fuel.")]
-    [SerializeField, Range(0f, 1f)] private float hitFuelPercent = 0.10f;
+    [Tooltip("Fuel damage as a FRACTION of max fuel. 0.05 = 5% of max fuel.")]
+    [SerializeField, Range(0f, 1f)] private float hitFuelPercent = 0.02f;
 
-    [Tooltip("Cooldown between player damage applications (prevents multi-hit spam).")]
+    [Tooltip("Cooldown between player damage applications.")]
     [SerializeField, Min(0f)] private float hitDamageCooldown = 0.5f;
 
-    // --- Internals ---
+    [Tooltip("Crash FX severity used for presentation only (shake/slowmo/crash handling). Damage is fixed by hitHpDamage/hitFuelPercent.")]
+    [SerializeField, Range(0f, 1f)] private float crashFxSeverity = 0.65f;
+
+    [Tooltip("ImpactSpeed fed into crash sim (controls fling/torque). Usually feels good around 20–45.")]
+    [SerializeField, Min(0f)] private float crashImpactSpeed = 32f;
+
+    [Header("Per-Instance Ignore (Fix global ignore)")]
+    [SerializeField, Min(0f), Tooltip("How long to ignore collisions with a masked collider after contact.")]
+    private float ignoreCollisionSeconds = 0.25f;
+
+    private readonly Dictionary<Collider, float> _ignoredUntil = new();
+    private readonly List<Collider> _toRestore = new();
+
+
+    // ---------------- internals ----------------
+
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
     private float _totalLength;
 
-    private float _dist;              // current distance along track
-    private float _lateralOffset;     // signed offset from centerline along right vector at spawn
-    private bool _initialized;
+    private float _dist;
+    private float _lateralOffset;
 
-    // Bounce state
-    private bool _isBouncing;
-    private float _nextBounceTime;
 
-    private float _bounceStartTime;
-    private float _bounceEndTime;
-    private float _bounceStartDist;
-    private float _bounceEndDist;
-
-    // Physics refs
     private Rigidbody _rb;
     private Collider _col;
 
-    // Cached bottom offset
-    private float _bottomOffset;
 
-    // Player hit gating
-    private float _nextAllowedHitTime;
+    // stable pivot->bottom offset along world up
+    private float _pivotToBottomUp;
+
+    private bool _initialized;
+
+    private enum State { FrozenCooldown, Bouncing }
+    private State _state = State.FrozenCooldown;
+
+    private float _frozenUntil;
+    private Vector3 _frozenPos;
+    private Quaternion _frozenRot;
+
+    private float _bounceStartDist;
+    private float _bounceEndDist;
+
+    // DOTween drives this
+    private float _bounceT;
+    private Tween _bounceTween;
+
+    // gating
+    private float _nextAllowedCarHitTime;
+    private float _nextAllowedObstacleImpulseTime;
+
+    // for impact velocity
+    private Vector3 _prevPos;
+    private Vector3 _estimatedVel;
 
     private void Awake()
     {
@@ -124,25 +166,35 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _col = GetComponent<Collider>();
 
-        // Must be kinematic because we control position, but still want collisions.
+        // Physics setup: kinematic but collides
         _rb.isKinematic = true;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
-        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
 
-        if (_col != null)
-            _col.isTrigger = false; // required for physical contact + landing on stuff
+
     }
 
     private void OnEnable()
     {
         _initialized = false;
-        _isBouncing = false;
-        _nextBounceTime = 0f;
+        _state = State.FrozenCooldown;
+        _frozenUntil = 0f;
 
-        _bounceStartTime = 0f;
-        _bounceEndTime = 0f;
+        _bounceTween?.Kill();
+        _bounceTween = null;
+        _bounceT = 0f;
 
-        _nextAllowedHitTime = 0f;
+        _nextAllowedCarHitTime = 0f;
+        _nextAllowedObstacleImpulseTime = 0f;
+
+        _prevPos = transform.position;
+        _estimatedVel = Vector3.zero;
+    }
+
+    private void OnDisable()
+    {
+        _bounceTween?.Kill();
+        _bounceTween = null;
     }
 
     private void Start()
@@ -155,39 +207,47 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (!InitializeIfNeeded())
             return;
 
-        float now = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
+        float dt = Time.fixedDeltaTime;
 
-        // Start new bounce if idle and cooldown passed
-        if (!_isBouncing && now >= _nextBounceTime)
+        // simple velocity estimate for impulses
+        Vector3 curPos = _rb.position;
+        _estimatedVel = (curPos - _prevPos) / Mathf.Max(0.0001f, dt);
+        _prevPos = curPos;
+
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+
+        UpdateIgnoredCollisions(now);
+
+        if (_state == State.FrozenCooldown)
         {
+            // Fully kill all motion while frozen (your request)
+            if (now < _frozenUntil)
+            {
+                // If we're in the settle window, let physics resolve contacts without rail forcing.
+                if (_isSettling && now < _settleUntil)
+                    return;
+
+                // After settle: freeze hard
+                _rb.isKinematic = true;
+                _rb.velocity = Vector3.zero;
+                _rb.angularVelocity = Vector3.zero;
+                _rb.MovePosition(_frozenPos);
+                _rb.MoveRotation(_frozenRot);
+                return;
+            }
+
+
+            // Start a new bounce
             StartBounce(now);
         }
 
-        // Compute target dist along track (during bounce it's lerped)
-        float distNow = _dist;
+        // Bouncing
+        float t01 = Mathf.Clamp01(_bounceT);
 
-        if (_isBouncing)
-        {
-            float tNow = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-            float t01 = Mathf.InverseLerp(_bounceStartTime, _bounceEndTime, tNow);
+        float distNow = Mathf.Lerp(_bounceStartDist, _bounceEndDist, t01);
+        _dist = distNow;
 
-            distNow = Mathf.Lerp(_bounceStartDist, _bounceEndDist, t01);
-
-            // End bounce at completion or clamp at start of track
-            if (t01 >= 1f || distNow <= 0f)
-            {
-                distNow = Mathf.Max(0f, distNow);
-                _dist = distNow;
-                EndBounce(tNow);
-            }
-            else
-            {
-                _dist = distNow;
-            }
-        }
-
-        // Sample track for center + forward
-        SampleAlongPath(_dist, out Vector3 center, out Vector3 forward);
+        SampleAlongPath(distNow, out Vector3 center, out Vector3 forward);
 
         Vector3 flatForward = forward;
         flatForward.y = 0f;
@@ -204,128 +264,44 @@ public class TrackObstacleBounceBack : MonoBehaviour
             lateral = Mathf.Clamp(lateral, -maxLat, maxLat);
         }
 
-        // Base (track-glued) horizontal position
         Vector3 basePos = center + right * lateral;
 
-        // Apply bounce arc (visual hop)
-        float arcY = 0f;
-        if (_isBouncing && bounceJumpHeight > 0f)
+        // Ground snap under the track-glued XZ (road OR obstacle if in groundMask)
+        float groundY = basePos.y;
+        if (RaycastGroundY(basePos, out RaycastHit hit))
         {
-            float tNow = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-            float t01 = Mathf.InverseLerp(_bounceStartTime, _bounceEndTime, tNow);
-            arcY = Mathf.Sin(t01 * Mathf.PI) * bounceJumpHeight;
-        }
-
-        // We land on whatever is under us (road or obstacles). During bounce we still "hover"
-        // above the landing surface by arcY, but we do NOT snap to the road each frame
-        // in a way that would delete the hop.
-        Vector3 desired = basePos;
-
-        // Find landing surface directly under basePos (not including arc)
-        Vector3 origin = basePos + Vector3.up * raycastStartHeight;
-        float maxRay = raycastStartHeight + raycastDownDistance;
-
-        Vector3 upAxis = Vector3.up;
-        Vector3 surfaceNormal = Vector3.up;
-
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, groundMask, QueryTriggerInteraction.Ignore))
-        {
-            surfaceNormal = hit.normal;
-            upAxis = useUpForHeight ? Vector3.up : surfaceNormal;
-
-            // Place feet on the surface, then add arc hop on top.
-            desired = hit.point + upAxis * (heightOffset + _bottomOffset);
-            desired += Vector3.up * arcY;
+            groundY = hit.point.y + _pivotToBottomUp + heightOffset;
         }
         else
         {
-            // Fallback: float at base height + arc
-            desired = basePos + Vector3.up * arcY;
+            // fallback: keep current Y if we somehow miss
+            groundY = _rb.position.y;
         }
 
-        // Optional: prevent tunneling into blockers while bouncing
-        if (enableForwardProbe && _isBouncing && blockerMask.value != 0)
-        {
-            Vector3 from = _rb.position;
-            Vector3 to = desired;
+        // Arc (parabola): 4h t(1-t)
+        float arc = 0f;
+        if (bounceJumpHeight > 0f)
+            arc = 4f * bounceJumpHeight * t01 * (1f - t01);
 
-            Vector3 delta = to - from;
-            float dist = delta.magnitude;
+        Vector3 desired = new Vector3(basePos.x, groundY + arc, basePos.z);
 
-            if (dist > 0.0001f)
-            {
-                Vector3 dir = delta / dist;
-
-                // Use collider bounds as a simple probe radius (cheap and stable)
-                float radius = 0.25f;
-                if (_col != null)
-                {
-                    var b = _col.bounds;
-                    radius = Mathf.Max(0.05f, Mathf.Min(b.extents.x, b.extents.z));
-                }
-
-                // Spherecast from current to desired to detect blockers
-                if (Physics.SphereCast(from, radius, dir, out RaycastHit blockHit, dist + probeSkin, blockerMask, QueryTriggerInteraction.Ignore))
-                {
-                    // Stop at hit point (minus skin), keep our path distance, and end bounce early.
-                    float stopDist = Mathf.Max(0f, blockHit.distance - probeSkin);
-                    Vector3 stopped = from + dir * stopDist;
-
-                    desired = stopped;
-                    float tNow = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-                    EndBounce(tNow);
-                }
-            }
-        }
-
-        // Rotation
-        Quaternion rot;
-        if (faceDirectionOfTravel)
-        {
-            Vector3 travelDir = -flatForward;
-            if (travelDir.sqrMagnitude < 0.0001f) travelDir = transform.forward;
-            rot = Quaternion.LookRotation(travelDir, surfaceNormal);
-        }
-        else
-        {
-            rot = Quaternion.LookRotation(flatForward, surfaceNormal);
-        }
+        Quaternion desiredRot = ComputeRotation(flatForward);
 
         _rb.MovePosition(desired);
-        _rb.MoveRotation(rot);
-    }
+        _rb.MoveRotation(desiredRot);
 
-    private void StartBounce(float now)
-    {
-        _isBouncing = true;
+        if (_state == State.Bouncing)
+            CheckCarHitQuery(now);
 
-        float tNow = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-        _bounceStartTime = tNow;
-        _bounceEndTime = tNow + Mathf.Max(0.05f, bounceDuration);
-
-        _bounceStartDist = _dist;
-        _bounceEndDist = Mathf.Max(0f, _dist - bounceStepDistance);
-    }
-
-    private void EndBounce(float now)
-    {
-        _isBouncing = false;
-        _nextBounceTime = now + bounceCooldown;
-    }
-
-    private void ForceBounceNow()
-    {
-        float now = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-
-        _bounceEndTime = now;    // stop the current arc immediately
-        _isBouncing = false;
-        _nextBounceTime = now;
+        // End bounce when tween completes
+        if (t01 >= 0.9999f)
+        {
+            EndBounce(now, desired, desiredRot);
+        }
     }
 
     private bool InitializeIfNeeded()
     {
-
-
         if (_initialized) return true;
 
         if (!trackGenerator) trackGenerator = FindFirstObjectByType<ProceduralTrackGenerator>();
@@ -335,37 +311,168 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (_path.Count < 2 || _totalLength <= 0.01f)
             return false;
 
-        // Compute bottom offset once
-        _bottomOffset = Mathf.Max(0f, pivotBottomOffset);
-        if (autoBottomOffsetFromCollider && _col != null)
+        // Compute a stable pivot->bottom offset along world up.
+        // This avoids the "sink deeper every jump" problem.
+        if (_col != null)
         {
-            // Bounds extents are world-space. We want "how far from pivot to bottom".
-            // Using extents.y is a good approximation if pivot is near center.
-            _bottomOffset = Mathf.Max(0f, _col.bounds.extents.y);
+            // pivot->bottom = pivotY - bottomY ; bottomY = bounds.centerY - extentsY
+            // => pivot->bottom = (pivotY - centerY) + extentsY
+            Bounds b = _col.bounds;
+            _pivotToBottomUp = (transform.position.y - b.center.y) + b.extents.y;
+            _pivotToBottomUp = Mathf.Max(0f, _pivotToBottomUp);
+        }
+        else
+        {
+            _pivotToBottomUp = 0f;
         }
 
-        // Find current distance along track + compute lateral offset at spawn
-        float spawnDist = GetDistanceAlongTrack(transform.position);
-        _dist = spawnDist;
+        // Find current distance + lateral offset at spawn
+        _dist = GetDistanceAlongTrack(transform.position);
 
-        SampleAlongPath(spawnDist, out Vector3 center, out Vector3 forward);
-
-        Vector3 flatForward = forward;
-        flatForward.y = 0f;
+        SampleAlongPath(_dist, out Vector3 center, out Vector3 forward);
+        Vector3 flatForward = forward; flatForward.y = 0f;
         if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
         flatForward.Normalize();
 
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
-        Vector3 delta = transform.position - center;
-        _lateralOffset = Vector3.Dot(delta, right);
+        _lateralOffset = Vector3.Dot(transform.position - center, right);
 
-        float now = cooldownUsesUnscaledTime ? Time.unscaledTime : Time.time;
-        _nextBounceTime = now; // bounce immediately
-        _isBouncing = false;
+        // Snap once immediately, then start bouncing
+        Vector3 snapPos = transform.position;
+        if (RaycastGroundY(new Vector3(transform.position.x, transform.position.y, transform.position.z), out RaycastHit hit))
+        {
+            snapPos.y = hit.point.y + _pivotToBottomUp + heightOffset;
+        }
+
+        Quaternion snapRot = ComputeRotation(flatForward);
+        _rb.position = snapPos;
+        _rb.rotation = snapRot;
+
+        _frozenPos = snapPos;
+        _frozenRot = snapRot;
+
+        _state = State.FrozenCooldown;
+        _frozenUntil = (useUnscaledTime ? Time.unscaledTime : Time.time); // can bounce immediately
 
         _initialized = true;
         return true;
     }
+
+    private void StartBounce(float now)
+    {
+        _isSettling = false;
+        _settleUntil = 0f;
+
+        _rb.isKinematic = true;
+        _rb.velocity = Vector3.zero;
+        _rb.angularVelocity = Vector3.zero;
+
+
+        _state = State.Bouncing;
+
+        _bounceStartDist = _dist;
+        _bounceEndDist = Mathf.Max(0f, _dist - bounceStepDistance);
+
+        _bounceTween?.Kill();
+        _bounceT = 0f;
+
+        // DOTween drives progress; FixedUpdate applies physics motion
+        _bounceTween = DOTween.To(() => _bounceT, v => _bounceT = v, 1f, Mathf.Max(0.05f, bounceDuration))
+            .SetEase(Ease.OutQuad)
+            .SetUpdate(useUnscaledTime); // true => ignore timeScale
+    }
+
+    private void EndBounce(float now, Vector3 finalPos, Quaternion finalRot)
+    {
+        _bounceTween?.Kill();
+        _bounceTween = null;
+        _bounceT = 1f;
+
+        // HARD snap to ground at end, then FREEZE completely until next bounce.
+        // This kills the vibration/jitter during cooldown.
+        Vector3 snapPos = finalPos;
+
+        // Snap ground without arc
+        Vector3 xz = new Vector3(finalPos.x, finalPos.y, finalPos.z);
+        if (RaycastGroundY(xz, out RaycastHit hit))
+        {
+            snapPos.y = hit.point.y + _pivotToBottomUp + heightOffset;
+        }
+
+        _frozenPos = snapPos + Vector3.up * landingLift;
+        _frozenRot = finalRot;
+
+        // Let physics settle for a brief moment to prevent kinematic-vs-collider fight jitter
+        _isSettling = landingSettleTime > 0f;
+        _settleUntil = now + landingSettleTime;
+
+        // Temporarily hand off to physics
+        _rb.isKinematic = false;
+        _rb.velocity = Vector3.zero;
+        _rb.angularVelocity = Vector3.zero;
+
+        // Put it slightly above the surface so it can land cleanly
+        _rb.position = _frozenPos;
+        _rb.rotation = _frozenRot;
+
+        _state = State.FrozenCooldown;
+        _frozenUntil = now + bounceCooldown;
+
+    }
+
+    private Quaternion ComputeRotation(Vector3 flatForward)
+    {
+        Vector3 lookDir = faceDirectionOfTravel ? -flatForward : flatForward;
+        if (lookDir.sqrMagnitude < 0.0001f) lookDir = transform.forward;
+
+        if (keepUpright)
+            return Quaternion.LookRotation(lookDir, Vector3.up);
+
+        // If you ever want slope tilt later, you’d feed in hit.normal, but upright is the stable/AAA choice here.
+        return Quaternion.LookRotation(lookDir, Vector3.up);
+    }
+
+    private bool RaycastGroundY(Vector3 aroundPos, out RaycastHit hit)
+    {
+        Vector3 origin = new Vector3(aroundPos.x, aroundPos.y + raycastStartHeight, aroundPos.z);
+        float maxRay = raycastStartHeight + raycastDownDistance;
+
+        return Physics.Raycast(origin, Vector3.down, out hit, maxRay, groundMask, QueryTriggerInteraction.Ignore);
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+        IgnoreCollisionTemporarily(collision.collider, now);
+
+        // Other obstacle reaction only
+        if (reactToOtherObstacles && obstacleReactMask.value != 0)
+        {
+            if (now < _nextAllowedObstacleImpulseTime) return;
+
+            int otherLayerMaskBit = 1 << collision.collider.gameObject.layer;
+            if ((obstacleReactMask.value & otherLayerMaskBit) == 0) return;
+
+            Rigidbody otherRb = collision.rigidbody;
+            if (otherRb != null && otherRb != _rb && !otherRb.isKinematic)
+            {
+                ContactPoint cp = collision.GetContact(0);
+
+                Vector3 dir = _estimatedVel;
+                dir.y = 0f;
+                if (dir.sqrMagnitude < 0.001f) dir = transform.forward;
+                dir.Normalize();
+
+                Vector3 impulse = dir * obstacleImpulse + Vector3.up * obstacleUpImpulse;
+                otherRb.AddForceAtPosition(impulse, cp.point, ForceMode.Impulse);
+            }
+
+            _nextAllowedObstacleImpulseTime = now + obstacleImpactCooldown;
+        }
+    }
+
+
+    // ---------------- path utils ----------------
 
     private void RebuildPath()
     {
@@ -392,6 +499,43 @@ public class TrackObstacleBounceBack : MonoBehaviour
         }
         _totalLength = len;
     }
+
+    private void IgnoreCollisionTemporarily(Collider other, float now)
+    {
+        if (other == null || _col == null) return;
+
+        int bit = 1 << other.gameObject.layer;
+        if ((noPhysicalCollisionMask.value & bit) == 0) return;
+
+        Physics.IgnoreCollision(_col, other);
+
+        _ignoredUntil[other] = now + ignoreCollisionSeconds;
+    }
+
+
+    private void UpdateIgnoredCollisions(float now)
+    {
+        if (_ignoredUntil.Count == 0) return;
+
+        _toRestore.Clear();
+
+        foreach (var kv in _ignoredUntil)
+        {
+            if (kv.Key == null || now >= kv.Value)
+                _toRestore.Add(kv.Key);
+        }
+
+        for (int i = 0; i < _toRestore.Count; i++)
+        {
+            var c = _toRestore[i];
+            if (c != null && _col != null)
+                Physics.IgnoreCollision(_col, c, false);
+
+            _ignoredUntil.Remove(c);
+        }
+    }
+
+
 
     private float GetDistanceAlongTrack(Vector3 worldPos)
     {
@@ -423,6 +567,58 @@ public class TrackObstacleBounceBack : MonoBehaviour
         return _cumLengths[bestIdx] + bestT * segLen;
     }
 
+    private void CheckCarHitQuery(float now)
+    {
+        if (!damagePlayerOnHit) return;
+        if (now < _nextAllowedCarHitTime) return;
+        if (carDetectMask.value == 0) return;
+
+        Collider[] hits = Physics.OverlapSphere(_rb.position, carDetectRadius, carDetectMask, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return;
+
+        CarController car = null;
+        Collider carCol = null;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            car = hits[i].GetComponentInParent<CarController>();
+            if (car != null) { carCol = hits[i]; break; }
+        }
+        if (car == null) return;
+
+        // NOW ignore this specific collider instance (prevents the “yeet” impulse)
+        IgnoreCollisionTemporarily(carCol, now);
+
+
+        Vector3 contactPoint = carCol.ClosestPoint(_rb.position);
+        Vector3 contactNormal = (_rb.position - contactPoint);
+        if (contactNormal.sqrMagnitude < 0.0001f) contactNormal = Vector3.up;
+        contactNormal.Normalize();
+
+        Vector3 hitDir = (car.transform.position - _rb.position);
+        hitDir.y = 0f;
+        if (hitDir.sqrMagnitude < 0.0001f) hitDir = -contactNormal;
+        hitDir.Normalize();
+
+        // Use your existing "damage + crash FX" function (with overrides)
+        car.ApplyDirectDamageWithCrashFX(
+            hitHpDamage,
+            hitFuelPercent,
+            contactPoint,
+            contactNormal,
+            hitDir,
+            crashImpactSpeed,
+            crashFxSeverity
+        );
+
+        // Immediate bounce again after player hit
+        _frozenUntil = now;
+        _state = State.FrozenCooldown;
+
+        _nextAllowedCarHitTime = now + hitDamageCooldown;
+    }
+
+
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
     {
         dist = Mathf.Clamp(dist, 0f, _totalLength);
@@ -440,7 +636,6 @@ public class TrackObstacleBounceBack : MonoBehaviour
         fwd = (_path[idx + 1] - _path[idx]).normalized;
     }
 
-    // Match spawner smoothing (same helper you already had in this script)
     private static void GenerateSmoothedPath(List<Vector3> src, int subdivisionsPerSegment, List<Vector3> outPts)
     {
         outPts.Clear();
@@ -474,22 +669,5 @@ public class TrackObstacleBounceBack : MonoBehaviour
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         );
-    }
-
-    private void OnCollisionEnter(Collision collision)
-    {
-        if (!damagePlayerOnHit) return;
-
-        if (Time.time < _nextAllowedHitTime)
-            return;
-
-        var car = collision.collider.GetComponentInParent<CarController>();
-        if (car == null) return;
-
-        car.ApplyDirectDamage(hitHpDamage, hitFuelPercent);
-
-        ForceBounceNow();
-
-        _nextAllowedHitTime = Time.time + hitDamageCooldown;
     }
 }

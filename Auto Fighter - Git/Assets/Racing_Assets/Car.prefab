@@ -541,7 +541,7 @@ MonoBehaviour:
   coneAngle: 360
   targetLayers:
     serializedVersion: 2
-    m_Bits: 2048
+    m_Bits: 264192
   useAutoTargeting: 1
   travelAllowanceMultiplier: 1.1
   pathPriorityWeight: 2
@@ -946,7 +946,7 @@ MonoBehaviour:
   baseDrag: 0.13
   groundLayers:
     serializedVersion: 2
-    m_Bits: 90112
+    m_Bits: 92160
   samplesX: 6
   samplesZ: 6
   raycastHeightOffset: 0.5
@@ -956,7 +956,7 @@ MonoBehaviour:
   maxFuel: 100
   fuelUsePerSecondAtFullThrottle: 10
   fuelUsePerSecondBraking: 10
-  idleFuelUsePerSecond: 0
+  idleFuelUsePerSecond: 5
   idleSpeedThreshold: 0.5
   crashLayers:
     serializedVersion: 2
@@ -977,7 +977,7 @@ MonoBehaviour:
   groundCheckDistance: 0.3
   groundCheckLayers:
     serializedVersion: 2
-    m_Bits: 26624
+    m_Bits: 288768
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
   maxHP: 100
@@ -1030,10 +1030,25 @@ MonoBehaviour:
   airAlignSpeed: 6
   groundNormalCastRadius: 0.35
   groundNormalCheckDistance: 2
-  landingPredictDistance: 2.55
-  landingAlignStartDistance: 1.22
+  landingPredictDistance: 2.75
+  landingAlignStartDistance: 1.97
   deathVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   deathVFXLifetime: 8
+  deathExplodeClip: {fileID: 8300000, guid: d043ec2d89c1b1d4daea2ea20a2457d5, type: 3}
+  deathExplodeVolume: 1
+  deathExplodeUseSpatial: 1
+  deathExplodeSpatialBlend: 1
+  deathExplodeRolloff: 0
+  deathExplodeMinDistance: 2
+  deathExplodeMaxDistance: 70
+  deathExplodeVolumeMultiplier: 1.6
+  deathExplodePitchMin: 0.7
+  deathExplodePitchMax: 1
+  deathExplodeSfxCooldown: 0.08
+  skipSpeedClampWhileAirborne: 1
+  enableLandingCarrySpeed: 1
+  landingExcessBleedPerSecond: 16
+  landingNoClampGraceSeconds: 0.22
   grassFuelUseMultiplier: 3
   offDefaultFraction: 0
   grassFraction: 0
@@ -1336,7 +1351,7 @@ MonoBehaviour:
   idleVolume: 0.118
   driveVolume: 0.247
   driveMinPitch: 0.8
-  driveMaxPitch: 2.7
+  driveMaxPitch: 1.8
   idlePitch: 1
   speedForMaxPitch: 7.29
   pitchCurve:
