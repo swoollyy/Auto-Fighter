@@ -2539,6 +2539,11 @@ MonoBehaviour:
   trackFuelSpawner: {fileID: 796779776}
   trackHPSpawner: {fileID: 796779777}
   icePathSpawner: {fileID: 796779778}
+  urpRendererAsset: {fileID: 11400000, guid: e97daaf750b172e47a47a78b8dce9722, type: 2}
+  enabledRendererFeatures:
+  - VolumetricFogRendererFeatureLite
+  - FullScreenPassRendererFeature
+  disabledRendererFeatures: []
   mainCam: {fileID: 661794728}
   cameraFollow: {fileID: 661794730}
   enableCrashScreenShake: 1

@@ -3,11 +3,11 @@
   "WorkspaceRootPath": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\bouncebacktrackobstacle.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\bouncebacktrackobstacle.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\carcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\racing_assets\\racing_scripts\\carcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\carcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
@@ -155,14 +155,14 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "BounceBackTrackObstacle.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\BounceBackTrackObstacle.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\BounceBackTrackObstacle.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\BounceBackTrackObstacle.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\BounceBackTrackObstacle.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAAmAAAAAAAAAA==",
+              "Title": "TrackObstacleBounceBack.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "ViewState": "AgIAACoBAAAAAAAAAAAgwD8BAABEAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-12-19T22:17:16.852Z",
+              "WhenOpened": "2025-12-19T22:18:56.677Z",
               "EditorCaption": ""
             },
             {
@@ -173,7 +173,7 @@
               "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
               "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
               "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
-              "ViewState": "AgIAAOACAAAAAAAAAAAwwPcCAAAjAAAAAAAAAA==",
+              "ViewState": "AgIAAOEJAAAAAAAAAAAcwBAKAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-11-20T22:44:44.12Z",
               "EditorCaption": ""
@@ -260,7 +260,8 @@
               "RelativeToolTip": "Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAABHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
-              "WhenOpened": "2025-11-13T22:33:56.568Z"
+              "WhenOpened": "2025-11-13T22:33:56.568Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",

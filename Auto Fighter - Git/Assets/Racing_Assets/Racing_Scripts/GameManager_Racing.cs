@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 using Debug = UnityEngine.Debug;
 
@@ -21,6 +23,11 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
+
+    [Header("URP Renderer Control")]
+    [SerializeField] private UniversalRendererData urpRendererAsset;
+    [SerializeField] private string[] enabledRendererFeatures = new string[] { };
+    [SerializeField] private string[] disabledRendererFeatures = new string[] { };
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -156,6 +163,8 @@ public class GameManager_Racing : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
+        ConfigureURPRenderers();
 
         Instance = this;
 
@@ -943,6 +952,25 @@ public class GameManager_Racing : MonoBehaviour
         src.rolloffMode = AudioRolloffMode.Linear; // irrelevant for 2D but harmless
         src.Play();
         Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
+    private void ConfigureURPRenderers()
+    {
+        if (urpRendererAsset == null) return;
+
+        // Disable specified features
+        foreach (var featureName in disabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(false);
+        }
+
+        // Enable specified features
+        foreach (var featureName in enabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(true);
+        }
     }
 
 }

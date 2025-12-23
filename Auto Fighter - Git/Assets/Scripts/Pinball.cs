@@ -7,6 +7,8 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 /// Pinball gameplay state machine
 public enum PinballState
@@ -90,6 +92,11 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private float camFovTween = 0.12f;
     [SerializeField] private CameraFollowSimple camFollow;
     private readonly object _skillAimSlowmoToken = new object();
+
+    [Header("URP Renderer Control")]
+    [SerializeField] private UniversalRendererData urpRendererAsset;
+    [SerializeField] private string[] enabledRendererFeatures = new string[] { };
+    [SerializeField] private string[] disabledRendererFeatures = new string[] { };
 
     private Ball _aimBall;
     private Transform _aimFocus;
@@ -300,6 +307,9 @@ public class Pinball : MonoBehaviour, IRunContext
             _ballStartRot = ball.transform.rotation;
             _primaryBallId = ball.GetInstanceID();
         }
+
+        ConfigureURPRenderers();
+
         maxXP = XPFormula.XpReq(level);
         maxLives = Mathf.Max(1, maxLives);
         startingLives = Mathf.Clamp(startingLives, 0, maxLives);
@@ -1779,6 +1789,25 @@ public class Pinball : MonoBehaviour, IRunContext
         {
             Time.timeScale = 1f;
             Time.fixedDeltaTime = _defaultFixedDeltaTime;
+        }
+    }
+
+    private void ConfigureURPRenderers()
+    {
+        if (urpRendererAsset == null) return;
+
+        // Disable specified features
+        foreach (var featureName in disabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(false);
+        }
+
+        // Enable specified features
+        foreach (var featureName in enabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(true);
         }
     }
     #endregion

@@ -65,7 +65,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -165,15 +165,70 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 569cce6c7ea09c74ea844ca7e5d774cc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  model: {fileID: 8267409662195140060}
-  spawnScaleFrom: 0
-  spawnScaleTo: 1
-  spawnDuration: 0.5
-  spawnEase: 27
-  hoverAmplitude: 0.15
-  hoverHalfCycle: 0.6
-  hoverEase: 4
-  rotateSpeedDegPerSec: 90
-  collectPunchScale: 0.25
-  collectDuration: 0.18
-  collectEase: 27
+  visualRoot: {fileID: 8267409662195140060}
+  playerTransform: {fileID: 0}
+  autoFindVisualRoot: 1
+  playIdleHover: 1
+  idleHoverAmplitude: 0.15
+  idleHoverFrequency: 1.2
+  idleRotateSpeed: 45
+  collectTotalDuration: 0.8
+  bounceDuration: 0.3
+  bounceDistance: 1.2
+  bounceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  bounceUpward: 0.25
+  pullDuration: 0.5
+  pullCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  minApproachDistance: 0.15
+  scaleDownAtEnd: 0.7
+  spawnFx: {fileID: 0}
+  collectFx: {fileID: 0}
+  audioSource: {fileID: 0}
+  collectSfx: {fileID: 0}
+  sfxVolume: 0.85
