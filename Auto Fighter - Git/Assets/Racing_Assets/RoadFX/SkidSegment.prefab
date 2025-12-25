@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 6555821754712190206}
   - component: {fileID: 7267144031098559634}
   - component: {fileID: 4964166726974260520}
-  m_Layer: 0
+  m_Layer: 1
   m_Name: SkidSegment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -119,4 +119,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 406c738ed1b53c64a912f06ebe263e11, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  lifetime: 5
+  lifetime: 4

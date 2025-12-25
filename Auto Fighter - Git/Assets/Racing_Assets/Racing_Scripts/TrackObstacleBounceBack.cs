@@ -1,4 +1,5 @@
 ﻿using DG.Tweening;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -29,6 +30,13 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
     [Tooltip("Seconds to wait between bounces. Fully frozen during this time.")]
     [SerializeField, Min(0f)] private float bounceCooldown = 0.65f;
+
+    [Header("Initial Cooldown Randomization")]
+    [Tooltip("Randomize the initial cooldown on spawn so obstacles don't bounce in sync.")]
+    [SerializeField] private bool randomizeInitialCooldown = true;
+
+    [Tooltip("Range for the random initial cooldown (min, max) in seconds.")]
+    [SerializeField] private Vector2 initialCooldownRange = new Vector2(0f, 1.5f);
 
     [Tooltip("If true, bounce + cooldown uses real time (ignores Time.timeScale).")]
     [SerializeField] private bool useUnscaledTime = true;
@@ -352,7 +360,19 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _frozenRot = snapRot;
 
         _state = State.FrozenCooldown;
-        _frozenUntil = (useUnscaledTime ? Time.unscaledTime : Time.time); // can bounce immediately
+
+        // Randomize initial cooldown so obstacles don't all bounce in sync
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+        if (randomizeInitialCooldown)
+        {
+            float minDelay = Mathf.Min(initialCooldownRange.x, initialCooldownRange.y);
+            float maxDelay = Mathf.Max(initialCooldownRange.x, initialCooldownRange.y);
+            _frozenUntil = now + UnityEngine.Random.Range(minDelay, maxDelay);
+        }
+        else
+        {
+            _frozenUntil = now; // can bounce immediately
+        }
 
         _initialized = true;
         return true;

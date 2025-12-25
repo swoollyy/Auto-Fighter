@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-12-14T08:25:32.6850617Z (UTC)
+- Generated: 2025-12-25T01:57:07.9973723Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 192
+- Files: 200
 
 ## Assets/BumperAnimScript.cs
 
@@ -445,1251 +445,6 @@ public sealed class BumperLightController : MonoBehaviour
     {
         EndRicochetMode();
     }
-}
-```
-
-## Assets/CarTurretController.cs
-
-```csharp
-using UnityEngine;
-
-[DisallowMultipleComponent]
-public class CarTurretController : MonoBehaviour
-{
-    [Header("References")]
-    [SerializeField] private CarController car;          // root car with movement + collider
-    [SerializeField] private Transform muzzle;           // where bullets spawn
-    [SerializeField] private GameObject bulletPrefab;    // must have RacingBullet
-    [SerializeField] private Collider ownerCollider;     // collider(s) to ignore (car body)
-
-    [Header("Firing")]
-    [SerializeField] private bool autoFire = false;      // if true, fires whenever off cooldown
-    [SerializeField] private KeyCode fireKey = KeyCode.Mouse0;
-    [SerializeField] private float fireCooldown = 0.25f; // seconds between shots
-
-    [Header("Audio (Turret)")]
-    [SerializeField, Tooltip("One-shot SFX played when the turret fires.")]
-    private AudioClip turretFireClip;
-    [SerializeField, Range(0f, 1f), Tooltip("Volume for turret fire SFX.")]
-    private float turretFireVolume = 1f;
-
-    [Header("Spawn / Startup")]
-    [SerializeField, Tooltip("If true the turret will start on its base cooldown when the car spawns instead of being immediately ready.")]
-    private bool startOnCooldown = true;
-
-    [Header("Bullet Stats")]
-    [SerializeField] private float bulletSpeed = 80f;
-    [SerializeField] private float bulletDamage = 10f;
-    [SerializeField] private float bulletRange = 60f;
-    [SerializeField] private float bulletLifetime = 3f;
-
-    [Header("Targeting / Cone")]
-    [Tooltip("Max distance we look for targets in front of the car.")]
-    [SerializeField] private float targetScanRadius = 60f;
-    [Tooltip("Total cone angle in degrees (centered on car forward).")]
-    [SerializeField] private float coneAngle = 45f;
-    [Tooltip("Layers considered valid targets (enemies/obstacles).")]
-    [SerializeField] private LayerMask targetLayers = ~0;
-    [SerializeField] private bool useAutoTargeting = true;
-
-    [Header("Protective Targeting Assist")]
-    [Tooltip("Safety window multiplier for bullet reach: bulletSpeed * bulletLifetime * multiplier.")]
-    [SerializeField] private float travelAllowanceMultiplier = 1.1f;
-    [Tooltip("Extra weight applied to path hazard score (targets directly in car path).")]
-    [SerializeField] private float pathPriorityWeight = 2.0f;
-    [Tooltip("Bullet must arrive earlier than car * this margin to qualify as a path hazard.")]
-    [SerializeField] private float preemptTimeMargin = 1.15f;
-    [Tooltip("Minimum forward dot to consider a target 'in front' (0 = hemisphere, 1 = straight ahead).")]
-    [SerializeField, Range(0f, 1f)] private float forwardDotThreshold = 0.15f;
-    [Tooltip("Small epsilon to avoid division issues in scoring.")]
-    [SerializeField] private float lateralEpsilon = 0.25f;
-
-    [Header("Debug")]
-    [SerializeField] private bool debugCone = false;
-    [SerializeField] private bool debugSelectedTarget = false;
-    [SerializeField] private Color debugHazardColor = Color.red;
-    [SerializeField] private Color debugFallbackColor = Color.yellow;
-
-    // Backing base stats (inspector defaults)
-    private float baseBulletDamage;
-    private float baseBulletSpeed;
-    private float baseFireCooldown;
-    private float baseBulletLifetime;
-    private float baseConeAngle;
-    private float baseScanRadius;
-
-    private float _cooldownTimer;
-    private Rigidbody _carRb;
-
-    private void Awake()
-    {
-        if (car == null)
-            car = GetComponentInParent<CarController>();
-
-        if (ownerCollider == null && car != null)
-            ownerCollider = car.GetComponent<Collider>();
-
-        if (muzzle == null)
-            muzzle = transform;
-
-        if (car != null)
-            _carRb = car.GetComponent<Rigidbody>();
-
-        baseBulletDamage = bulletDamage;
-        baseBulletSpeed = bulletSpeed;
-        baseFireCooldown = fireCooldown;
-        baseBulletLifetime = bulletLifetime;
-        baseConeAngle = coneAngle;
-        baseScanRadius = targetScanRadius;
-
-        ApplySkillStats();
-
-        // NEW: set initial cooldown on spawn to avoid immediate fire spam
-        _cooldownTimer = startOnCooldown ? fireCooldown : 0f;
-    }
-
-    private void OnEnable()
-    {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr != null)
-        {
-            mgr.OnLevelChanged += HandleSkillChanged;
-            mgr.OnSkillsReset += HandleSkillsReset;
-        }
-    }
-
-    private void OnDisable()
-    {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr != null)
-        {
-            mgr.OnLevelChanged -= HandleSkillChanged;
-            mgr.OnSkillsReset -= HandleSkillsReset;
-        }
-    }
-
-    private void HandleSkillChanged(SkillType _, int __) => ApplySkillStats();
-    private void HandleSkillsReset() => ApplySkillStats();
-
-    private void Update()
-    {
-        _cooldownTimer -= Time.deltaTime;
-
-        bool wantsToFire = autoFire
-                           ? true
-                           : Input.GetKey(fireKey) || Input.GetButton("Fire1");
-
-        if (!wantsToFire || _cooldownTimer > 0f)
-            return;
-
-        Vector3 origin = muzzle.position;
-        Vector3 carForward = (car != null ? car.transform.forward : transform.forward).normalized;
-
-        Vector3 shootDir = useAutoTargeting
-            ? GetProtectiveTargetDirection(origin, carForward)
-            : GetRandomConeDirection(carForward);
-
-        FireBullet(origin, shootDir);
-        _cooldownTimer = fireCooldown;
-    }
-
-    /// <summary>
-    /// Protective targeting: try to clear the car's path first by picking a reachable target
-    /// that is centered and can be intercepted before the car collides.
-    /// Falls back to the most centered reachable target.
-    /// </summary>
-    private Vector3 GetProtectiveTargetDirection(Vector3 origin, Vector3 forward)
-    {
-        forward.Normalize();
-
-        if (targetLayers.value == 0)
-            return forward;
-
-        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Ignore);
-
-        if (hits == null || hits.Length == 0)
-            return forward;
-
-        // Precompute constants
-        float halfAngleRad = Mathf.Deg2Rad * (coneAngle * 0.5f);
-        float cosThreshold = Mathf.Cos(halfAngleRad); // for cone mask
-        float maxTravel = Mathf.Min(bulletSpeed * bulletLifetime * travelAllowanceMultiplier, bulletRange);
-
-        // Car forward speed for prediction
-        float carFwdSpeed = GetCarForwardSpeed(forward);
-        if (carFwdSpeed < 0.5f)
-            carFwdSpeed = 0.5f; // minimal speed to avoid infinite times
-
-        // Best path hazard candidate
-        bool hazardFound = false;
-        Vector3 hazardAimDir = Vector3.zero;
-        float hazardBestScore = float.MinValue;
-        float hazardBestDistSqr = float.MaxValue;
-        Vector3 hazardPos = Vector3.zero;
-
-        // Best fallback candidate
-        Vector3 fallbackAimDir = Vector3.zero;
-        float fallbackBestScore = float.MinValue;
-        float fallbackBestDistSqr = float.MaxValue;
-        Vector3 fallbackPos = Vector3.zero;
-
-        foreach (var col in hits)
-        {
-            if (!col || col == ownerCollider)
-                continue;
-
-            Vector3 targetPoint = col.bounds.center;
-            Vector3 toTarget = targetPoint - origin;
-            float sqrDist = toTarget.sqrMagnitude;
-            if (sqrDist < 0.0001f)
-                continue;
-
-            float dist = Mathf.Sqrt(sqrDist);
-            Vector3 dir = toTarget / dist;
-
-            // Must be within cone
-            float dotForward = Vector3.Dot(forward, dir);
-            if (dotForward < cosThreshold)
-                continue;
-
-            // Must be reachable within travel envelope
-            if (dist > maxTravel)
-                continue;
-
-            // Base alignment metrics
-            float forwardComponent = Mathf.Max(0f, Vector3.Dot(forward, toTarget)); // signed forward distance
-            float lateralComponent = Mathf.Sqrt(Mathf.Max(0f, sqrDist - forwardComponent * forwardComponent));
-
-            // Try lead
-            Vector3 targetVel = Vector3.zero;
-            var rb = col.attachedRigidbody;
-            if (rb != null && rb.gameObject.activeInHierarchy && !rb.isKinematic)
-                targetVel = rb.velocity;
-
-            Vector3 aimDir;
-            bool canLead = TryComputeLeadDirection(origin, targetPoint, targetVel, bulletSpeed, maxTravel, out aimDir);
-            if (!canLead)
-                aimDir = dir;
-
-            // Recompute dot with aim direction (if lead changed focus)
-            float aimDot = Vector3.Dot(forward, aimDir);
-
-            // Compute path alignment score (higher is better)
-            // Emphasize high forward dot, penalize lateral deviation.
-            float pathAlignmentScore = aimDot / (1f + lateralComponent / Mathf.Max(lateralEpsilon, forwardComponent + lateralEpsilon));
-
-            // Fallback score (pure centeredness)
-            float centeredScore = aimDot;
-
-            // Predict times
-            float bulletTime = dist / Mathf.Max(0.01f, bulletSpeed);
-            float carTime = forwardComponent > 0f
-                ? (forwardComponent / Mathf.Max(0.01f, carFwdSpeed))
-                : float.MaxValue;
-
-            bool isInFront = aimDot >= forwardDotThreshold;
-            bool canPreempt = bulletTime <= carTime * preemptTimeMargin;
-
-            bool qualifiesHazard = isInFront && forwardComponent > 0f && canPreempt;
-
-            if (qualifiesHazard)
-            {
-                float weightedScore = pathAlignmentScore * pathPriorityWeight;
-                if (weightedScore > hazardBestScore ||
-                    (Mathf.Abs(weightedScore - hazardBestScore) < 1e-4f && sqrDist < hazardBestDistSqr))
-                {
-                    hazardFound = true;
-                    hazardBestScore = weightedScore;
-                    hazardBestDistSqr = sqrDist;
-                    hazardAimDir = aimDir;
-                    hazardPos = targetPoint;
-                }
-            }
-            else
-            {
-                if (centeredScore > fallbackBestScore ||
-                    (Mathf.Abs(centeredScore - fallbackBestScore) < 1e-4f && sqrDist < fallbackBestDistSqr))
-                {
-                    fallbackBestScore = centeredScore;
-                    fallbackBestDistSqr = sqrDist;
-                    fallbackAimDir = aimDir;
-                    fallbackPos = targetPoint;
-                }
-            }
-        }
-
-        // Debug draws
-        if (debugSelectedTarget)
-        {
-            if (hazardFound)
-            {
-                Debug.DrawLine(origin, hazardPos, debugHazardColor, 0.15f);
-                Debug.DrawRay(hazardPos, Vector3.up * 2f, debugHazardColor, 0.15f);
-            }
-            else if (fallbackBestScore > float.MinValue)
-            {
-                Debug.DrawLine(origin, fallbackPos, debugFallbackColor, 0.15f);
-                Debug.DrawRay(fallbackPos, Vector3.up * 2f, debugFallbackColor, 0.15f);
-            }
-        }
-
-        if (hazardFound && hazardAimDir.sqrMagnitude > 0.0001f)
-            return hazardAimDir.normalized;
-
-        if (fallbackBestScore > float.MinValue && fallbackAimDir.sqrMagnitude > 0.0001f)
-            return fallbackAimDir.normalized;
-
-        return forward;
-    }
-
-    private float GetCarForwardSpeed(Vector3 forward)
-    {
-        forward.Normalize();
-        if (car == null)
-            return 0f;
-
-        // Try Rigidbody velocity
-        if (_carRb != null)
-        {
-            Vector3 vel = _carRb.velocity;
-            return Mathf.Abs(Vector3.Dot(vel, forward));
-        }
-
-        // If CarController exposes something like CurrentSpeed you can swap this:
-        // return Mathf.Abs(car.CurrentSpeed);
-        return 0f;
-    }
-
-    /// <summary>
-    /// Computes an intercept direction for a projectile with given speed to a target moving at targetVel.
-    /// Returns false if no feasible intercept (target too fast or out of reach).
-    /// </summary>
-    private bool TryComputeLeadDirection(Vector3 shooterPos, Vector3 targetPos, Vector3 targetVel, float projectileSpeed, float maxTravel, out Vector3 leadDir)
-    {
-        leadDir = Vector3.zero;
-
-        if (projectileSpeed <= 0.01f)
-            return false;
-
-        Vector3 toTarget = targetPos - shooterPos;
-        float distSqr = toTarget.sqrMagnitude;
-        if (distSqr < 1e-6f)
-            return false;
-
-        // Stationary target fallback
-        if (targetVel.sqrMagnitude < 1e-6f)
-        {
-            float dist = Mathf.Sqrt(distSqr);
-            if (dist > maxTravel) return false;
-            leadDir = toTarget.normalized;
-            return true;
-        }
-
-        // Quadratic intercept
-        Vector3 r = toTarget;
-        float v2 = targetVel.sqrMagnitude;
-        float s2 = projectileSpeed * projectileSpeed;
-
-        float a = v2 - s2;
-        float b = 2f * Vector3.Dot(targetVel, r);
-        float c = r.sqrMagnitude;
-
-        float t;
-        if (Mathf.Abs(a) < 1e-6f)
-        {
-            if (Mathf.Abs(b) < 1e-6f) return false;
-            t = -c / b;
-        }
-        else
-        {
-            float disc = b * b - 4f * a * c;
-            if (disc < 0f) return false;
-            float sqrtDisc = Mathf.Sqrt(disc);
-            float t1 = (-b + sqrtDisc) / (2f * a);
-            float t2 = (-b - sqrtDisc) / (2f * a);
-            t = float.MaxValue;
-            if (t1 > 0f) t = Mathf.Min(t, t1);
-            if (t2 > 0f) t = Mathf.Min(t, t2);
-            if (!float.IsFinite(t) || t == float.MaxValue) return false;
-        }
-
-        float travel = projectileSpeed * t;
-        if (travel > maxTravel) return false;
-
-        Vector3 intercept = targetPos + targetVel * t;
-        Vector3 toIntercept = intercept - shooterPos;
-        if (toIntercept.sqrMagnitude < 1e-6f) return false;
-        leadDir = toIntercept.normalized;
-        return true;
-    }
-
-    private Vector3 GetRandomConeDirection(Vector3 forward)
-    {
-        forward.Normalize();
-        float halfAngle = coneAngle * 0.5f;
-        float yaw = Random.Range(-halfAngle, halfAngle);
-        float pitch = 0f; // keep shots mostly planar
-        Quaternion rot =
-            Quaternion.AngleAxis(yaw, Vector3.up) *
-            Quaternion.AngleAxis(pitch, Vector3.right);
-        return (rot * forward).normalized;
-    }
-
-    private void FireBullet(Vector3 origin, Vector3 direction)
-    {
-        if (!bulletPrefab)
-            return;
-
-        direction.Normalize();
-        Quaternion rot = Quaternion.LookRotation(direction, Vector3.up);
-
-        GameObject bulletGO = Instantiate(bulletPrefab, origin, rot);
-        var bullet = bulletGO.GetComponent<RacingBullet>();
-        if (bullet != null)
-        {
-            bullet.Init(
-                damage: bulletDamage,
-                speed: bulletSpeed,
-                range: bulletRange,
-                lifetime: bulletLifetime,
-                owner: ownerCollider
-            );
-        }
-
-        // Play turret fire SFX (spatialized at muzzle/origin)
-        if (turretFireClip != null)
-        {
-            AudioSource.PlayClipAtPoint(turretFireClip, origin, Mathf.Clamp01(turretFireVolume));
-        }
-    }
-
-    private void ApplySkillStats()
-    {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr == null)
-            return;
-
-        bulletDamage = mgr.ApplyStatChain(baseBulletDamage, SkillType.TurretDamage_Add, SkillType.TurretDamage_Mul);
-        bulletSpeed = mgr.ApplyStatChain(baseBulletSpeed, SkillType.TurretProjectileSpeed_Add, SkillType.TurretProjectileSpeed_Mul);
-        fireCooldown = mgr.ApplyStatChain(baseFireCooldown, SkillType.TurretCooldown_Add, SkillType.TurretCooldown_Mul);
-        fireCooldown = Mathf.Max(0.01f, fireCooldown);
-        bulletLifetime = mgr.ApplyStatChain(baseBulletLifetime, SkillType.TurretBulletLifetime_Add, SkillType.TurretBulletLifetime_Mul);
-        bulletLifetime = Mathf.Max(0.01f, bulletLifetime);
-        coneAngle = mgr.ApplyStatChain(baseConeAngle, SkillType.TurretConeAngle_Add, SkillType.TurretConeAngle_Mul);
-        coneAngle = Mathf.Clamp(coneAngle, 0f, 180f);
-        targetScanRadius = mgr.ApplyStatChain(baseScanRadius, SkillType.TurretScanRadius_Add, SkillType.TurretScanRadius_Mul);
-        targetScanRadius = Mathf.Max(0f, targetScanRadius);
-    }
-
-#if UNITY_EDITOR
-    private void OnDrawGizmosSelected()
-    {
-        if (!debugCone) return;
-        Transform refTransform = car != null ? car.transform : transform;
-        Vector3 origin = muzzle != null ? muzzle.position : transform.position;
-        Vector3 fwd = refTransform.forward;
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(origin, targetScanRadius);
-
-        Quaternion leftRot = Quaternion.AngleAxis(-coneAngle * 0.5f, Vector3.up);
-        Quaternion rightRot = Quaternion.AngleAxis(coneAngle * 0.5f, Vector3.up);
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawRay(origin, (leftRot * fwd) * targetScanRadius);
-        Gizmos.DrawRay(origin, (rightRot * fwd) * targetScanRadius);
-        Gizmos.DrawRay(origin, fwd * targetScanRadius);
-    }
-#endif
-}
-```
-
-## Assets/CoinPickup.cs
-
-```csharp
-using System.Collections;
-using UnityEngine;
-
-[RequireComponent(typeof(Collider))]
-public class CoinPickup : MonoBehaviour
-{
-    [Header("Coin Value")]
-    [SerializeField] private int value = 1;
-
-    [Header("Simple Visuals")]
-    [SerializeField] private float rotateSpeed = 90f; // optional little spin
-
-    [Header("FX")]
-    [Tooltip("Optional VFX prefab to spawn when the coin is collected.")]
-    [SerializeField] private GameObject coinPickupVFX;
-    [Tooltip("Lifetime (seconds) for the spawned VFX when instantiated or returned to pool.")]
-    [SerializeField] private float coinPickupVFXLifetime = 2f;
-
-    [Header("VFX Color Mapping")]
-    [Tooltip("Map coin values to VFX colors. The system will try an exact match first; if none found it will use the highest mapped value <= coin value.")]
-    [SerializeField]
-    private VFXColorEntry[] vfxColorEntries =
-    {
-        // default entries: 1 = bronze, 2 = silver, 3 = gold
-        new VFXColorEntry { coinValue = 1, color = new Color(205f/255f, 127f/255f, 50f/255f, 1f) }, // bronze
-        new VFXColorEntry { coinValue = 2, color = new Color(192f/255f, 192f/255f, 192f/255f, 1f) }, // silver
-        new VFXColorEntry { coinValue = 3, color = new Color(1f, 215f/255f, 0f, 1f) } // gold
-    };
-
-    [SerializeField] private AudioClip[] coinCollectClips = new AudioClip[2]; // assign two coin sounds
-    [SerializeField, Range(0f, 0.25f)] private float coinPitchVariance = 0.06f;
-    [SerializeField, Range(0f, 1f)] private float coinCollectVolume = 1f;
-
-
-
-    [System.Serializable]
-    private class VFXColorEntry
-    {
-        public int coinValue = 1;
-        public Color color = Color.white;
-    }
-
-    private void Reset()
-    {
-        // Make sure collider is trigger by default
-        var col = GetComponent<Collider>();
-        if (col != null)
-            col.isTrigger = true;
-    }
-
-    private void Update()
-    {
-        // Optional spinning so it's more readable in world
-        if (rotateSpeed != 0f)
-        {
-            
-            transform.GetChild(0).transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
-        }
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!other.TryGetComponent<CarController>(out var car))
-            return;
-
-        var mgr = RacingSkillTreeManager.Instance;
-        int finalValue = value;
-
-        if (mgr != null)
-        {
-            int baseAdd = mgr.GetCoinBaseAdd();
-            if (baseAdd > 0)
-                finalValue += baseAdd;
-        }
-
-        // NEW: play coin SFX (random selection + slight pitch variance)
-        PlayRandomCoinSfx(transform.position);
-
-        // NEW: double-value chance skill
-        if (mgr != null)
-        {
-            float dblChance = mgr.GetCoinDoubleChance();
-            if (dblChance > 0f && Random.value < dblChance)
-                finalValue *= 2;
-            mgr.AddCurrency(finalValue);
-        }
-        else
-        {
-            // Fallback
-            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
-        }
-
-        if (GameManager_Racing.Instance != null)
-        {
-            GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
-        }
-
-        // Spawn VFX at the collision/closest point before destroying the coin
-        Vector3 spawnPos = transform.position;
-        // try to use the collider's closest contact point as a nicer VFX origin
-        try
-        {
-            spawnPos = other.ClosestPoint(transform.position);
-        }
-        catch { /* ignore and use transform.position */ }
-
-        // Pass the finalValue so the VFX color matches the collected coin value
-        SpawnPickupVFX(spawnPos, finalValue);
-
-        Destroy(gameObject);
-    }
-
-    // Add helper methods (inside the same class)
-    private void PlayRandomCoinSfx(Vector3 worldPos)
-    {
-        if (coinCollectClips == null || coinCollectClips.Length == 0) return;
-
-        // pick a non-null clip
-        AudioClip clip = null;
-        for (int i = 0; i < 8; i++) // try a few times (in case some array entries are null)
-        {
-            var candidate = coinCollectClips[Random.Range(0, coinCollectClips.Length)];
-            if (candidate != null) { clip = candidate; break; }
-        }
-        if (clip == null) return;
-
-        float pitch = 1f + UnityEngine.Random.Range(-coinPitchVariance, coinPitchVariance);
-        PlayClipAtPointWithPitch(clip, worldPos, coinCollectVolume, pitch);
-    }
-
-    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume = 1f, float pitch = 1f)
-    {
-        if (clip == null) return;
-        GameObject go = new GameObject("SFX_OneShot");
-        go.transform.position = pos;
-        var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f; // 3D
-        src.clip = clip;
-        src.volume = Mathf.Clamp01(volume);
-        src.pitch = Mathf.Max(0.01f, pitch);
-        src.Play();
-        Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
-    }
-
-    // Spawns the assigned VFX prefab. Uses ProjectilePool when available, otherwise Instantiate.
-    // Keeps a fallback lifetime destroy for safety.
-    private void SpawnPickupVFX(Vector3 worldPos, int coinValue)
-    {
-        if (coinPickupVFX == null) return;
-
-        // get color for this coin value
-        Color col = GetColorForValue(coinValue);
-
-        // Desired rotation: -90� X, 0� Y, 0� Z
-        Quaternion desiredRot = Quaternion.Euler(-90f, 0f, 0f);
-
-        // Try using ProjectilePool (preferred). Pool returns inactive instances ready to position.
-        try
-        {
-            if (ProjectilePool.Instance != null)
-            {
-                GameObject inst = ProjectilePool.Instance.Get(coinPickupVFX);
-                if (inst != null)
-                {
-                    inst.transform.position = worldPos;
-                    inst.transform.rotation = desiredRot; // apply correct Euler rotation
-                    ApplyVFXColor(inst, col); // apply color before activation
-                    inst.SetActive(true);
-                    // Schedule return to pool
-                    StartCoroutine(ReturnPooledVFXLater(coinPickupVFX, inst, Mathf.Max(0.01f, coinPickupVFXLifetime)));
-                    return;
-                }
-            }
-        }
-        catch
-        {
-            // ignore pool errors and fallback to Instantiate
-        }
-
-        // Fallback: instantiate and destroy after lifetime, with correct rotation and color
-        var go = Instantiate(coinPickupVFX, worldPos, desiredRot);
-        ApplyVFXColor(go, col);
-        Destroy(go, Mathf.Max(0.01f, coinPickupVFXLifetime));
-    }
-
-    private IEnumerator ReturnPooledVFXLater(GameObject prefab, GameObject instance, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        if (instance != null && prefab != null && ProjectilePool.Instance != null)
-            ProjectilePool.Instance.Return(prefab, instance);
-    }
-
-    // Finds the best color entry for the given coin value.
-    // Strategy: exact match; else highest entry.coinValue <= value; else fallback to first entry or white.
-    private Color GetColorForValue(int coinValue)
-    {
-        if (vfxColorEntries == null || vfxColorEntries.Length == 0)
-            return Color.white;
-
-        // Try exact match
-        for (int i = 0; i < vfxColorEntries.Length; i++)
-        {
-            if (vfxColorEntries[i].coinValue == coinValue)
-                return vfxColorEntries[i].color;
-        }
-
-        // Find highest <= coinValue
-        VFXColorEntry best = null;
-        for (int i = 0; i < vfxColorEntries.Length; i++)
-        {
-            if (vfxColorEntries[i].coinValue <= coinValue)
-            {
-                if (best == null || vfxColorEntries[i].coinValue > best.coinValue)
-                    best = vfxColorEntries[i];
-            }
-        }
-
-        if (best != null) return best.color;
-
-        // fallback to first entry
-        return vfxColorEntries[0].color;
-    }
-
-    // Try to apply color to a VFX instance. Covers common cases:
-    // - ParticleSystem.main.startColor (applies to all child ParticleSystems)
-    // - Material color properties ("_BaseColor", "_Color", "_TintColor")
-    // - VisualEffect via reflection (attempts SetVector4("Color", color))
-    private void ApplyVFXColor(GameObject go, Color col)
-    {
-        if (go == null) return;
-
-        // 1) ParticleSystems
-        var systems = go.GetComponentsInChildren<ParticleSystem>(true);
-        if (systems != null && systems.Length > 0)
-        {
-            foreach (var ps in systems)
-            {
-                var main = ps.main;
-                main.startColor = col;
-            }
-            return;
-        }
-
-        // 2) Renderer materials
-        var renderers = go.GetComponentsInChildren<Renderer>(true);
-        if (renderers != null && renderers.Length > 0)
-        {
-            foreach (var r in renderers)
-            {
-                // Use sharedMaterials to avoid creating garbage if not necessary;
-                // but copying material arrays can instantiate instance materials which is OK for VFX.
-                var mats = r.materials;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    var mat = mats[i];
-                    if (mat == null) continue;
-                    if (mat.HasProperty("_BaseColor"))
-                        mat.SetColor("_BaseColor", col);
-                    else if (mat.HasProperty("_Color"))
-                        mat.SetColor("_Color", col);
-                    else if (mat.HasProperty("_TintColor"))
-                        mat.SetColor("_TintColor", col);
-                    // else: can't set color generically for this material
-                }
-            }
-            // don't return here � renderer coloring is often sufficient, but also try VFX
-        }
-
-        // 3) Try VisualEffect (VFX Graph) via reflection to avoid hard compile dependency
-        var veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, Unity.VisualEffectGraph");
-        if (veType == null)
-        {
-            // Some Unity versions use another assembly name; try fallback
-            veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, UnityEngine.VFX");
-        }
-
-        if (veType != null)
-        {
-            var ves = go.GetComponentsInChildren(veType, true);
-            foreach (var ve in ves)
-            {
-                // Try common parameter names
-                var setVector4 = veType.GetMethod("SetVector4", new[] { typeof(string), typeof(Vector4) });
-                if (setVector4 != null)
-                {
-                    // Try "Color" and "color"
-                    setVector4.Invoke(ve, new object[] { "Color", (Vector4)col });
-                    setVector4.Invoke(ve, new object[] { "color", (Vector4)col });
-                }
-                else
-                {
-                    // Try SetVector3
-                    var setVector3 = veType.GetMethod("SetVector3", new[] { typeof(string), typeof(Vector3) });
-                    if (setVector3 != null)
-                    {
-                        setVector3.Invoke(ve, new object[] { "Color", (Color32)col });
-                        setVector3.Invoke(ve, new object[] { "color", (Color32)col });
-                    }
-                }
-            }
-        }
-    }
-}
-```
-
-## Assets/CrossObstacleDirector.cs
-
-```csharp
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-
-[DisallowMultipleComponent]
-public sealed class CrossObstacleDirector : MonoBehaviour
-{
-    [Header("References")]
-    [SerializeField] private CarController car;
-    [SerializeField] private TrackDistanceMeter distanceMeter;
-    [SerializeField] private ProceduralTrackGenerator trackGenerator;
-    [SerializeField] private GameObject crossObstaclePrefab;
-
-    [Header("Spawn Control")]
-    [SerializeField] private bool enabledSpawning = true;
-    [SerializeField] private float minPlayerSpeed = 4f;
-    [SerializeField] private float spawnCooldownSeconds = 5f;
-    [SerializeField] private float minLeadDistance = 15f;
-    [Tooltip("LEGACY: No longer used to block spawning near end of track. You can remove this safely.")]
-    [SerializeField] private float maxLeadDistance = 80f; // legacy � kept for serialized data
-    [SerializeField] private float maxCurvatureHorizonScale = 0.65f;
-
-    [Header("Cross Speed")]
-    [SerializeField] private Vector2 crossSpeedRange = new Vector2(5f, 11f);
-    [Tooltip("Curve (x=normalized distance) scaling cross speed (multiplier).")]
-    [SerializeField] private AnimationCurve crossSpeedMultiplierCurve = AnimationCurve.Linear(0, 1, 1, 1);
-
-    [Header("Size Scaling")]
-    [SerializeField] private Vector2 obstacleScaleRange = new Vector2(0.8f, 1.35f);
-    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.Linear(0, 1, 1, 1);
-
-    [Header("Yaw / Accuracy")]
-    [SerializeField] private AnimationCurve yawErrorDegreesCurve = AnimationCurve.Linear(0, 22, 1, 4);
-    [SerializeField] private AnimationCurve accuracyCurve = AnimationCurve.Linear(0, 0.6f, 1, 0.05f);
-
-    [Header("Spawn Interval Scaling")]
-    [SerializeField] private AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
-
-    [Header("Spawn Cooldown Randomness")]
-    [Tooltip("Random multiplier applied to the spawn cooldown each time an obstacle is spawned.")]
-    [SerializeField] private Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
-
-    [Header("Spawn Randomness (Improved)")]
-    [SerializeField, Tooltip("Extra random delay applied BEFORE the first ever spawn (seconds).")]
-    private Vector2 initialSpawnDelayRange = new Vector2(1.5f, 4.5f);
-
-    [SerializeField, Tooltip("If true, crossing distance uses the actual path length from side to side (recommended).")]
-    private bool useActualPathLengthForPrediction = true;
-
-    [Header("Cross Path Length")]
-    [SerializeField, Tooltip("How far beyond each road edge the obstacle starts/ends (meters). Higher = longer path.")]
-    private float offRoadPadding = 12f;  // was hardcoded via + 5.0f
-
-    [Header("Curvature Sampling")]
-    [SerializeField] private float curvatureSampleLength = 12f;
-    [SerializeField] private float highCurvatureThreshold = 0.35f;
-
-    [Header("Yaw Impact (Weighted Miss Variety)")]
-    [SerializeField] private bool enableYawWeightedMisses = true;
-    [SerializeField] private float yawSpeedImpactMax = 0.4f;
-    [SerializeField] private float yawDistanceImpactMax = 12f;
-    [SerializeField] private float yawAngleAmplifyMax = 0.6f;
-
-    [Header("Debug")]
-    [SerializeField] private bool debugGizmos = false;
-    [SerializeField] private bool verboseLog = false;
-
-    private float _cooldownRemain;
-    private float _trackTotalLength;
-    private List<Vector3> _path = new();
-    private float[] _cumDistances;
-    private float _smoothedSpeed;
-    private float _nextCarSearchTime;
-    private const float CarSearchInterval = 0.5f;
-    private bool _hasEverSpawned;
-    private bool _wasBelowSpeed = true;
-
-    private Vector3 _lastDebugStart;
-    private Vector3 _lastDebugEnd;
-    private bool _hasDebugPath;
-
-    void Awake()
-    {
-        if (!trackGenerator) trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
-        if (car) distanceMeter ??= FindObjectOfType<TrackDistanceMeter>();
-        if (!distanceMeter) distanceMeter = FindObjectOfType<TrackDistanceMeter>();
-    }
-
-    void OnEnable()
-    {
-        if (trackGenerator)
-        {
-            trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
-            trackGenerator.OnTrackGeneratedSuccessfully += HandleTrackGenerated;
-        }
-
-        RebuildSplineCache();
-
-        // NEW: prevent predictable “spawns immediately at game start”
-        _hasEverSpawned = false;
-        _wasBelowSpeed = true;
-        _cooldownRemain = UnityEngine.Random.Range(
-            Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
-            Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
-        );
-    }
-
-    void OnDisable()
-    {
-        if (trackGenerator)
-            trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
-    }
-
-    private void HandleTrackGenerated(ProceduralTrackGenerator gen) => RebuildSplineCache();
-
-    public void SetCar(CarController c) => car = c;
-
-    private void LateBindCarIfNeeded()
-    {
-        if (car != null) return;
-        if (Time.time < _nextCarSearchTime) return;
-        _nextCarSearchTime = Time.time + CarSearchInterval;
-
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
-        {
-            var active = gm.GetType().GetProperty("ActiveCar")?.GetValue(gm) as CarController;
-            if (active)
-            {
-                car = active;
-                if (verboseLog) Debug.Log("[CrossObstacleDirector] Bound car from GameManager_Racing.");
-                return;
-            }
-        }
-
-        var found = FindObjectOfType<CarController>();
-        if (found)
-        {
-            car = found;
-            if (verboseLog) Debug.Log("[CrossObstacleDirector] Found car via scene search.");
-        }
-    }
-
-    void Update()
-    {
-        LateBindCarIfNeeded();
-        if (!enabledSpawning || !ValidSetup()) return;
-
-        float rawSpeed = car.CurrentSpeed;
-        float smoothFactor = 1f - Mathf.Exp(-Time.deltaTime * 6f);
-        _smoothedSpeed = Mathf.Lerp(_smoothedSpeed, rawSpeed, smoothFactor);
-
-        bool below = _smoothedSpeed < minPlayerSpeed;
-
-        // NEW: when we FIRST become eligible, delay a bit so it’s not “instant at threshold”
-        if (_wasBelowSpeed && !below && !_hasEverSpawned)
-        {
-            _cooldownRemain = Mathf.Max(_cooldownRemain, UnityEngine.Random.Range(
-                Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
-                Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
-            ));
-        }
-
-        _wasBelowSpeed = below;
-
-        _cooldownRemain -= Time.deltaTime;
-        if (_cooldownRemain <= 0f) TrySpawnPredictive();
-    }
-
-    private bool ValidSetup()
-    {
-        return car && distanceMeter && trackGenerator && crossObstaclePrefab &&
-               _path.Count >= 2 && _trackTotalLength > 0.1f;
-    }
-
-    private void RebuildSplineCache()
-    {
-        _path.Clear();
-        if (!trackGenerator || trackGenerator.PathPoints == null) return;
-        _path.AddRange(trackGenerator.PathPoints);
-        if (_path.Count < 2) return;
-
-        _cumDistances = new float[_path.Count];
-        _cumDistances[0] = 0f;
-        float accum = 0f;
-        for (int i = 1; i < _path.Count; i++)
-        {
-            accum += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumDistances[i] = accum;
-        }
-        _trackTotalLength = accum;
-    }
-
-    private void TrySpawnPredictive()
-    {
-        if (_smoothedSpeed < minPlayerSpeed) return;
-
-        float sCar = distanceMeter.DistanceAlongTrack;
-        float distanceNorm = Mathf.Clamp01(_trackTotalLength > 0f ? sCar / _trackTotalLength : 0f);
-
-        float intervalScale = Mathf.Clamp(spawnIntervalCurve.Evaluate(distanceNorm), 0.05f, 10f);
-
-        // NEW: randomize cooldown so spawns aren�t perfectly periodic
-        float cooldownJitter = 1f;
-        if (spawnCooldownRandomRange.x != 1f || spawnCooldownRandomRange.y != 1f)
-        {
-            cooldownJitter = UnityEngine.Random.Range(
-                Mathf.Min(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y),
-                Mathf.Max(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y)
-            );
-        }
-
-        float effectiveCooldown = spawnCooldownSeconds * intervalScale * cooldownJitter;
-
-        float curvatureFactor = SampleCurvature(sCar, curvatureSampleLength);
-        bool highCurvature = curvatureFactor > highCurvatureThreshold;
-
-        float baseCrossSpeed = UnityEngine.Random.Range(crossSpeedRange.x, crossSpeedRange.y);
-        float speedMul = Mathf.Max(0.1f, crossSpeedMultiplierCurve.Evaluate(distanceNorm));
-        float crossSpeed = baseCrossSpeed * speedMul;
-
-        float halfRoad = trackGenerator.RoadWidth * 0.5f;
-
-        // NEW: match prediction to actual path length (start is beyond left edge, end beyond right edge)
-        float offTrackOffset = halfRoad + Mathf.Max(0f, offRoadPadding);
-        float traverseLength = useActualPathLengthForPrediction
-            ? (2f * offTrackOffset)
-            : (2f * halfRoad + 2f * 0.75f);
-
-        float tCross = traverseLength / Mathf.Max(0.5f, crossSpeed);
-        float tCenter = tCross * 0.5f;
-        if (highCurvature)
-            tCenter *= Mathf.Clamp(maxCurvatureHorizonScale, 0.25f, 1f);
-
-        float remaining = _trackTotalLength - sCar;
-        if (remaining <= minLeadDistance) { _cooldownRemain = effectiveCooldown; return; }
-
-        float predictedLeadDistance = _smoothedSpeed * tCenter;
-
-        float safety = 1.5f;
-        float maxAllowedLead = Mathf.Max(minLeadDistance, remaining - safety);
-        predictedLeadDistance = Mathf.Clamp(predictedLeadDistance, minLeadDistance, maxAllowedLead);
-
-        float sIntercept = sCar + predictedLeadDistance;
-        if (sIntercept >= _trackTotalLength - 0.25f)
-            sIntercept = _trackTotalLength - 0.25f;
-
-        SampleSpline(sIntercept, out Vector3 posIntercept, out Vector3 tanIntercept);
-
-        float accuracyErr = Mathf.Clamp01(accuracyCurve.Evaluate(distanceNorm));
-        float paramError = predictedLeadDistance * accuracyErr * UnityEngine.Random.Range(-1f, 1f);
-
-        float sSpawn = sCar + Mathf.Clamp(predictedLeadDistance + paramError, minLeadDistance, maxAllowedLead);
-        if (sSpawn >= _trackTotalLength - 0.25f) sSpawn = _trackTotalLength - 0.25f;
-
-        float yawErrorDeg = yawErrorDegreesCurve.Evaluate(distanceNorm);
-        float appliedYaw = UnityEngine.Random.Range(-yawErrorDeg, yawErrorDeg);
-
-        if (enableYawWeightedMisses && yawErrorDeg > 0.0001f)
-        {
-            float rA = UnityEngine.Random.value;
-            float rB = UnityEngine.Random.value;
-            float rC = UnityEngine.Random.value;
-            float sum = rA + rB + rC;
-            float wSpeed = rA / sum;
-            float wAngle = rB / sum;
-            float wDistance = rC / sum;
-
-            float yawNorm = Mathf.Clamp01(Mathf.Abs(appliedYaw) / yawErrorDeg);
-
-            float speedFactor = 1f - wSpeed * yawNorm * Mathf.Clamp01(yawSpeedImpactMax);
-            crossSpeed *= Mathf.Clamp(speedFactor, 0.25f, 1f);
-
-            float distanceOffset = wDistance * yawNorm * Mathf.Max(0f, yawDistanceImpactMax);
-            sSpawn += distanceOffset;
-            sSpawn = Mathf.Clamp(sSpawn, sCar + minLeadDistance, sCar + maxAllowedLead);
-
-            appliedYaw *= 1f + wAngle * yawNorm * Mathf.Clamp01(yawAngleAmplifyMax);
-        }
-
-        // Center point of the cross (where it tries to hit car)
-        SampleSpline(sSpawn, out Vector3 spawnSplinePos, out Vector3 spawnTan);
-        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        float upOffsetForCast = 10f;
-        float maxDown = 50f;
-
-        Vector3 spawnSurface = SpawnUtils.ProjectOntoSurface(
-            spawnSplinePos + Vector3.up * upOffsetForCast,
-            out Vector3 spawnNormal,
-            upOffsetForCast,
-            maxDown,
-            roadMask
-        );
-
-        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
-            spawnSurface = SpawnUtils.ProjectOntoSurface(
-                spawnSplinePos + Vector3.up * upOffsetForCast,
-                out spawnNormal,
-                upOffsetForCast,
-                maxDown,
-                null
-            );
-
-        Vector3 up = Vector3.up;
-        Vector3 forward = new Vector3(spawnTan.x, 0f, spawnTan.z);
-        if (forward.sqrMagnitude < 1e-6f)
-            forward = Vector3.forward;
-        forward.Normalize();
-
-        Vector3 lateral = Vector3.Cross(up, forward).normalized;
-
-        if (Mathf.Abs(appliedYaw) > 0.0001f)
-            lateral = (Quaternion.AngleAxis(appliedYaw, up) * lateral).normalized;
-
-        bool startLeft = UnityEngine.Random.value < 0.5f;
-        float sideSign = startLeft ? -1f : 1f;
-
-        // Create horizontal positions first
-        Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
-        Vector3 targetHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) - lateral * sideSign * offTrackOffset;
-
-        // Project both endpoints to ground
-        Vector3 startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
-        if (Mathf.Approximately(startWS.y, startHorizontal.y))
-            startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
-
-        Vector3 targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
-        if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
-            targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
-
-        // Size scaling
-        float sizeEval = sizeCurve.Evaluate(distanceNorm);
-        float sizeRand = UnityEngine.Random.Range(obstacleScaleRange.x, obstacleScaleRange.y);
-        float finalScale = sizeRand * sizeEval;
-
-        float initialDelay = Mathf.Clamp(tCenter * 0.15f, 0f, 1.25f);
-
-        Vector3 actualMoveDir = (new Vector3(targetWS.x, 0f, targetWS.z) - new Vector3(startWS.x, 0f, startWS.z)).normalized;
-        if (actualMoveDir.sqrMagnitude < 0.0001f)
-            actualMoveDir = lateral;
-        Quaternion spawnRot = Quaternion.LookRotation(actualMoveDir, up);
-
-        var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
-        _hasEverSpawned = true;
-        inst.transform.localScale *= finalScale;
-
-        // **NEW: Get parent's bottom offset and adjust position**
-        float bottomOffset = GetCrossObstacleBottomOffset(inst);
-        inst.transform.position = startWS + Vector3.up * bottomOffset;
-
-        // Also adjust target to account for bottom offset
-        Vector3 adjustedTarget = targetWS + Vector3.up * bottomOffset;
-
-        var cross = inst.GetComponent<CrossTrackObstacle>();
-        if (cross)
-        {
-            cross.InitializeDirect(inst.transform.position, adjustedTarget, crossSpeed, initialDelay);
-        }
-
-        _lastDebugStart = inst.transform.position;
-        _lastDebugEnd = adjustedTarget;
-        _hasDebugPath = true;
-
-        _cooldownRemain = effectiveCooldown;
-
-        if (verboseLog)
-        {
-            Debug.Log($"[CrossObstacleDirector] Spawned Cross: " +
-                      $"sSpawn={sSpawn:F1}, lead={predictedLeadDistance:F1}, tCenter={tCenter:F2}, " +
-                      $"vCross={crossSpeed:F2}, yawBase={yawErrorDeg:F1}, yawFinal={appliedYaw:F1}, " +
-                      $"size={finalScale:F2}, curvature={curvatureFactor:F2}");
-        }
-    }
-
-    private float SampleCurvature(float sCenter, float sampleLength)
-    {
-        if (_path.Count < 3) return 0f;
-        float sA = Mathf.Clamp(sCenter, 0f, _trackTotalLength);
-        float sB = Mathf.Clamp(sCenter + sampleLength, 0f, _trackTotalLength);
-
-        SampleSpline(sA, out _, out Vector3 tA);
-        SampleSpline(sB, out _, out Vector3 tB);
-
-        float angle = Vector3.Angle(tA, tB);
-        return angle / 180f;
-    }
-
-    /// <summary>
-    /// Gets the offset needed to place the cross obstacle's parent bottom at ground level.
-    /// Only considers the parent's renderer/collider, not children.
-    /// </summary>
-    private float GetCrossObstacleBottomOffset(GameObject obj)
-    {
-        if (obj == null) return 0f;
-
-        Transform root = obj.transform;
-        float lowestPoint = 0f;
-        bool foundAny = false;
-
-        // Check parent's renderer only
-        Renderer parentRenderer = root.GetComponent<Renderer>();
-        if (parentRenderer != null)
-        {
-            Bounds localBounds = parentRenderer.bounds;
-            float bottom = localBounds.min.y - root.position.y;
-            if (!foundAny || bottom < lowestPoint)
-            {
-                lowestPoint = bottom;
-                foundAny = true;
-            }
-        }
-
-        // Check parent's colliders only
-        Collider[] parentColliders = root.GetComponents<Collider>();
-        foreach (var col in parentColliders)
-        {
-            if (col == null || col.isTrigger) continue;
-
-            Bounds localBounds = col.bounds;
-            float bottom = localBounds.min.y - root.position.y;
-            if (!foundAny || bottom < lowestPoint)
-            {
-                lowestPoint = bottom;
-                foundAny = true;
-            }
-        }
-
-        if (!foundAny) return 0.05f;
-        return Mathf.Abs(lowestPoint);
-    }
-
-    private void SampleSpline(float distance, out Vector3 position, out Vector3 tangent)
-    {
-        position = _path[0];
-        tangent = (_path.Count > 1 ? _path[1] - _path[0] : Vector3.forward);
-
-        if (_cumDistances == null || _cumDistances.Length != _path.Count)
-            return;
-
-        if (distance <= 0f)
-        {
-            tangent = (_path[1] - _path[0]);
-            return;
-        }
-        if (distance >= _trackTotalLength)
-        {
-            position = _path[^1];
-            tangent = (_path[^1] - _path[^2]);
-            return;
-        }
-
-        int i = 0;
-        while (i < _cumDistances.Length - 1 && _cumDistances[i + 1] < distance) i++;
-
-        float segStart = _cumDistances[i];
-        float segEnd = _cumDistances[i + 1];
-        float segLen = segEnd - segStart;
-        float t = segLen > 0.0001f ? (distance - segStart) / segLen : 0f;
-
-        Vector3 a = _path[i];
-        Vector3 b = _path[i + 1];
-        position = Vector3.Lerp(a, b, t);
-        tangent = (b - a).normalized;
-    }
-
-#if UNITY_EDITOR
-private void OnDrawGizmosSelected()
-{
-    if (!debugGizmos || !_hasDebugPath)
-        return;
-
-    Gizmos.color = Color.cyan;
-    Gizmos.DrawLine(_lastDebugStart, _lastDebugEnd);
-    Gizmos.DrawSphere(_lastDebugStart, 0.2f);
-    Gizmos.DrawSphere(_lastDebugEnd, 0.2f);
-}
-#endif
 }
 ```
 
@@ -2267,81 +1022,6 @@ public static class ProjectSummary
 }
 ```
 
-## Assets/ExhaustVFXController.cs
-
-```csharp
-using UnityEngine;
-
-[DisallowMultipleComponent]
-public class ExhaustVFXController : MonoBehaviour
-{
-    [Header("Particle Systems (exhausts)")]
-    [SerializeField] private ParticleSystem leftExhaust;
-    [SerializeField] private ParticleSystem rightExhaust;
-
-    [Header("Speed → Start Speed")]
-    [Tooltip("Below this car speed, exhaust barely emits / is very slow.")]
-    [SerializeField] private float minSpeedForSmoke = 0.5f;
-
-    [Tooltip("At or above this speed, exhaust uses max start speed.")]
-    [SerializeField] private float maxSpeedForFullBoost = 20f;
-
-    [SerializeField] private float minStartSpeed = 0.5f;
-    [SerializeField] private float maxStartSpeed = 4f;
-
-    [Header("Speed → Emission Rate (optional)")]
-    [SerializeField] private float minEmissionRate = 5f;
-    [SerializeField] private float maxEmissionRate = 40f;
-
-    private CarController car;
-
-    private void Awake()
-    {
-        // CarController can be on this GameObject or a parent
-        car = GetComponent<CarController>();
-        if (car == null)
-            car = GetComponentInParent<CarController>();
-    }
-
-    private void LateUpdate()
-    {
-        if (car == null)
-            return;
-
-        float speed = car.CurrentSpeed;
-
-        // Decide if we should emit at all
-        bool shouldEmit = speed > minSpeedForSmoke;
-
-        float t = Mathf.InverseLerp(minSpeedForSmoke, maxSpeedForFullBoost, speed);
-
-        UpdateExhaust(leftExhaust, shouldEmit, t);
-        UpdateExhaust(rightExhaust, shouldEmit, t);
-    }
-
-    private void UpdateExhaust(ParticleSystem ps, bool shouldEmit, float t)
-    {
-        if (ps == null)
-            return;
-
-        var emission = ps.emission;
-        emission.enabled = shouldEmit;
-
-        if (!shouldEmit)
-            return;
-
-        // Lerp startSpeed based on car speed
-        var main = ps.main;
-        main.startSpeed = Mathf.Lerp(minStartSpeed, maxStartSpeed, t);
-
-        // Optional: more speed → more emission
-        float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, t);
-        emission.rateOverTime = rate;
-    }
-}
-
-```
-
 ## Assets/FireWispVelocityDriver.cs
 
 ```csharp
@@ -2406,745 +1086,6 @@ public class FireVelocityFeeder : MonoBehaviour
         if (sendAngular) _mpb.SetVector("_AngVelWS", _angSmoothed);
         _rend.SetPropertyBlock(_mpb, materialIndex);
     }
-}
-
-```
-
-## Assets/IcePath.cs
-
-```csharp
-using UnityEngine;
-
-/// <summary>
-/// Represents a single ice path segment. When car enters, it signals ice properties.
-/// Uses GroundSurface component for physics adjustments.
-/// </summary>
-[DisallowMultipleComponent]
-public class IcePath : MonoBehaviour
-{
-    [Header("Visual")]
-    [Tooltip("Optional visual root to enable/disable (for fade effects).")]
-    [SerializeField] private GameObject visualRoot;
-
-    [Header("Physics")]
-    [Tooltip("Layer this ice segment should be on (typically 'RoadSurface').")]
-    [SerializeField] private string targetLayer = "RoadSurface";
-
-    private GroundSurface _surface;
-    private Collider _collider;
-
-    void Awake()
-    {
-        _surface = GetComponent<GroundSurface>();
-        _collider = GetComponent<Collider>();
-
-        // Ensure surface type is Ice
-        if (_surface != null)
-            _surface.surfaceType = SurfaceType.Ice;
-
-        // Set layer
-        int layer = LayerMask.NameToLayer(targetLayer);
-        if (layer >= 0)
-            gameObject.layer = layer;
-
-        if (visualRoot == null)
-            visualRoot = gameObject;
-    }
-
-    public void Show()
-    {
-        if (visualRoot != null)
-            visualRoot.SetActive(true);
-    }
-
-    public void Hide()
-    {
-        if (visualRoot != null)
-            visualRoot.SetActive(false);
-    }
-
-    /// <summary>
-    /// Returns the GroundSurface component for inspection.
-    /// </summary>
-    public GroundSurface Surface => _surface;
-}
-```
-
-## Assets/IcePathSpawner.cs
-
-```csharp
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Reflection;
-using UnityEngine;
-
-/// <summary>
-/// Spawns ice path segments along the procedural track.
-/// Ice paths follow the track's curvature and can have internal wiggles.
-/// Works similarly to TrackObstacleSpawner with pre-spawn and streaming options.
-/// </summary>
-[DisallowMultipleComponent]
-public class IcePathSpawner : MonoBehaviour
-{
-    [Header("References")]
-    [SerializeField] private ProceduralTrackGenerator trackGenerator;
-    [SerializeField] private Transform playerTransform;
-    [SerializeField] private Transform icePathParent;
-    [SerializeField] private GameObject iceSegmentPrefab;
-
-    [Header("Spawn Mode")]
-    [Tooltip("If true, fills the whole track with ice paths once in InitializeForRun.")]
-    [SerializeField] private bool preSpawnOnInitialize = true;
-
-    [Tooltip("If true, will continue spawning ahead while you drive. Turn OFF if you hate seeing pop-in.")]
-    [SerializeField] private bool streamSpawnDuringRun = false;
-
-    [Header("Path Sampling")]
-    [SerializeField] private bool useSmoothing = true;
-    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
-
-    [Header("Spawn Settings")]
-    [Tooltip("Ideal spacing between potential ice path spawn slots (meters).")]
-    [SerializeField] private float icePathSpacing = 100f;
-    [SerializeField] private int maxActiveIcePaths = 15;
-
-    [Tooltip("Minimum distance in front of the player where new ice paths are allowed to appear.")]
-    [SerializeField] private float minSpawnDistanceAhead = 60f;
-
-    [Tooltip("Maximum distance in front of the player we bother filling with ice paths.")]
-    [SerializeField] private float maxSpawnDistanceAhead = 200f;
-
-    [Header("Initial Pre-Spawn")]
-    [Tooltip("How far ahead (from start) we pre-fill ice paths before the run begins.")]
-    [SerializeField] private float initialPreSpawnDistance = 150f;
-
-    [Tooltip("Do not spawn any behind the player.")]
-    [SerializeField] private float despawnBehindDistance = 20f;
-
-    [Header("Randomization")]
-    [SerializeField] private float distanceJitter = 15f;
-    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.3f;
-
-    [Tooltip("Global spawn chance multiplier based on distance (0=start, 1=end).")]
-    [SerializeField]
-    private AnimationCurve globalSpawnChanceByDistance =
-        AnimationCurve.Linear(0f, 0.2f, 1f, 0.6f);
-
-    [Header("Ice Path Properties")]
-    [Tooltip("Number of segments per ice path.")]
-    [SerializeField, Range(1, 30)] private int segmentsPerPath = 8;
-
-    [Tooltip("Length for each ice segment (meters).")]
-    [SerializeField] private float segmentLength = 10f;
-
-    [Tooltip("Width of ice path (should match or be slightly narrower than road).")]
-    [SerializeField] private float icePathWidth = 3.5f;
-
-    [Header("Path Curvature & Wiggles")]
-    [Tooltip("Maximum wiggle angle (degrees) applied to each segment for variation.")]
-    [SerializeField, Range(0f, 15f)] private float maxWiggleAngle = 3f;
-
-    [Tooltip("How closely the ice path follows track turns (0 = straight, 1 = perfect follow).")]
-    [SerializeField, Range(0f, 1f)] private float trackFollowStrength = 0.85f;
-
-    [Header("Mini Turns (Ice Path Style)")]
-    [SerializeField, Range(0f, 12f)] private float miniTurnMaxYawDeg = 4f;   // small turns
-    [SerializeField] private float miniTurnFrequency = 0.015f;              // lower = longer arcs
-    [SerializeField, Range(0f, 1f)] private float miniTurnSmoothing = 0.15f; // higher = snappier
-    [SerializeField] private float miniTurnSeed = 123.456f;                 // deterministic
-
-    [Header("Raycast")]
-    [SerializeField] private LayerMask roadLayer;
-    [SerializeField] private float raycastStartHeight = 6f;
-    [SerializeField] private float raycastDownDistance = 40f;
-    [SerializeField] private float iceHeightOffset = 0.02f;
-
-    [Header("Ice Mesh (Single Strip Visual)")]
-    [SerializeField] private Material iceMaterial;
-    [SerializeField, Min(0.25f)] private float iceSampleSpacing = 1.0f; // smaller = smoother curve
-    [SerializeField] private float iceUVTiling = 0.15f;
-    [SerializeField] private bool addIceMeshColliderTrigger = true;
-
-    [Header("Timing")]
-    [SerializeField] private float updateInterval = 0.5f;
-
-    [Header("Debug")]
-    [SerializeField] private bool verboseDebug = false;
-
-    // Runtime
-    private List<Vector3> _path = new();
-    private float[] _cumLengths;
-    private float _totalLength;
-    private Dictionary<int, GameObject> _icePathsBySlot = new();
-    private int _maxSlotIndex;
-    private float _updateTimer;
-    private int _lastClosestIdx = 0;
-    private List<int> _toRemove = new();
-
-    // Prefab metrics (measured once)
-    private bool _prefabMetricsReady;
-    private float _prefabWidth;
-    private float _prefabLength;
-    private Vector3 _prefabBaseLocalScale = Vector3.one;
-
-    private GroundSurface _prefabGroundSurface;
-    private IcePath _prefabIcePath;
-
-    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
-    {
-        trackGenerator = generator;
-        playerTransform = player;
-
-        if (trackGenerator == null || playerTransform == null)
-        {
-            Debug.LogError("[IcePathSpawner] InitializeForRun missing refs. " +
-                           $"trackGenerator={trackGenerator}, player={playerTransform}");
-            return;
-        }
-
-        if (iceMaterial == null)
-        {
-            Debug.LogError("[IcePathSpawner] Missing iceMaterial (ice strip uses a MeshRenderer material).");
-            return;
-        }
-
-        _prefabGroundSurface = iceSegmentPrefab.GetComponentInChildren<GroundSurface>(true);
-        _prefabIcePath = iceSegmentPrefab.GetComponentInChildren<IcePath>(true);
-
-        if (_prefabGroundSurface == null)
-            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab is missing GroundSurface (values won't be copied).");
-
-        if (_prefabIcePath == null)
-            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab is missing IcePath (values won't be copied).");
-
-
-        EnsurePrefabMetrics();
-
-        if (verboseDebug)
-            Debug.Log("[IcePathSpawner] InitializeForRun: rebuilding path + slots.");
-
-        RebuildPath();
-        ClearIcePaths();
-        SetupSlots();
-
-        if (preSpawnOnInitialize)
-            PreSpawnInitialWindow();
-
-        _updateTimer = 0f;
-    }
-
-    private void Update()
-    {
-        if (!streamSpawnDuringRun || _path.Count < 2 || playerTransform == null || iceMaterial == null)
-            return;
-
-        _updateTimer += Time.deltaTime;
-        if (_updateTimer < updateInterval) return;
-
-        _updateTimer = 0f;
-        StreamIcePaths();
-    }
-
-    private void EnsurePrefabMetrics()
-    {
-        if (_prefabMetricsReady) return;
-
-        // Instantiate once to measure real-world bounds reliably (no guessing / hardcoding).
-        GameObject temp = Instantiate(iceSegmentPrefab);
-        temp.SetActive(false);
-
-        _prefabBaseLocalScale = temp.transform.localScale;
-
-        var renderers = temp.GetComponentsInChildren<Renderer>(true);
-        if (renderers == null || renderers.Length == 0)
-        {
-            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab has no Renderer. Using fallback dimensions 1x1.");
-            _prefabWidth = 1f;
-            _prefabLength = 1f;
-        }
-        else
-        {
-            Bounds b = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                b.Encapsulate(renderers[i].bounds);
-
-            // Width is X, length is Z in world units.
-            _prefabWidth = Mathf.Max(0.0001f, b.size.x);
-            _prefabLength = Mathf.Max(0.0001f, b.size.z);
-        }
-
-        Destroy(temp);
-        _prefabMetricsReady = true;
-
-        if (verboseDebug)
-            Debug.Log($"[IcePathSpawner] Prefab metrics: width={_prefabWidth:F3}, length={_prefabLength:F3}, baseScale={_prefabBaseLocalScale}");
-    }
-
-    private void RebuildPath()
-    {
-        _path.Clear();
-        _cumLengths = null;
-        _totalLength = 0f;
-        _lastClosestIdx = 0;
-
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2)
-        {
-            Debug.LogError("[IcePathSpawner] Track path has < 2 points. Cannot spawn ice paths.");
-            return;
-        }
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-        _totalLength = len;
-    }
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        outList.Add(raw[0]);
-        for (int i = 0; i < raw.Count - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, raw.Count - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        return 0.5f * (
-            (2 * p1) +
-            (-p0 + p2) * t +
-            (2 * p0 - 5 * p1 + 4 * p2 - p3) * (t * t) +
-            (-p0 + 3 * p1 - 3 * p2 + p3) * (t * t * t)
-        );
-    }
-
-    private void SetupSlots()
-    {
-        _icePathsBySlot.Clear();
-        _maxSlotIndex = Mathf.FloorToInt(_totalLength / Mathf.Max(0.0001f, icePathSpacing));
-    }
-
-    private void StreamIcePaths()
-    {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0)
-            return;
-
-        float playerDist = GetPlayerDistance();
-
-        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / icePathSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / icePathSpacing), 0, _maxSlotIndex);
-
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            if (_icePathsBySlot.ContainsKey(slot))
-                continue;
-
-            if (_icePathsBySlot.Count >= maxActiveIcePaths)
-                break;
-
-            float dist = slot * icePathSpacing;
-
-            if (dist < playerDist + minSpawnDistanceAhead)
-                continue;
-
-            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
-
-            float difficultyMult = (globalSpawnChanceByDistance != null)
-                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
-                : 1f;
-
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
-            if (effectiveChance <= 0f)
-                continue;
-
-            if (Random.value > effectiveChance)
-                continue;
-
-            TrySpawnIcePathAtDistance(slot, dist);
-        }
-
-        _toRemove.Clear();
-        foreach (var kvp in _icePathsBySlot)
-        {
-            float dist = kvp.Key * icePathSpacing;
-            if (dist < playerDist - despawnBehindDistance)
-                _toRemove.Add(kvp.Key);
-        }
-
-        for (int i = 0; i < _toRemove.Count; i++)
-        {
-            int slot = _toRemove[i];
-            if (_icePathsBySlot.TryGetValue(slot, out var obj) && obj != null)
-                Destroy(obj);
-
-            _icePathsBySlot.Remove(slot);
-        }
-    }
-
-    private float GetPlayerDistance()
-    {
-        Vector3 p = playerTransform.position;
-        float best = float.MaxValue;
-
-        for (int i = 0; i < _path.Count - 1; i++)
-        {
-            Vector3 a = _path[i], b = _path[i + 1];
-            Vector3 ab = (b - a);
-            float abSqr = ab.sqrMagnitude;
-            if (abSqr < 1e-6f) continue;
-
-            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
-            Vector3 proj = a + ab * t;
-
-            float d = (p - proj).sqrMagnitude;
-            if (d < best) { _lastClosestIdx = i; best = d; }
-        }
-
-        Vector3 A = _path[_lastClosestIdx];
-        Vector3 B = _path[_lastClosestIdx + 1];
-        Vector3 AB = (B - A);
-        float ABsqr = Mathf.Max(1e-6f, AB.sqrMagnitude);
-
-        float prog = Mathf.Clamp01(Vector3.Dot(p - A, AB) / ABsqr);
-        float segLen = Vector3.Distance(A, B);
-
-        return _cumLengths[_lastClosestIdx] + prog * segLen;
-    }
-
-    private void TrySpawnIcePathAtDistance(int slot, float baseDist)
-    {
-        float jitter = Random.Range(-distanceJitter, distanceJitter);
-        float startDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
-
-        GameObject pathParent = new GameObject($"IcePath_{startDist:F0}");
-        Transform parent = icePathParent ? icePathParent : transform;
-        pathParent.transform.SetParent(parent);
-
-        _icePathsBySlot[slot] = pathParent;
-
-
-        float totalIceLen = segmentsPerPath * segmentLength;
-
-        GameObject stripGO = new GameObject($"IceStrip_{startDist:F0}");
-        stripGO.layer = LayerMask.NameToLayer("RoadSurface");
-        stripGO.transform.SetParent(pathParent.transform, worldPositionStays: false);
-        stripGO.transform.localPosition = Vector3.zero;
-        stripGO.transform.localRotation = Quaternion.identity;
-        stripGO.transform.localScale = Vector3.one;
-
-        BuildIceStripMesh(stripGO, startDist, totalIceLen);
-
-        if (verboseDebug)
-            Debug.Log($"[IcePathSpawner] Spawned ice path at slot {slot}, distance {startDist:F1}m");
-    }
-
-    private void PreSpawnInitialWindow()
-    {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0)
-            return;
-
-        float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.FloorToInt(preSpawnEnd / icePathSpacing);
-
-        for (int slot = 0; slot <= endSlot; slot++)
-        {
-            if (_icePathsBySlot.ContainsKey(slot))
-                continue;
-
-            float dist = slot * icePathSpacing;
-
-            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
-            float difficultyMult = (globalSpawnChanceByDistance != null)
-                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
-                : 1f;
-
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
-            if (effectiveChance <= 0f) continue;
-            if (Random.value > effectiveChance) continue;
-
-            TrySpawnIcePathAtDistance(slot, dist);
-        }
-
-        if (verboseDebug)
-            Debug.Log($"[IcePathSpawner] PreSpawnInitialWindow spawned {_icePathsBySlot.Count} ice paths up to {preSpawnEnd:0.0}m.");
-    }
-
-    private void BuildIceStripMesh(GameObject owner, float startDist, float length)
-    {
-        float endDist = Mathf.Min(startDist + length, _totalLength);
-        if (endDist <= startDist + 0.01f) return;
-
-        // How many samples along the path (more samples = smoother)
-        int samples = Mathf.Max(2, Mathf.CeilToInt((endDist - startDist) / iceSampleSpacing) + 1);
-
-        var verts = new Vector3[samples * 2];
-        var normals = new Vector3[samples * 2];
-        var uvs = new Vector2[samples * 2];
-        var tris = new int[(samples - 1) * 6];
-
-        float yawOffsetDeg = 0f; // mini-turn state (smooth)
-        float halfW = icePathWidth * 0.5f;
-
-        for (int i = 0; i < samples; i++)
-        {
-            float dist = Mathf.Lerp(startDist, endDist, i / (float)(samples - 1));
-            Vector3 pos = GetPositionAtDistance(dist);
-
-            // Base forward from path tangent
-            Vector3 trackFwd = GetTangentAtDistance(dist);
-            if (trackFwd.sqrMagnitude < 1e-6f) trackFwd = Vector3.forward;
-            trackFwd.Normalize();
-
-            // Mini-turns: continuous yaw offset over distance (NOT random per segment)
-            float noise = Mathf.PerlinNoise(miniTurnSeed + dist * miniTurnFrequency, 0.1234f) * 2f - 1f;
-            float targetYaw = noise * miniTurnMaxYawDeg;
-            yawOffsetDeg = Mathf.Lerp(yawOffsetDeg, targetYaw, miniTurnSmoothing);
-
-            Vector3 fwd = (Quaternion.AngleAxis(yawOffsetDeg, Vector3.up) * trackFwd).normalized;
-
-            // Raycast to snap onto road + get normal
-            Vector3 origin = pos + Vector3.up * raycastStartHeight;
-
-            Vector3 n = Vector3.up;
-            Vector3 finalPos = pos;
-
-            bool hitSomething = Physics.Raycast(
-                origin, Vector3.down, out RaycastHit hit,
-                raycastStartHeight + raycastDownDistance,
-                roadLayer, QueryTriggerInteraction.Ignore);
-
-            if (!hitSomething)
-            {
-                hitSomething = Physics.Raycast(
-                    origin, Vector3.down, out hit,
-                    raycastStartHeight + raycastDownDistance,
-                    ~0, QueryTriggerInteraction.Ignore);
-            }
-
-            if (hitSomething)
-            {
-                n = hit.normal;
-                finalPos = hit.point + n * iceHeightOffset;
-            }
-
-            // Build left/right using the surface normal
-            Vector3 right = Vector3.Cross(n, fwd);
-            if (right.sqrMagnitude < 1e-6f) right = Vector3.Cross(Vector3.up, fwd);
-            right.Normalize();
-
-            int L = i * 2;
-            int R = i * 2 + 1;
-
-            verts[L] = owner.transform.InverseTransformPoint(finalPos - right * halfW);
-            verts[R] = owner.transform.InverseTransformPoint(finalPos + right * halfW);
-
-            normals[L] = normals[R] = n;
-
-            float v = (dist - startDist) * iceUVTiling;
-            uvs[L] = new Vector2(0f, v);
-            uvs[R] = new Vector2(1f, v);
-        }
-
-        int ti = 0;
-        for (int i = 0; i < samples - 1; i++)
-        {
-            int i0 = i * 2;
-            int i1 = i * 2 + 1;
-            int i2 = (i + 1) * 2;
-            int i3 = (i + 1) * 2 + 1;
-
-            tris[ti++] = i0;
-            tris[ti++] = i2;
-            tris[ti++] = i1;
-
-            tris[ti++] = i2;
-            tris[ti++] = i3;
-            tris[ti++] = i1;
-        }
-
-        var mf = owner.GetComponent<MeshFilter>();
-        if (mf == null) mf = owner.AddComponent<MeshFilter>();
-
-        var mr = owner.GetComponent<MeshRenderer>();
-        if (mr == null) mr = owner.AddComponent<MeshRenderer>();
-
-        Mesh m = new Mesh { name = "IceStripMesh" };
-        m.vertices = verts;
-        m.normals = normals;
-        m.uv = uvs;
-        m.triangles = tris;
-        m.RecalculateBounds();
-
-        mf.sharedMesh = m;
-
-        // add scripts + values to the strip itself (optional but nice)
-        CopyComponent(_prefabGroundSurface, owner);
-        CopyComponent(_prefabIcePath, owner);
-
-        BuildIceTriggerBoxes(owner, verts, samples);
-
-
-        if (iceMaterial != null)
-            mr.sharedMaterial = iceMaterial;
-
-    }
-
-    private void BuildIceTriggerBoxes(GameObject owner, Vector3[] vertsLocal, int samples)
-    {
-        // one box per segment between sample i and i+1
-        float triggerHeight = 0.5f; // keep small
-        for (int i = 0; i < samples - 1; i++)
-        {
-            // centerline between left/right verts at sample i and i+1 (local space)
-            Vector3 L0 = vertsLocal[i * 2];
-            Vector3 R0 = vertsLocal[i * 2 + 1];
-            Vector3 L1 = vertsLocal[(i + 1) * 2];
-            Vector3 R1 = vertsLocal[(i + 1) * 2 + 1];
-
-            Vector3 C0 = (L0 + R0) * 0.5f;
-            Vector3 C1 = (L1 + R1) * 0.5f;
-            Vector3 mid = (C0 + C1) * 0.5f;
-
-            Vector3 fwd = (C1 - C0);
-            float len = fwd.magnitude;
-            if (len < 0.001f) continue;
-            fwd /= len;
-
-            var t = new GameObject($"IceTrig_{i}").transform;
-            t.gameObject.layer = owner.layer;
-            t.SetParent(owner.transform, false);
-            t.localPosition = mid;
-            t.localRotation = Quaternion.LookRotation(fwd, Vector3.up);
-
-            var box = t.gameObject.AddComponent<BoxCollider>();
-            box.isTrigger = true;
-            box.size = new Vector3(icePathWidth, .1f, len);
-            box.center = new Vector3(0f, box.size.y * -0.5f, 0f);
-
-            CopyComponent(_prefabGroundSurface, t.gameObject);
-            CopyComponent(_prefabIcePath, t.gameObject);
-        }
-    }
-
-    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
-    {
-        dist = Mathf.Clamp(dist, 0f, _totalLength);
-
-        int idx = 0;
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= dist)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segLen = _cumLengths[idx + 1] - _cumLengths[idx];
-        float t = (dist - _cumLengths[idx]) / Mathf.Max(segLen, 0.0001f);
-
-        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
-        fwd = (_path[idx + 1] - _path[idx]).normalized;
-        if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward;
-    }
-
-    private Vector3 GetPositionAtDistance(float dist)
-    {
-        SampleAlongPath(dist, out Vector3 pos, out _);
-        return pos;
-    }
-
-    private Vector3 GetTangentAtDistance(float dist)
-    {
-        SampleAlongPath(dist, out _, out Vector3 fwd);
-        return fwd;
-    }
-
-    private void ClearIcePaths()
-    {
-        foreach (var o in _icePathsBySlot.Values)
-            if (o) Destroy(o);
-
-        _icePathsBySlot.Clear();
-    }
-
-    public void SetPlayerTransform(Transform player)
-    {
-        playerTransform = player;
-    }
-
-
-    private static T CopyComponent<T>(T source, GameObject destination) where T : UnityEngine.Component
-    {
-        // Use Unity "fake null" checks
-        if (!source || destination == null) return null;
-
-        // Ensure destination has the component
-        T copy = destination.GetComponent<T>();
-        if (!copy) copy = destination.AddComponent<T>();
-
-        if (!copy)
-        {
-            Debug.LogError($"[IcePathSpawner] Failed to AddComponent<{typeof(T).Name}> to {destination.name}. " +
-                           $"Is the script missing/invalid?");
-            return null;
-        }
-
-        CopySerializedFieldsRuntime(source, copy);
-        return copy;
-    }
-
-    private static void CopySerializedFieldsRuntime(UnityEngine.Component src, UnityEngine.Component dst)
-    {
-        if (!src || !dst) return;
-
-        System.Type type = src.GetType();
-        if (type != dst.GetType())
-        {
-            Debug.LogError($"[IcePathSpawner] CopySerializedFieldsRuntime type mismatch: {type} -> {dst.GetType()}");
-            return;
-        }
-
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
-        // Copy fields that Unity would serialize: public fields OR [SerializeField] private fields
-        foreach (FieldInfo f in type.GetFields(flags))
-        {
-            if (f.IsStatic) continue;
-            if (f.IsInitOnly) continue; // readonly
-            if (f.IsNotSerialized) continue;
-
-            bool isUnitySerialized = f.IsPublic || f.GetCustomAttribute<SerializeField>() != null;
-            if (!isUnitySerialized) continue;
-
-            object value = f.GetValue(src);
-            f.SetValue(dst, value);
-        }
-    }
-
 }
 
 ```
@@ -5261,6 +3202,180 @@ namespace DG.Tweening
 
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/AstarRuntimeBootstrap.cs
+
+```csharp
+using Pathfinding;
+using Pathfinding.RVO;
+using System.Collections;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class AstarRuntimeBootstrap : MonoBehaviour
+{
+    public static AstarRuntimeBootstrap Instance { get; private set; }
+
+    [Header("Runtime Recast Build")]
+    [Tooltip("Layer that contains ONLY your drivable road meshes/colliders.")]
+    [SerializeField] private LayerMask roadSurfaceMask;
+
+    [Tooltip("Put NPC cars on their own layer and exclude it from the recast graph mask to avoid navmesh holes.")]
+    [SerializeField] private LayerMask agentLayerMaskToExclude;
+
+    [Tooltip("Extra padding added to computed bounds so the recast graph fully covers the road.")]
+    [SerializeField] private Vector3 boundsPadding = new Vector3(10f, 10f, 10f);
+
+    [Tooltip("If true, we rebuild/scan whenever a new scene loads (you can also call ScanForTrack manually).")]
+    [SerializeField] private bool rescanOnSceneLoad = true;
+
+    [Header("RVO")]
+    [SerializeField] private bool ensureRvoSimulator = true;
+
+    private AstarPath _astar;
+    private RVOSimulator _rvo;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+
+        DontDestroyOnLoad(gameObject);
+
+        _astar = GetComponent<AstarPath>();
+        if (_astar == null) _astar = gameObject.AddComponent<AstarPath>();
+
+        if (ensureRvoSimulator)
+        {
+            _rvo = GetComponent<RVOSimulator>();
+            if (_rvo == null) _rvo = gameObject.AddComponent<RVOSimulator>();
+        }
+
+        if (rescanOnSceneLoad)
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // You probably generate the track after scene load, so we DON'T scan here blindly.
+        // Call ScanForTrack(trackRoot) from your GameManager after generation.
+    }
+
+    /// <summary>
+    /// Call this AFTER the procedural track meshes are spawned/parented.
+    /// trackRoot should be the ProceduralTrackGenerator GameObject (or whatever owns the road pieces).
+    /// </summary>
+    public void ScanForTrack(Transform trackRoot)
+    {
+        if (_astar == null) _astar = AstarPath.active;
+        if (_astar == null || trackRoot == null) return;
+
+        Bounds b;
+        if (!TryComputeRoadBounds(trackRoot, out b))
+        {
+            Debug.LogWarning("[AstarRuntimeBootstrap] No road bounds found to scan. Check roadSurfaceMask.");
+            return;
+        }
+
+        b.Expand(boundsPadding);
+
+        StartCoroutine(ScanRecastCoroutine(b));
+    }
+
+    private IEnumerator ScanRecastCoroutine(Bounds bounds)
+    {
+        var recast = GetOrCreateRecastGraph();
+
+
+        recast.rasterizeTerrain = false;
+        recast.rasterizeTrees = false;
+        recast.rasterizeMeshes = true;     // road mesh layer-filtered
+        recast.rasterizeColliders = false;
+
+
+
+        // Rasterize ONLY the road layer(s), exclude agent layer so cars don't carve holes.
+        recast.mask = roadSurfaceMask & ~agentLayerMaskToExclude;
+
+        recast.forcedBoundsCenter = bounds.center;
+        recast.forcedBoundsSize = bounds.size;
+
+        // Async scan (old API returns IEnumerable<Progress>)
+        foreach (var _ in AstarPath.active.ScanAsync(recast))
+            yield return null;
+
+        Debug.Log($"[AstarRuntimeBootstrap] Recast scan done. Bounds={bounds.size}");
+    }
+
+    private RecastGraph GetOrCreateRecastGraph()
+    {
+        var data = AstarPath.active.data;
+
+        // Try find existing recast
+        var existing = data.graphs?.OfType<RecastGraph>().FirstOrDefault();
+        if (existing != null) return existing;
+
+        // Create new recast graph
+        var g = (RecastGraph)data.AddGraph(typeof(RecastGraph));
+
+        // Sensible defaults for a racing �ribbon� (you can tune later, but keep it minimal)
+        g.characterRadius = .35f;          // roughly half car width clearance feel
+        g.walkableHeight = 2.0f;
+        g.walkableClimb = 0.6f;
+        g.cellSize = 0.15f;
+        g.maxEdgeLength = 12f;
+        g.maxSlope = 45f;
+
+        // Tiles keep it reasonable (especially if track is long)
+        g.useTiles = true;
+        g.editorTileSize = 256;
+
+        return g;
+    }
+
+    private bool TryComputeRoadBounds(Transform trackRoot, out Bounds bounds)
+    {
+        bounds = default;
+
+        // Renderer bounds is usually the most reliable for procedural mesh roads
+        var rends = trackRoot.GetComponentsInChildren<Renderer>(true)
+            .Where(r => ((roadSurfaceMask.value & (1 << r.gameObject.layer)) != 0));
+
+        bool any = false;
+        foreach (var r in rends)
+        {
+            if (!any) { bounds = r.bounds; any = true; }
+            else bounds.Encapsulate(r.bounds);
+        }
+
+        // Fallback: colliders if renderers aren�t present
+        if (!any)
+        {
+            var cols = trackRoot.GetComponentsInChildren<Collider>(true)
+                .Where(c => ((roadSurfaceMask.value & (1 << c.gameObject.layer)) != 0));
+
+            foreach (var c in cols)
+            {
+                if (!any) { bounds = c.bounds; any = true; }
+                else bounds.Encapsulate(c.bounds);
+            }
+        }
+
+        return any;
+    }
+}
+
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/CameraFollow.cs
 
 ```csharp
@@ -5289,7 +3404,6 @@ public class CameraFollow : MonoBehaviour
 
     [Header("FOV Control")]
     [SerializeField] private KeyCode fovIncreaseKey = KeyCode.Tab;
-    [SerializeField] private float fovIncreasePercentage = 1.35f;
 
     [Header("Map Peek (Hold Key)")]
     [SerializeField] private float mapPeekMultiplier = 1.25f;   // 1.15–1.35 feels good
@@ -5399,7 +3513,9 @@ public class CameraFollow : MonoBehaviour
     private bool _carIsBoosting;
     private float _boostEndTime;
     private float _boostPostDuration;
-
+    // Map peek cached values (prevents stacking)
+    private float _mapPeekPressBaseline;
+    private float _mapPeekPressTarget;
 
     private void Awake()
     {
@@ -5560,12 +3676,11 @@ public class CameraFollow : MonoBehaviour
         {
             float u = Mathf.InverseLerp(restoreStart, restoreEnd, Time.realtimeSinceStartup);
             float eased = Mathf.SmoothStep(0f, 1f, u);
-            cam.fieldOfView = Mathf.Lerp(fromFOV, autoTarget, eased);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, _speedFovCurrent, eased);
             yield return null;
         }
 
-        // final snap & hand-off to auto-FOV
-        cam.fieldOfView = _speedFovCurrent;
+        _speedFovCurrent = cam.fieldOfView;
         _suppressAutoFov = false;
         _boostZoomCR = null;
     }
@@ -5691,15 +3806,18 @@ public class CameraFollow : MonoBehaviour
         UpdateFOV(Time.deltaTime);
 
         // ★ Auto speed FOV (only when not manually animating) and not suppressed by ZoomPulse
-        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null && !_suppressAutoFov)
+        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null)
         {
             float speed = car.CurrentSpeed;
             float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
             float target = Mathf.Lerp(fovAtMinSpeed, fovAtMaxSpeed, norm);
 
-            // Smooth approach
+            // ALWAYS keep the baseline up to date
             _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, target, speedFovSmooth * Time.deltaTime);
-            cam.fieldOfView = _speedFovCurrent;
+
+            // Only APPLY it when we are not suppressed by peek/boost pulses
+            if (!_suppressAutoFov)
+                cam.fieldOfView = _speedFovCurrent;
         }
 
         // record previous forward for next frame yaw-rate estimate
@@ -5758,15 +3876,23 @@ public class CameraFollow : MonoBehaviour
         {
             _mapPeekHeld = true;
 
-            // stop any previous peek transition
             if (_mapPeekCR != null) StopCoroutine(_mapPeekCR);
 
-            _suppressAutoFov = true; // freeze auto speed-FOV while peeking
+            // Freeze APPLY (baseline still updates in LateUpdate)
+            _suppressAutoFov = true;
 
+            // Baseline decides the TARGET (prevents stacking)
+            _mapPeekPressBaseline = GetBaselineFov();
+            _mapPeekPressTarget = Mathf.Min(mapPeekMaxFOV, _mapPeekPressBaseline * mapPeekMultiplier);
+
+            // Start from CURRENT FOV (prevents ugly snap when re-pressing mid-return)
             float from = cam.fieldOfView;
-            float to = Mathf.Clamp(from * mapPeekMultiplier, 1f, mapPeekMaxFOV);
 
-            _mapPeekCR = StartCoroutine(MapPeekCoroutine(from, to, Mathf.Max(0.01f, mapPeekRampIn), holdUntilRelease: true));
+            _mapPeekCR = StartCoroutine(MapPeekHoldCoroutine(
+                fromFOV: from,
+                toFOV: _mapPeekPressTarget,
+                rampIn: Mathf.Max(0.01f, mapPeekRampIn)
+            ));
         }
 
         if (Input.GetKeyUp(fovIncreaseKey))
@@ -5775,16 +3901,15 @@ public class CameraFollow : MonoBehaviour
 
             if (_mapPeekCR != null) StopCoroutine(_mapPeekCR);
 
-            // return to the current speed-based target (or default if speed-FOV off)
-            float backTo = useSpeedBasedFOV ? _speedFovCurrent : defaultFOV;
-
-            _mapPeekCR = StartCoroutine(MapPeekCoroutine(
-                cam.fieldOfView,
-                backTo,
-                Mathf.Max(0.01f, mapPeekRampOut),
-                holdUntilRelease: false));
+            _mapPeekCR = StartCoroutine(MapPeekReturnCoroutine(
+                fromFOV: cam.fieldOfView,
+                duration: Mathf.Max(0.01f, mapPeekRampOut)
+            ));
         }
     }
+
+
+
 
     private IEnumerator MapPeekCoroutine(float fromFOV, float toFOV, float duration, bool holdUntilRelease)
     {
@@ -5808,8 +3933,6 @@ public class CameraFollow : MonoBehaviour
                 yield return null;
         }
 
-        // handoff: sync your speed-FOV baseline to avoid snapping
-        _speedFovCurrent = cam.fieldOfView;
 
         // re-enable auto only after we fully returned
         if (!holdUntilRelease)
@@ -5829,6 +3952,29 @@ public class CameraFollow : MonoBehaviour
         if (cam == null) return;
         if (totalDuration <= 0f || Mathf.Approximately(deltaFOV, 0f)) return;
         StartCoroutine(ZoomPulseCoroutine(Mathf.Abs(deltaFOV), Mathf.Max(0.05f, totalDuration)));
+    }
+
+    private IEnumerator MapPeekHoldCoroutine(float fromFOV, float toFOV, float rampIn)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + rampIn;
+
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+            cam.fieldOfView = Mathf.Lerp(fromFOV, toFOV, eased);
+            yield return null;
+        }
+
+        cam.fieldOfView = toFOV;
+
+        // HOLD while key is held
+        while (_mapPeekHeld)
+            yield return null;
+
+        // If release happened while we were holding, LateUpdate KeyUp will start return coroutine.
+        _mapPeekCR = null;
     }
 
     private IEnumerator ZoomPulseCoroutine(float deltaFOV, float totalDuration)
@@ -5877,6 +4023,33 @@ public class CameraFollow : MonoBehaviour
         _boostZoomCR = null;
     }
 
+    private float GetBaselineFov()
+    {
+        // If speed-FOV is on, baseline is the current speed-smoothed value.
+        // Otherwise baseline is the configured default.
+        return (useSpeedBasedFOV ? _speedFovCurrent : defaultFOV);
+    }
+
+    private IEnumerator MapPeekReturnCoroutine(float fromFOV, float duration)
+    {
+        float t0 = Time.realtimeSinceStartup;
+        float t1 = t0 + duration;
+
+        while (Time.realtimeSinceStartup < t1)
+        {
+            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
+            float eased = Mathf.SmoothStep(0f, 1f, u);
+
+            float liveBaseline = GetBaselineFov();
+            cam.fieldOfView = Mathf.Lerp(fromFOV, liveBaseline, eased);
+            yield return null;
+        }
+
+        cam.fieldOfView = GetBaselineFov();
+        _suppressAutoFov = false;
+        _mapPeekCR = null;
+    }
+
     private void UpdateFOV(float dt)
     {
         if (!_fovAnimating || cam == null) return;
@@ -5922,6 +4095,10 @@ public class CarController : MonoBehaviour
     [Header("Steering")]
     [SerializeField] private float turnSpeed = 90f;   // <<< THE ONE TURN SPEED SLIDER
 
+    [SerializeField] private float minSpeedToSteer = 0.6f; // tweak in Inspector
+    [SerializeField] private bool allowSteerWhenTryingToMove = true; // W/S lets you steer even if speed is tiny
+
+
     [Header("Steering Feel")]
     [SerializeField] private float lowSpeedSteerMultiplier = 1.2f;
     [SerializeField] private float highSpeedSteerMultiplier = 0.4f;
@@ -5931,6 +4108,15 @@ public class CarController : MonoBehaviour
     [Header("Arcade Steering Extras")]
     [SerializeField] private bool useAutoAlignToVelocity = false;
     [SerializeField] private float autoAlignStrength = 3f;
+
+    [Header("Ice Steering Ramp")]
+    [SerializeField] private bool enableIceSteerRamp = true;
+    [SerializeField] private float iceSteerRampUpRate = 2.5f;     // how fast steering "builds"
+    [SerializeField] private float iceSteerRampDownRate = 6.0f;   // how fast it falls off when you stop steering
+    [SerializeField, Range(0f, 1f)] private float iceSteerMinFactor = 0.15f; // starting steering on ice
+    [SerializeField, Range(0f, 1f)] private float iceSteerFlipPenalty = 0.35f;
+
+
 
     [Header("Drift Unlock")]
     [SerializeField] private bool requireDriftUnlock = true; // if true, drift only works after skill unlocked
@@ -6197,11 +4383,65 @@ public class CarController : MonoBehaviour
     [SerializeField, Tooltip("Lifetime of death VFX before cleanup.")]
     private float deathVFXLifetime = 8f;
 
+    // ===================== DEATH / EXPLOSION SFX =====================
+    [Header("Death Explosion SFX")]
+    [SerializeField, Tooltip("One-shot played when the car explodes (end-of-run).")]
+    private AudioClip deathExplodeClip;
+
+    [SerializeField, Range(0f, 1f)]
+    private float deathExplodeVolume = 1f;
+
+    [Header("Death Explosion Spatialization")]
+    [SerializeField, Tooltip("If true, explosion plays spatial (3D). If false it plays 2D.")]
+    private bool deathExplodeUseSpatial = true;
+
+    [SerializeField, Range(0f, 1f), Tooltip("0 = 2D, 1 = full 3D (when spatial).")]
+    private float deathExplodeSpatialBlend = 1f;
+
+    [SerializeField]
+    private AudioRolloffMode deathExplodeRolloff = AudioRolloffMode.Logarithmic;
+
+    [SerializeField] private float deathExplodeMinDistance = 2f;
+    [SerializeField] private float deathExplodeMaxDistance = 70f;
+
+    [SerializeField, Range(0f, 3f), Tooltip("Extra gain if your clip is quiet.")]
+    private float deathExplodeVolumeMultiplier = 1.6f;
+
+    [Header("Death Explosion Pitch Variation")]
+    [SerializeField, Range(0.5f, 2f)] private float deathExplodePitchMin = 0.95f;
+    [SerializeField, Range(0.5f, 2f)] private float deathExplodePitchMax = 1.05f;
+
+    [Header("Death Explosion Spam Guard")]
+    [SerializeField, Min(0f), Tooltip("Minimum seconds between explosion SFX calls (protects against double-calls).")]
+    private float deathExplodeSfxCooldown = 0.08f;
+
+    [Header("Ramp / Airborne Speed Preservation")]
+    [SerializeField, Tooltip("If true, we do NOT hard-clamp horizontal speed while airborne.")]
+    private bool skipSpeedClampWhileAirborne = true;
+
+    [SerializeField, Tooltip("When you land with speed above cap, we let you keep the excess and bleed it off smoothly.")]
+    private bool enableLandingCarrySpeed = true;
+
+    [SerializeField, Min(0f), Tooltip("How fast excess landing speed bleeds away (m/s per second).")]
+    private float landingExcessBleedPerSecond = 18f;
+
+    [SerializeField, Min(0f), Tooltip("Extra seconds after touchdown where we still avoid any hard clamp (lets suspension settle).")]
+    private float landingNoClampGraceSeconds = 0.08f;
+
+    // runtime
+    private bool _wasGroundedLastFrame = false;
+    private float _landingExcessSpeed = 0f;      // extra cap allowance that decays
+    private float _lastLandedTime = -999f;
+
+    private float _lastDeathExplodeSfxTime = -999f;
+
     private Vector3 _shakeBaseLocalPos;
     private float _shakeAmp;
     private float _shakeFreq;
     private float _shakeBlendAmp;
     private Vector3 _lastAppliedShakeOffset = Vector3.zero;
+    private float _iceSteerCharge01 = 0f;
+    private int _iceSteerSign = 0;
 
     // Runtime boost state
     private float _boostCooldownTimer;
@@ -6226,6 +4466,8 @@ public class CarController : MonoBehaviour
     private float baseBoostCooldown;
     private float baseBoostFuelCost;
     private float baseDriftBoostCooldown;
+
+    private float _rawSteer;   
 
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
@@ -6286,6 +4528,8 @@ public class CarController : MonoBehaviour
     private float currentBrakingForce;
     private float currentTurnSpeed;
     private float currentDrag;
+
+    private bool _crashKilledDriftHeldBoost = false;
 
     private float effectiveAcceleration;
     private float effectiveMaxSpeed;
@@ -6354,6 +4598,7 @@ public class CarController : MonoBehaviour
     [SerializeField] private float baseSteeringDamp = 1f;
     private float currentSteeringDamp;
 
+
     // ─────────────────────────────────────────────
     // NEW: Steering traction while coasting (no throttle/brake, no drift)
     // ─────────────────────────────────────────────
@@ -6368,6 +4613,14 @@ public class CarController : MonoBehaviour
     private float minSpeedForSteerTraction = 0.1f;
     [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
     private float lateralFrictionWhileSteering = 3.5f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
+    private float steerTractionBlendIn = 10f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
+    private float steerTractionBlendOut = 14f;
+
+    private float _steerTractionBlend = 0f;
 
     [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
     private float steerRollingAccelCoastMultiplier = 1f;
@@ -6397,19 +4650,6 @@ public class CarController : MonoBehaviour
 
     [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
     private float closeCallRootCooldown = 3.0f;
-
-    [Header("Crash Slow-Mo")]
-    [SerializeField, Tooltip("Enable brief slow-motion on crash impact.")]
-    private bool enableCrashSlowMo = true;
-
-    [SerializeField, Range(0.05f, 1f), Tooltip("Time scale during crash impact.")]
-    private float crashSlowMoScale = 0.75f;
-
-    [SerializeField, Tooltip("How long slow-mo lasts (seconds, real time).")]
-    private float crashSlowMoDuration = 0.08f;
-
-    [SerializeField, Tooltip("How fast time returns to normal.")]
-    private float crashSlowMoRestoreSpeed = 8f;
 
     [Header("Crash Sound Effects")]
     [SerializeField] private AudioClip crashClipDefault;
@@ -6442,9 +4682,7 @@ public class CarController : MonoBehaviour
     private float surfaceMaxSpeedLerpRate = 2.0f;  // try 1.5–4 for a nice slide
 
     private float _smoothedSurfaceMaxSpeed = -1f;
-    private bool _crashSlowMoActive = false;
-    private float _crashSlowMoEndTime;
-    private float _originalFixedDeltaTime;
+
 
 
     private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
@@ -6475,6 +4713,8 @@ public class CarController : MonoBehaviour
     // NEW: split for steering traction code etc.
     private void Awake()
     {
+
+
 
         Instance = this;
 
@@ -6559,14 +4799,12 @@ public class CarController : MonoBehaviour
 
         currentHP = Mathf.Max(1f, maxHP);
 
-
+        groundCheckLayers = groundLayers;
         RefreshSkillEffects();
         ApplySkillEffects();
-
         UpdateDamageVFXImmediate();
 
         _smoothedSurfaceMaxSpeed = -1f;
-        _originalFixedDeltaTime = Time.fixedDeltaTime;
 
     }
 
@@ -6587,30 +4825,10 @@ public class CarController : MonoBehaviour
     private void Update()
     {
 
-        if (_crashSlowMoActive)
-        {
-            if (Time.unscaledTime >= _crashSlowMoEndTime)
-            {
-                Time.timeScale = Mathf.MoveTowards(
-                    Time.timeScale,
-                    1f,
-                    crashSlowMoRestoreSpeed * Time.unscaledDeltaTime
-                );
 
-                Time.fixedDeltaTime = _originalFixedDeltaTime * Time.timeScale;
-
-                if (Mathf.Approximately(Time.timeScale, 1f))
-                {
-                    Time.timeScale = 1f;
-                    Time.fixedDeltaTime = _originalFixedDeltaTime;
-                    _crashSlowMoActive = false;
-                }
-            }
-        }
 
         UpdateCrashReorientation();
         HandleInput();
-        HandleSteering();
 
         if (Input.GetKeyDown(boostKey) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
             _boostRequested = true;
@@ -6620,10 +4838,31 @@ public class CarController : MonoBehaviour
             currentHP = Mathf.Min(maxHP, currentHP + hpRegenPerSecond * Time.deltaTime);
         }
 
-        if (currentHP <= 0f)
+        if (currentHP <= 0f && !isOutOfHP)
         {
             isOutOfHP = true;
+
+            // Hard stop boost immediately
+            _isBoosting = false;
+            _isPostBoost = false;
+            _boostRequested = false;
+
+            // Kill sustained acceleration effects
+            rb.velocity *= 0.25f;
+
             PlayDeathVFX();
+        }
+
+        bool brakeHeldNow = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+        if (brakeHeldNow)
+        {
+            // Kills active/queued boost + locks out boosts (your existing behavior)
+            if (_boostRequested || _isBoosting || _isPostBoost || _driftHoldTimeSeconds > 0f || _boostOverrideActive)
+                CancelAllBoostState(0f);
+
+            // PATCH: also kill stored drift-held boost charge immediately
+            if (_driftHoldTimeSeconds > 0f || _driftHoldDirectionSign != 0)
+                ResetDriftHeldTimer();
         }
 
         UpdateDamageVFXImmediate();
@@ -6647,6 +4886,33 @@ public class CarController : MonoBehaviour
                 _groundedTime = 0f; // Reset timer if we're airborne
             }
 
+            if (!_wasGroundedLastFrame && _isGrounded)
+            {
+                _lastLandedTime = Time.time;
+
+                if (enableLandingCarrySpeed && rb != null)
+                {
+                    Vector3 v = rb.velocity;
+                    float horizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
+
+                    // Use your *current* cap (includes boost/postboost logic), but WITHOUT any landing carry.
+                    float capNoCarry = GetCurrentSpeedCap_NoLandingCarry();
+                    _landingExcessSpeed = Mathf.Max(_landingExcessSpeed, horizSpeed - capNoCarry);
+                }
+            }
+
+            // bleed off excess allowance over time
+            if (enableLandingCarrySpeed && _landingExcessSpeed > 0f)
+            {
+                _landingExcessSpeed = Mathf.MoveTowards(
+                    _landingExcessSpeed,
+                    0f,
+                    landingExcessBleedPerSecond * Time.fixedDeltaTime
+                );
+            }
+
+            _wasGroundedLastFrame = _isGrounded;
+
             _crashTimer -= dt;
 
             // Only exit crash state if timer is up AND we've been grounded long enough
@@ -6662,6 +4928,15 @@ public class CarController : MonoBehaviour
                     rb.angularVelocity = Vector3.zero;
                 }
 
+                if (IsOutOfFuel || IsOutOfHP)
+                {
+                    _inCrash = false;           // exit crash state so timers stop
+                    rb.freezeRotation = false;  // keep physics natural (optional)
+                    rb.drag = _baseDrag;
+                    rb.angularDrag = _baseAngularDrag;
+                    return;
+                }
+
                 _isReorienting = true;
                 _reorientElapsed = 0f;
                 _reorientStartRot = transform.rotation;
@@ -6675,11 +4950,38 @@ public class CarController : MonoBehaviour
             return;
         }
 
+        var gm = GameManager_Racing.Instance;
+
+        // PATCH: Only hard-stop on RunEnded or OutOfHP.
+        // Out-of-fuel should coast naturally (no rb.velocity = 0).
+        if ((gm != null && gm.RunEnded) || IsOutOfHP)
+        {
+            // Lock physics state so nothing continues to “drive” or self-correct
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+
+                // Prevent any further rotation changes from code or physics
+                rb.freezeRotation = true;
+            }
+
+            // Kill any pending reorientation
+            _isReorienting = false;
+
+            return;
+        }
+
+        // If we're out of fuel, still run steering + physics, but NO boost.
+        bool outOfFuel = IsOutOfFuel;
+
         SampleGroundAndUpdateMultipliers();
         RefreshSkillEffects();
         ApplySkillEffects();
-        HandleMovement();
-        HandleBoost();
+        UpdateSteeringInputFixed();
+        HandleSteering();
+        HandleMovement();                 // coasting + existing decel logic still works
+        if (!outOfFuel) HandleBoost();    // block boost when fuel is 0
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
 
@@ -6984,7 +5286,7 @@ public class CarController : MonoBehaviour
             {
                 Debug.Log("[CarController] Boost request ignored: Boost locked in inspector/skill tree.");
                 ClearBoostOverride();
-                goto SpeedCapClamp;
+                return;
             }
 
             // Cooldowns: separate for normal vs drift
@@ -6994,7 +5296,8 @@ public class CarController : MonoBehaviour
                 {
                     Debug.Log($"[CarController] Drift boost ignored: cooldown {_driftBoostCooldownTimer:F2}s remaining.");
                     ClearBoostOverride();
-                    goto SpeedCapClamp;
+                    return;
+
                 }
             }
             else
@@ -7003,7 +5306,8 @@ public class CarController : MonoBehaviour
                 {
                     Debug.Log($"[CarController] Boost request ignored: cooldown {_boostCooldownTimer:F2}s remaining.");
                     ClearBoostOverride();
-                    goto SpeedCapClamp;
+                    return;
+
                 }
             }
 
@@ -7013,7 +5317,8 @@ public class CarController : MonoBehaviour
             {
                 Debug.Log("[CarController] Boost request ignored: not enough fuel.");
                 ClearBoostOverride();
-                goto SpeedCapClamp;
+                return;
+
             }
 
             float impulseForce = isOverride ? _boostOverrideForce : boostForce;
@@ -7049,14 +5354,39 @@ public class CarController : MonoBehaviour
             ClearBoostOverride();
         }
 
-    SpeedCapClamp:
-        float cap = GetCurrentSpeedCap();
-        float speed = rb.velocity.magnitude;
-        if (speed > cap)
-            rb.velocity = rb.velocity.normalized * cap;
+        if (rb != null)
+        {
+            bool landingGrace = (Time.time - _lastLandedTime) <= landingNoClampGraceSeconds;
+
+            if (!(skipSpeedClampWhileAirborne && !_isGrounded) && !landingGrace)
+            {
+                float cap = GetCurrentSpeedCap();
+
+                Vector3 v = rb.velocity;
+                Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+                float horizSpeed = horiz.magnitude;
+
+                if (horizSpeed > cap && horizSpeed > 0.0001f)
+                {
+                    Vector3 horizClamped = horiz * (cap / horizSpeed);
+                    rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+                }
+            }
+        }
+
     }
 
     private float GetCurrentSpeedCap()
+    {
+        float cap = GetCurrentSpeedCap_NoLandingCarry();
+
+        if (enableLandingCarrySpeed && _landingExcessSpeed > 0f)
+            cap += _landingExcessSpeed;
+
+        return cap;
+    }
+
+    private float GetCurrentSpeedCap_NoLandingCarry()
     {
         float normalCap = effectiveMaxSpeed;
         float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
@@ -7068,6 +5398,7 @@ public class CarController : MonoBehaviour
             float t = 1f - Mathf.Clamp01(_postBoostTimer / postBoostSlowdownDuration);
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
+
         return _isBoosting ? boostedCap : normalCap;
     }
 
@@ -7120,14 +5451,72 @@ public class CarController : MonoBehaviour
 
     private void HandleInput()
     {
+        var gm = GameManager_Racing.Instance;
+        bool suppressInputs = false;
+
+        if ((gm != null && gm.RunEnded) || IsOutOfHP)
+        {
+            bool fuelSuppressThrottleBrake = isOutOfFuel; // out of fuel always suppresses throttle/brake
+
+            _suppressThrottleBrakeThisFrame = fuelSuppressThrottleBrake || suppressInputs;
+            _suppressSteeringThisFrame = false;
+            _inputsSuppressedThisFrame = _suppressThrottleBrakeThisFrame;
+
+            // Keep steeringInput dead too
+            steeringInput = 0f;
+            return;
+        }
+
+        if (isOutOfHP)
+        {
+            steeringInput = 0f;
+            driftCharge = 0f;
+            isDrifting = false;
+            driftButtonHeld = false;
+
+            _boostRequested = false;
+            _boostOverrideActive = false;
+
+            _inputsSuppressedThisFrame = true;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = true;
+            return;
+        }
+
+        if (isOutOfFuel)
+        {
+            driftCharge = 0f;
+            isDrifting = false;
+            driftButtonHeld = false;
+
+            _boostRequested = false;
+            _boostOverrideActive = false;
+
+            _inputsSuppressedThisFrame = true;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = false;
+
+            // IMPORTANT: do NOT return; we still want to read/update steeringInput below.
+        }
+
+
         if (_malfunctionTimer > 0f)
             _malfunctionTimer -= Time.deltaTime;
         if (_malfunctionCooldownRemain > 0f)
             _malfunctionCooldownRemain -= Time.deltaTime;
 
-        float rawHorizontal = Input.GetAxisRaw("Horizontal");
+        _rawSteer = Input.GetAxisRaw("Horizontal");
+        float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
+        driftButtonHeld = Input.GetKey(driftKey);
+        bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+
+        // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
+        if (driftButtonHeld && !prevDriftKeyHeld)
+        {
+            _crashKilledDriftHeldBoost = false;
+        }
 
         bool wasDrifting = isDrifting;
         int prevHoldDirectionSign = _driftHoldDirectionSign;
@@ -7141,8 +5530,12 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            driftButtonHeld = Input.GetKey(driftKey);
             bool canDriftThisFrame = driftButtonHeld && speed >= driftMinSpeed;
+
+            if (driftButtonHeld && !prevDriftKeyHeld)
+            {
+                _crashKilledDriftHeldBoost = false;
+            }
 
             int currentSign =
                 rawHorizontal > steerFlipThreshold ? 1 :
@@ -7246,42 +5639,46 @@ public class CarController : MonoBehaviour
             // Drift-held boost accumulation
             if (enableDriftHeldBoost)
             {
-                // Build time as long as drift key + a steering direction are held (independent of driftCharge / speed)
-                if (driftButtonHeld && _driftCurrentSteerSign != 0)
+                // PATCH: if player is braking, do NOT accumulate drift-held boost.
+                // Also wipe any stored drift-held charge so release cannot fling you.
+                if (brakeHeld || _inCrash || isOutOfHP || isOutOfFuel)
                 {
-                    if (_driftHoldDirectionSign == 0 || _driftHoldDirectionSign == _driftCurrentSteerSign)
-                    {
-                        _driftHoldDirectionSign = _driftCurrentSteerSign;
-                    }
-                    else
-                    {
-                        // Direction flip: start new accumulation
-                        ResetDriftHeldTimer();
-                        _driftHoldDirectionSign = _driftCurrentSteerSign;
-                    }
-
-                    _driftHoldTimeSeconds += Time.deltaTime;
-                }
-
-                // Trigger boost ONLY on drift key release (protects against crash or speed loss firing it)
-                if (!driftButtonHeld && prevDriftKeyHeld)
-                {
-                    TryTriggerDriftHeldBoost();
                     ResetDriftHeldTimer();
                 }
-
-                // If no direction while still holding drift, do not accumulate further (but keep current hold until release)
-                if (driftButtonHeld && _driftCurrentSteerSign == 0)
+                else
                 {
-                    // Optionally could slowly decay; for now just pause accumulation.
-                }
+                    // Build time as long as drift key + a steering direction are held
+                    if (driftButtonHeld && _driftCurrentSteerSign != 0)
+                    {
+                        if (_driftHoldDirectionSign == 0 || _driftHoldDirectionSign == _driftCurrentSteerSign)
+                        {
+                            _driftHoldDirectionSign = _driftCurrentSteerSign;
+                        }
+                        else
+                        {
+                            // Direction flip: start new accumulation
+                            ResetDriftHeldTimer();
+                            _driftHoldDirectionSign = _driftCurrentSteerSign;
+                        }
 
-                // Hard reset if not holding drift at all
-                if (!driftButtonHeld)
-                {
-                    _driftHoldDirectionSign = 0;
+                        _driftHoldTimeSeconds += Time.deltaTime;
+                    }
+
+                    // Trigger boost ONLY on drift key release
+                    if (!driftButtonHeld && prevDriftKeyHeld)
+                    {
+                        TryTriggerDriftHeldBoost();
+                        ResetDriftHeldTimer();
+                    }
+
+                    // Hard reset if not holding drift at all
+                    if (!driftButtonHeld)
+                    {
+                        _driftHoldDirectionSign = 0;
+                    }
                 }
             }
+
 
             if (isDrifting && !wasDrifting && rb != null)
             {
@@ -7342,7 +5739,7 @@ public class CarController : MonoBehaviour
         if (handlingMult > 1f)
             smoothRate /= handlingMult;
 
-        bool suppressInputs = false;
+        suppressInputs = false;
         if (enableDamageMalfunction)
         {
             float hpFrac = HPPercent;
@@ -7369,16 +5766,6 @@ public class CarController : MonoBehaviour
         _suppressThrottleBrakeThisFrame = suppressInputs;
         _suppressSteeringThisFrame = false; // keep steering responsive even during malfunction
 
-        // Smooth steering input (steering is never forced to 0 anymore)
-        float targetSteer = _suppressSteeringThisFrame ? 0f : rawHorizontal;
-        float smoothDelta = smoothRate * Time.deltaTime;
-
-        // Don't lerp if target and current are very close (prevents micro-jitter)
-        if (Mathf.Abs(targetSteer - steeringInput) < 0.01f)
-            steeringInput = targetSteer;
-        else
-            steeringInput = Mathf.MoveTowards(steeringInput, targetSteer, smoothDelta);
-
         _inputsSuppressedThisFrame = _suppressThrottleBrakeThisFrame;
     }
 
@@ -7387,6 +5774,11 @@ public class CarController : MonoBehaviour
         if (Time.time < _boostBlockedUntil) return;
         if (!enableDriftHeldBoost) return;
         if (_inCrash) return; // prevent accidental boost trigger after a crash interruption
+
+        bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+        if (brakeHeld) return;
+        if (isOutOfHP || isOutOfFuel) return;
+        if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame) return;
 
         float held = _driftHoldTimeSeconds;
         ResetDriftHeldTimer();
@@ -7452,10 +5844,9 @@ public class CarController : MonoBehaviour
     {
         if (rb == null)
             return;
-        TriggerCrashSlowMo();
 
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
-
+        _crashKilledDriftHeldBoost = true;
         // NEW: also prevent drift-held boost from “arming” during crash sequences
         ResetDriftHeldTimer();
         _boostOverrideActive = false;
@@ -7549,6 +5940,11 @@ public class CarController : MonoBehaviour
 
         if (applyDamage)
         {
+
+            float hpBefore = currentHP;
+            float fuelBefore = currentFuel;
+
+
             if (hpCrashDamageAtSeverity1 > 0f)
             {
                 float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
@@ -7573,6 +5969,17 @@ public class CarController : MonoBehaviour
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
 
+            bool lethalFromThisCrash =
+    (hpBefore > 0f && currentHP <= 0f) ||
+    (fuelBefore > 0f && currentFuel <= 0f);
+
+            if (lethalFromThisCrash)
+            {
+                var gm = GameManager_Racing.Instance;
+                if (gm != null)
+                    gm.OnCarCrashLethal(sev01ForDamage);
+            }
+
             // Start cooldown AFTER damage
             _nextCrashAllowedTime = Time.time + crashDamageCooldown;
         }
@@ -7580,18 +5987,6 @@ public class CarController : MonoBehaviour
         {
             Debug.Log($"[CarController] Crash occurred but damage skipped (cooldown active, {Mathf.Max(0f, _nextCrashAllowedTime - Time.time):F2}s remain).");
         }
-    }
-
-    private void TriggerCrashSlowMo()
-    {
-        if (!enableCrashSlowMo) return;
-        if (_crashSlowMoActive) return;
-
-        _crashSlowMoActive = true;
-        _crashSlowMoEndTime = Time.unscaledTime + crashSlowMoDuration;
-
-        Time.timeScale = crashSlowMoScale;
-        Time.fixedDeltaTime = _originalFixedDeltaTime * Time.timeScale;
     }
 
 
@@ -7620,7 +6015,46 @@ public class CarController : MonoBehaviour
 
         if (Mathf.Abs(steeringInput) > 0.001f)
         {
-            float steerAmount = steeringInput * steerDirection * steerSpeed * speedSteerMul * driftSteerMul * Time.deltaTime;
+            float iceSteerMul = 1f;
+
+            if (enableIceSteerRamp && _onIceSurface && speed > 0.25f)
+            {
+                float absIn = Mathf.Abs(steeringInput);
+                int signNow = absIn > 0.001f ? (steeringInput > 0f ? 1 : -1) : 0;
+
+                // If we flick directions, knock charge down a bit (prevents instant snap)
+                if (signNow != 0 && _iceSteerSign != 0 && signNow != _iceSteerSign)
+                    _iceSteerCharge01 = Mathf.Max(0f, _iceSteerCharge01 - iceSteerFlipPenalty);
+
+                if (signNow != 0) _iceSteerSign = signNow;
+
+                // Build while steering, decay when not
+                float target = absIn > 0.05f ? 1f : 0f;
+                float rate = target > _iceSteerCharge01 ? iceSteerRampUpRate : iceSteerRampDownRate;
+                _iceSteerCharge01 = Mathf.MoveTowards(_iceSteerCharge01, target, rate * Time.deltaTime);
+
+                // Convert charge -> usable steering factor
+                iceSteerMul = Mathf.Lerp(iceSteerMinFactor, 1f, _iceSteerCharge01);
+            }
+
+
+
+            bool tryingToMove =
+                (!IsOutOfFuel && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S)))
+                || IsOutOfFuel;
+
+            if (speed < minSpeedToSteer && !(allowSteerWhenTryingToMove && tryingToMove))
+            {
+                // If you’re using the ice steer “charge”, force it to bleed off so it doesn’t feel sticky.
+                _iceSteerCharge01 = Mathf.MoveTowards(_iceSteerCharge01, 0f, iceSteerRampDownRate * Time.deltaTime);
+
+                // No turning-in-place.
+                return;
+            }
+
+            float steerAmount = steeringInput * steerDirection * steerSpeed * speedSteerMul * driftSteerMul * iceSteerMul * Time.deltaTime;
+
+
             transform.Rotate(0f, steerAmount, 0f, Space.Self);
 
             if (isDrifting && speed > 0.1f)
@@ -7660,13 +6094,7 @@ public class CarController : MonoBehaviour
         bool forwardKey = Input.GetKey(KeyCode.W);
         bool reverseKey = Input.GetKey(KeyCode.S);
 
-        if (_inputsSuppressedThisFrame)
-        {
-            forwardKey = false;
-            reverseKey = false;
-        }
-
-        if (_suppressThrottleBrakeThisFrame)
+        if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame)
         {
             forwardKey = false;
             reverseKey = false;
@@ -7675,15 +6103,30 @@ public class CarController : MonoBehaviour
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
 
+        // Grounded check early so we can use it anywhere in this method.
+        bool groundedNow = CheckIfGrounded();
+
         // Treat glide the same as drift for physics retention.
         bool driftPhysicsActive = isDrifting || _driftGlideActive;
-
 
         if (!isOutOfFuel && maxFuel > 0f)
         {
             bool accelerating = forwardKey;
             bool brakingOrReverse = reverseKey;
             bool nearIdleSpeed = speed <= idleSpeedThreshold + 0.001f;
+
+            bool wantsSteerTraction =
+    groundedNow &&
+    enableSteerTraction &&
+    !driftButtonHeld &&
+    Mathf.Abs(steeringInput) > 0.001f &&
+    !accelerating &&
+    !brakingOrReverse;
+
+            float blendSpeed = wantsSteerTraction ? steerTractionBlendIn : steerTractionBlendOut;
+            float blendTarget = wantsSteerTraction ? 1f : 0f;
+            _steerTractionBlend = Mathf.MoveTowards(_steerTractionBlend, blendTarget, blendSpeed * Time.fixedDeltaTime);
+
 
             if (!driftPhysicsActive)
             {
@@ -7699,19 +6142,13 @@ public class CarController : MonoBehaviour
 
                     if (currentLong > 0f)
                     {
-                        float decel = maxBrakeDecelPerSecond > 0f
-                            ? maxBrakeDecelPerSecond
-                            : 1.0f;
-
+                        float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 1.0f;
                         float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
                         SetLongitudinalVelocityClamped(forward, newLong);
                     }
                     else
                     {
-                        float reverseAccel = maxReverseAccelPerSecond > 0f
-                            ? maxReverseAccelPerSecond
-                            : 1.0f;
-
+                        float reverseAccel = maxReverseAccelPerSecond > 0f ? maxReverseAccelPerSecond : 1.0f;
                         float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
                         float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
                         SetLongitudinalVelocityClamped(forward, newLong);
@@ -7721,61 +6158,77 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    // NEW: If we're moving backward, gently brake to zero instead of snapping forward
-                    if (forwardSpeed < -0.1f)
+                    // Coasting (no W/S)
+                    if (groundedNow)
                     {
-                        float reverseDecel = Mathf.Min(maxReverseAccelPerSecond, 3.5f); // gentle reverse coast
-                        float newLong = Mathf.MoveTowards(forwardSpeed, 0f, reverseDecel * Time.fixedDeltaTime);
-                        SetLongitudinalVelocityClamped(forward, newLong);
-                    }
-                    else if (speed > 0.01f)
-                    {
-                        float decel = coastLowDecelPerSecond;
-                        float newMag = Mathf.Max(0f, speed - decel * Time.fixedDeltaTime);
-                        rb.velocity = rb.velocity.normalized * newMag;
-                    }
-
-                    if (enableSteerTraction && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
-                    {
-                        Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
-                        Vector3 vel = rb.velocity;
-                        Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
-
-                        if (flatVel.sqrMagnitude > (minSpeedForSteerTraction * minSpeedForSteerTraction))
+                        if (forwardSpeed < -0.1f)
                         {
-                            Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, flatForward, steerTractionReorientRate * Time.fixedDeltaTime).normalized;
-
-                            Vector3 fwdComp = flatForward * Vector3.Dot(flatVel, flatForward);
-                            Vector3 lateral = flatVel - fwdComp;
-                            lateral *= Mathf.Exp(-lateralFrictionWhileSteering * Time.fixedDeltaTime);
-                            float mag = (fwdComp + lateral).magnitude;
-
-                            Vector3 newFlat = blendedDir * mag;
-                            rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
+                            float reverseDecel = Mathf.Min(maxReverseAccelPerSecond, 3.5f);
+                            float newLong = Mathf.MoveTowards(forwardSpeed, 0f, reverseDecel * Time.fixedDeltaTime);
+                            SetLongitudinalVelocityClamped(forward, newLong);
+                        }
+                        else if (speed > 0.01f)
+                        {
+                            float decel = coastLowDecelPerSecond;
+                            float newMag = Mathf.Max(0f, speed - decel * Time.fixedDeltaTime);
+                            rb.velocity = rb.velocity.normalized * newMag;
                         }
 
-                        float coastMul = steerRollingAccelCoastMultiplier;
+                        // Steer rolling traction while coasting
+                        if (_steerTractionBlend > 0.0001f && enableSteerTraction && !_onIceSurface && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
+                        {
+                            Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
+                            Vector3 vel = rb.velocity;
+                            Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
 
-                        if (_onIceSurface && !applySteerRollingAccelOnIce)
-                            coastMul = 0f;
+                            if (flatVel.sqrMagnitude > (minSpeedForSteerTraction * minSpeedForSteerTraction))
+                            {
+                                float t = steerTractionReorientRate * _steerTractionBlend * Time.fixedDeltaTime;
+                                Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, flatForward, t).normalized;
 
-                        rb.AddForce(flatForward * (steerRollingAccel * coastMul), ForceMode.Acceleration);
+                                Vector3 fwdComp = flatForward * Vector3.Dot(flatVel, flatForward);
+                                Vector3 lateral = flatVel - fwdComp;
+
+                                float latDamp = lateralFrictionWhileSteering * _steerTractionBlend;
+                                lateral *= Mathf.Exp(-latDamp * Time.fixedDeltaTime);
+
+                                float mag = (fwdComp + lateral).magnitude;
+                                Vector3 newFlat = blendedDir * mag;
+                                rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
+                            }
+
+                            float coastMul = steerRollingAccelCoastMultiplier;
+                            if (_onIceSurface && !applySteerRollingAccelOnIce)
+                                coastMul = 0f;
+
+                            rb.AddForce(flatForward * (steerRollingAccel * coastMul * _steerTractionBlend), ForceMode.Acceleration);
+                        }
                     }
                 }
             }
             else
             {
                 // Drifting/gliding with fuel
+                bool consumedFuelThisFrame = false;
+
                 if (accelerating && !brakingOrReverse)
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
                     rb.AddForce(forward * effectiveAcceleration * accelMul, ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
+                    consumedFuelThisFrame = true;
                 }
 
                 if (brakingOrReverse && isDrifting)
                 {
                     ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                    consumedFuelThisFrame = true;
+                }
+
+                // Drift/glide without accel or brake still burns fuel (you're moving fast)
+                if (!consumedFuelThisFrame && (isDrifting || _driftGlideActive))
+                {
+                    ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
             }
 
@@ -7786,21 +6239,11 @@ public class CarController : MonoBehaviour
         }
         else if (isOutOfFuel)
         {
-            // OUT OF FUEL: rapid deceleration
-            float stopDecel = 4.5f;
-            float currentSpeed = rb.velocity.magnitude;
-            if (currentSpeed > 0.01f)
-            {
-                float newMag = Mathf.Max(0f, currentSpeed - stopDecel * Time.fixedDeltaTime);
-                rb.velocity = rb.velocity.normalized * newMag;
-            }
         }
 
         rb.drag = driftPhysicsActive ? effectiveDrag * 0.01f : effectiveDrag;
 
         speed = rb.velocity.magnitude;
-
-        bool groundedNow = CheckIfGrounded();
 
         if (driftPhysicsActive && groundedNow)
         {
@@ -7812,9 +6255,7 @@ public class CarController : MonoBehaviour
                 if (driftButtonHeld)
                     driftPeakSpeed = Mathf.Max(driftPeakSpeed, rb.velocity.magnitude);
 
-                Vector3 velDir = rb.velocity.sqrMagnitude > 0.0001f
-                    ? rb.velocity.normalized
-                    : transform.forward;
+                Vector3 velDir = rb.velocity.sqrMagnitude > 0.0001f ? rb.velocity.normalized : transform.forward;
 
                 bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
                 bool noThrottleNoBrake = (!forwardKey && !reverseKey);
@@ -7825,9 +6266,7 @@ public class CarController : MonoBehaviour
                 }
                 else if (noThrottleNoBrake)
                 {
-                    float decayPerSecond = (_driftGlideActive && !isDrifting)
-                        ? driftGlideDecayPerSecond
-                        : driftSpeedDecayPerSecond;
+                    float decayPerSecond = (_driftGlideActive && !isDrifting) ? driftGlideDecayPerSecond : driftSpeedDecayPerSecond;
                     driftClampSpeed -= decayPerSecond * Time.fixedDeltaTime;
                 }
 
@@ -7867,11 +6306,10 @@ public class CarController : MonoBehaviour
                 if (forwardKey && !reverseKey)
                     targetMagnitude = Mathf.Max(targetMagnitude, currentMag);
 
-                // SMOOTH the magnitude change instead of snapping
-                float smoothRate = 15f; // adjust 10-20 for responsiveness
+                float smoothRate = 15f;
                 float smoothedMag = Mathf.Lerp(currentMag, targetMagnitude, smoothRate * Time.fixedDeltaTime);
 
-                float y = rb.velocity.y; // preserve gravity-driven vertical motion
+                float y = rb.velocity.y;
                 Vector3 horiz = finalDir.normalized * Mathf.Max(0f, smoothedMag);
                 rb.velocity = new Vector3(horiz.x, y, horiz.z);
 
@@ -7888,10 +6326,22 @@ public class CarController : MonoBehaviour
         else
         {
             float cap = GetCurrentSpeedCap();
-            if (speed > cap + 0.5f) // add small tolerance
-                rb.velocity = rb.velocity.normalized * cap;
+
+            Vector3 v = rb.velocity;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+            float horizSpeed = horiz.magnitude;
+
+            bool landingGrace = (Time.time - _lastLandedTime) <= landingNoClampGraceSeconds;
+            bool shouldClamp = !(skipSpeedClampWhileAirborne && !_isGrounded) && !landingGrace;
+
+            if (shouldClamp && horizSpeed > cap + 0.5f && horizSpeed > 0.0001f)
+            {
+                Vector3 horizClamped = horiz * (cap / horizSpeed);
+                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+            }
         }
     }
+
 
     private void ConsumeFuel(float amount)
     {
@@ -8116,6 +6566,7 @@ public class CarController : MonoBehaviour
         if (rb == null) return;
         if (_inCrash || _isReorienting) return;     // don't fight crash/recovery
         if (IsCrashInvulnerable) return;
+        if (IsOutOfHP) return;
 
         // We will align to either:
         // - current ground normal (if grounded)
@@ -8341,6 +6792,93 @@ public class CarController : MonoBehaviour
         return groundHits >= 2;
     }
 
+    // Add inside CarController class
+    public void ApplyDirectDamage(float hpDamage, float fuelPercentOfMax)
+    {
+        // Flat HP
+        if (hpDamage > 0f)
+        {
+            currentHP = Mathf.Max(0f, currentHP - hpDamage);
+        }
+
+        // Fuel as % of max fuel
+        if (fuelPercentOfMax > 0f)
+        {
+            float fuelLoss = Mathf.Max(0f, maxFuel * fuelPercentOfMax);
+            ConsumeFuel(fuelLoss);
+        }
+
+        // If this hit causes death by HP or fuel, keep behavior consistent with your lethal hooks.
+        if (currentHP <= 0f && !isOutOfHP)
+        {
+            isOutOfHP = true;
+            PlayDeathVFX();
+        }
+
+        if (currentFuel <= 0f && !isOutOfFuel)
+        {
+            isOutOfFuel = true;
+            // if you have any “out of fuel” death handling elsewhere it will pick it up
+        }
+    }
+
+    public void ApplyDirectDamageWithCrashFX(
+        float hpDamage,
+        float fuelPercentOfMax,
+        Vector3 contactPointWS,
+        Vector3 contactNormalWS,
+        Vector3 hitDirectionWS,
+        float impactSpeedOverride = -1f,   // if < 0 => derive from rb speed
+        float fxSeverityOverride01 = -1f   // if < 0 => derive from impactSpeed
+    )
+    {
+        if (rb == null) return;
+
+        // Fixed damage ONLY
+        ApplyDirectDamage(hpDamage, fuelPercentOfMax);
+
+        // Determine impact speed for presentation/physics
+        float speedNow = rb.velocity.magnitude;
+        float impactSpeed = (impactSpeedOverride >= 0f) ? impactSpeedOverride : speedNow;
+        if (impactSpeedOverride >= 0f)
+            impactSpeed = Mathf.Clamp(impactSpeed, 0f, maxImpactSpeed);
+        else
+            impactSpeed = Mathf.Clamp(impactSpeed, minImpactSpeed, maxImpactSpeed);
+
+
+        // Determine severity for presentation ONLY (NOT damage)
+        float sev01 = (fxSeverityOverride01 >= 0f)
+            ? Mathf.Clamp01(fxSeverityOverride01)
+            : Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
+
+        // Run global crash hooks (shake/slowmo/etc.)
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+            gm.OnCarCrash(impactSpeed, sev01);
+
+        // SFX/VFX
+        Vector3 normal = contactNormalWS.sqrMagnitude > 0.0001f ? contactNormalWS.normalized : Vector3.up;
+        PlayCrashSfx(crashClipDefault, contactPointWS, crashSfxVolume);
+        SpawnCrashImpactVFX(contactPointWS, normal);
+
+        // Full crash state + fling + disable movement, BUT skip severity-based HP/fuel
+        Vector3 hitDir = hitDirectionWS;
+        hitDir.y = 0f;
+        if (hitDir.sqrMagnitude < 0.0001f) hitDir = -transform.forward;
+        hitDir.Normalize();
+
+        float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
+        float impulseMag = impactSpeed * impulsePerUnitSpeed;
+        float torqueMag = impactSpeed * torquePerUnitSpeed;
+
+        // applyDamage = false so TriggerCrash runs the crash state/physics
+        // without applying your severity-based HP/fuel logic.
+        TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, sev01, contactPointWS, false);
+    }
+
+
+
+
     private void ApplySurfaceMultipliers(float maxSpeedMul, float accelMul, float turnMul, float dragMul)
     {
         surfaceTurnMultiplier = Mathf.Max(0f, turnMul);
@@ -8354,7 +6892,7 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            float lerpSpeed = 8f; // adjust 4-12 for feel
+            float lerpSpeed = surfaceMaxSpeedLerpRate;
             _smoothedSurfaceMaxSpeed = Mathf.Lerp(_smoothedSurfaceMaxSpeed, targetMaxSpeed, lerpSpeed * Time.fixedDeltaTime);
         }
 
@@ -8526,10 +7064,17 @@ public class CarController : MonoBehaviour
 
         if (rb != null)
         {
-            float speed = rb.velocity.magnitude;
             float cap = GetCurrentSpeedCap();
-            if (speed > cap)
-                rb.velocity = rb.velocity.normalized * cap;
+
+            Vector3 v = rb.velocity;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up); // ignore vertical
+            float horizSpeed = horiz.magnitude;
+
+            if (horizSpeed > cap && horizSpeed > 0.0001f)
+            {
+                Vector3 horizClamped = horiz * (cap / horizSpeed);
+                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
+            }
         }
 
 #if UNITY_EDITOR
@@ -8635,9 +7180,16 @@ public class CarController : MonoBehaviour
 
     private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)
     {
-        // Preserve vertical component (y)
-        Vector3 vel = rb.velocity;
-        rb.velocity = forwardDir.normalized * newLong + Vector3.up * vel.y;
+        Vector3 v = rb.velocity;
+
+        Vector3 fwd = forwardDir.normalized;
+        Vector3 flat = Vector3.ProjectOnPlane(v, Vector3.up);
+
+        // Keep lateral component on the ground plane
+        Vector3 lateral = flat - fwd * Vector3.Dot(flat, fwd);
+
+        Vector3 newFlat = fwd * newLong + lateral;
+        rb.velocity = new Vector3(newFlat.x, v.y, newFlat.z);
     }
 
     private void UpdateBoostUnlock()
@@ -8679,10 +7231,15 @@ public class CarController : MonoBehaviour
             return;
 
         float impactSpeed = collision.relativeVelocity.magnitude;
+
+
+
         if (impactSpeed < minImpactSpeed)
             return;
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
+
+        Debug.Log($"Impact Speed: {impactSpeed}");
 
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
 
@@ -8697,6 +7254,7 @@ public class CarController : MonoBehaviour
         Vector3 hitDir;
         Vector3 contactPoint = transform.position;
         Vector3 contactNormal = Vector3.up;
+
         if (collision.contactCount > 0)
         {
             var c = collision.GetContact(0);
@@ -8708,6 +7266,15 @@ public class CarController : MonoBehaviour
         {
             hitDir = (transform.position - collision.transform.position).normalized;
         }
+
+        // NOW shuttle calc (uses correct normal)
+        var shuttle = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttle != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttle.GetWorldVelocity();
+            impactSpeed = Mathf.Abs(Vector3.Dot(rel, contactNormal));
+        }
+
 
 
         var otherCol = collision.collider;
@@ -8765,6 +7332,44 @@ public class CarController : MonoBehaviour
         src.Play();
         Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
     }
+
+    private void PlayDeathExplodeSfx(Vector3 worldPos, float volume01 = 1f, bool respectCooldown = true)
+    {
+        if (deathExplodeClip == null) return;
+
+        if (respectCooldown)
+        {
+            if (Time.time < _lastDeathExplodeSfxTime + Mathf.Max(0f, deathExplodeSfxCooldown))
+                return;
+        }
+        _lastDeathExplodeSfxTime = Time.time;
+
+        GameObject go = new GameObject("SFX_Death_" + deathExplodeClip.name);
+        go.transform.position = worldPos;
+
+        var src = go.AddComponent<AudioSource>();
+        src.clip = deathExplodeClip;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.dopplerLevel = 0f;
+
+        // Spatial settings
+        src.spatialBlend = deathExplodeUseSpatial ? Mathf.Clamp01(deathExplodeSpatialBlend) : 0f;
+        src.rolloffMode = deathExplodeRolloff;
+        src.minDistance = Mathf.Max(0.01f, deathExplodeMinDistance);
+        src.maxDistance = Mathf.Max(src.minDistance + 0.1f, deathExplodeMaxDistance);
+
+        // Volume + multiplier
+        src.volume = Mathf.Clamp01(volume01 * deathExplodeVolume * deathExplodeVolumeMultiplier);
+
+        // Pitch variation
+        float pitch = UnityEngine.Random.Range(deathExplodePitchMin, deathExplodePitchMax);
+        src.pitch = Mathf.Clamp(pitch, 0.01f, 3f);
+
+        src.Play();
+        Destroy(go, deathExplodeClip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
 
     private void OnTriggerEnter(Collider other)
     {
@@ -8836,6 +7441,11 @@ public class CarController : MonoBehaviour
 
     private void UpdateCrashReorientation()
     {
+        var gm = GameManager_Racing.Instance;
+        if(IsOutOfHP || IsOutOfFuel || (gm != null && gm.RunEnded))
+        {
+            _isReorienting = false;
+        }
         if (!_isReorienting)
             return;
 
@@ -8894,12 +7504,36 @@ public class CarController : MonoBehaviour
         Destroy(go, Mathf.Max(0.01f, crashImpactVFXLifetime));
     }
 
+    private void UpdateSteeringInputFixed()
+    {
+        float dt = Time.fixedDeltaTime;
+
+        float targetSteer = _suppressSteeringThisFrame ? 0f : _rawSteer;
+
+        float smoothRate = steeringInputSmooth;
+        if (isDrifting)
+            smoothRate *= 1.4f;
+
+        float handlingMult = GetTemporaryHandlingMultiplier();
+        if (handlingMult > 1f)
+            smoothRate /= handlingMult;
+
+        float smoothDelta = smoothRate * dt;
+
+        if (Mathf.Abs(targetSteer - steeringInput) < 0.01f)
+            steeringInput = targetSteer;
+        else
+            steeringInput = Mathf.MoveTowards(steeringInput, targetSteer, smoothDelta);
+    }
+
     private void PlayDeathVFX()
     {
         if (_deathVfxPlayed) return;
         if (deathVFX == null) return;
 
         _deathVfxPlayed = true;
+
+        PlayDeathExplodeSfx(transform.position);
 
         Vector3 spawnPos = transform.position;
 
@@ -8910,8 +7544,45 @@ public class CarController : MonoBehaviour
                 GameObject inst = ProjectilePool.Instance.Get(deathVFX);
                 if (inst != null)
                 {
-                    inst.transform.position = spawnPos;
-                    inst.transform.rotation = Quaternion.identity;
+                    inst.transform.SetPositionAndRotation(
+                        spawnPos,
+                        deathVFX.transform.rotation // usually identity, but importantly: matches prefab root
+                    );
+                    inst.SetActive(true);
+                    StartCoroutine(ReturnPooledVFXLater(deathVFX, inst, deathVFXLifetime));
+                    return;
+                }
+            }
+        }
+        catch { /* fallback below */ }
+
+        GameObject go = Instantiate(
+            deathVFX,
+            spawnPos,
+            deathVFX.transform.rotation
+        );
+        Destroy(go, deathVFXLifetime);
+    }
+
+    public void PlayDeathVFXExtra()
+    {
+        if (deathVFX == null) return;
+
+        Vector3 spawnPos = transform.position;
+        PlayDeathExplodeSfx(spawnPos);
+
+        // Intentionally BYPASS _deathVfxPlayed so we can “double explode”
+        try
+        {
+            if (ProjectilePool.Instance != null)
+            {
+                GameObject inst = ProjectilePool.Instance.Get(deathVFX);
+                if (inst != null)
+                {
+                    inst.transform.SetPositionAndRotation(
+                        spawnPos,
+                        deathVFX.transform.rotation // usually identity, but importantly: matches prefab root
+                    );
                     inst.SetActive(true);
                     StartCoroutine(ReturnPooledVFXLater(deathVFX, inst, deathVFXLifetime));
                     return;
@@ -9160,6 +7831,9 @@ public sealed class CarForcefield : MonoBehaviour
 
         EnsureTrigger();
 
+        // Safety: ensure trigger starts in the correct enabled state
+        if (_trigger) _trigger.enabled = _armed;
+
         // Maintain existing serialized startsArmed default, but optionally enforce base cooldown on spawn.
         if (startOnCooldown && cooldownSeconds > 0f)
         {
@@ -9177,7 +7851,8 @@ public sealed class CarForcefield : MonoBehaviour
 
     void OnEnable()
     {
-        if (_trigger) _trigger.enabled = true;
+        // Don't accidentally enable the bubble when we're disarmed/on cooldown.
+        if (_trigger) _trigger.enabled = _armed;
     }
 
     void OnDisable()
@@ -9599,6 +8274,460 @@ public sealed class CarForcefield : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/CarTurretController.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class CarTurretController : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private CarController car;          // root car with movement + collider
+    [SerializeField] private Transform muzzle;           // where bullets spawn
+    [SerializeField] private GameObject bulletPrefab;    // must have RacingBullet
+    [SerializeField] private Collider ownerCollider;     // collider(s) to ignore (car body)
+
+    [Header("Firing")]
+    [SerializeField] private bool autoFire = false;      // if true, fires whenever off cooldown
+    [SerializeField] private KeyCode fireKey = KeyCode.Mouse0;
+    [SerializeField] private float fireCooldown = 0.25f; // seconds between shots
+
+    [Header("Audio (Turret)")]
+    [SerializeField, Tooltip("One-shot SFX played when the turret fires.")]
+    private AudioClip turretFireClip;
+    [SerializeField, Range(0f, 1f), Tooltip("Volume for turret fire SFX.")]
+    private float turretFireVolume = 1f;
+
+    [Header("Spawn / Startup")]
+    [SerializeField, Tooltip("If true the turret will start on its base cooldown when the car spawns instead of being immediately ready.")]
+    private bool startOnCooldown = true;
+
+    [Header("Bullet Stats")]
+    [SerializeField] private float bulletSpeed = 80f;
+    [SerializeField] private float bulletDamage = 10f;
+    [SerializeField] private float bulletRange = 60f;
+    [SerializeField] private float bulletLifetime = 3f;
+
+    [Header("Targeting / Cone")]
+    [Tooltip("Max distance we look for targets in front of the car.")]
+    [SerializeField] private float targetScanRadius = 60f;
+    [Tooltip("Total cone angle in degrees (centered on car forward).")]
+    [SerializeField] private float coneAngle = 45f;
+    [Tooltip("Layers considered valid targets (enemies/obstacles).")]
+    [SerializeField] private LayerMask targetLayers = ~0;
+    [SerializeField] private bool useAutoTargeting = true;
+
+    [Header("Protective Targeting Assist")]
+    [Tooltip("Safety window multiplier for bullet reach: bulletSpeed * bulletLifetime * multiplier.")]
+    [SerializeField] private float travelAllowanceMultiplier = 1.1f;
+    [Tooltip("Extra weight applied to path hazard score (targets directly in car path).")]
+    [SerializeField] private float pathPriorityWeight = 2.0f;
+    [Tooltip("Bullet must arrive earlier than car * this margin to qualify as a path hazard.")]
+    [SerializeField] private float preemptTimeMargin = 1.15f;
+    [Tooltip("Minimum forward dot to consider a target 'in front' (0 = hemisphere, 1 = straight ahead).")]
+    [SerializeField, Range(0f, 1f)] private float forwardDotThreshold = 0.15f;
+    [Tooltip("Small epsilon to avoid division issues in scoring.")]
+    [SerializeField] private float lateralEpsilon = 0.25f;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugCone = false;
+    [SerializeField] private bool debugSelectedTarget = false;
+    [SerializeField] private Color debugHazardColor = Color.red;
+    [SerializeField] private Color debugFallbackColor = Color.yellow;
+
+    // Backing base stats (inspector defaults)
+    private float baseBulletDamage;
+    private float baseBulletSpeed;
+    private float baseFireCooldown;
+    private float baseBulletLifetime;
+    private float baseConeAngle;
+    private float baseScanRadius;
+
+    private float _cooldownTimer;
+    private Rigidbody _carRb;
+
+    private void Awake()
+    {
+        if (car == null)
+            car = GetComponentInParent<CarController>();
+
+        if (ownerCollider == null && car != null)
+            ownerCollider = car.GetComponent<Collider>();
+
+        if (muzzle == null)
+            muzzle = transform;
+
+        if (car != null)
+            _carRb = car.GetComponent<Rigidbody>();
+
+        baseBulletDamage = bulletDamage;
+        baseBulletSpeed = bulletSpeed;
+        baseFireCooldown = fireCooldown;
+        baseBulletLifetime = bulletLifetime;
+        baseConeAngle = coneAngle;
+        baseScanRadius = targetScanRadius;
+
+        ApplySkillStats();
+
+        // NEW: set initial cooldown on spawn to avoid immediate fire spam
+        _cooldownTimer = startOnCooldown ? fireCooldown : 0f;
+    }
+
+    private void OnEnable()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+        {
+            mgr.OnLevelChanged += HandleSkillChanged;
+            mgr.OnSkillsReset += HandleSkillsReset;
+        }
+    }
+
+    private void OnDisable()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null)
+        {
+            mgr.OnLevelChanged -= HandleSkillChanged;
+            mgr.OnSkillsReset -= HandleSkillsReset;
+        }
+    }
+
+    private void HandleSkillChanged(SkillType _, int __) => ApplySkillStats();
+    private void HandleSkillsReset() => ApplySkillStats();
+
+    private void Update()
+    {
+        _cooldownTimer -= Time.deltaTime;
+
+        bool wantsToFire = autoFire
+                           ? true
+                           : Input.GetKey(fireKey) || Input.GetButton("Fire1");
+
+        if (!wantsToFire || _cooldownTimer > 0f)
+            return;
+
+        Vector3 origin = muzzle.position;
+        Vector3 carForward = (car != null ? car.transform.forward : transform.forward).normalized;
+
+        Vector3 shootDir = useAutoTargeting
+            ? GetProtectiveTargetDirection(origin, carForward)
+            : GetRandomConeDirection(carForward);
+
+        FireBullet(origin, shootDir);
+        _cooldownTimer = fireCooldown;
+    }
+
+    /// <summary>
+    /// Protective targeting: try to clear the car's path first by picking a reachable target
+    /// that is centered and can be intercepted before the car collides.
+    /// Falls back to the most centered reachable target.
+    /// </summary>
+    private Vector3 GetProtectiveTargetDirection(Vector3 origin, Vector3 forward)
+    {
+        forward.Normalize();
+
+        if (targetLayers.value == 0)
+            return forward;
+
+        Collider[] hits = Physics.OverlapSphere(origin, targetScanRadius, targetLayers, QueryTriggerInteraction.Collide);
+
+        if (hits == null || hits.Length == 0)
+            return forward;
+
+        // Precompute constants
+        float halfAngleRad = Mathf.Deg2Rad * (coneAngle * 0.5f);
+        float cosThreshold = Mathf.Cos(halfAngleRad); // for cone mask
+        float maxTravel = Mathf.Min(bulletSpeed * bulletLifetime * travelAllowanceMultiplier, bulletRange);
+
+        // Car forward speed for prediction
+        float carFwdSpeed = GetCarForwardSpeed(forward);
+        if (carFwdSpeed < 0.5f)
+            carFwdSpeed = 0.5f; // minimal speed to avoid infinite times
+
+        // Best path hazard candidate
+        bool hazardFound = false;
+        Vector3 hazardAimDir = Vector3.zero;
+        float hazardBestScore = float.MinValue;
+        float hazardBestDistSqr = float.MaxValue;
+        Vector3 hazardPos = Vector3.zero;
+
+        // Best fallback candidate
+        Vector3 fallbackAimDir = Vector3.zero;
+        float fallbackBestScore = float.MinValue;
+        float fallbackBestDistSqr = float.MaxValue;
+        Vector3 fallbackPos = Vector3.zero;
+
+        foreach (var col in hits)
+        {
+            if (!col || col == ownerCollider)
+                continue;
+
+            Vector3 targetPoint = col.bounds.center;
+            Vector3 toTarget = targetPoint - origin;
+            float sqrDist = toTarget.sqrMagnitude;
+            if (sqrDist < 0.0001f)
+                continue;
+
+            float dist = Mathf.Sqrt(sqrDist);
+            Vector3 dir = toTarget / dist;
+
+            // Must be within cone
+            float dotForward = Vector3.Dot(forward, dir);
+            if (dotForward < cosThreshold)
+                continue;
+
+            // Must be reachable within travel envelope
+            if (dist > maxTravel)
+                continue;
+
+            // Base alignment metrics
+            float forwardComponent = Mathf.Max(0f, Vector3.Dot(forward, toTarget)); // signed forward distance
+            float lateralComponent = Mathf.Sqrt(Mathf.Max(0f, sqrDist - forwardComponent * forwardComponent));
+
+            // Try lead
+            Vector3 targetVel = Vector3.zero;
+            var rb = col.attachedRigidbody;
+            if (rb != null && rb.gameObject.activeInHierarchy && !rb.isKinematic)
+                targetVel = rb.velocity;
+
+            Vector3 aimDir;
+            bool canLead = TryComputeLeadDirection(origin, targetPoint, targetVel, bulletSpeed, maxTravel, out aimDir);
+            if (!canLead)
+                aimDir = dir;
+
+            // Recompute dot with aim direction (if lead changed focus)
+            float aimDot = Vector3.Dot(forward, aimDir);
+
+            // Compute path alignment score (higher is better)
+            // Emphasize high forward dot, penalize lateral deviation.
+            float pathAlignmentScore = aimDot / (1f + lateralComponent / Mathf.Max(lateralEpsilon, forwardComponent + lateralEpsilon));
+
+            // Fallback score (pure centeredness)
+            float centeredScore = aimDot;
+
+            // Predict times
+            float bulletTime = dist / Mathf.Max(0.01f, bulletSpeed);
+            float carTime = forwardComponent > 0f
+                ? (forwardComponent / Mathf.Max(0.01f, carFwdSpeed))
+                : float.MaxValue;
+
+            bool isInFront = aimDot >= forwardDotThreshold;
+            bool canPreempt = bulletTime <= carTime * preemptTimeMargin;
+
+            bool qualifiesHazard = isInFront && forwardComponent > 0f && canPreempt;
+
+            if (qualifiesHazard)
+            {
+                float weightedScore = pathAlignmentScore * pathPriorityWeight;
+                if (weightedScore > hazardBestScore ||
+                    (Mathf.Abs(weightedScore - hazardBestScore) < 1e-4f && sqrDist < hazardBestDistSqr))
+                {
+                    hazardFound = true;
+                    hazardBestScore = weightedScore;
+                    hazardBestDistSqr = sqrDist;
+                    hazardAimDir = aimDir;
+                    hazardPos = targetPoint;
+                }
+            }
+            else
+            {
+                if (centeredScore > fallbackBestScore ||
+                    (Mathf.Abs(centeredScore - fallbackBestScore) < 1e-4f && sqrDist < fallbackBestDistSqr))
+                {
+                    fallbackBestScore = centeredScore;
+                    fallbackBestDistSqr = sqrDist;
+                    fallbackAimDir = aimDir;
+                    fallbackPos = targetPoint;
+                }
+            }
+        }
+
+        // Debug draws
+        if (debugSelectedTarget)
+        {
+            if (hazardFound)
+            {
+                Debug.DrawLine(origin, hazardPos, debugHazardColor, 0.15f);
+                Debug.DrawRay(hazardPos, Vector3.up * 2f, debugHazardColor, 0.15f);
+            }
+            else if (fallbackBestScore > float.MinValue)
+            {
+                Debug.DrawLine(origin, fallbackPos, debugFallbackColor, 0.15f);
+                Debug.DrawRay(fallbackPos, Vector3.up * 2f, debugFallbackColor, 0.15f);
+            }
+        }
+
+        if (hazardFound && hazardAimDir.sqrMagnitude > 0.0001f)
+            return hazardAimDir.normalized;
+
+        if (fallbackBestScore > float.MinValue && fallbackAimDir.sqrMagnitude > 0.0001f)
+            return fallbackAimDir.normalized;
+
+        return forward;
+    }
+
+    private float GetCarForwardSpeed(Vector3 forward)
+    {
+        forward.Normalize();
+        if (car == null)
+            return 0f;
+
+        // Try Rigidbody velocity
+        if (_carRb != null)
+        {
+            Vector3 vel = _carRb.velocity;
+            return Mathf.Abs(Vector3.Dot(vel, forward));
+        }
+
+        // If CarController exposes something like CurrentSpeed you can swap this:
+        // return Mathf.Abs(car.CurrentSpeed);
+        return 0f;
+    }
+
+    /// <summary>
+    /// Computes an intercept direction for a projectile with given speed to a target moving at targetVel.
+    /// Returns false if no feasible intercept (target too fast or out of reach).
+    /// </summary>
+    private bool TryComputeLeadDirection(Vector3 shooterPos, Vector3 targetPos, Vector3 targetVel, float projectileSpeed, float maxTravel, out Vector3 leadDir)
+    {
+        leadDir = Vector3.zero;
+
+        if (projectileSpeed <= 0.01f)
+            return false;
+
+        Vector3 toTarget = targetPos - shooterPos;
+        float distSqr = toTarget.sqrMagnitude;
+        if (distSqr < 1e-6f)
+            return false;
+
+        // Stationary target fallback
+        if (targetVel.sqrMagnitude < 1e-6f)
+        {
+            float dist = Mathf.Sqrt(distSqr);
+            if (dist > maxTravel) return false;
+            leadDir = toTarget.normalized;
+            return true;
+        }
+
+        // Quadratic intercept
+        Vector3 r = toTarget;
+        float v2 = targetVel.sqrMagnitude;
+        float s2 = projectileSpeed * projectileSpeed;
+
+        float a = v2 - s2;
+        float b = 2f * Vector3.Dot(targetVel, r);
+        float c = r.sqrMagnitude;
+
+        float t;
+        if (Mathf.Abs(a) < 1e-6f)
+        {
+            if (Mathf.Abs(b) < 1e-6f) return false;
+            t = -c / b;
+        }
+        else
+        {
+            float disc = b * b - 4f * a * c;
+            if (disc < 0f) return false;
+            float sqrtDisc = Mathf.Sqrt(disc);
+            float t1 = (-b + sqrtDisc) / (2f * a);
+            float t2 = (-b - sqrtDisc) / (2f * a);
+            t = float.MaxValue;
+            if (t1 > 0f) t = Mathf.Min(t, t1);
+            if (t2 > 0f) t = Mathf.Min(t, t2);
+            if (!float.IsFinite(t) || t == float.MaxValue) return false;
+        }
+
+        float travel = projectileSpeed * t;
+        if (travel > maxTravel) return false;
+
+        Vector3 intercept = targetPos + targetVel * t;
+        Vector3 toIntercept = intercept - shooterPos;
+        if (toIntercept.sqrMagnitude < 1e-6f) return false;
+        leadDir = toIntercept.normalized;
+        return true;
+    }
+
+    private Vector3 GetRandomConeDirection(Vector3 forward)
+    {
+        forward.Normalize();
+        float halfAngle = coneAngle * 0.5f;
+        float yaw = Random.Range(-halfAngle, halfAngle);
+        float pitch = 0f; // keep shots mostly planar
+        Quaternion rot =
+            Quaternion.AngleAxis(yaw, Vector3.up) *
+            Quaternion.AngleAxis(pitch, Vector3.right);
+        return (rot * forward).normalized;
+    }
+
+    private void FireBullet(Vector3 origin, Vector3 direction)
+    {
+        if (!bulletPrefab)
+            return;
+
+        direction.Normalize();
+        Quaternion rot = Quaternion.LookRotation(direction, Vector3.up);
+
+        GameObject bulletGO = Instantiate(bulletPrefab, origin, rot);
+        var bullet = bulletGO.GetComponent<RacingBullet>();
+        if (bullet != null)
+        {
+            bullet.Init(
+                damage: bulletDamage,
+                speed: bulletSpeed,
+                range: bulletRange,
+                lifetime: bulletLifetime,
+                owner: ownerCollider
+            );
+        }
+
+        // Play turret fire SFX (spatialized at muzzle/origin)
+        if (turretFireClip != null)
+        {
+            AudioSource.PlayClipAtPoint(turretFireClip, origin, Mathf.Clamp01(turretFireVolume));
+        }
+    }
+
+    private void ApplySkillStats()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null)
+            return;
+
+        bulletDamage = mgr.ApplyStatChain(baseBulletDamage, SkillType.TurretDamage_Add, SkillType.TurretDamage_Mul);
+        bulletSpeed = mgr.ApplyStatChain(baseBulletSpeed, SkillType.TurretProjectileSpeed_Add, SkillType.TurretProjectileSpeed_Mul);
+        fireCooldown = mgr.ApplyStatChain(baseFireCooldown, SkillType.TurretCooldown_Add, SkillType.TurretCooldown_Mul);
+        fireCooldown = Mathf.Max(0.01f, fireCooldown);
+        bulletLifetime = mgr.ApplyStatChain(baseBulletLifetime, SkillType.TurretBulletLifetime_Add, SkillType.TurretBulletLifetime_Mul);
+        bulletLifetime = Mathf.Max(0.01f, bulletLifetime);
+        coneAngle = mgr.ApplyStatChain(baseConeAngle, SkillType.TurretConeAngle_Add, SkillType.TurretConeAngle_Mul);
+        coneAngle = Mathf.Clamp(coneAngle, 0f, 180f);
+        targetScanRadius = mgr.ApplyStatChain(baseScanRadius, SkillType.TurretScanRadius_Add, SkillType.TurretScanRadius_Mul);
+        targetScanRadius = Mathf.Max(0f, targetScanRadius);
+    }
+
+#if UNITY_EDITOR
+    private void OnDrawGizmosSelected()
+    {
+        if (!debugCone) return;
+        Transform refTransform = car != null ? car.transform : transform;
+        Vector3 origin = muzzle != null ? muzzle.position : transform.position;
+        Vector3 fwd = refTransform.forward;
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(origin, targetScanRadius);
+
+        Quaternion leftRot = Quaternion.AngleAxis(-coneAngle * 0.5f, Vector3.up);
+        Quaternion rightRot = Quaternion.AngleAxis(coneAngle * 0.5f, Vector3.up);
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawRay(origin, (leftRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, (rightRot * fwd) * targetScanRadius);
+        Gizmos.DrawRay(origin, fwd * targetScanRadius);
+    }
+#endif
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/CarVelocityAndPitch.cs
 
 ```csharp
@@ -9777,6 +8906,797 @@ public class CarVelocityAndPitch : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/CoinPickup.cs
+
+```csharp
+using System.Collections;
+using UnityEngine;
+
+[RequireComponent(typeof(Collider))]
+public class CoinPickup : MonoBehaviour
+{
+    [Header("Coin Value")]
+    [SerializeField] private int value = 1;
+
+    [Header("Simple Visuals")]
+    [SerializeField] private float rotateSpeed = 90f; // optional little spin
+
+    [Header("FX")]
+    [Tooltip("Optional VFX prefab to spawn when the coin is collected.")]
+    [SerializeField] private GameObject coinPickupVFX;
+    [Tooltip("Lifetime (seconds) for the spawned VFX when instantiated or returned to pool.")]
+    [SerializeField] private float coinPickupVFXLifetime = 2f;
+
+    [Header("VFX Color Mapping")]
+    [Tooltip("Map coin values to VFX colors. The system will try an exact match first; if none found it will use the highest mapped value <= coin value.")]
+    [SerializeField]
+    private VFXColorEntry[] vfxColorEntries =
+    {
+        // default entries: 1 = bronze, 2 = silver, 3 = gold
+        new VFXColorEntry { coinValue = 1, color = new Color(205f/255f, 127f/255f, 50f/255f, 1f) }, // bronze
+        new VFXColorEntry { coinValue = 2, color = new Color(192f/255f, 192f/255f, 192f/255f, 1f) }, // silver
+        new VFXColorEntry { coinValue = 3, color = new Color(1f, 215f/255f, 0f, 1f) } // gold
+    };
+
+    [SerializeField] private AudioClip[] coinCollectClips = new AudioClip[2]; // assign two coin sounds
+    [SerializeField, Range(0f, 0.25f)] private float coinPitchVariance = 0.06f;
+    [SerializeField, Range(0f, 1f)] private float coinCollectVolume = 1f;
+
+
+
+    [System.Serializable]
+    private class VFXColorEntry
+    {
+        public int coinValue = 1;
+        public Color color = Color.white;
+    }
+
+    private void Reset()
+    {
+        // Make sure collider is trigger by default
+        var col = GetComponent<Collider>();
+        if (col != null)
+            col.isTrigger = true;
+    }
+
+    private void Update()
+    {
+        // Optional spinning so it's more readable in world
+        if (rotateSpeed != 0f)
+        {
+            
+            transform.GetChild(0).transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!other.TryGetComponent<CarController>(out var car))
+            return;
+
+        var mgr = RacingSkillTreeManager.Instance;
+        int finalValue = value;
+
+        if (mgr != null)
+        {
+            int baseAdd = mgr.GetCoinBaseAdd();
+            if (baseAdd > 0)
+                finalValue += baseAdd;
+        }
+
+        // NEW: play coin SFX (random selection + slight pitch variance)
+        PlayRandomCoinSfx(transform.position);
+
+        // NEW: double-value chance skill
+        if (mgr != null)
+        {
+            float dblChance = mgr.GetCoinDoubleChance();
+            if (dblChance > 0f && Random.value < dblChance)
+                finalValue *= 2;
+            mgr.AddCurrency(finalValue);
+        }
+        else
+        {
+            // Fallback
+            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
+        }
+
+        if (GameManager_Racing.Instance != null)
+        {
+            GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
+        }
+
+        // Spawn VFX at the collision/closest point before destroying the coin
+        Vector3 spawnPos = transform.position;
+        // try to use the collider's closest contact point as a nicer VFX origin
+        try
+        {
+            spawnPos = other.ClosestPoint(transform.position);
+        }
+        catch { /* ignore and use transform.position */ }
+
+        // Pass the finalValue so the VFX color matches the collected coin value
+        SpawnPickupVFX(spawnPos, finalValue);
+
+        Destroy(gameObject);
+    }
+
+    // Add helper methods (inside the same class)
+    private void PlayRandomCoinSfx(Vector3 worldPos)
+    {
+        if (coinCollectClips == null || coinCollectClips.Length == 0) return;
+
+        // pick a non-null clip
+        AudioClip clip = null;
+        for (int i = 0; i < 8; i++) // try a few times (in case some array entries are null)
+        {
+            var candidate = coinCollectClips[Random.Range(0, coinCollectClips.Length)];
+            if (candidate != null) { clip = candidate; break; }
+        }
+        if (clip == null) return;
+
+        float pitch = 1f + UnityEngine.Random.Range(-coinPitchVariance, coinPitchVariance);
+        PlayClipAtPointWithPitch(clip, worldPos, coinCollectVolume, pitch);
+    }
+
+    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume = 1f, float pitch = 1f)
+    {
+        if (clip == null) return;
+        GameObject go = new GameObject("SFX_OneShot");
+        go.transform.position = pos;
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f; // 3D
+        src.clip = clip;
+        src.volume = Mathf.Clamp01(volume);
+        src.pitch = Mathf.Max(0.01f, pitch);
+        src.Play();
+        Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
+    }
+
+    // Spawns the assigned VFX prefab. Uses ProjectilePool when available, otherwise Instantiate.
+    // Keeps a fallback lifetime destroy for safety.
+    private void SpawnPickupVFX(Vector3 worldPos, int coinValue)
+    {
+        if (coinPickupVFX == null) return;
+
+        // get color for this coin value
+        Color col = GetColorForValue(coinValue);
+
+        // Desired rotation: -90� X, 0� Y, 0� Z
+        Quaternion desiredRot = Quaternion.Euler(-90f, 0f, 0f);
+
+        // Try using ProjectilePool (preferred). Pool returns inactive instances ready to position.
+        try
+        {
+            if (ProjectilePool.Instance != null)
+            {
+                GameObject inst = ProjectilePool.Instance.Get(coinPickupVFX);
+                if (inst != null)
+                {
+                    inst.transform.position = worldPos;
+                    inst.transform.rotation = desiredRot; // apply correct Euler rotation
+                    ApplyVFXColor(inst, col); // apply color before activation
+                    inst.SetActive(true);
+                    // Schedule return to pool
+                    StartCoroutine(ReturnPooledVFXLater(coinPickupVFX, inst, Mathf.Max(0.01f, coinPickupVFXLifetime)));
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // ignore pool errors and fallback to Instantiate
+        }
+
+        // Fallback: instantiate and destroy after lifetime, with correct rotation and color
+        var go = Instantiate(coinPickupVFX, worldPos, desiredRot);
+        ApplyVFXColor(go, col);
+        Destroy(go, Mathf.Max(0.01f, coinPickupVFXLifetime));
+    }
+
+    private IEnumerator ReturnPooledVFXLater(GameObject prefab, GameObject instance, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (instance != null && prefab != null && ProjectilePool.Instance != null)
+            ProjectilePool.Instance.Return(prefab, instance);
+    }
+
+    // Finds the best color entry for the given coin value.
+    // Strategy: exact match; else highest entry.coinValue <= value; else fallback to first entry or white.
+    private Color GetColorForValue(int coinValue)
+    {
+        if (vfxColorEntries == null || vfxColorEntries.Length == 0)
+            return Color.white;
+
+        // Try exact match
+        for (int i = 0; i < vfxColorEntries.Length; i++)
+        {
+            if (vfxColorEntries[i].coinValue == coinValue)
+                return vfxColorEntries[i].color;
+        }
+
+        // Find highest <= coinValue
+        VFXColorEntry best = null;
+        for (int i = 0; i < vfxColorEntries.Length; i++)
+        {
+            if (vfxColorEntries[i].coinValue <= coinValue)
+            {
+                if (best == null || vfxColorEntries[i].coinValue > best.coinValue)
+                    best = vfxColorEntries[i];
+            }
+        }
+
+        if (best != null) return best.color;
+
+        // fallback to first entry
+        return vfxColorEntries[0].color;
+    }
+
+    // Try to apply color to a VFX instance. Covers common cases:
+    // - ParticleSystem.main.startColor (applies to all child ParticleSystems)
+    // - Material color properties ("_BaseColor", "_Color", "_TintColor")
+    // - VisualEffect via reflection (attempts SetVector4("Color", color))
+    private void ApplyVFXColor(GameObject go, Color col)
+    {
+        if (go == null) return;
+
+        // 1) ParticleSystems
+        var systems = go.GetComponentsInChildren<ParticleSystem>(true);
+        if (systems != null && systems.Length > 0)
+        {
+            foreach (var ps in systems)
+            {
+                var main = ps.main;
+                main.startColor = col;
+            }
+            return;
+        }
+
+        // 2) Renderer materials
+        var renderers = go.GetComponentsInChildren<Renderer>(true);
+        if (renderers != null && renderers.Length > 0)
+        {
+            foreach (var r in renderers)
+            {
+                // Use sharedMaterials to avoid creating garbage if not necessary;
+                // but copying material arrays can instantiate instance materials which is OK for VFX.
+                var mats = r.materials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var mat = mats[i];
+                    if (mat == null) continue;
+                    if (mat.HasProperty("_BaseColor"))
+                        mat.SetColor("_BaseColor", col);
+                    else if (mat.HasProperty("_Color"))
+                        mat.SetColor("_Color", col);
+                    else if (mat.HasProperty("_TintColor"))
+                        mat.SetColor("_TintColor", col);
+                    // else: can't set color generically for this material
+                }
+            }
+            // don't return here � renderer coloring is often sufficient, but also try VFX
+        }
+
+        // 3) Try VisualEffect (VFX Graph) via reflection to avoid hard compile dependency
+        var veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, Unity.VisualEffectGraph");
+        if (veType == null)
+        {
+            // Some Unity versions use another assembly name; try fallback
+            veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, UnityEngine.VFX");
+        }
+
+        if (veType != null)
+        {
+            var ves = go.GetComponentsInChildren(veType, true);
+            foreach (var ve in ves)
+            {
+                // Try common parameter names
+                var setVector4 = veType.GetMethod("SetVector4", new[] { typeof(string), typeof(Vector4) });
+                if (setVector4 != null)
+                {
+                    // Try "Color" and "color"
+                    setVector4.Invoke(ve, new object[] { "Color", (Vector4)col });
+                    setVector4.Invoke(ve, new object[] { "color", (Vector4)col });
+                }
+                else
+                {
+                    // Try SetVector3
+                    var setVector3 = veType.GetMethod("SetVector3", new[] { typeof(string), typeof(Vector3) });
+                    if (setVector3 != null)
+                    {
+                        setVector3.Invoke(ve, new object[] { "Color", (Color32)col });
+                        setVector3.Invoke(ve, new object[] { "color", (Color32)col });
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/CrossObstacleDirector.cs
+
+```csharp
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class CrossObstacleDirector : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private CarController car;
+    [SerializeField] private TrackDistanceMeter distanceMeter;
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private GameObject crossObstaclePrefab;
+
+    [Header("Spawn Control")]
+    [SerializeField] private bool enabledSpawning = true;
+    [SerializeField] private float minPlayerSpeed = 4f;
+    [SerializeField] private float spawnCooldownSeconds = 5f;
+    [SerializeField] private float minLeadDistance = 15f;
+    [Tooltip("LEGACY: No longer used to block spawning near end of track. You can remove this safely.")]
+    [SerializeField] private float maxLeadDistance = 80f; // legacy � kept for serialized data
+    [SerializeField] private float maxCurvatureHorizonScale = 0.65f;
+
+    [Header("Cross Speed")]
+    [SerializeField] private Vector2 crossSpeedRange = new Vector2(5f, 11f);
+    [Tooltip("Curve (x=normalized distance) scaling cross speed (multiplier).")]
+    [SerializeField] private AnimationCurve crossSpeedMultiplierCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+    [Header("Size Scaling")]
+    [SerializeField] private Vector2 obstacleScaleRange = new Vector2(0.8f, 1.35f);
+    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+    [Header("Yaw / Accuracy")]
+    [SerializeField] private AnimationCurve yawErrorDegreesCurve = AnimationCurve.Linear(0, 22, 1, 4);
+    [SerializeField] private AnimationCurve accuracyCurve = AnimationCurve.Linear(0, 0.6f, 1, 0.05f);
+
+    [Header("Spawn Interval Scaling")]
+    [SerializeField] private AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
+
+    [Header("Spawn Cooldown Randomness")]
+    [Tooltip("Random multiplier applied to the spawn cooldown each time an obstacle is spawned.")]
+    [SerializeField] private Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
+
+    [Header("Spawn Randomness (Improved)")]
+    [SerializeField, Tooltip("Extra random delay applied BEFORE the first ever spawn (seconds).")]
+    private Vector2 initialSpawnDelayRange = new Vector2(1.5f, 4.5f);
+
+    [SerializeField, Tooltip("If true, crossing distance uses the actual path length from side to side (recommended).")]
+    private bool useActualPathLengthForPrediction = true;
+
+    [Header("Cross Path Length")]
+    [SerializeField, Tooltip("How far beyond each road edge the obstacle starts/ends (meters). Higher = longer path.")]
+    private float offRoadPadding = 12f;  // was hardcoded via + 5.0f
+
+    [Header("Curvature Sampling")]
+    [SerializeField] private float curvatureSampleLength = 12f;
+    [SerializeField] private float highCurvatureThreshold = 0.35f;
+
+    [Header("Yaw Impact (Weighted Miss Variety)")]
+    [SerializeField] private bool enableYawWeightedMisses = true;
+    [SerializeField] private float yawSpeedImpactMax = 0.4f;
+    [SerializeField] private float yawDistanceImpactMax = 12f;
+    [SerializeField] private float yawAngleAmplifyMax = 0.6f;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugGizmos = false;
+    [SerializeField] private bool verboseLog = false;
+
+    private float _cooldownRemain;
+    private float _trackTotalLength;
+    private List<Vector3> _path = new();
+    private float[] _cumDistances;
+    private float _smoothedSpeed;
+    private float _nextCarSearchTime;
+    private const float CarSearchInterval = 0.5f;
+    private bool _hasEverSpawned;
+    private bool _wasBelowSpeed = true;
+
+    private Vector3 _lastDebugStart;
+    private Vector3 _lastDebugEnd;
+    private bool _hasDebugPath;
+
+    void Awake()
+    {
+        if (!trackGenerator) trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
+        if (car) distanceMeter ??= FindObjectOfType<TrackDistanceMeter>();
+        if (!distanceMeter) distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+    }
+
+    void OnEnable()
+    {
+        if (trackGenerator)
+        {
+            trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
+            trackGenerator.OnTrackGeneratedSuccessfully += HandleTrackGenerated;
+        }
+
+        RebuildSplineCache();
+
+        // NEW: prevent predictable “spawns immediately at game start”
+        _hasEverSpawned = false;
+        _wasBelowSpeed = true;
+        _cooldownRemain = UnityEngine.Random.Range(
+            Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
+            Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
+        );
+    }
+
+    void OnDisable()
+    {
+        if (trackGenerator)
+            trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
+    }
+
+    private void HandleTrackGenerated(ProceduralTrackGenerator gen) => RebuildSplineCache();
+
+    public void SetCar(CarController c) => car = c;
+
+    private void LateBindCarIfNeeded()
+    {
+        if (car != null) return;
+        if (Time.time < _nextCarSearchTime) return;
+        _nextCarSearchTime = Time.time + CarSearchInterval;
+
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+        {
+            var active = gm.GetType().GetProperty("ActiveCar")?.GetValue(gm) as CarController;
+            if (active)
+            {
+                car = active;
+                if (verboseLog) Debug.Log("[CrossObstacleDirector] Bound car from GameManager_Racing.");
+                return;
+            }
+        }
+
+        var found = FindObjectOfType<CarController>();
+        if (found)
+        {
+            car = found;
+            if (verboseLog) Debug.Log("[CrossObstacleDirector] Found car via scene search.");
+        }
+    }
+
+    void Update()
+    {
+        LateBindCarIfNeeded();
+        if (!enabledSpawning || !ValidSetup()) return;
+
+        float rawSpeed = car.CurrentSpeed;
+        float smoothFactor = 1f - Mathf.Exp(-Time.deltaTime * 6f);
+        _smoothedSpeed = Mathf.Lerp(_smoothedSpeed, rawSpeed, smoothFactor);
+
+        bool below = _smoothedSpeed < minPlayerSpeed;
+
+        // NEW: when we FIRST become eligible, delay a bit so it’s not “instant at threshold”
+        if (_wasBelowSpeed && !below && !_hasEverSpawned)
+        {
+            _cooldownRemain = Mathf.Max(_cooldownRemain, UnityEngine.Random.Range(
+                Mathf.Min(initialSpawnDelayRange.x, initialSpawnDelayRange.y),
+                Mathf.Max(initialSpawnDelayRange.x, initialSpawnDelayRange.y)
+            ));
+        }
+
+        _wasBelowSpeed = below;
+
+        _cooldownRemain -= Time.deltaTime;
+        if (_cooldownRemain <= 0f) TrySpawnPredictive();
+    }
+
+    private bool ValidSetup()
+    {
+        return car && distanceMeter && trackGenerator && crossObstaclePrefab &&
+               _path.Count >= 2 && _trackTotalLength > 0.1f;
+    }
+
+    private void RebuildSplineCache()
+    {
+        _path.Clear();
+        if (!trackGenerator || trackGenerator.PathPoints == null) return;
+        _path.AddRange(trackGenerator.PathPoints);
+        if (_path.Count < 2) return;
+
+        _cumDistances = new float[_path.Count];
+        _cumDistances[0] = 0f;
+        float accum = 0f;
+        for (int i = 1; i < _path.Count; i++)
+        {
+            accum += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumDistances[i] = accum;
+        }
+        _trackTotalLength = accum;
+    }
+
+    private void TrySpawnPredictive()
+    {
+        if (_smoothedSpeed < minPlayerSpeed) return;
+
+        float sCar = distanceMeter.DistanceAlongTrack;
+        float distanceNorm = Mathf.Clamp01(_trackTotalLength > 0f ? sCar / _trackTotalLength : 0f);
+
+        float intervalScale = Mathf.Clamp(spawnIntervalCurve.Evaluate(distanceNorm), 0.05f, 10f);
+
+        // NEW: randomize cooldown so spawns aren�t perfectly periodic
+        float cooldownJitter = 1f;
+        if (spawnCooldownRandomRange.x != 1f || spawnCooldownRandomRange.y != 1f)
+        {
+            cooldownJitter = UnityEngine.Random.Range(
+                Mathf.Min(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y),
+                Mathf.Max(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y)
+            );
+        }
+
+        float effectiveCooldown = spawnCooldownSeconds * intervalScale * cooldownJitter;
+
+        float curvatureFactor = SampleCurvature(sCar, curvatureSampleLength);
+        bool highCurvature = curvatureFactor > highCurvatureThreshold;
+
+        float baseCrossSpeed = UnityEngine.Random.Range(crossSpeedRange.x, crossSpeedRange.y);
+        float speedMul = Mathf.Max(0.1f, crossSpeedMultiplierCurve.Evaluate(distanceNorm));
+        float crossSpeed = baseCrossSpeed * speedMul;
+
+        float halfRoad = trackGenerator.RoadWidth * 0.5f;
+
+        // NEW: match prediction to actual path length (start is beyond left edge, end beyond right edge)
+        float offTrackOffset = halfRoad + Mathf.Max(0f, offRoadPadding);
+        float traverseLength = useActualPathLengthForPrediction
+            ? (2f * offTrackOffset)
+            : (2f * halfRoad + 2f * 0.75f);
+
+        float tCross = traverseLength / Mathf.Max(0.5f, crossSpeed);
+        float tCenter = tCross * 0.5f;
+        if (highCurvature)
+            tCenter *= Mathf.Clamp(maxCurvatureHorizonScale, 0.25f, 1f);
+
+        float remaining = _trackTotalLength - sCar;
+        if (remaining <= minLeadDistance) { _cooldownRemain = effectiveCooldown; return; }
+
+        float predictedLeadDistance = _smoothedSpeed * tCenter;
+
+        float safety = 1.5f;
+        float maxAllowedLead = Mathf.Max(minLeadDistance, remaining - safety);
+        predictedLeadDistance = Mathf.Clamp(predictedLeadDistance, minLeadDistance, maxAllowedLead);
+
+        float sIntercept = sCar + predictedLeadDistance;
+        if (sIntercept >= _trackTotalLength - 0.25f)
+            sIntercept = _trackTotalLength - 0.25f;
+
+        SampleSpline(sIntercept, out Vector3 posIntercept, out Vector3 tanIntercept);
+
+        float accuracyErr = Mathf.Clamp01(accuracyCurve.Evaluate(distanceNorm));
+        float paramError = predictedLeadDistance * accuracyErr * UnityEngine.Random.Range(-1f, 1f);
+
+        float sSpawn = sCar + Mathf.Clamp(predictedLeadDistance + paramError, minLeadDistance, maxAllowedLead);
+        if (sSpawn >= _trackTotalLength - 0.25f) sSpawn = _trackTotalLength - 0.25f;
+
+        float yawErrorDeg = yawErrorDegreesCurve.Evaluate(distanceNorm);
+        float appliedYaw = UnityEngine.Random.Range(-yawErrorDeg, yawErrorDeg);
+
+        if (enableYawWeightedMisses && yawErrorDeg > 0.0001f)
+        {
+            float rA = UnityEngine.Random.value;
+            float rB = UnityEngine.Random.value;
+            float rC = UnityEngine.Random.value;
+            float sum = rA + rB + rC;
+            float wSpeed = rA / sum;
+            float wAngle = rB / sum;
+            float wDistance = rC / sum;
+
+            float yawNorm = Mathf.Clamp01(Mathf.Abs(appliedYaw) / yawErrorDeg);
+
+            float speedFactor = 1f - wSpeed * yawNorm * Mathf.Clamp01(yawSpeedImpactMax);
+            crossSpeed *= Mathf.Clamp(speedFactor, 0.25f, 1f);
+
+            float distanceOffset = wDistance * yawNorm * Mathf.Max(0f, yawDistanceImpactMax);
+            sSpawn += distanceOffset;
+            sSpawn = Mathf.Clamp(sSpawn, sCar + minLeadDistance, sCar + maxAllowedLead);
+
+            appliedYaw *= 1f + wAngle * yawNorm * Mathf.Clamp01(yawAngleAmplifyMax);
+        }
+
+        // Center point of the cross (where it tries to hit car)
+        SampleSpline(sSpawn, out Vector3 spawnSplinePos, out Vector3 spawnTan);
+        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
+        float upOffsetForCast = 10f;
+        float maxDown = 50f;
+
+        Vector3 spawnSurface = SpawnUtils.ProjectOntoSurface(
+            spawnSplinePos + Vector3.up * upOffsetForCast,
+            out Vector3 spawnNormal,
+            upOffsetForCast,
+            maxDown,
+            roadMask
+        );
+
+        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
+            spawnSurface = SpawnUtils.ProjectOntoSurface(
+                spawnSplinePos + Vector3.up * upOffsetForCast,
+                out spawnNormal,
+                upOffsetForCast,
+                maxDown,
+                null
+            );
+
+        Vector3 up = Vector3.up;
+        Vector3 forward = new Vector3(spawnTan.x, 0f, spawnTan.z);
+        if (forward.sqrMagnitude < 1e-6f)
+            forward = Vector3.forward;
+        forward.Normalize();
+
+        Vector3 lateral = Vector3.Cross(up, forward).normalized;
+
+        if (Mathf.Abs(appliedYaw) > 0.0001f)
+            lateral = (Quaternion.AngleAxis(appliedYaw, up) * lateral).normalized;
+
+        bool startLeft = UnityEngine.Random.value < 0.5f;
+        float sideSign = startLeft ? -1f : 1f;
+
+        // Create horizontal positions first
+        Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
+        Vector3 targetHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) - lateral * sideSign * offTrackOffset;
+
+        // Project both endpoints to ground
+        Vector3 startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
+        if (Mathf.Approximately(startWS.y, startHorizontal.y))
+            startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
+
+        Vector3 targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
+        if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
+            targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
+
+        // Size scaling
+        float sizeEval = sizeCurve.Evaluate(distanceNorm);
+        float sizeRand = UnityEngine.Random.Range(obstacleScaleRange.x, obstacleScaleRange.y);
+        float finalScale = sizeRand * sizeEval;
+
+        float initialDelay = Mathf.Clamp(tCenter * 0.15f, 0f, 1.25f);
+
+        Vector3 actualMoveDir = (new Vector3(targetWS.x, 0f, targetWS.z) - new Vector3(startWS.x, 0f, startWS.z)).normalized;
+        if (actualMoveDir.sqrMagnitude < 0.0001f)
+            actualMoveDir = lateral;
+        Quaternion spawnRot = Quaternion.LookRotation(actualMoveDir, up);
+
+        var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
+        _hasEverSpawned = true;
+        inst.transform.localScale *= finalScale;
+
+        // **NEW: Get parent's bottom offset and adjust position**
+        float bottomOffset = GetCrossObstacleBottomOffset(inst);
+        inst.transform.position = startWS + Vector3.up * bottomOffset;
+
+        // Also adjust target to account for bottom offset
+        Vector3 adjustedTarget = targetWS + Vector3.up * bottomOffset;
+
+        var cross = inst.GetComponent<CrossTrackObstacle>();
+        if (cross)
+        {
+            cross.InitializeDirect(inst.transform.position, adjustedTarget, crossSpeed, initialDelay);
+        }
+
+        _lastDebugStart = inst.transform.position;
+        _lastDebugEnd = adjustedTarget;
+        _hasDebugPath = true;
+
+        _cooldownRemain = effectiveCooldown;
+
+        if (verboseLog)
+        {
+            Debug.Log($"[CrossObstacleDirector] Spawned Cross: " +
+                      $"sSpawn={sSpawn:F1}, lead={predictedLeadDistance:F1}, tCenter={tCenter:F2}, " +
+                      $"vCross={crossSpeed:F2}, yawBase={yawErrorDeg:F1}, yawFinal={appliedYaw:F1}, " +
+                      $"size={finalScale:F2}, curvature={curvatureFactor:F2}");
+        }
+    }
+
+    private float SampleCurvature(float sCenter, float sampleLength)
+    {
+        if (_path.Count < 3) return 0f;
+        float sA = Mathf.Clamp(sCenter, 0f, _trackTotalLength);
+        float sB = Mathf.Clamp(sCenter + sampleLength, 0f, _trackTotalLength);
+
+        SampleSpline(sA, out _, out Vector3 tA);
+        SampleSpline(sB, out _, out Vector3 tB);
+
+        float angle = Vector3.Angle(tA, tB);
+        return angle / 180f;
+    }
+
+    /// <summary>
+    /// Gets the offset needed to place the cross obstacle's parent bottom at ground level.
+    /// Only considers the parent's renderer/collider, not children.
+    /// </summary>
+    private float GetCrossObstacleBottomOffset(GameObject obj)
+    {
+        if (obj == null) return 0f;
+
+        Transform root = obj.transform;
+        float lowestPoint = 0f;
+        bool foundAny = false;
+
+        // Check parent's renderer only
+        Renderer parentRenderer = root.GetComponent<Renderer>();
+        if (parentRenderer != null)
+        {
+            Bounds localBounds = parentRenderer.bounds;
+            float bottom = localBounds.min.y - root.position.y;
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        // Check parent's colliders only
+        Collider[] parentColliders = root.GetComponents<Collider>();
+        foreach (var col in parentColliders)
+        {
+            if (col == null || col.isTrigger) continue;
+
+            Bounds localBounds = col.bounds;
+            float bottom = localBounds.min.y - root.position.y;
+            if (!foundAny || bottom < lowestPoint)
+            {
+                lowestPoint = bottom;
+                foundAny = true;
+            }
+        }
+
+        if (!foundAny) return 0.05f;
+        return Mathf.Abs(lowestPoint);
+    }
+
+    private void SampleSpline(float distance, out Vector3 position, out Vector3 tangent)
+    {
+        position = _path[0];
+        tangent = (_path.Count > 1 ? _path[1] - _path[0] : Vector3.forward);
+
+        if (_cumDistances == null || _cumDistances.Length != _path.Count)
+            return;
+
+        if (distance <= 0f)
+        {
+            tangent = (_path[1] - _path[0]);
+            return;
+        }
+        if (distance >= _trackTotalLength)
+        {
+            position = _path[^1];
+            tangent = (_path[^1] - _path[^2]);
+            return;
+        }
+
+        int i = 0;
+        while (i < _cumDistances.Length - 1 && _cumDistances[i + 1] < distance) i++;
+
+        float segStart = _cumDistances[i];
+        float segEnd = _cumDistances[i + 1];
+        float segLen = segEnd - segStart;
+        float t = segLen > 0.0001f ? (distance - segStart) / segLen : 0f;
+
+        Vector3 a = _path[i];
+        Vector3 b = _path[i + 1];
+        position = Vector3.Lerp(a, b, t);
+        tangent = (b - a).normalized;
+    }
+
+#if UNITY_EDITOR
+private void OnDrawGizmosSelected()
+{
+    if (!debugGizmos || !_hasDebugPath)
+        return;
+
+    Gizmos.color = Color.cyan;
+    Gizmos.DrawLine(_lastDebugStart, _lastDebugEnd);
+    Gizmos.DrawSphere(_lastDebugStart, 0.2f);
+    Gizmos.DrawSphere(_lastDebugEnd, 0.2f);
+}
+#endif
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/CrossTrackObstacle.cs
 
 ```csharp
@@ -9834,6 +9754,10 @@ public class CrossTrackObstacle : MonoBehaviour
         // Trust director's start/target completely, including Y
         _startWS = startWorld;
         _targetWS = targetWorld;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) { preview.SetEndpoints(_startWS, _targetWS); preview.FadeIn(0.2f); }
+
         speed = Mathf.Max(0.5f, crossSpeed);
 
         _initialDelay = Mathf.Max(0f, delayBeforeMove);
@@ -10074,22 +9998,31 @@ public class CrossTrackObstacle : MonoBehaviour
 
         Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
 
+        var otherShuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
+
         if (otherRb != null && otherRb.isKinematic)
         {
-            // avoid changing the road/terrain layers and avoid changing another active cross if you want
-            var root = other.transform.root != null ? other.transform.root.gameObject : other.gameObject;
-            int roadLayer = LayerMask.NameToLayer("RoadSurface");
-            int terrainLayer = LayerMask.NameToLayer("Terrain");
-
-            if (root.layer != roadLayer && root.layer != terrainLayer)
+            // If it's a shuttle, let it convert itself (handles preview/light correctly)
+            if (otherShuttle != null)
             {
-                ForceMakeDynamic(otherRb);
-                Physics.SyncTransforms();
+                otherShuttle.ConvertToPhysicsOnHit();
+            }
+            else
+            {
+                var root = other.transform.root != null ? other.transform.root.gameObject : other.gameObject;
+                int roadLayer = LayerMask.NameToLayer("RoadSurface");
+                int terrainLayer = LayerMask.NameToLayer("Terrain");
+
+                if (root.layer != roadLayer && root.layer != terrainLayer)
+                {
+                    ForceMakeDynamic(otherRb);
+                    Physics.SyncTransforms();
+                }
             }
         }
 
+
         var otherCross = other.GetComponentInParent<CrossTrackObstacle>();
-        var otherShuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
 
         float otherMass;
         string otherMassSource;
@@ -10295,6 +10228,9 @@ public class CrossTrackObstacle : MonoBehaviour
         enabled = false;           // disable this script completely
 
         if (_rb == null) return;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) preview.FadeOut(0.2f);
 
         _rb.isKinematic = false;
         _rb.useGravity = true;
@@ -10568,6 +10504,180 @@ public class SkidDebugStamp : MonoBehaviour
         RenderTexture.active = active;
     }
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/ExhaustVFXController.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class ExhaustVFXController : MonoBehaviour
+{
+    [Header("Particle Systems (exhausts)")]
+    [SerializeField] private ParticleSystem leftExhaust;
+    [SerializeField] private ParticleSystem rightExhaust;
+
+    [Header("Speed → Start Speed")]
+    [Tooltip("Below this car speed, exhaust barely emits / is very slow.")]
+    [SerializeField] private float minSpeedForSmoke = 0.5f;
+
+    [Tooltip("At or above this speed, exhaust uses max start speed.")]
+    [SerializeField] private float maxSpeedForFullBoost = 20f;
+
+    [SerializeField] private float minStartSpeed = 0.5f;
+    [SerializeField] private float maxStartSpeed = 4f;
+
+    [Header("Speed → Emission Rate (optional)")]
+    [SerializeField] private float minEmissionRate = 5f;
+    [SerializeField] private float maxEmissionRate = 40f;
+
+    private CarController car;
+
+    private void Awake()
+    {
+        // CarController can be on this GameObject or a parent
+        car = GetComponent<CarController>();
+        if (car == null)
+            car = GetComponentInParent<CarController>();
+    }
+
+    private void LateUpdate()
+    {
+        if (car == null)
+            return;
+
+        float speed = car.CurrentSpeed;
+
+        // Decide if we should emit at all
+        bool shouldEmit = speed > minSpeedForSmoke;
+
+        float t = Mathf.InverseLerp(minSpeedForSmoke, maxSpeedForFullBoost, speed);
+
+        UpdateExhaust(leftExhaust, shouldEmit, t);
+        UpdateExhaust(rightExhaust, shouldEmit, t);
+    }
+
+    private void UpdateExhaust(ParticleSystem ps, bool shouldEmit, float t)
+    {
+        if (ps == null)
+            return;
+
+        var emission = ps.emission;
+        emission.enabled = shouldEmit;
+
+        if (!shouldEmit)
+            return;
+
+        // Lerp startSpeed based on car speed
+        var main = ps.main;
+        main.startSpeed = Mathf.Lerp(minStartSpeed, maxStartSpeed, t);
+
+        // Optional: more speed → more emission
+        float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, t);
+        emission.rateOverTime = rate;
+    }
+}
+
+```
+
+## Assets/Racing_Assets/Racing_Scripts/FogPulseColorDriver.cs
+
+```csharp
+using UnityEngine;
+using MirzaBeig.VolumetricFogLite;
+
+[DisallowMultipleComponent]
+public class FogPulseColorDriver : MonoBehaviour
+{
+    [Header("Pulse Source")]
+    [SerializeField] private TrackGuideBeacon beacon;
+
+    [Header("Fog Target (pick ONE)")]
+    [Tooltip("Preferred: drag your VolumetricFogRendererFeatureLite from the Renderer Features list here.")]
+    [SerializeField] private VolumetricFogRendererFeatureLite fogFeature;
+
+    [Tooltip("Alternative: drag the fog material directly if you don't want to reference the feature.")]
+    [SerializeField] private Material fogMaterialOverride;
+
+    [Header("Fog Color Property Name")]
+    [Tooltip("Your fog shader UI shows 'Colour'. Common internal names: _Colour or _Color. Put the right one here.")]
+    [SerializeField] private string fogColorProperty = "_Colour";
+
+    [Header("HDR Colors")]
+    [SerializeField] private Color baseHDR = new Color(0.35f, 0.45f, 0.55f, 1f);
+    [SerializeField] private Color pulseHDR = new Color(2.5f, 1.0f, 0.2f, 1f);
+
+    [Header("Blend Shaping")]
+    [Range(0f, 4f)] public float pulsePower = 1.6f;
+    [Range(0f, 1f)] public float maxBlend = 1.0f;
+    [Range(0f, 20f)] public float smooth = 10f;
+
+    [Header("Intensity")]
+    [Range(0f, 10f)]
+    [SerializeField] private float globalIntensity = 1f;   // master on/off / fade
+
+    [Range(0f, 10f)]
+    [SerializeField] private float pulseIntensity = 1f;    // how strong the pulse is
+
+    private Material _fogMat;
+    private int _propId;
+    private float _smoothed01;
+
+    private void Awake()
+    {
+        _propId = Shader.PropertyToID(fogColorProperty);
+        ResolveFogMaterial();
+    }
+
+    private void OnEnable()
+    {
+        ResolveFogMaterial();
+    }
+
+    private void ResolveFogMaterial()
+    {
+        if (fogMaterialOverride != null)
+        {
+            _fogMat = fogMaterialOverride;
+            return;
+        }
+
+        if (fogFeature != null && fogFeature.settings != null)
+        {
+            _fogMat = fogFeature.settings.fogMaterial;
+            return;
+        }
+
+        _fogMat = null;
+    }
+
+    private void Update()
+    {
+        if (_fogMat == null)
+        {
+            ResolveFogMaterial();
+            if (_fogMat == null) return;
+        }
+
+        if (beacon == null) return;
+
+        float b = Mathf.Clamp01(beacon.CurrentBlink01);
+
+        // Shape the pulse
+        b = Mathf.Pow(b, pulsePower);
+
+        // Apply pulse strength + global intensity
+        b *= maxBlend * pulseIntensity * globalIntensity;
+
+        _smoothed01 = Mathf.Lerp(_smoothed01, b, 1f - Mathf.Exp(-smooth * Time.deltaTime));
+
+        float t = Mathf.Clamp01(_smoothed01);
+        Color c = Color.Lerp(baseHDR, pulseHDR, t);
+        _fogMat.SetColor(_propId, c);
+    }
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/ForcefieldLaunchTag.cs
@@ -11113,6 +11223,9 @@ public class FuelPickup : MonoBehaviour
 using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using Unity.AI.Navigation;
 
 using Debug = UnityEngine.Debug;
 
@@ -11133,6 +11246,21 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
+    [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
+
+    [Header("NavMesh (for NPC AI)")]
+    [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
+    [SerializeField] private bool enableNavMeshBaking = true;
+    [Tooltip("NavMeshSurface component on the track (auto-created if null).")]
+    [SerializeField] private NavMeshSurface navMeshSurface;
+    [Tooltip("Agent type ID (0 = Humanoid default, or use custom).")]
+    [SerializeField] private int navMeshAgentTypeID = 0;
+
+
+    [Header("URP Renderer Control")]
+    [SerializeField] private UniversalRendererData urpRendererAsset;
+    [SerializeField] private string[] enabledRendererFeatures = new string[] { };
+    [SerializeField] private string[] disabledRendererFeatures = new string[] { };
 
     [Header("Camera & Follow")]
     [SerializeField] private Camera mainCam;
@@ -11219,6 +11347,17 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Tooltip("Extra delay after the car is fully stopped before showing the Run Complete screen.")]
     private float runEndSettleDelay = .9f;
 
+    [SerializeField, Min(0f)]
+    private float freezeAfterRunCompleteDelayRealtime = 0.75f;
+
+    [SerializeField] private float deathStopShakeMult = 1.35f;
+    [SerializeField] private float deathStopSlowMoSeverity = 1f;
+
+    [SerializeField] private float lethalCrashSlowMoHoldMultiplier = 2.25f; // longer hold if crash causes death
+
+
+    private bool _deathStopBurstPlayed = false;
+
     // runtime
     private Coroutine _closeCallCR;
 
@@ -11243,6 +11382,8 @@ public class GameManager_Racing : MonoBehaviour
 
     private bool _depositSoundPlayed = false;
 
+
+    public bool RunEnded => runEnded;
     public CarController ActiveCar => carController;
 
     private const string PREF_KEY_PLAY_DEPOSIT = "GM_PlayDepositOnLoad_v1";
@@ -11255,6 +11396,8 @@ public class GameManager_Racing : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
+        ConfigureURPRenderers();
 
         Instance = this;
 
@@ -11332,6 +11475,19 @@ public class GameManager_Racing : MonoBehaviour
         if (carController == null)
             return;
 
+
+        if (_finalizePending && Input.GetKeyDown(KeyCode.R))
+        {
+            if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+            _finalizeRunCR = null;
+            _finalizePending = false;
+
+            TryPlayDepositSoundOnReset();
+            RestartRun();
+            return;
+        }
+
+
         // Finalize run only when out of fuel AND forward/overall speed is tiny
         if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
@@ -11351,6 +11507,29 @@ public class GameManager_Racing : MonoBehaviour
                 if (!_finalizePending)
                 {
                     _finalizePending = true;
+
+                    if (!_deathStopBurstPlayed)
+                    {
+                        _deathStopBurstPlayed = true;
+
+                        // replay the explosion VFX on the stopped wreck
+                        carController?.PlayDeathVFXExtra();
+
+                        // screen shake + slowmo for the extra explosion
+                        if (enableCrashScreenShake && cameraFollow != null)
+                        {
+                            cameraFollow.StartShake(
+                                crashShakeDuration * deathStopShakeMult,
+                                crashShakeStrength * deathStopShakeMult,
+                                crashShakeVibrato,
+                                crashShakeRandomness
+                            );
+                        }
+
+                        if (enableCrashSlowMo)
+                            StartCrashSlowMo(deathStopSlowMoSeverity);
+                    }
+
                     _stopConditionBeganRealtime = Time.realtimeSinceStartup;
 
                     if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
@@ -11486,7 +11665,7 @@ public class GameManager_Racing : MonoBehaviour
         runEnded = true;
 
         // Pause so player can read
-        Time.timeScale = 0f;
+        StartCoroutine(CoFreezeAfterRunComplete());
 
         Debug.Log(
             $"[GameManager_Racing] Run complete. Distance={distanceInt} m, " +
@@ -11730,9 +11909,8 @@ public class GameManager_Racing : MonoBehaviour
         _closeCallCR = null;
     }
 
-    private void StartCrashSlowMo(float severity)
+    private void StartCrashSlowMo(float severity, float holdMultiplier = 1f)
     {
-        // kill any previous crash slow-mo
         if (_crashSlowMoRoutine != null)
         {
             StopCoroutine(_crashSlowMoRoutine);
@@ -11745,32 +11923,26 @@ public class GameManager_Racing : MonoBehaviour
             _ownsCrashSlowMo = false;
         }
 
-        _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity));
+        _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity, holdMultiplier));
     }
 
-    private IEnumerator CrashSlowMoRoutine(float severity)
+    private IEnumerator CrashSlowMoRoutine(float severity, float holdMultiplier)
     {
         _ownsCrashSlowMo = true;
 
-        // Map severity (0–1) through curve → strength multiplier
         float sev = Mathf.Clamp01(severity);
         float curveVal = crashSlowMoCurve != null ? crashSlowMoCurve.Evaluate(sev) : sev;
         float targetScale = Mathf.Lerp(1f, crashSlowMoScale, curveVal);
 
-        float hold = crashSlowMoHold;
+        float hold = crashSlowMoHold * Mathf.Max(1f, holdMultiplier);   // <<< ONLY CHANGE THAT MATTERS
         float easeOut = crashSlowMoEaseOut;
 
-        Debug.Log($"[GameManager_Racing] Crash SlowMo → severity={severity:F2}, curveVal={curveVal:F2}, scale={targetScale:F2}, hold={hold:F2}, easeOut={easeOut:F2}");
-
-        // ENTER SLOW-MO
         TimeScaleHub.Begin(this, targetScale, affectFixedDelta: true);
 
-        // Hold using realtime (unaffected by timeScale)
         float holdEnd = Time.realtimeSinceStartup + hold;
         while (Time.realtimeSinceStartup < holdEnd)
             yield return null;
 
-        // Ease-out blend back to normal time
         float start = Time.realtimeSinceStartup;
         float end = start + easeOut;
 
@@ -11782,7 +11954,6 @@ public class GameManager_Racing : MonoBehaviour
             yield return null;
         }
 
-        // FULL RESTORE
         TimeScaleHub.End(this);
         _ownsCrashSlowMo = false;
         _crashSlowMoRoutine = null;
@@ -11850,6 +12021,18 @@ public class GameManager_Racing : MonoBehaviour
         return null;
     }
 
+    private IEnumerator CoFreezeAfterRunComplete()
+    {
+        float end = Time.realtimeSinceStartup + Mathf.Max(0f, freezeAfterRunCompleteDelayRealtime);
+        while (Time.realtimeSinceStartup < end)
+            yield return null;
+
+        // Ensure any crash slowmo controller is not fighting the freeze
+        TimeScaleHub.End(this);
+
+        Time.timeScale = 0f;
+    }
+
     /// <summary>
     /// Call when the UI flow returns the player to the skill tree (e.g. "Back to Skill Tree" button).
     /// Plays the deposit sound only if the run awarded currency and the player's bank increased.
@@ -11902,6 +12085,7 @@ public class GameManager_Racing : MonoBehaviour
 
         Quaternion spawnRot = Quaternion.LookRotation(startForward, Vector3.up);
 
+
         if (carInstance == null)
         {
             carInstance = Instantiate(carPrefab, spawnPos, spawnRot);
@@ -11910,13 +12094,15 @@ public class GameManager_Racing : MonoBehaviour
         else
             carInstance.transform.SetPositionAndRotation(spawnPos, spawnRot);
 
+        _deathStopBurstPlayed = false;
 
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-
+        npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -11957,6 +12143,66 @@ public class GameManager_Racing : MonoBehaviour
 
     }
 
+    private void BakeNavMeshForTrack()
+    {
+        if (!enableNavMeshBaking) return;
+
+        // NavMeshSurface must be ON the track generator itself (segments are children of it)
+        if (navMeshSurface == null)
+        {
+            // Try to find existing one on the track generator
+            navMeshSurface = trackGenerator.GetComponent<NavMeshSurface>();
+
+            // If still null, ADD it to the track generator (not a child!)
+            if (navMeshSurface == null)
+            {
+                navMeshSurface = trackGenerator.gameObject.AddComponent<NavMeshSurface>();
+                Debug.Log("[GameManager_Racing] Added NavMeshSurface to track generator");
+            }
+        }
+
+        // Configure the surface
+        navMeshSurface.collectObjects = CollectObjects.Children;  // Bake all child segments
+        navMeshSurface.agentTypeID = navMeshAgentTypeID;
+
+        // IMPORTANT: Set the layer mask to only include road
+        int roadLayer = LayerMask.NameToLayer("RoadSurface");
+        if (roadLayer >= 0)
+        {
+            navMeshSurface.layerMask = 1 << roadLayer;
+        }
+        else
+        {
+            // Fallback: try RoadSurface layer
+            int roadSurfaceLayer = LayerMask.NameToLayer("Road");
+            if (roadSurfaceLayer >= 0)
+                navMeshSurface.layerMask = 1 << roadSurfaceLayer;
+        }
+
+        // Bake!
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
+
+        navMeshSurface.BuildNavMesh();
+
+        sw.Stop();
+        Debug.Log($"[GameManager_Racing] NavMesh baked in {sw.ElapsedMilliseconds}ms on {trackGenerator.gameObject.name}");
+    }
+
+    public void OnCarCrashLethal(float severity)
+    {
+        if (!enabled) return;
+        if (!enableCrashSlowMo) return;
+
+        float sev = Mathf.Clamp01(severity);
+
+        // match OnCarCrash remap behavior
+        if (crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0)
+            sev = Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev));
+
+        StartCrashSlowMo(sev, lethalCrashSlowMoHoldMultiplier);
+    }
+
     private void PlayRunCompleteCoinSound()
     {
         if (runCompleteCoinClip == null) return;
@@ -11985,6 +12231,25 @@ public class GameManager_Racing : MonoBehaviour
         src.rolloffMode = AudioRolloffMode.Linear; // irrelevant for 2D but harmless
         src.Play();
         Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
+    private void ConfigureURPRenderers()
+    {
+        if (urpRendererAsset == null) return;
+
+        // Disable specified features
+        foreach (var featureName in disabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(false);
+        }
+
+        // Enable specified features
+        foreach (var featureName in enabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(true);
+        }
     }
 
 }
@@ -12176,6 +12441,745 @@ public class HPPickup : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/IcePath.cs
+
+```csharp
+using UnityEngine;
+
+/// <summary>
+/// Represents a single ice path segment. When car enters, it signals ice properties.
+/// Uses GroundSurface component for physics adjustments.
+/// </summary>
+[DisallowMultipleComponent]
+public class IcePath : MonoBehaviour
+{
+    [Header("Visual")]
+    [Tooltip("Optional visual root to enable/disable (for fade effects).")]
+    [SerializeField] private GameObject visualRoot;
+
+    [Header("Physics")]
+    [Tooltip("Layer this ice segment should be on (typically 'RoadSurface').")]
+    [SerializeField] private string targetLayer = "RoadSurface";
+
+    private GroundSurface _surface;
+    private Collider _collider;
+
+    void Awake()
+    {
+        _surface = GetComponent<GroundSurface>();
+        _collider = GetComponent<Collider>();
+
+        // Ensure surface type is Ice
+        if (_surface != null)
+            _surface.surfaceType = SurfaceType.Ice;
+
+        // Set layer
+        int layer = LayerMask.NameToLayer(targetLayer);
+        if (layer >= 0)
+            gameObject.layer = layer;
+
+        if (visualRoot == null)
+            visualRoot = gameObject;
+    }
+
+    public void Show()
+    {
+        if (visualRoot != null)
+            visualRoot.SetActive(true);
+    }
+
+    public void Hide()
+    {
+        if (visualRoot != null)
+            visualRoot.SetActive(false);
+    }
+
+    /// <summary>
+    /// Returns the GroundSurface component for inspection.
+    /// </summary>
+    public GroundSurface Surface => _surface;
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/IcePathSpawner.cs
+
+```csharp
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Reflection;
+using UnityEngine;
+
+/// <summary>
+/// Spawns ice path segments along the procedural track.
+/// Ice paths follow the track's curvature and can have internal wiggles.
+/// Works similarly to TrackObstacleSpawner with pre-spawn and streaming options.
+/// </summary>
+[DisallowMultipleComponent]
+public class IcePathSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+    [SerializeField] private Transform icePathParent;
+    [SerializeField] private GameObject iceSegmentPrefab;
+
+    [Header("Spawn Mode")]
+    [Tooltip("If true, fills the whole track with ice paths once in InitializeForRun.")]
+    [SerializeField] private bool preSpawnOnInitialize = true;
+
+    [Tooltip("If true, will continue spawning ahead while you drive. Turn OFF if you hate seeing pop-in.")]
+    [SerializeField] private bool streamSpawnDuringRun = false;
+
+    [Header("Path Sampling")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Header("Spawn Settings")]
+    [Tooltip("Ideal spacing between potential ice path spawn slots (meters).")]
+    [SerializeField] private float icePathSpacing = 100f;
+    [SerializeField] private int maxActiveIcePaths = 15;
+
+    [Tooltip("Minimum distance in front of the player where new ice paths are allowed to appear.")]
+    [SerializeField] private float minSpawnDistanceAhead = 60f;
+
+    [Tooltip("Maximum distance in front of the player we bother filling with ice paths.")]
+    [SerializeField] private float maxSpawnDistanceAhead = 200f;
+
+    [Header("Initial Pre-Spawn")]
+    [Tooltip("How far ahead (from start) we pre-fill ice paths before the run begins.")]
+    [SerializeField] private float initialPreSpawnDistance = 150f;
+
+    [Tooltip("Do not spawn any behind the player.")]
+    [SerializeField] private float despawnBehindDistance = 20f;
+
+    [Header("Randomization")]
+    [SerializeField] private float distanceJitter = 15f;
+    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.3f;
+
+    [Tooltip("Global spawn chance multiplier based on distance (0=start, 1=end).")]
+    [SerializeField]
+    private AnimationCurve globalSpawnChanceByDistance =
+        AnimationCurve.Linear(0f, 0.2f, 1f, 0.6f);
+
+    [Header("Ice Path Properties")]
+    [Tooltip("Number of segments per ice path.")]
+    [SerializeField, Range(1, 30)] private int segmentsPerPath = 8;
+
+    [Tooltip("Length for each ice segment (meters).")]
+    [SerializeField] private float segmentLength = 10f;
+
+    [Tooltip("Width of ice path (should match or be slightly narrower than road).")]
+    [SerializeField] private float icePathWidth = 3.5f;
+
+    [Header("Path Curvature & Wiggles")]
+    [Tooltip("Maximum wiggle angle (degrees) applied to each segment for variation.")]
+    [SerializeField, Range(0f, 15f)] private float maxWiggleAngle = 3f;
+
+    [Tooltip("How closely the ice path follows track turns (0 = straight, 1 = perfect follow).")]
+    [SerializeField, Range(0f, 1f)] private float trackFollowStrength = 0.85f;
+
+    [Header("Mini Turns (Ice Path Style)")]
+    [SerializeField, Range(0f, 12f)] private float miniTurnMaxYawDeg = 4f;   // small turns
+    [SerializeField] private float miniTurnFrequency = 0.015f;              // lower = longer arcs
+    [SerializeField, Range(0f, 1f)] private float miniTurnSmoothing = 0.15f; // higher = snappier
+    [SerializeField] private float miniTurnSeed = 123.456f;                 // deterministic
+
+    [Header("Raycast")]
+    [SerializeField] private LayerMask roadLayer;
+    [SerializeField] private float raycastStartHeight = 6f;
+    [SerializeField] private float raycastDownDistance = 40f;
+    [SerializeField] private float iceHeightOffset = 0.02f;
+
+    [Header("Ice Mesh (Single Strip Visual)")]
+    [SerializeField] private Material iceMaterial;
+    [SerializeField, Min(0.25f)] private float iceSampleSpacing = 1.0f; // smaller = smoother curve
+    [SerializeField] private float iceUVTiling = 0.15f;
+    [SerializeField] private bool addIceMeshColliderTrigger = true;
+
+    [Header("Timing")]
+    [SerializeField] private float updateInterval = 0.5f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // Runtime
+    private List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+    private Dictionary<int, GameObject> _icePathsBySlot = new();
+    private int _maxSlotIndex;
+    private float _updateTimer;
+    private int _lastClosestIdx = 0;
+    private List<int> _toRemove = new();
+
+    // Prefab metrics (measured once)
+    private bool _prefabMetricsReady;
+    private float _prefabWidth;
+    private float _prefabLength;
+    private Vector3 _prefabBaseLocalScale = Vector3.one;
+
+    private GroundSurface _prefabGroundSurface;
+    private IcePath _prefabIcePath;
+
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+
+        if (trackGenerator == null || playerTransform == null)
+        {
+            Debug.LogError("[IcePathSpawner] InitializeForRun missing refs. " +
+                           $"trackGenerator={trackGenerator}, player={playerTransform}");
+            return;
+        }
+
+        if (iceMaterial == null)
+        {
+            Debug.LogError("[IcePathSpawner] Missing iceMaterial (ice strip uses a MeshRenderer material).");
+            return;
+        }
+
+        _prefabGroundSurface = iceSegmentPrefab.GetComponentInChildren<GroundSurface>(true);
+        _prefabIcePath = iceSegmentPrefab.GetComponentInChildren<IcePath>(true);
+
+        if (_prefabGroundSurface == null)
+            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab is missing GroundSurface (values won't be copied).");
+
+        if (_prefabIcePath == null)
+            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab is missing IcePath (values won't be copied).");
+
+
+        EnsurePrefabMetrics();
+
+        if (verboseDebug)
+            Debug.Log("[IcePathSpawner] InitializeForRun: rebuilding path + slots.");
+
+        RebuildPath();
+        ClearIcePaths();
+        SetupSlots();
+
+        if (preSpawnOnInitialize)
+            PreSpawnInitialWindow();
+
+        _updateTimer = 0f;
+    }
+
+    private void Update()
+    {
+        if (!streamSpawnDuringRun || _path.Count < 2 || playerTransform == null || iceMaterial == null)
+            return;
+
+        _updateTimer += Time.deltaTime;
+        if (_updateTimer < updateInterval) return;
+
+        _updateTimer = 0f;
+        StreamIcePaths();
+    }
+
+    private void EnsurePrefabMetrics()
+    {
+        if (_prefabMetricsReady) return;
+
+        // Instantiate once to measure real-world bounds reliably (no guessing / hardcoding).
+        GameObject temp = Instantiate(iceSegmentPrefab);
+        temp.SetActive(false);
+
+        _prefabBaseLocalScale = temp.transform.localScale;
+
+        var renderers = temp.GetComponentsInChildren<Renderer>(true);
+        if (renderers == null || renderers.Length == 0)
+        {
+            Debug.LogWarning("[IcePathSpawner] iceSegmentPrefab has no Renderer. Using fallback dimensions 1x1.");
+            _prefabWidth = 1f;
+            _prefabLength = 1f;
+        }
+        else
+        {
+            Bounds b = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                b.Encapsulate(renderers[i].bounds);
+
+            // Width is X, length is Z in world units.
+            _prefabWidth = Mathf.Max(0.0001f, b.size.x);
+            _prefabLength = Mathf.Max(0.0001f, b.size.z);
+        }
+
+        Destroy(temp);
+        _prefabMetricsReady = true;
+
+        if (verboseDebug)
+            Debug.Log($"[IcePathSpawner] Prefab metrics: width={_prefabWidth:F3}, length={_prefabLength:F3}, baseScale={_prefabBaseLocalScale}");
+    }
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+        _lastClosestIdx = 0;
+
+        var src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2)
+        {
+            Debug.LogError("[IcePathSpawner] Track path has < 2 points. Cannot spawn ice paths.");
+            return;
+        }
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
+    {
+        outList.Clear();
+        outList.Add(raw[0]);
+        for (int i = 0; i < raw.Count - 1; i++)
+        {
+            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = raw[i];
+            Vector3 p2 = raw[i + 1];
+            Vector3 p3 = raw[Mathf.Min(i + 2, raw.Count - 1)];
+            for (int s = 1; s <= subdivisions; s++)
+            {
+                float t = s / (float)subdivisions;
+                outList.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        return 0.5f * (
+            (2 * p1) +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * (t * t) +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * (t * t * t)
+        );
+    }
+
+    private void SetupSlots()
+    {
+        _icePathsBySlot.Clear();
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / Mathf.Max(0.0001f, icePathSpacing));
+    }
+
+    private void StreamIcePaths()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float playerDist = GetPlayerDistance();
+
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / icePathSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / icePathSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_icePathsBySlot.ContainsKey(slot))
+                continue;
+
+            if (_icePathsBySlot.Count >= maxActiveIcePaths)
+                break;
+
+            float dist = slot * icePathSpacing;
+
+            if (dist < playerDist + minSpawnDistanceAhead)
+                continue;
+
+            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
+
+            float difficultyMult = (globalSpawnChanceByDistance != null)
+                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f)
+                continue;
+
+            if (Random.value > effectiveChance)
+                continue;
+
+            TrySpawnIcePathAtDistance(slot, dist);
+        }
+
+        _toRemove.Clear();
+        foreach (var kvp in _icePathsBySlot)
+        {
+            float dist = kvp.Key * icePathSpacing;
+            if (dist < playerDist - despawnBehindDistance)
+                _toRemove.Add(kvp.Key);
+        }
+
+        for (int i = 0; i < _toRemove.Count; i++)
+        {
+            int slot = _toRemove[i];
+            if (_icePathsBySlot.TryGetValue(slot, out var obj) && obj != null)
+                Destroy(obj);
+
+            _icePathsBySlot.Remove(slot);
+        }
+    }
+
+    private float GetPlayerDistance()
+    {
+        Vector3 p = playerTransform.position;
+        float best = float.MaxValue;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i], b = _path[i + 1];
+            Vector3 ab = (b - a);
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
+            Vector3 proj = a + ab * t;
+
+            float d = (p - proj).sqrMagnitude;
+            if (d < best) { _lastClosestIdx = i; best = d; }
+        }
+
+        Vector3 A = _path[_lastClosestIdx];
+        Vector3 B = _path[_lastClosestIdx + 1];
+        Vector3 AB = (B - A);
+        float ABsqr = Mathf.Max(1e-6f, AB.sqrMagnitude);
+
+        float prog = Mathf.Clamp01(Vector3.Dot(p - A, AB) / ABsqr);
+        float segLen = Vector3.Distance(A, B);
+
+        return _cumLengths[_lastClosestIdx] + prog * segLen;
+    }
+
+    private void TrySpawnIcePathAtDistance(int slot, float baseDist)
+    {
+        float jitter = Random.Range(-distanceJitter, distanceJitter);
+        float startDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+
+        GameObject pathParent = new GameObject($"IcePath_{startDist:F0}");
+        Transform parent = icePathParent ? icePathParent : transform;
+        pathParent.transform.SetParent(parent);
+
+        _icePathsBySlot[slot] = pathParent;
+
+
+        float totalIceLen = segmentsPerPath * segmentLength;
+
+        GameObject stripGO = new GameObject($"IceStrip_{startDist:F0}");
+        stripGO.layer = LayerMask.NameToLayer("RoadSurface");
+        stripGO.transform.SetParent(pathParent.transform, worldPositionStays: false);
+        stripGO.transform.localPosition = Vector3.zero;
+        stripGO.transform.localRotation = Quaternion.identity;
+        stripGO.transform.localScale = Vector3.one;
+
+        BuildIceStripMesh(stripGO, startDist, totalIceLen);
+
+        if (verboseDebug)
+            Debug.Log($"[IcePathSpawner] Spawned ice path at slot {slot}, distance {startDist:F1}m");
+    }
+
+    private void PreSpawnInitialWindow()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(preSpawnEnd / icePathSpacing);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+        {
+            if (_icePathsBySlot.ContainsKey(slot))
+                continue;
+
+            float dist = slot * icePathSpacing;
+
+            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = (globalSpawnChanceByDistance != null)
+                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f) continue;
+            if (Random.value > effectiveChance) continue;
+
+            TrySpawnIcePathAtDistance(slot, dist);
+        }
+
+        if (verboseDebug)
+            Debug.Log($"[IcePathSpawner] PreSpawnInitialWindow spawned {_icePathsBySlot.Count} ice paths up to {preSpawnEnd:0.0}m.");
+    }
+
+    private void BuildIceStripMesh(GameObject owner, float startDist, float length)
+    {
+        float endDist = Mathf.Min(startDist + length, _totalLength);
+        if (endDist <= startDist + 0.01f) return;
+
+        // How many samples along the path (more samples = smoother)
+        int samples = Mathf.Max(2, Mathf.CeilToInt((endDist - startDist) / iceSampleSpacing) + 1);
+
+        var verts = new Vector3[samples * 2];
+        var normals = new Vector3[samples * 2];
+        var uvs = new Vector2[samples * 2];
+        var tris = new int[(samples - 1) * 6];
+
+        float yawOffsetDeg = 0f; // mini-turn state (smooth)
+        float halfW = icePathWidth * 0.5f;
+
+        for (int i = 0; i < samples; i++)
+        {
+            float dist = Mathf.Lerp(startDist, endDist, i / (float)(samples - 1));
+            Vector3 pos = GetPositionAtDistance(dist);
+
+            // Base forward from path tangent
+            Vector3 trackFwd = GetTangentAtDistance(dist);
+            if (trackFwd.sqrMagnitude < 1e-6f) trackFwd = Vector3.forward;
+            trackFwd.Normalize();
+
+            // Mini-turns: continuous yaw offset over distance (NOT random per segment)
+            float noise = Mathf.PerlinNoise(miniTurnSeed + dist * miniTurnFrequency, 0.1234f) * 2f - 1f;
+            float targetYaw = noise * miniTurnMaxYawDeg;
+            yawOffsetDeg = Mathf.Lerp(yawOffsetDeg, targetYaw, miniTurnSmoothing);
+
+            Vector3 fwd = (Quaternion.AngleAxis(yawOffsetDeg, Vector3.up) * trackFwd).normalized;
+
+            // Raycast to snap onto road + get normal
+            Vector3 origin = pos + Vector3.up * raycastStartHeight;
+
+            Vector3 n = Vector3.up;
+            Vector3 finalPos = pos;
+
+            bool hitSomething = Physics.Raycast(
+                origin, Vector3.down, out RaycastHit hit,
+                raycastStartHeight + raycastDownDistance,
+                roadLayer, QueryTriggerInteraction.Ignore);
+
+            if (!hitSomething)
+            {
+                hitSomething = Physics.Raycast(
+                    origin, Vector3.down, out hit,
+                    raycastStartHeight + raycastDownDistance,
+                    ~0, QueryTriggerInteraction.Ignore);
+            }
+
+            if (hitSomething)
+            {
+                n = hit.normal;
+                finalPos = hit.point + n * iceHeightOffset;
+            }
+
+            // Build left/right using the surface normal
+            Vector3 right = Vector3.Cross(n, fwd);
+            if (right.sqrMagnitude < 1e-6f) right = Vector3.Cross(Vector3.up, fwd);
+            right.Normalize();
+
+            int L = i * 2;
+            int R = i * 2 + 1;
+
+            verts[L] = owner.transform.InverseTransformPoint(finalPos - right * halfW);
+            verts[R] = owner.transform.InverseTransformPoint(finalPos + right * halfW);
+
+            normals[L] = normals[R] = n;
+
+            float v = (dist - startDist) * iceUVTiling;
+            uvs[L] = new Vector2(0f, v);
+            uvs[R] = new Vector2(1f, v);
+        }
+
+        int ti = 0;
+        for (int i = 0; i < samples - 1; i++)
+        {
+            int i0 = i * 2;
+            int i1 = i * 2 + 1;
+            int i2 = (i + 1) * 2;
+            int i3 = (i + 1) * 2 + 1;
+
+            tris[ti++] = i0;
+            tris[ti++] = i2;
+            tris[ti++] = i1;
+
+            tris[ti++] = i2;
+            tris[ti++] = i3;
+            tris[ti++] = i1;
+        }
+
+        var mf = owner.GetComponent<MeshFilter>();
+        if (mf == null) mf = owner.AddComponent<MeshFilter>();
+
+        var mr = owner.GetComponent<MeshRenderer>();
+        if (mr == null) mr = owner.AddComponent<MeshRenderer>();
+
+        Mesh m = new Mesh { name = "IceStripMesh" };
+        m.vertices = verts;
+        m.normals = normals;
+        m.uv = uvs;
+        m.triangles = tris;
+        m.RecalculateBounds();
+
+        mf.sharedMesh = m;
+
+        // add scripts + values to the strip itself (optional but nice)
+        CopyComponent(_prefabGroundSurface, owner);
+        CopyComponent(_prefabIcePath, owner);
+
+        BuildIceTriggerBoxes(owner, verts, samples);
+
+
+        if (iceMaterial != null)
+            mr.sharedMaterial = iceMaterial;
+
+    }
+
+    private void BuildIceTriggerBoxes(GameObject owner, Vector3[] vertsLocal, int samples)
+    {
+        // one box per segment between sample i and i+1
+        float triggerHeight = 0.5f; // keep small
+        for (int i = 0; i < samples - 1; i++)
+        {
+            // centerline between left/right verts at sample i and i+1 (local space)
+            Vector3 L0 = vertsLocal[i * 2];
+            Vector3 R0 = vertsLocal[i * 2 + 1];
+            Vector3 L1 = vertsLocal[(i + 1) * 2];
+            Vector3 R1 = vertsLocal[(i + 1) * 2 + 1];
+
+            Vector3 C0 = (L0 + R0) * 0.5f;
+            Vector3 C1 = (L1 + R1) * 0.5f;
+            Vector3 mid = (C0 + C1) * 0.5f;
+
+            Vector3 fwd = (C1 - C0);
+            float len = fwd.magnitude;
+            if (len < 0.001f) continue;
+            fwd /= len;
+
+            var t = new GameObject($"IceTrig_{i}").transform;
+            t.gameObject.layer = owner.layer;
+            t.SetParent(owner.transform, false);
+            t.localPosition = mid;
+            t.localRotation = Quaternion.LookRotation(fwd, Vector3.up);
+
+            var box = t.gameObject.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.size = new Vector3(icePathWidth, .1f, len);
+            box.center = new Vector3(0f, box.size.y * -0.5f, 0f);
+
+            CopyComponent(_prefabGroundSurface, t.gameObject);
+            CopyComponent(_prefabIcePath, t.gameObject);
+        }
+    }
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= dist)
+            {
+                idx = i;
+                break;
+            }
+        }
+
+        float segLen = _cumLengths[idx + 1] - _cumLengths[idx];
+        float t = (dist - _cumLengths[idx]) / Mathf.Max(segLen, 0.0001f);
+
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        fwd = (_path[idx + 1] - _path[idx]).normalized;
+        if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward;
+    }
+
+    private Vector3 GetPositionAtDistance(float dist)
+    {
+        SampleAlongPath(dist, out Vector3 pos, out _);
+        return pos;
+    }
+
+    private Vector3 GetTangentAtDistance(float dist)
+    {
+        SampleAlongPath(dist, out _, out Vector3 fwd);
+        return fwd;
+    }
+
+    private void ClearIcePaths()
+    {
+        foreach (var o in _icePathsBySlot.Values)
+            if (o) Destroy(o);
+
+        _icePathsBySlot.Clear();
+    }
+
+    public void SetPlayerTransform(Transform player)
+    {
+        playerTransform = player;
+    }
+
+
+    private static T CopyComponent<T>(T source, GameObject destination) where T : UnityEngine.Component
+    {
+        // Use Unity "fake null" checks
+        if (!source || destination == null) return null;
+
+        // Ensure destination has the component
+        T copy = destination.GetComponent<T>();
+        if (!copy) copy = destination.AddComponent<T>();
+
+        if (!copy)
+        {
+            Debug.LogError($"[IcePathSpawner] Failed to AddComponent<{typeof(T).Name}> to {destination.name}. " +
+                           $"Is the script missing/invalid?");
+            return null;
+        }
+
+        CopySerializedFieldsRuntime(source, copy);
+        return copy;
+    }
+
+    private static void CopySerializedFieldsRuntime(UnityEngine.Component src, UnityEngine.Component dst)
+    {
+        if (!src || !dst) return;
+
+        System.Type type = src.GetType();
+        if (type != dst.GetType())
+        {
+            Debug.LogError($"[IcePathSpawner] CopySerializedFieldsRuntime type mismatch: {type} -> {dst.GetType()}");
+            return;
+        }
+
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        // Copy fields that Unity would serialize: public fields OR [SerializeField] private fields
+        foreach (FieldInfo f in type.GetFields(flags))
+        {
+            if (f.IsStatic) continue;
+            if (f.IsInitOnly) continue; // readonly
+            if (f.IsNotSerialized) continue;
+
+            bool isUnitySerialized = f.IsPublic || f.GetCustomAttribute<SerializeField>() != null;
+            if (!isUnitySerialized) continue;
+
+            object value = f.GetValue(src);
+            f.SetValue(dst, value);
+        }
+    }
+
+}
+
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/LaunchImmunityMarker.cs
 
 ```csharp
@@ -12193,6 +13197,1873 @@ public sealed class LaunchImmunityMarker : MonoBehaviour
         expiresAt = Time.time + Mathf.Max(0f, durationSeconds);
     }
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/NPCCarSpawner.cs
+
+```csharp
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Dedicated spawner for NPC traffic cars along the procedural track.
+/// Spawns cars ahead of the player that drive forward.
+/// Mirrors TrackObstacleSpawner patterns for consistency.
+/// </summary>
+public class NPCTrafficCarSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+    [SerializeField] private Transform carParent;
+
+    [Header("Spawn Mode")]
+    [Tooltip("If true, fills ahead of player on InitializeForRun.")]
+    [SerializeField] private bool preSpawnOnInitialize = true;
+
+    [Tooltip("If true, continues spawning ahead while driving.")]
+    [SerializeField] private bool streamSpawnDuringRun = true;
+
+    [Header("Car Prefabs")]
+    [SerializeField] private List<NPCCarType> carTypes = new List<NPCCarType>();
+
+    [Header("Path Sampling")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Header("Spawn Settings")]
+    [Tooltip("Ideal spacing between potential spawn slots (meters).")]
+    [SerializeField] private float carSpacing = 80f;
+
+    [SerializeField] private int maxActiveCars = 8;
+
+    [Tooltip("Minimum distance in front of the player where new cars spawn.")]
+    [SerializeField] private float minSpawnDistanceAhead = 100f;
+
+    [Tooltip("Maximum distance in front of the player to spawn cars.")]
+    [SerializeField] private float maxSpawnDistanceAhead = 300f;
+
+    [Header("Behind Spawning")]
+    [Tooltip("Allow spawning cars behind the player.")]
+    [SerializeField] private bool allowSpawnBehind = true;
+
+    [Tooltip("Minimum distance behind player to spawn (must be outside camera view).")]
+    [SerializeField] private float minSpawnDistanceBehind = 40f;
+
+    [Tooltip("Maximum distance behind player to spawn.")]
+    [SerializeField] private float maxSpawnDistanceBehind = 150f;
+
+    [Header("Camera Culling")]
+    [Tooltip("Reference to main camera (auto-finds if null).")]
+    [SerializeField] private Camera mainCamera;
+
+    [Tooltip("Extra margin outside viewport to ensure car is fully off-screen before spawning.")]
+    [SerializeField] private float viewportMargin = 0.1f;
+
+    [Header("Initial Pre-Spawn")]
+    [Tooltip("How far ahead (from start) we pre-fill cars before the run begins.")]
+    [SerializeField] private float initialPreSpawnDistance = 200f;
+
+    [Header("Despawn")]
+    [Tooltip("Despawn cars this far behind the player.")]
+    [SerializeField] private float despawnBehindDistance = 30f;
+
+    [Tooltip("Also despawn crashed cars after this duration.")]
+    [SerializeField] private float despawnCrashedAfter = 8f;
+
+    [Header("Randomization")]
+    [SerializeField] private float distanceJitter = 20f;
+
+    [Tooltip("Chance to spawn a car at each slot.")]
+    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.6f;
+
+    [Tooltip("Spawn chance multiplier based on distance (0=start, 1=end).")]
+    [SerializeField] private AnimationCurve spawnChanceByDistance = AnimationCurve.Linear(0f, 0.3f, 1f, 1f);
+
+    [Header("Lane Assignment")]
+    [Tooltip("Fraction of road half-width used for lane offset.")]
+    [SerializeField, Range(0f, 1f)] private float lateralFraction = 0.7f;
+
+    [SerializeField] private float edgeMargin = 0.8f;
+
+    [Tooltip("If true, prefer spawning in lanes (left/right) rather than center.")]
+    [SerializeField] private bool preferLanes = true;
+
+    [Tooltip("Chance to spawn in the oncoming lane (driving toward player).")]
+    [SerializeField, Range(0f, 1f)] private float oncomingLaneChance = 0.15f;
+
+    [Header("Spawn Safety Check")]
+    [SerializeField] private bool avoidImmediateObstacleHits = true;
+
+    [Tooltip("How far ahead along the path we check for blockers from the spawn point.")]
+    [SerializeField] private float spawnLookaheadDistance = 40f;
+
+    [Tooltip("Distance between check samples along the path.")]
+    [SerializeField] private float spawnLookaheadStep = 4f;
+
+    [Tooltip("Approx radius of the car for overlap checks.")]
+    [SerializeField] private float spawnProbeRadius = 1.2f;
+
+    [Tooltip("Layers that should block NPC car spawns (obstacles, parked cars, etc).")]
+    [SerializeField] private LayerMask spawnBlockerLayers;
+
+
+    [Header("Raycast")]
+    [SerializeField] private LayerMask roadLayer;
+    [SerializeField] private float raycastStartHeight = 6f;
+    [SerializeField] private float raycastDownDistance = 20f;
+    [SerializeField] private float carHeightOffset = 0.1f;
+
+    [Header("Timing")]
+    [SerializeField] private float updateInterval = 0.4f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // -------- Internals --------
+
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+
+    private readonly Dictionary<int, GameObject> _carsBySlot = new();
+    private readonly List<int> _toRemove = new();
+    private int _maxSlotIndex;
+    private float _updateTimer;
+    private int _lastClosestIdx;
+
+    private void Update()
+    {
+        if (_path.Count < 2 || playerTransform == null || !HasAnyValidCarType())
+            return;
+
+        if (!streamSpawnDuringRun)
+            return;
+
+        _updateTimer += Time.deltaTime;
+        if (_updateTimer < updateInterval) return;
+
+        _updateTimer = 0f;
+        StreamCars();
+    }
+
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+
+        if (trackGenerator == null || playerTransform == null)
+        {
+            Debug.LogError($"[NPCTrafficCarSpawner] InitializeForRun missing refs. generator={generator}, player={player}");
+            return;
+        }
+
+        if (verboseDebug)
+            Debug.Log("[NPCTrafficCarSpawner] InitializeForRun: rebuilding path + slots.");
+
+        RebuildPath();
+        ClearCars();
+        SetupSlots();
+
+        if (preSpawnOnInitialize)
+            PreSpawnInitialWindow();
+
+        _updateTimer = 0f;
+    }
+
+    public void SetPlayerTransform(Transform player)
+    {
+        playerTransform = player;
+    }
+
+    // -------- Path Building --------
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+        _lastClosestIdx = 0;
+
+        var src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private void SetupSlots()
+    {
+        _carsBySlot.Clear();
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / carSpacing);
+    }
+
+    // -------- Streaming --------
+
+    private void StreamCars()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float playerDist = GetPlayerDistance();
+
+        // -------- Spawn AHEAD --------
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / carSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / carSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            TrySpawnAtSlot(slot, playerDist);
+        }
+
+        // -------- Spawn BEHIND --------
+        if (allowSpawnBehind)
+        {
+            float behindStartDist = Mathf.Clamp(playerDist - maxSpawnDistanceBehind, 0f, _totalLength);
+            float behindEndDist = Mathf.Clamp(playerDist - minSpawnDistanceBehind, 0f, _totalLength);
+
+            int behindStartSlot = Mathf.Clamp(Mathf.FloorToInt(behindStartDist / carSpacing), 0, _maxSlotIndex);
+            int behindEndSlot = Mathf.Clamp(Mathf.FloorToInt(behindEndDist / carSpacing), 0, _maxSlotIndex);
+
+            for (int slot = behindStartSlot; slot <= behindEndSlot; slot++)
+            {
+                TrySpawnAtSlot(slot, playerDist);
+            }
+        }
+
+        // Despawn far behind
+        DespawnBehind(playerDist);
+    }
+
+    private void TrySpawnAtSlot(int slot, float playerDist)
+    {
+        if (_carsBySlot.ContainsKey(slot))
+            return;
+
+        if (_carsBySlot.Count >= maxActiveCars)
+            return;
+
+        float dist = slot * carSpacing;
+
+        // Check spawn chance
+        float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
+        float difficultyMult = spawnChanceByDistance != null
+            ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
+            : 1f;
+
+        float effectiveChance = spawnChancePerSlot * difficultyMult;
+        if (effectiveChance <= 0f)
+            return;
+
+        if (UnityEngine.Random.value > effectiveChance)
+            return;
+
+        // Pre-check: get spawn position and ensure it's NOT in camera view
+        SampleAlongPath(dist, out Vector3 candidatePos, out _);
+        if (IsPositionInCameraView(candidatePos))
+        {
+            if (verboseDebug)
+                Debug.Log($"[NPCTrafficCarSpawner] Skipped slot {slot} - in camera view");
+            return;
+        }
+
+        TrySpawnCarAtDistance(slot, dist);
+    }
+
+    private void DespawnBehind(float playerDist)
+    {
+        _toRemove.Clear();
+
+        foreach (var kvp in _carsBySlot)
+        {
+            float dist = kvp.Key * carSpacing;
+            bool behind = dist < playerDist - despawnBehindDistance;
+
+            // Also check if crashed and enough time passed
+            bool crashedAndOld = false;
+            if (kvp.Value != null)
+            {
+                var npc = kvp.Value.GetComponent<NPCTrafficCar>();
+                if (npc != null && npc.HasCrashed)
+                {
+                    // Could track crash time, but simpler: just despawn crashed cars that are behind
+                    crashedAndOld = behind;
+                }
+            }
+
+            if (behind || kvp.Value == null)
+                _toRemove.Add(kvp.Key);
+        }
+
+        foreach (int slot in _toRemove)
+        {
+            if (_carsBySlot.TryGetValue(slot, out var obj) && obj != null)
+                DestroyCarCompletely(obj);
+                
+            _carsBySlot.Remove(slot);
+        }
+    }
+
+    private void DestroyCarCompletely(GameObject car)
+    {
+        if (car == null) return;
+
+        // Destroy all children first (lights, trails, FX, etc.)
+        for (int i = car.transform.childCount - 1; i >= 0; i--)
+        {
+            var child = car.transform.GetChild(i);
+            if (child != null)
+                Destroy(child.gameObject);
+        }
+
+        // Destroy parent
+        Destroy(car);
+    }
+
+    private void PreSpawnInitialWindow()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(preSpawnEnd / carSpacing);
+
+        // Start a bit ahead so cars aren't right at spawn
+        int startSlot = Mathf.Max(1, Mathf.FloorToInt(minSpawnDistanceAhead / carSpacing));
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_carsBySlot.ContainsKey(slot))
+                continue;
+
+            if (_carsBySlot.Count >= maxActiveCars)
+                break;
+
+            float dist = slot * carSpacing;
+
+            float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = spawnChanceByDistance != null
+                ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f) continue;
+            if (UnityEngine.Random.value > effectiveChance) continue;
+
+            TrySpawnCarAtDistance(slot, dist);
+        }
+
+        if (verboseDebug)
+            Debug.Log($"[NPCTrafficCarSpawner] PreSpawn: {_carsBySlot.Count} cars up to {preSpawnEnd:F0}m.");
+    }
+
+    // -------- Spawning --------
+
+    private void TrySpawnCarAtDistance(int slot, float baseDist)
+    {
+        float jitter = UnityEngine.Random.Range(-distanceJitter, distanceJitter);
+        float sampleDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+
+        GameObject chosenPrefab = ChooseCarPrefab(sampleDist);
+        if (chosenPrefab == null)
+            return;
+
+        SampleAlongPath(sampleDist, out Vector3 pos, out Vector3 forward);
+
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = Vector3.forward;
+
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        // Lane offset
+        float halfWidth = trackGenerator.RoadWidth * 0.5f;
+        float usable = (halfWidth * lateralFraction) - edgeMargin;
+        if (usable <= 0f)
+            usable = halfWidth * 0.3f;
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        float lateralOffset;
+        bool isOncoming = UnityEngine.Random.value < oncomingLaneChance;
+
+        if (preferLanes)
+        {
+            // Pick left or right lane
+            float lanePos = UnityEngine.Random.value > 0.5f ? usable * 0.5f : -usable * 0.5f;
+            // Add small random variance within lane
+            lanePos += UnityEngine.Random.Range(-usable * 0.2f, usable * 0.2f);
+            lateralOffset = Mathf.Clamp(lanePos, -usable, usable);
+        }
+        else
+        {
+            lateralOffset = UnityEngine.Random.Range(-usable, usable);
+        }
+
+        if (!IsPathClearForSpawn(sampleDist, lateralOffset, spawnLookaheadDistance))
+        {
+            if (verboseDebug)
+                Debug.Log($"[NPCTrafficCarSpawner] Skipped slot {slot} - path blocked within {spawnLookaheadDistance}m");
+            return;
+        }
+
+        pos += right * lateralOffset;
+
+        // Raycast to ground
+        Vector3 origin = pos + Vector3.up * raycastStartHeight;
+        float maxRay = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+        {
+            if (verboseDebug)
+                Debug.LogWarning($"[NPCTrafficCarSpawner] No ground found at slot {slot}");
+            return;
+        }
+
+        Vector3 spawnPos = hit.point + Vector3.up * carHeightOffset;
+        if (IsPositionInCameraView(spawnPos))
+        {
+            if (verboseDebug)
+                Debug.Log($"[NPCTrafficCarSpawner] Skipped spawn at slot {slot} - final position in camera view");
+            return;
+        }
+
+        // Rotation: face forward (or backward if oncoming)
+        Vector3 spawnForward = isOncoming ? -flatForward : flatForward;
+        Quaternion rot = Quaternion.LookRotation(spawnForward, Vector3.up);
+
+        Transform parent = carParent != null ? carParent : transform;
+
+        // Spawn
+        GameObject car = Instantiate(chosenPrefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
+
+        // Inject track generator reference
+        var npcScript = car.GetComponent<NPCTrafficCar>();
+        if (npcScript != null)
+        {
+            npcScript.SetGenerator(trackGenerator);
+
+            // If oncoming, could set negative speed or reverse flag (if supported)
+            // For now, oncoming cars just face backward but NPCTrafficCar drives forward along track
+        }
+
+        _carsBySlot[slot] = car;
+
+        if (verboseDebug)
+            Debug.Log($"[NPCTrafficCarSpawner] Spawned car at slot {slot}, dist={sampleDist:F0}m, oncoming={isOncoming}");
+    }
+
+    // -------- Car Selection --------
+
+    private bool HasAnyValidCarType()
+    {
+        if (carTypes == null || carTypes.Count == 0)
+            return false;
+
+        foreach (var t in carTypes)
+        {
+            if (t != null && t.prefab != null && t.weight > 0f)
+                return true;
+        }
+        return false;
+    }
+
+    private GameObject ChooseCarPrefab(float distanceAlongTrack)
+    {
+        if (carTypes == null || carTypes.Count == 0 || _totalLength <= 0f)
+            return null;
+
+        float norm = Mathf.Clamp01(distanceAlongTrack / _totalLength);
+
+        float totalWeight = 0f;
+        float[] weights = new float[carTypes.Count];
+
+        for (int i = 0; i < carTypes.Count; i++)
+        {
+            var t = carTypes[i];
+            if (t == null || t.prefab == null || t.weight <= 0f)
+            {
+                weights[i] = 0f;
+                continue;
+            }
+
+            float w = GetWeightForType(t, norm);
+            weights[i] = w;
+            totalWeight += w;
+        }
+
+        if (totalWeight <= 0f)
+            return null;
+
+        float rand = UnityEngine.Random.value * totalWeight;
+        float accum = 0f;
+
+        for (int i = 0; i < weights.Length; i++)
+        {
+            accum += weights[i];
+            if (rand <= accum)
+                return carTypes[i].prefab;
+        }
+
+        return carTypes[carTypes.Count - 1].prefab;
+    }
+
+    private float GetWeightForType(NPCCarType t, float normDist)
+    {
+        float start = Mathf.Clamp01(t.startAtNormalizedDist);
+        float full = Mathf.Clamp01(t.fullWeightNormalizedDist);
+        float stop = Mathf.Clamp01(t.stopAtNormalizedDist);
+
+        // Ensure ordering
+        if (full < start) full = start;
+        if (stop < full) stop = full;
+
+        if (normDist < start || normDist > stop)
+            return 0f;
+
+        float factor;
+        if (normDist < full)
+            factor = Mathf.InverseLerp(start, full, normDist);
+        else
+            factor = 1f;
+
+        return t.weight * factor;
+    }
+
+    // -------- Path Utilities --------
+
+    private float GetPlayerDistance()
+    {
+        Vector3 p = playerTransform.position;
+        float best = float.MaxValue;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i], b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
+            Vector3 proj = Vector3.Lerp(a, b, t);
+            float d = (p - proj).sqrMagnitude;
+
+            if (d < best)
+            {
+                _lastClosestIdx = i;
+                best = d;
+            }
+        }
+
+        float segLen = Vector3.Distance(_path[_lastClosestIdx], _path[_lastClosestIdx + 1]);
+        Vector3 seg = _path[_lastClosestIdx + 1] - _path[_lastClosestIdx];
+        float prog = Mathf.Clamp01(Vector3.Dot(p - _path[_lastClosestIdx], seg) / (segLen * segLen + 0.0001f));
+
+        return _cumLengths[_lastClosestIdx] + prog * segLen;
+    }
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= dist)
+            {
+                idx = i;
+                break;
+            }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[idx + 1];
+        float segLen = segEnd - segStart;
+        float t = segLen > 0.0001f ? (dist - segStart) / segLen : 0f;
+
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        fwd = (_path[idx + 1] - _path[idx]).normalized;
+    }
+
+    private void ClearCars()
+    {
+        foreach (var kvp in _carsBySlot)
+        {
+            if (kvp.Value != null)
+                DestroyCarCompletely(kvp.Value);
+        }
+        _carsBySlot.Clear();
+    }
+
+
+
+    private static void GenerateSmoothedPath(List<Vector3> src, int subdivisions, List<Vector3> outList)
+    {
+        outList.Clear();
+        if (src == null || src.Count < 2) return;
+
+        outList.Add(src[0]);
+
+        for (int i = 0; i < src.Count - 1; i++)
+        {
+            Vector3 p0 = src[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = src[i];
+            Vector3 p2 = src[i + 1];
+            Vector3 p3 = src[Mathf.Min(i + 2, src.Count - 1)];
+
+            for (int s = 1; s <= subdivisions; s++)
+            {
+                float t = s / (float)subdivisions;
+                outList.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+    }
+
+    private bool IsPathClearForSpawn(float startDist, float lateralOffset, float checkDistance)
+    {
+        if (!avoidImmediateObstacleHits) return true;
+        if (spawnBlockerLayers.value == 0) return true;
+
+        float step = Mathf.Max(0.5f, spawnLookaheadStep);
+        float endDist = Mathf.Clamp(startDist + Mathf.Max(0f, checkDistance), 0f, _totalLength);
+
+        for (float d = startDist; d <= endDist; d += step)
+        {
+            SampleAlongPath(d, out Vector3 p, out Vector3 fwd);
+
+            Vector3 flatFwd = fwd; flatFwd.y = 0f;
+            if (flatFwd.sqrMagnitude < 0.0001f) flatFwd = Vector3.forward;
+            flatFwd.Normalize();
+
+            Vector3 right = Vector3.Cross(Vector3.up, flatFwd).normalized;
+            p += right * lateralOffset;
+
+            // ground it similarly to spawn logic
+            Vector3 origin = p + Vector3.up * raycastStartHeight;
+            float maxRay = raycastStartHeight + raycastDownDistance;
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+                p = hit.point + Vector3.up * carHeightOffset;
+
+            // Overlap check at this sample point
+            if (Physics.CheckSphere(p, spawnProbeRadius, spawnBlockerLayers, QueryTriggerInteraction.Ignore))
+                return false;
+        }
+
+        return true;
+    }
+
+
+    private bool IsPositionInCameraView(Vector3 worldPos)
+    {
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+
+        if (mainCamera == null)
+            return false; // Can't check, assume not visible
+
+        Vector3 viewportPoint = mainCamera.WorldToViewportPoint(worldPos);
+
+        // Check if in front of camera and within viewport (with margin)
+        bool inFront = viewportPoint.z > 0f;
+        bool inViewportX = viewportPoint.x > -viewportMargin && viewportPoint.x < 1f + viewportMargin;
+        bool inViewportY = viewportPoint.y > -viewportMargin && viewportPoint.y < 1f + viewportMargin;
+
+        return inFront && inViewportX && inViewportY;
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
+    }
+}
+
+/// <summary>
+/// Configuration for a type of NPC traffic car.
+/// </summary>
+[System.Serializable]
+public class NPCCarType
+{
+    [Header("Identity")]
+    public string id;
+    public GameObject prefab;
+
+    [Header("Weight")]
+    [Min(0f)] public float weight = 1f;
+
+    [Header("Distance Band (normalized 0-1 along track)")]
+    [Range(0f, 1f)] public float startAtNormalizedDist = 0f;
+    [Range(0f, 1f)] public float fullWeightNormalizedDist = 0.1f;
+    [Range(0f, 1f)] public float stopAtNormalizedDist = 1f;
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/NPCTrafficCar.cs
+
+```csharp
+using Pathfinding;
+using Pathfinding.RVO;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// NPCTrafficCar driven by A* Pathfinding Project (AIPath/RichAI).
+/// - We provide a moving destination ahead on the procedural track.
+/// - A* handles pathing + (optionally) RVO local avoidance.
+/// - We ground-snap using collider bottom so pivot can stay centered.
+/// - We rotate to movement direction and optionally align to ground normal.
+/// - Crash/SFX/VFX/Damage kept compatible with your existing systems.
+/// </summary>
+[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(Seeker))]
+public class NPCTrafficCar : MonoBehaviour
+{
+    // =========================
+    // Track / Goal
+    // =========================
+    [Header("Track Reference")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+
+    [Header("Track Sampling")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Tooltip("How far ahead along the track we set the A* destination.")]
+    [SerializeField] private float destinationLookAhead = 18f;
+
+    // =========================
+    // Speed
+    // =========================
+    [Header("Speed")]
+    [SerializeField] private float baseSpeed = 12f;
+    [SerializeField] private bool randomizeSpeed = true;
+    [SerializeField] private Vector2 speedRange = new Vector2(8f, 18f);
+
+    // =========================
+    // Lane / Bias (kept minimal)
+    // =========================
+    [Header("Lane Bias")]
+    [Tooltip("Road edge inset so we never clip.")]
+    [SerializeField] private float edgeMargin = 0.6f;
+
+    [Tooltip("Preferred lane: -1 left, 0 center, +1 right.")]
+    [SerializeField, Range(-1f, 1f)] private float preferredLane01 = 0f;
+
+    [Tooltip("Randomize preferred lane at spawn (biased toward center).")]
+    [SerializeField] private bool randomizePreferredLane = true;
+
+    // =========================
+    // Grounding (pivot centered)
+    // =========================
+    [Header("Grounding")]
+    [SerializeField] private LayerMask roadLayer;
+    [SerializeField] private float raycastStartHeight = 6f;
+    [SerializeField] private float raycastDownDistance = 30f;
+
+    [Tooltip("Extra clearance above the road once we place collider bottom on ground.")]
+    [SerializeField] private float groundClearance = 0.02f;
+
+    // =========================
+    // Rotation
+    // =========================
+    [Header("Rotation")]
+    [SerializeField] private bool rotateToVelocity = true;
+
+    [Tooltip("If true, car tilts with the road normal. If false, stays upright.")]
+    [SerializeField] private bool alignToGroundNormal = true;
+
+    [SerializeField] private float rotationLerp = 10f;
+
+    // =========================
+    // A* / RVO (kept minimal)
+    // =========================
+    [Header("A* Settings")]
+    [Tooltip("If present, RVOController will be used for smoother avoidance vs cars/obstacles.")]
+    [SerializeField] private bool enableRvoIfAvailable = true;
+
+    [Tooltip("How often we refresh the destination (seconds).")]
+    [SerializeField] private float destinationRefreshInterval = 0.08f;
+
+    // =========================
+    // Surface Effects (kept minimal)
+    // =========================
+    [Header("Surface Effects")]
+    [SerializeField] private bool enableSurfaceEffects = true;
+    [SerializeField] private LayerMask surfaceDetectionLayers;
+    [SerializeField] private float surfaceCheckInterval = 0.12f;
+    [SerializeField] private float surfaceSpeedLerpRate = 6f;
+    [SerializeField] private float maxSurfaceSpeedMultiplier = 2f;
+
+    [Header("Boost Pad Response")]
+    [SerializeField] private float boostPadSpeedBonus = 8f;
+    [SerializeField] private float boostPadDuration = 1.5f;
+
+
+    // =========================
+    // Collision / Crash (kept from your original)
+    // =========================
+    [Header("Collision Detection")]
+    [SerializeField] private LayerMask crashLayers;
+    [SerializeField] private bool ignoreRoadAndTerrain = true;
+
+    [Tooltip("Enable overlap detection as a fallback for kinematic movement.")]
+    [SerializeField] private bool enableOverlapDetection = true;
+    [SerializeField] private float overlapCheckInterval = 0.05f;
+    [SerializeField] private float overlapRadius = 0.8f;
+
+    [Header("Crash Physics Conversion")]
+    [SerializeField] private float minTransferVelocity = 2f;
+
+    [Header("Crash Bounce / Jolt")]
+    [SerializeField] private bool enableCrashBounce = true;
+    [SerializeField] private float crashBounceUpward = 6f;
+    [SerializeField] private float crashBounceHorizontal = 4f;
+    [SerializeField] private float crashBounceLateralScatter = 2f;
+    [SerializeField] private float minBounceImpulse = 3f;
+
+    [Header("Crash Spin")]
+    [SerializeField] private bool enableCrashSpin = true;
+    [SerializeField] private Vector2 crashSpinRange = new Vector2(180f, 540f);
+
+    [Header("Crash SFX")]
+    [SerializeField] private AudioClip crashClip;
+    [SerializeField, Range(0f, 1f)] private float crashVolume = 0.8f;
+    [SerializeField] private Vector2 crashPitchRange = new Vector2(0.9f, 1.1f);
+    [SerializeField] private float crashSpatialBlend = 1f;
+    [SerializeField] private float crashMinDistance = 5f;
+    [SerializeField] private float crashMaxDistance = 50f;
+
+    [Header("Crash VFX")]
+    [SerializeField] private GameObject crashVFXPrefab;
+    [SerializeField] private float crashVFXLifetime = 2f;
+
+    [Header("Screen Shake")]
+    [SerializeField] private bool enableScreenShake = true;
+    [SerializeField] private float crashShakeIntensity = 0.3f;
+    [SerializeField] private float crashShakeFrequency = 25f;
+    [SerializeField] private float shakeMaxDistance = 40f;
+    [SerializeField] private float shakeFullIntensityDistance = 8f;
+
+    [Header("Self Destruction")]
+    [SerializeField] private bool destroyAfterCrash = true;
+    [SerializeField] private float destroyDelay = 5f;
+
+    [Header("Camera Culling")]
+    [SerializeField] private bool cullAudioVisualsByCamera = true;
+    [SerializeField] private Camera mainCamera;
+    [SerializeField] private float viewportMargin = 0.05f;
+
+    [Header("Engine SFX")]
+    [SerializeField] private AudioSource engineAudioSource;
+    [SerializeField] private AudioClip engineDrivingClip;
+    [SerializeField, Range(0f, 1f)] private float engineVolume = 0.5f;
+    [SerializeField] private float enginePitchMin = 0.8f;
+    [SerializeField] private float enginePitchMax = 1.2f;
+    [SerializeField] private float engineFadeOutTime = 0.5f;
+    [SerializeField] private float engineMinDistance = 5f;
+    [SerializeField] private float engineMaxDistance = 20f;
+    [SerializeField] private AudioRolloffMode engineRolloffMode = AudioRolloffMode.Logarithmic;
+
+    [Header("Obstacle Push")]
+    [SerializeField] private bool pushObstaclesOnHit = true;
+    [SerializeField] private float obstacleHitImpulse = 8f;
+    [SerializeField] private float obstacleHitUpwardImpulse = 3f;
+    [SerializeField] private LayerMask obstaclePushLayers;
+
+    [Header("Guaranteed Crash Impact")]
+    [SerializeField] private float minGuaranteedImpulse = 6f;
+    [SerializeField] private bool guaranteePlayerDamage = true;
+    [SerializeField] private float guaranteedPlayerHpDamage = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float guaranteedPlayerFuelPercent = 0.02f;
+    [SerializeField] private float minFakeImpactSpeed = 8f;
+    [SerializeField, Range(0f, 1f)] private float minCrashFxSeverity = 0.3f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // =========================
+    // Internals
+    // =========================
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+
+    private Vector3 _lastDest;
+    private bool _hasLastDest;
+
+    private Rigidbody _rb;
+    private Collider _col;
+
+    private bool _initialized;
+    private bool _crashed;
+
+    private float _dist;
+    private float _speed;
+
+    private float _preferredLateral;
+    private float _pivotToBottom;
+
+    private Vector3 _lastVelocity;
+    private Vector3 _prevPosition;
+
+    private float _surfaceCheckTimer;
+    private float _currentSpeedMultiplier = 1f;
+    private float _targetSpeedMultiplier = 1f;
+    private float _boostEndTime;
+
+    private float _overlapTimer;
+    private float _destTimer;
+
+    private AIBase _aiBase;              // AIPath or RichAI derives from AIBase
+    private IAstarAI _ai;                // interface
+    private Seeker _seeker;
+    private RVOController _rvo;
+
+    private enum SurfaceType { Default, Boost, Ice }
+    private SurfaceType _currentSurface = SurfaceType.Default;
+
+    private void Awake()
+    {
+        if (!trackGenerator)
+            trackGenerator = FindFirstObjectByType<ProceduralTrackGenerator>();
+
+        _rb = GetComponent<Rigidbody>();
+        _col = GetComponent<Collider>();
+        _seeker = GetComponent<Seeker>();
+
+        _aiBase = GetComponent<AIBase>();
+        _ai = GetComponent<IAstarAI>();
+        _rvo = GetComponent<RVOController>();
+
+        if (_rvo != null)
+        {
+            _rvo.enabled = enableRvoIfAvailable;
+        }
+        // Script-driven grounding/rotation wants kinematic until crash.
+        _rb.isKinematic = true;
+        _rb.useGravity = false;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+
+        if (_aiBase != null)
+        {
+            // We handle rotation + grounding, so disable built-in rotation/gravity behavior.
+            _aiBase.updateRotation = false;
+            _aiBase.gravity = Vector3.zero;
+        }
+
+    }
+
+    private void OnEnable()
+    {
+        _initialized = false;
+        _crashed = false;
+
+        _overlapTimer = 0f;
+        _destTimer = 0f;
+
+        _prevPosition = transform.position;
+        _lastVelocity = Vector3.zero;
+    }
+
+    private void Start()
+    {
+        InitializeIfNeeded();
+    }
+
+    private void Update()
+    {
+        if (_crashed) return;
+        if (!InitializeIfNeeded()) return;
+
+        SetupEngineAudio();
+        UpdateEngineAudio();
+
+        float dt = Time.deltaTime;
+        if (dt <= 0f) return;
+
+        if (enableSurfaceEffects)
+        {
+            CheckSurfaceEffects(dt);
+            UpdateSurfaceSpeed(dt);
+        }
+
+        // Refresh our destination point ahead on the track at a sane interval
+        _destTimer -= dt;
+        if (_destTimer <= 0f)
+        {
+            _destTimer = Mathf.Max(0.02f, destinationRefreshInterval);
+
+            // Progress is computed from current position projected to the track.
+            _dist = GetDistanceAlongTrack(transform.position);
+            float targetDist = Mathf.Min(_dist + destinationLookAhead, _totalLength);
+
+            SampleAlongPath(targetDist, out Vector3 trackPos, out Vector3 trackFwd);
+
+            // Apply lane bias at the destination (simple and stable)
+            Vector3 forwardFlat = trackFwd; forwardFlat.y = 0f;
+            if (forwardFlat.sqrMagnitude < 0.0001f) forwardFlat = transform.forward;
+            forwardFlat.Normalize();
+
+            Vector3 right = Vector3.Cross(Vector3.up, forwardFlat).normalized;
+
+            float halfWidth = GetHalfRoadWidth();
+            float maxLateral = Mathf.Max(0f, halfWidth - edgeMargin);
+            Vector3 dest = trackPos + right * Mathf.Clamp(_preferredLateral, -maxLateral, maxLateral);
+
+            if (_ai != null)
+            {
+                if (!_hasLastDest || (dest - _lastDest).sqrMagnitude > 1.0f) // ~1m
+                {
+                    _lastDest = dest;
+                    _hasLastDest = true;
+
+                    _ai.destination = dest;
+                    _ai.canSearch = true;
+                    _ai.canMove = true;
+                }
+            }
+        }
+
+        // Overlap crash fallback
+        if (enableOverlapDetection)
+        {
+            _overlapTimer -= dt;
+            if (_overlapTimer <= 0f)
+            {
+                _overlapTimer = overlapCheckInterval;
+                CheckOverlapAndCrash();
+            }
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (_crashed) return;
+        if (!_initialized) return;
+
+        float dt = Time.deltaTime;
+        if (dt <= 0f) return;
+
+
+        // AIPath/RichAI already moved transform by now.
+        Vector3 pos = transform.position;
+
+        // Ground snap Y only (don�t fight A* in XZ)
+        Vector3 groundNormal = Vector3.up;
+        if (RaycastGround(pos, out RaycastHit groundHit))
+        {
+            groundNormal = groundHit.normal;
+            pos.y = groundHit.point.y + _pivotToBottom + groundClearance;
+            transform.position = pos;
+        }
+
+        // Velocity estimate
+        _lastVelocity = (transform.position - _prevPosition) / dt;
+        _prevPosition = transform.position;
+
+        // Rotation from velocity
+        if (rotateToVelocity)
+        {
+            Vector3 moveDir = _lastVelocity; moveDir.y = 0f;
+            if (moveDir.sqrMagnitude < 0.0001f) moveDir = transform.forward;
+
+            Vector3 up = alignToGroundNormal ? groundNormal : Vector3.up;
+
+            Vector3 dirOnPlane = Vector3.ProjectOnPlane(moveDir, up);
+            if (dirOnPlane.sqrMagnitude < 0.0001f) dirOnPlane = Vector3.ProjectOnPlane(transform.forward, up);
+
+            Quaternion targetRot = Quaternion.LookRotation(dirOnPlane.normalized, up);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-rotationLerp * dt));
+        }
+    }
+
+
+    // ------------------------------------------------------------
+    // Public API expected by spawner
+    // ------------------------------------------------------------
+    public bool HasCrashed => _crashed;
+
+    public void SetGenerator(ProceduralTrackGenerator generator)
+    {
+        trackGenerator = generator;
+        _initialized = false;
+        InitializeIfNeeded();
+    }
+
+    // ============================================================
+    // Initialization
+    // ============================================================
+    private bool InitializeIfNeeded()
+    {
+        if (_initialized) return true;
+
+        if (!trackGenerator)
+            trackGenerator = FindFirstObjectByType<ProceduralTrackGenerator>();
+        if (!trackGenerator) return false;
+
+        var srcPoints = trackGenerator.PathPoints;
+        if (srcPoints == null || srcPoints.Count < 2) return false;
+
+        RebuildPath(srcPoints);
+        if (_path.Count < 2 || _totalLength <= 0.01f) return false;
+
+        // Speed
+        if (randomizeSpeed)
+        {
+            float min = Mathf.Min(speedRange.x, speedRange.y);
+            float max = Mathf.Max(speedRange.x, speedRange.y);
+            _speed = UnityEngine.Random.Range(min, max);
+        }
+        else
+        {
+            _speed = baseSpeed;
+        }
+        baseSpeed = _speed;
+
+        // Lane bias
+        float halfWidth = GetHalfRoadWidth();
+        float maxLateral = Mathf.Max(0f, halfWidth - edgeMargin);
+
+        if (randomizePreferredLane)
+        {
+            float r = UnityEngine.Random.value;
+            if (r < 0.65f) preferredLane01 = UnityEngine.Random.Range(-0.2f, 0.2f);
+            else preferredLane01 = UnityEngine.Random.value < 0.5f ? -0.8f : 0.8f;
+        }
+        _preferredLateral = Mathf.Clamp(preferredLane01, -1f, 1f) * maxLateral;
+
+        // Pivot-to-bottom for grounding
+        ComputePivotToBottom();
+
+        // Sync A* speed
+        if (_ai != null)
+        {
+            _ai.canMove = true;
+            _ai.canSearch = true;
+        }
+
+        if (randomizePreferredLane)
+
+
+            _prevPosition = transform.position;
+        _initialized = true;
+
+        if (verboseDebug)
+            Debug.Log($"[NPCTrafficCar] Init: speed={_speed:F1}, prefLane01={preferredLane01:F2}, prefLat={_preferredLateral:F2}, pivotToBottom={_pivotToBottom:F3}");
+
+        return true;
+    }
+
+    private void ComputePivotToBottom()
+    {
+        if (_col == null)
+        {
+            _pivotToBottom = 0.5f;
+            return;
+        }
+
+        Bounds b = _col.bounds;
+        _pivotToBottom = Mathf.Max(0f, transform.position.y - b.min.y);
+
+        if (_pivotToBottom < 0.01f)
+            _pivotToBottom = b.extents.y;
+    }
+
+    // ============================================================
+    // Track sampling
+    // ============================================================
+    private void RebuildPath(List<Vector3> src)
+    {
+        _path.Clear();
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+
+        _totalLength = len;
+    }
+
+    private float GetDistanceAlongTrack(Vector3 worldPos)
+    {
+        float best = float.MaxValue;
+        int bestIdx = 0;
+        float bestT = 0f;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i];
+            Vector3 b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(worldPos - a, ab) / abSqr);
+            Vector3 proj = Vector3.Lerp(a, b, t);
+            float d = (worldPos - proj).sqrMagnitude;
+
+            if (d < best)
+            {
+                best = d;
+                bestIdx = i;
+                bestT = t;
+            }
+        }
+
+        float segLen = Vector3.Distance(_path[bestIdx], _path[bestIdx + 1]);
+        return _cumLengths[bestIdx] + bestT * segLen;
+    }
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= dist) { idx = i; break; }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[idx + 1];
+        float segLen = segEnd - segStart;
+        float t = segLen > 0.0001f ? (dist - segStart) / segLen : 0f;
+
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        Vector3 dir = (_path[idx + 1] - _path[idx]);
+        fwd = dir.sqrMagnitude > 0.0001f ? dir.normalized : Vector3.forward;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> src, int subdivisionsPerSegment, List<Vector3> outPts)
+    {
+        outPts.Clear();
+        if (src == null || src.Count < 2) return;
+
+        for (int i = 0; i < src.Count - 1; i++)
+        {
+            Vector3 p0 = src[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = src[i];
+            Vector3 p2 = src[i + 1];
+            Vector3 p3 = src[Mathf.Min(i + 2, src.Count - 1)];
+
+            for (int s = 0; s < subdivisionsPerSegment; s++)
+            {
+                float t = s / (float)subdivisionsPerSegment;
+                outPts.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+
+        outPts.Add(src[src.Count - 1]);
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
+    }
+
+    // ============================================================
+    // Grounding helpers
+    // ============================================================
+    private bool RaycastGround(Vector3 pos, out RaycastHit hit)
+    {
+        Vector3 origin = new Vector3(pos.x, pos.y + raycastStartHeight, pos.z);
+        float maxDist = raycastStartHeight + raycastDownDistance;
+        return Physics.Raycast(origin, Vector3.down, out hit, maxDist, roadLayer, QueryTriggerInteraction.Collide);
+    }
+
+    private float GetHalfRoadWidth()
+    {
+        if (trackGenerator != null) return trackGenerator.RoadWidth * 0.5f;
+        return 5f;
+    }
+
+    // ============================================================
+    // Surface Effects (minimal)
+    // ============================================================
+    private void CheckSurfaceEffects(float dt)
+    {
+        _surfaceCheckTimer -= dt;
+        if (_surfaceCheckTimer > 0f) return;
+        _surfaceCheckTimer = surfaceCheckInterval;
+
+        if (surfaceDetectionLayers.value == 0) return;
+
+        Vector3 p = transform.position + Vector3.up * 0.25f;
+        if (Physics.Raycast(p, Vector3.down, out RaycastHit hit, 2f, surfaceDetectionLayers, QueryTriggerInteraction.Collide))
+        {
+            if (hit.collider.CompareTag("BoostPad"))
+            {
+                _currentSurface = SurfaceType.Boost;
+                _boostEndTime = Time.time + boostPadDuration;
+            }
+            else if (hit.collider.CompareTag("Ice"))
+            {
+                _currentSurface = SurfaceType.Ice;
+            }
+            else _currentSurface = SurfaceType.Default;
+        }
+        else _currentSurface = SurfaceType.Default;
+    }
+
+    private void UpdateSurfaceSpeed(float dt)
+    {
+        float targetMult = 1f;
+
+        if (_currentSurface == SurfaceType.Ice)
+            targetMult = Mathf.Min(maxSurfaceSpeedMultiplier, 1.25f);
+
+        if (Time.time < _boostEndTime)
+        {
+            float bonusMult = (baseSpeed <= 0.01f) ? 1f : (baseSpeed + boostPadSpeedBonus) / baseSpeed;
+            targetMult = Mathf.Min(maxSurfaceSpeedMultiplier, Mathf.Max(targetMult, bonusMult));
+        }
+
+        _targetSpeedMultiplier = targetMult;
+        _currentSpeedMultiplier = Mathf.Lerp(_currentSpeedMultiplier, _targetSpeedMultiplier, 1f - Mathf.Exp(-surfaceSpeedLerpRate * dt));
+
+        _speed = baseSpeed * _currentSpeedMultiplier;
+
+        _speed = baseSpeed * _currentSpeedMultiplier;
+
+        if (_ai != null) _ai.maxSpeed = _speed;
+    }
+
+    // ============================================================
+    // Crash / Collision (kept compatible)
+    // ============================================================
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (_crashed) return;
+        if (collision == null || collision.collider == null) return;
+        if (!ShouldCrashWith(collision.collider)) return;
+
+        Vector3 impactDir = (collision.contactCount > 0)
+            ? -collision.GetContact(0).normal
+            : (_lastVelocity.sqrMagnitude > 0.01f ? _lastVelocity.normalized : transform.forward);
+
+        float impactSpeed = collision.relativeVelocity.magnitude;
+        TriggerCrash(impactDir, impactSpeed, collision.collider);
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (_crashed) return;
+        if (other == null) return;
+        if (!ShouldCrashWith(other)) return;
+
+        Vector3 impactDir = (other.transform.position - transform.position);
+        if (impactDir.sqrMagnitude < 0.001f) impactDir = transform.forward;
+        impactDir.Normalize();
+
+        float impactSpeed = _lastVelocity.magnitude;
+        TriggerCrash(impactDir, impactSpeed, other);
+    }
+
+    private void CheckOverlapAndCrash()
+    {
+        if (_crashed) return;
+        if (crashLayers.value == 0) return;
+
+        Collider[] hits = Physics.OverlapSphere(transform.position, overlapRadius, crashLayers, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return;
+
+        foreach (var other in hits)
+        {
+            if (other == null) continue;
+            if (other.transform.IsChildOf(transform)) continue;
+            if (other == _col) continue;
+
+            if (ShouldCrashWith(other))
+            {
+                Vector3 impactDir = (other.transform.position - transform.position);
+                if (impactDir.sqrMagnitude < 0.001f) impactDir = transform.forward;
+                impactDir.Normalize();
+
+                TriggerCrash(impactDir, _lastVelocity.magnitude, other);
+                return;
+            }
+        }
+    }
+
+    private bool ShouldCrashWith(Collider other)
+    {
+        if (other == null) return false;
+
+        int layer = other.gameObject.layer;
+        if ((crashLayers.value & (1 << layer)) == 0) return false;
+
+        if (ignoreRoadAndTerrain)
+        {
+            int road = LayerMask.NameToLayer("RoadSurface");
+            int terrain = LayerMask.NameToLayer("Terrain");
+            if (layer == road || layer == terrain) return false;
+        }
+
+        return true;
+    }
+
+    private void TriggerCrash(Vector3 impactDir, float impactSpeed, Collider other)
+    {
+        if (_crashed) return;
+        _crashed = true;
+
+        // Stop A*
+        if (_aiBase != null) _aiBase.enabled = false;
+        if (_ai != null) { _ai.canMove = false; _ai.canSearch = false; }
+        if (_rvo != null) _rvo.enabled = false;
+
+        Vector3 contactPos = transform.position;
+        Vector3 contactNormal = -impactDir;
+        if (contactNormal.sqrMagnitude < 0.001f) contactNormal = Vector3.up;
+
+        bool behindPlayer = IsBehindPlayer();
+
+        if (!behindPlayer)
+        {
+            PlayCrashSfx(contactPos);
+            SpawnCrashVfx(contactPos, contactNormal);
+            TriggerScreenShake();
+        }
+
+        StopEngineAudio();
+
+        ApplyObstaclePush(other, impactDir);
+        ApplyGuaranteedPlayerDamage(other, impactDir);
+
+        ConvertToPhysics(impactDir, impactSpeed);
+
+        if (destroyAfterCrash)
+            Invoke(nameof(DestroySelfCompletely), Mathf.Max(0f, destroyDelay));
+    }
+
+    private bool IsBehindPlayer()
+    {
+        var player = FindFirstObjectByType<CarController>();
+        if (player == null) return false;
+
+        Vector3 toNpc = (transform.position - player.transform.position);
+        return Vector3.Dot(player.transform.forward, toNpc.normalized) < -0.15f;
+    }
+
+    private bool IsInCameraView()
+    {
+        if (!cullAudioVisualsByCamera) return true;
+
+        if (mainCamera == null) mainCamera = Camera.main;
+        if (mainCamera == null) return true;
+
+        Vector3 vp = mainCamera.WorldToViewportPoint(transform.position);
+        if (vp.z < 0f) return false;
+
+        return vp.x >= -viewportMargin && vp.x <= 1f + viewportMargin &&
+               vp.y >= -viewportMargin && vp.y <= 1f + viewportMargin;
+    }
+
+    private void PlayCrashSfx(Vector3 pos)
+    {
+        if (crashClip == null) return;
+        if (cullAudioVisualsByCamera && !IsInCameraView()) return;
+
+        GameObject go = new GameObject("NPC_CrashSFX");
+        go.transform.position = pos;
+
+        AudioSource src = go.AddComponent<AudioSource>();
+        src.clip = crashClip;
+        src.spatialBlend = crashSpatialBlend;
+        src.minDistance = crashMinDistance;
+        src.maxDistance = crashMaxDistance;
+        src.volume = crashVolume;
+        src.pitch = UnityEngine.Random.Range(Mathf.Min(crashPitchRange.x, crashPitchRange.y), Mathf.Max(crashPitchRange.x, crashPitchRange.y));
+        src.rolloffMode = AudioRolloffMode.Logarithmic;
+
+        src.Play();
+        Destroy(go, crashClip.length + 0.25f);
+    }
+
+    private void SpawnCrashVfx(Vector3 pos, Vector3 normal)
+    {
+        if (crashVFXPrefab == null) return;
+        if (cullAudioVisualsByCamera && !IsInCameraView()) return;
+
+        Quaternion rot = Quaternion.LookRotation(Vector3.ProjectOnPlane(transform.forward, normal).normalized, normal);
+        GameObject fx = Instantiate(crashVFXPrefab, pos, rot);
+        Destroy(fx, Mathf.Max(0.1f, crashVFXLifetime));
+    }
+
+    private void TriggerScreenShake()
+    {
+        if (!enableScreenShake) return;
+        // Your existing shake system call goes here.
+    }
+
+    private void DestroySelfCompletely()
+    {
+        for (int i = transform.childCount - 1; i >= 0; i--)
+        {
+            var child = transform.GetChild(i);
+            if (child != null) Destroy(child.gameObject);
+        }
+        Destroy(gameObject);
+    }
+
+    private void ConvertToPhysics(Vector3 impactDir, float impactSpeed)
+    {
+        enabled = false;
+
+        _rb.isKinematic = false;
+        _rb.useGravity = true;
+        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        _rb.constraints = RigidbodyConstraints.None;
+
+        Vector3 vel = _lastVelocity;
+        float minSpeed = Mathf.Max(minTransferVelocity, _speed * 0.5f, 5f);
+        if (vel.magnitude < minSpeed)
+            vel = transform.forward * minSpeed;
+
+        _rb.velocity = vel;
+
+        if (enableCrashBounce)
+        {
+            Vector3 flatDir = impactDir; flatDir.y = 0f;
+            if (flatDir.sqrMagnitude < 0.001f) flatDir = transform.forward;
+            flatDir.Normalize();
+
+            float impulse = Mathf.Max(minBounceImpulse, crashBounceHorizontal);
+            Vector3 bounce = (-flatDir * impulse) + Vector3.up * crashBounceUpward;
+            bounce += transform.right * UnityEngine.Random.Range(-crashBounceLateralScatter, crashBounceLateralScatter);
+            _rb.AddForce(bounce, ForceMode.Impulse);
+        }
+
+        if (enableCrashSpin)
+        {
+            float spin = UnityEngine.Random.Range(Mathf.Min(crashSpinRange.x, crashSpinRange.y), Mathf.Max(crashSpinRange.x, crashSpinRange.y));
+            Vector3 axis = UnityEngine.Random.onUnitSphere;
+            _rb.AddTorque(axis * spin, ForceMode.Impulse);
+        }
+    }
+
+    private void ApplyObstaclePush(Collider other, Vector3 impactDir)
+    {
+        if (!pushObstaclesOnHit) return;
+        if (other == null) return;
+
+        if (obstaclePushLayers.value != 0 && (obstaclePushLayers.value & (1 << other.gameObject.layer)) == 0)
+            return;
+
+        Rigidbody otherRb = other.attachedRigidbody;
+        if (otherRb == null) return;
+        if (otherRb.isKinematic) return;
+
+        Vector3 pushDir = impactDir; pushDir.y = 0f;
+        if (pushDir.sqrMagnitude < 0.001f) pushDir = transform.forward;
+        pushDir.Normalize();
+
+        float effectiveImpulse = Mathf.Max(obstacleHitImpulse, minGuaranteedImpulse);
+        Vector3 impulse = (-pushDir * effectiveImpulse) + Vector3.up * obstacleHitUpwardImpulse;
+
+        Vector3 contactPoint = other.ClosestPoint(transform.position);
+        otherRb.AddForceAtPosition(impulse, contactPoint, ForceMode.Impulse);
+    }
+
+    private void ApplyGuaranteedPlayerDamage(Collider other, Vector3 impactDir)
+    {
+        if (!guaranteePlayerDamage) return;
+        if (other == null) return;
+
+        CarController car = other.GetComponentInParent<CarController>();
+        if (car == null) return;
+
+        Vector3 contactPoint = other.ClosestPoint(transform.position);
+        Vector3 contactNormal = (transform.position - contactPoint);
+        if (contactNormal.sqrMagnitude < 0.001f) contactNormal = Vector3.up;
+        contactNormal.Normalize();
+
+        Vector3 hitDir = -impactDir;
+        if (hitDir.sqrMagnitude < 0.001f) hitDir = -transform.forward;
+        hitDir.Normalize();
+
+        car.ApplyDirectDamageWithCrashFX(
+            guaranteedPlayerHpDamage,
+            guaranteedPlayerFuelPercent,
+            contactPoint,
+            contactNormal,
+            hitDir,
+            minFakeImpactSpeed,
+            minCrashFxSeverity
+        );
+    }
+
+    // ============================================================
+    // Engine Audio (kept simple)
+    // ============================================================
+    private bool _engineSetup;
+
+    private void SetupEngineAudio()
+    {
+        if (_engineSetup) return;
+        _engineSetup = true;
+
+        if (engineAudioSource == null)
+        {
+            engineAudioSource = GetComponent<AudioSource>();
+            if (engineAudioSource == null)
+                engineAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        engineAudioSource.loop = true;
+        engineAudioSource.playOnAwake = false;
+        engineAudioSource.spatialBlend = 1f;
+        engineAudioSource.dopplerLevel = 5f;
+        engineAudioSource.rolloffMode = engineRolloffMode;
+        engineAudioSource.minDistance = engineMinDistance;
+        engineAudioSource.maxDistance = engineMaxDistance;
+        engineAudioSource.volume = engineVolume;
+
+        if (engineDrivingClip != null)
+        {
+            engineAudioSource.clip = engineDrivingClip;
+            engineAudioSource.Play();
+        }
+    }
+
+    private void UpdateEngineAudio()
+    {
+        if (engineAudioSource == null) return;
+
+        bool visible = IsInCameraView();
+        engineAudioSource.mute = (_crashed || !visible);
+
+        float speedNorm = Mathf.Clamp01(_speed / 20f);
+        engineAudioSource.pitch = Mathf.Lerp(enginePitchMin, enginePitchMax, speedNorm);
+    }
+
+    private static void TrySetRvoMaxSpeed(RVOController rvo, float value)
+    {
+        if (rvo == null) return;
+
+        // Some versions have a public field "maxSpeed"
+        var f = typeof(RVOController).GetField("maxSpeed");
+        if (f != null && f.FieldType == typeof(float))
+        {
+            f.SetValue(rvo, value);
+            return;
+        }
+
+        // Some versions have a property "maxSpeed"
+        var p = typeof(RVOController).GetProperty("maxSpeed");
+        if (p != null && p.PropertyType == typeof(float) && p.CanWrite)
+        {
+            p.SetValue(rvo, value);
+            return;
+        }
+
+        // Otherwise: this A* version likely wants SetTarget(...) (no maxSpeed member).
+        // We don't force it here to avoid fighting AIPath/RichAI internals.
+    }
+
+
+    private void StopEngineAudio()
+    {
+        if (engineAudioSource == null) return;
+        StopAllCoroutines();
+        StartCoroutine(FadeOutEngine());
+    }
+
+    private System.Collections.IEnumerator FadeOutEngine()
+    {
+        if (engineAudioSource == null) yield break;
+
+        float startVol = engineAudioSource.volume;
+        float elapsed = 0f;
+
+        while (elapsed < engineFadeOutTime)
+        {
+            elapsed += Time.deltaTime;
+            if (engineAudioSource != null)
+                engineAudioSource.volume = Mathf.Lerp(startVol, 0f, elapsed / engineFadeOutTime);
+            yield return null;
+        }
+
+        if (engineAudioSource != null)
+            engineAudioSource.Stop();
+    }
+}
+
+```
+
+## Assets/Racing_Assets/Racing_Scripts/ObstaclePathPreview.cs
+
+```csharp
+using System.Collections;
+using UnityEngine;
+
+[RequireComponent(typeof(LineRenderer))]
+public class ObstaclePathPreview : MonoBehaviour
+{
+    [Header("Line")]
+    [SerializeField] private float width = 0.15f;
+    [SerializeField] private float yOffset = 0.05f;
+    [SerializeField] private bool useWorldSpace = true;
+
+    [Header("Fade")]
+    [SerializeField] private float defaultFadeSeconds = 0.25f;
+
+    private LineRenderer _lr;
+    private Coroutine _fadeCo;
+
+    private Vector3 _a, _b;
+    private float _alpha = 1f;
+
+    private void Awake()
+    {
+        _lr = GetComponent<LineRenderer>();
+        _lr.useWorldSpace = useWorldSpace;
+        _lr.positionCount = 2;
+        _lr.widthMultiplier = width;
+
+        // IMPORTANT: line material must support transparency.
+        if (_lr.material == null)
+            _lr.material = new Material(Shader.Find("Sprites/Default"));
+    }
+
+    public void SetEndpoints(Vector3 a, Vector3 b)
+    {
+        _a = a; _b = b;
+        ApplyPositions();
+    }
+
+    public void FadeIn(float seconds = -1f) => FadeTo(1f, seconds);
+    public void FadeOut(float seconds = -1f) => FadeTo(0f, seconds);
+
+    public void FadeTo(float targetAlpha, float seconds = -1f)
+    {
+        if (seconds <= 0f) seconds = defaultFadeSeconds;
+
+        if (_fadeCo != null) StopCoroutine(_fadeCo);
+        if(this.gameObject.activeInHierarchy)
+            _fadeCo = StartCoroutine(FadeRoutine(targetAlpha, seconds));
+    }
+
+    private IEnumerator FadeRoutine(float target, float seconds)
+    {
+        float start = _alpha;
+        float t = 0f;
+
+        while (t < 1f)
+        {
+            t += Time.deltaTime / Mathf.Max(0.0001f, seconds);
+            _alpha = Mathf.Lerp(start, target, Mathf.Clamp01(t));
+            ApplyAlpha();
+            yield return null;
+        }
+
+        _alpha = target;
+        ApplyAlpha();
+    }
+
+    private void LateUpdate()
+    {
+        // If the obstacle is moving/rotating and you want the line to �track� its endpoints,
+        // call SetEndpoints each frame from the owner. Otherwise this is fine for static endpoints.
+        ApplyPositions();
+    }
+
+    private void ApplyPositions()
+    {
+        if (_lr == null) return;
+
+        Vector3 p0 = _a; p0.y += yOffset;
+        Vector3 p1 = _b; p1.y += yOffset;
+
+        _lr.SetPosition(0, p0);
+        _lr.SetPosition(1, p1);
+    }
+
+    private void OnDisable()
+    {
+        if (_fadeCo != null) StopCoroutine(_fadeCo);
+        _fadeCo = null;
+
+        _alpha = 0f;
+        ApplyAlpha();
+
+        if (_lr) _lr.enabled = false;   // hard off
+    }
+
+    private void OnEnable()
+    {
+        if (_lr) _lr.enabled = true;
+    }
+
+    private void ApplyAlpha()
+    {
+        if (_lr == null) return;
+
+        // Preserve existing color, just change alpha
+        Color c0 = _lr.startColor; c0.a = _alpha;
+        Color c1 = _lr.endColor; c1.a = _alpha;
+        _lr.startColor = c0;
+        _lr.endColor = c1;
+
+        // Also push alpha into material color (Sprites/Default uses _Color)
+        if (_lr.material && _lr.material.HasProperty("_Color"))
+        {
+            Color mc = _lr.material.color;
+            mc.a = _alpha;
+            _lr.material.color = mc;
+        }
+    }
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/PowerupPickupTween.cs
@@ -13199,7 +16070,6 @@ public class ProceduralTrackGenerator : MonoBehaviour
             verts[L] = leftPos;
             verts[R] = rightPos;
 
-            normals[L] = normals[R] = Vector3.up;
 
             if (i > 0)
                 length += Vector3.Distance(path[i], path[i - 1]);
@@ -13236,11 +16106,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
         {
             name = "ProceduralRoadMesh",
             vertices = verts,
-            normals = normals,
             uv = uvs,
             uv2 = uv2s,
             triangles = tris
         };
+        m.RecalculateNormals();
+        m.RecalculateTangents();
+        m.RecalculateBounds();
 
         _meshFilter.sharedMesh = m;
         if (_meshCollider != null)
@@ -14531,6 +17403,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private Collider[] _childColliders;
     private float _overlapTimer;
     private float _baseLightIntensity = 3.5f;
+    private float _spawnGraceUntil = 0f;
 
     // NEW: collision tracking for delayed conversion
     private int _pendingCollisionFrames = 0;
@@ -14605,6 +17478,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _leftWS = SpawnUtils.ProjectOntoSurface(_leftWS, out _, upOffsetForCast, 25f, roadMask);
         _rightWS = SpawnUtils.ProjectOntoSurface(_rightWS, out _, upOffsetForCast, 25f, roadMask);
 
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview) { preview.SetEndpoints(_leftWS, _rightWS); preview.FadeIn(0.2f); }
+
         if (randomizePathLength)
         {
             float minF = Mathf.Clamp01(minPathFraction);
@@ -14642,12 +17518,37 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
+        _spawnGraceUntil = Time.time + 0.1f;
+    }
+
+    private void OnEnable()
+    {
+        // Reset state flags for pooling / re-enable support
+        _convertedToPhysics = false;
+        _fxKilled = false;
+        _waiting = false;
+        _pendingCollisionFrames = 0;
+        _pendingCollider = null;
+
+        _prevPosition = transform.position;
+        _lastVelocity = Vector3.zero;
+        _overlapTimer = 0f;
+
+        // Ensure light and preview are OFF until Start() properly initializes
+        if (telegraphLight != null)
+            telegraphLight.enabled = false;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+            preview.FadeOut(0f); // Instant off
     }
 
     private void Update()
     {
         if (_convertedToPhysics)
             return;
+
+        KillPathFxIfDynamic();
 
         if (enableOverlapDetection)
         {
@@ -14736,6 +17637,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void FixedUpdate()
     {
         if (_convertedToPhysics) return;
+        KillPathFxIfDynamic();
 
         // NEW: Process pending collision delay
         if (_pendingCollisionFrames > 0)
@@ -14844,19 +17746,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 var rend = rends[i];
                 if (!rend) continue;
 
-                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) &&
-                    rend.CompareTag(bottomOffsetIgnoreTag))
+                // PATCH: ignore path preview line renderer when estimating obstacle width
+                if (rend is LineRenderer) continue;
+
+                if (!string.IsNullOrEmpty(bottomOffsetIgnoreTag) && rend.CompareTag(bottomOffsetIgnoreTag))
                     continue;
 
-                if (!hasBounds)
-                {
-                    wb = rend.bounds;
-                    hasBounds = true;
-                }
-                else
-                {
-                    wb.Encapsulate(rend.bounds);
-                }
+                if (!hasBounds) { wb = rend.bounds; hasBounds = true; }
+                else wb.Encapsulate(rend.bounds);
             }
 
             if (hasBounds)
@@ -14866,7 +17763,19 @@ public class ShuttleTrackObstacle : MonoBehaviour
             }
         }
 
+
         return Mathf.Max(0f, approx);
+    }
+
+    private void OnDisable()
+    {
+        // Ensure FX are killed when disabled
+        if (telegraphLight != null)
+            telegraphLight.enabled = false;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+            preview.FadeOut(0f);
     }
 
     public void ConvertToPhysicsOnHit()
@@ -14879,9 +17788,22 @@ public class ShuttleTrackObstacle : MonoBehaviour
         enabled = false;
         _waiting = false;
 
-        // NEW: ENSURE LIGHT IS OFF when converting to physics
-        if (telegraphLight)
+
+        // Kill all FX immediately
+        _fxKilled = true;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+        {
+            preview.FadeOut(0f); // Instant
+            preview.enabled = false;
+        }
+
+        if (telegraphLight != null)
+        {
             telegraphLight.enabled = false;
+            telegraphLight.intensity = 0f;
+        }
 
         if (!_rb)
             _rb = GetComponent<Rigidbody>() ?? gameObject.AddComponent<Rigidbody>();
@@ -14973,9 +17895,28 @@ public class ShuttleTrackObstacle : MonoBehaviour
         return false;
     }
 
+    private bool _fxKilled = false;
+
+    private void KillPathFxIfDynamic()
+    {
+        if (_fxKilled) return;
+
+        // If anything made us dynamic, we are no longer "on path"
+        if (_rb != null && !_rb.isKinematic)
+        {
+            _fxKilled = true;
+
+            var preview = GetComponent<ObstaclePathPreview>();
+            if (preview) preview.FadeOut(0.2f);
+
+            if (telegraphLight) telegraphLight.enabled = false;
+        }
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (collision == null || collision.collider == null) return;
 
         Debug.Log($"[ShuttleTrackObstacle] OnCollisionEnter with {collision.collider.name} (layer={collision.collider.gameObject.layer})");
@@ -15024,6 +17965,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (other == null) return;
 
         Debug.Log($"[ShuttleTrackObstacle] OnTriggerEnter with {other.name} (layer={other.gameObject.layer})");
@@ -15093,6 +18035,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void CheckForOverlapAndConvert()
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (_childColliders == null || _childColliders.Length == 0) return;
 
         Bounds combined = new Bounds(_childColliders[0].bounds.center, _childColliders[0].bounds.size);
@@ -15173,6 +18116,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
         float t = Vector3.Dot(p - a, ab) / abSqr;
         t = Mathf.Clamp01(t);
         return a + ab * t;
+    }
+
+    public Vector3 GetWorldVelocity()
+    {
+        // While still on scripted motion, use the transform-derived velocity.
+        if (!_convertedToPhysics) return _lastVelocity;
+
+        // After conversion, use the real rigidbody velocity.
+        return _rb != null ? _rb.velocity : Vector3.zero;
     }
 
     private float SampleTerrainHeightUnderXZ(Vector2 xz, float upOffset = 2f)
@@ -16649,6 +19601,8 @@ public class ThrownObstacleDirector : MonoBehaviour
     [SerializeField] private AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
     [Tooltip("Maximum lateral miss offset (meters) applied when a shot misses; scaled by (1-accuracy).")]
     [SerializeField, Min(0f)] private float maxMissLateral = 4f;
+    [Tooltip("Maximum forward/back miss offset (meters) applied when a shot misses; scaled by (1-accuracy).")]
+    [SerializeField, Min(0f)] private float maxMissForward = 6f;
 
     [Header("Explosion Frequency")]
     [Tooltip("Base spawn chance for explosive variant (0..1).")]
@@ -16809,12 +19763,24 @@ public class ThrownObstacleDirector : MonoBehaviour
         // Accuracy: may miss. Higher accuracy -> less lateral error.
         float accuracy = Mathf.Clamp01(baseAccuracy * (accuracyByDistance != null ? accuracyByDistance.Evaluate(distanceNorm) : 1f));
         float missChance = 1f - accuracy;
-        if (UnityEngine.Random.value < missChance)
+        bool didMiss = UnityEngine.Random.value < missChance;
+        if (didMiss)
         {
-            // apply lateral miss proportional to (1-accuracy) and scaled by distance
-            float lateral = UnityEngine.Random.Range(-maxMissLateral, maxMissLateral) * (1f - accuracy) * Mathf.Lerp(0.6f, 1.4f, distanceNorm);
+            float missScale = (1f - accuracy) * Mathf.Lerp(0.6f, 1.4f, distanceNorm);
+
+            float lateral = UnityEngine.Random.Range(-maxMissLateral, maxMissLateral) * missScale;
             interceptPos += right * lateral;
-            if (debugDraw) Debug.DrawLine(interceptPos, interceptPos + Vector3.up * 1f, Color.magenta, 6f);
+
+            float forward = UnityEngine.Random.Range(-maxMissForward, maxMissForward) * missScale;
+            interceptPos += spawnFwd * forward;
+
+            if (debugDraw)
+                Debug.DrawLine(interceptPos, interceptPos + Vector3.up * 1f, Color.magenta, 6f);
+        }
+        else
+        {
+            float micro = 0.15f * (1f - accuracy);
+            interceptPos += spawnFwd * UnityEngine.Random.Range(-micro, micro);
         }
 
         // Explosion selection: chance increases with distance via curve
@@ -18588,6 +21554,9 @@ public class TrackGuideBeacon : MonoBehaviour
     [Tooltip("Blend between track forward (0) and camera forward (1). Use a little camera forward if you want it always in view.")]
     [SerializeField, Range(0f, 1f)] private float cameraForwardBlend = 0.15f;
 
+    [SerializeField, Min(0f)]
+    private float segmentAheadDistance = 35f; // roughly one road segment
+
     [Header("Smoothing")]
     [SerializeField, Min(0f)] private float positionSmoothTime = 0.25f;
     [SerializeField, Min(0f)] private float directionSmoothTime = 0.20f;
@@ -18617,6 +21586,9 @@ public class TrackGuideBeacon : MonoBehaviour
     [Header("Path Sampling")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+
+    public float CurrentBlink01 { get; private set; }
 
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
@@ -18706,14 +21678,15 @@ public class TrackGuideBeacon : MonoBehaviour
         }
         else
         {
-            // Anticipate the turn by sampling ahead for the tangent
-            Vector3 p0 = SamplePositionAtDistanceLooped(carDist);
-            Vector3 p1 = SamplePositionAtDistanceLooped(carDist + Mathf.Max(0f, tangentSampleAhead));
+            float dirDist = carDist + segmentAheadDistance;
+
+            Vector3 p0 = SamplePositionAtDistanceLooped(dirDist);
+            Vector3 p1 = SamplePositionAtDistanceLooped(dirDist + Mathf.Max(0f, tangentSampleAhead));
 
             Vector3 trackDir = (p1 - p0);
             trackDir.y = 0f;
             if (trackDir.sqrMagnitude < 1e-6f)
-                trackDir = GetSegmentForwardAtDistanceLooped(carDist);
+                trackDir = GetSegmentForwardAtDistanceLooped(dirDist);
             else
                 trackDir.Normalize();
 
@@ -18756,6 +21729,7 @@ public class TrackGuideBeacon : MonoBehaviour
 
         float blink01 = enableBlink ? EvaluateBlink01(scaledHz) : 1f;
         ApplyBlink(blink01);
+        CurrentBlink01 = blink01;
     }
 
     private float EvaluateBlink01(float hz)
@@ -19236,6 +22210,704 @@ public class TrackHPSpawner : MonoBehaviour
         foreach (var kvp in _activeBySlot)
             if (kvp.Value) Destroy(kvp.Value);
         _activeBySlot.Clear();
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackObstacleBounceBack.cs
+
+```csharp
+using DG.Tweening;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// AAA version:
+/// - Kinematic RB + non-trigger collider => real collisions (can land on other obstacles).
+/// - DOTween drives a smooth bounce param, FixedUpdate applies MovePosition/MoveRotation.
+/// - Always follows track path (cannot be pushed off path), but pushes OTHER obstacles on impact.
+/// - Car hit triggers full crash sim (shake/slowmo/fling/disable) without severity-based damage.
+/// </summary>
+[RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(Rigidbody))]
+public class TrackObstacleBounceBack : MonoBehaviour
+{
+    [Header("Track Reference")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+
+    [Header("Path Sampling (match spawner)")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Header("Bounce Movement")]
+    [Tooltip("How far (meters) each bounce moves backward along the track.")]
+    [SerializeField, Min(0.1f)] private float bounceStepDistance = 18f;
+
+    [Tooltip("Seconds per bounce (arc duration).")]
+    [SerializeField, Min(0.05f)] private float bounceDuration = 0.25f;
+
+    [Tooltip("Seconds to wait between bounces. Fully frozen during this time.")]
+    [SerializeField, Min(0f)] private float bounceCooldown = 0.65f;
+
+    [Header("Initial Cooldown Randomization")]
+    [Tooltip("Randomize the initial cooldown on spawn so obstacles don't bounce in sync.")]
+    [SerializeField] private bool randomizeInitialCooldown = true;
+
+    [Tooltip("Range for the random initial cooldown (min, max) in seconds.")]
+    [SerializeField] private Vector2 initialCooldownRange = new Vector2(0f, 1.5f);
+
+    [Tooltip("If true, bounce + cooldown uses real time (ignores Time.timeScale).")]
+    [SerializeField] private bool useUnscaledTime = true;
+
+    [Header("Bounce Arc")]
+    [Tooltip("Peak hop height during a bounce (meters).")]
+    [SerializeField, Min(0f)] private float bounceJumpHeight = 1.0f;
+
+    [Header("Lateral Clamp")]
+    [SerializeField] private bool clampToRoadWidth = true;
+    [Range(0.1f, 1f)]
+    [SerializeField] private float lateralClampFraction = 0.95f;
+
+    [Header("Grounding / Landing")]
+    [Tooltip("What counts as 'ground' for landing. Include Road + Obstacle layers if you want it to land on obstacles.")]
+    [SerializeField] private LayerMask groundMask;
+
+    [SerializeField, Min(0.1f)] private float raycastStartHeight = 8f;
+    [SerializeField, Min(0.1f)] private float raycastDownDistance = 40f;
+
+    [Tooltip("Extra gap above the hit surface so it doesn't z-fight / stick.")]
+    [SerializeField, Min(0f)] private float heightOffset = 0.02f;
+
+    [Header("Rotation")]
+    [Tooltip("Face opposite the track forward (since we travel backward).")]
+    [SerializeField] private bool faceDirectionOfTravel = true;
+
+    [Tooltip("Lock up axis to Vector3.up for stability (recommended).")]
+    [SerializeField] private bool keepUpright = true;
+
+    [Header("Collision Filtering (AAA)")]
+    [SerializeField, Tooltip("Layers this obstacle should NOT physically collide with (ex: Player/Car). We still detect hits via overlap query.")]
+    private LayerMask noPhysicalCollisionMask;
+
+    [SerializeField, Tooltip("Layers used to detect the car for damage/crash sim (usually same as Player/Car).")]
+    private LayerMask carDetectMask;
+
+    [SerializeField, Min(0.01f)] private float carDetectRadius = 0.6f;
+
+
+    [Header("Landing Settle (Fix Shake)")]
+    [SerializeField, Min(0f), Tooltip("Time in seconds to let physics settle after landing before freezing.")]
+    private float landingSettleTime = 0.06f;
+
+    [SerializeField, Min(0f), Tooltip("Extra upward lift on landing to avoid micro-penetration.")]
+    private float landingLift = 0.03f;
+
+    private float _settleUntil;
+    private bool _isSettling;
+
+
+    [Header("Obstacle Reactions")]
+    [SerializeField] private bool reactToOtherObstacles = true;
+
+    [Tooltip("Layers considered as other obstacles that should get pushed when hit.")]
+    [SerializeField] private LayerMask obstacleReactMask;
+
+    [SerializeField, Min(0f)] private float obstacleImpulse = 10f;
+    [SerializeField, Min(0f)] private float obstacleUpImpulse = 2f;
+
+    [Tooltip("Minimum time between applying impulse to other obstacles (prevents spam vibration).")]
+    [SerializeField, Min(0f)] private float obstacleImpactCooldown = 0.10f;
+
+    [Header("Damage On Player Hit")]
+    [SerializeField] private bool damagePlayerOnHit = true;
+
+    [Tooltip("Flat HP damage applied on hit.")]
+    [SerializeField, Min(0f)] private float hitHpDamage = 1f;
+
+    [Tooltip("Fuel damage as a FRACTION of max fuel. 0.05 = 5% of max fuel.")]
+    [SerializeField, Range(0f, 1f)] private float hitFuelPercent = 0.02f;
+
+    [Tooltip("Cooldown between player damage applications.")]
+    [SerializeField, Min(0f)] private float hitDamageCooldown = 0.5f;
+
+    [Tooltip("Crash FX severity used for presentation only (shake/slowmo/crash handling). Damage is fixed by hitHpDamage/hitFuelPercent.")]
+    [SerializeField, Range(0f, 1f)] private float crashFxSeverity = 0.65f;
+
+    [Tooltip("ImpactSpeed fed into crash sim (controls fling/torque). Usually feels good around 20–45.")]
+    [SerializeField, Min(0f)] private float crashImpactSpeed = 32f;
+
+    [Header("Per-Instance Ignore (Fix global ignore)")]
+    [SerializeField, Min(0f), Tooltip("How long to ignore collisions with a masked collider after contact.")]
+    private float ignoreCollisionSeconds = 0.25f;
+
+    private readonly Dictionary<Collider, float> _ignoredUntil = new();
+    private readonly List<Collider> _toRestore = new();
+
+
+    // ---------------- internals ----------------
+
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+
+    private float _dist;
+    private float _lateralOffset;
+
+
+    private Rigidbody _rb;
+    private Collider _col;
+
+
+    // stable pivot->bottom offset along world up
+    private float _pivotToBottomUp;
+
+    private bool _initialized;
+
+    private enum State { FrozenCooldown, Bouncing }
+    private State _state = State.FrozenCooldown;
+
+    private float _frozenUntil;
+    private Vector3 _frozenPos;
+    private Quaternion _frozenRot;
+
+    private float _bounceStartDist;
+    private float _bounceEndDist;
+
+    // DOTween drives this
+    private float _bounceT;
+    private Tween _bounceTween;
+
+    // gating
+    private float _nextAllowedCarHitTime;
+    private float _nextAllowedObstacleImpulseTime;
+
+    // for impact velocity
+    private Vector3 _prevPos;
+    private Vector3 _estimatedVel;
+
+    private void Awake()
+    {
+        if (!trackGenerator) trackGenerator = FindFirstObjectByType<ProceduralTrackGenerator>();
+
+        _rb = GetComponent<Rigidbody>();
+        _col = GetComponent<Collider>();
+
+        // Physics setup: kinematic but collides
+        _rb.isKinematic = true;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+
+
+    }
+
+    private void OnEnable()
+    {
+        _initialized = false;
+        _state = State.FrozenCooldown;
+        _frozenUntil = 0f;
+
+        _bounceTween?.Kill();
+        _bounceTween = null;
+        _bounceT = 0f;
+
+        _nextAllowedCarHitTime = 0f;
+        _nextAllowedObstacleImpulseTime = 0f;
+
+        _prevPos = transform.position;
+        _estimatedVel = Vector3.zero;
+    }
+
+    private void OnDisable()
+    {
+        _bounceTween?.Kill();
+        _bounceTween = null;
+    }
+
+    private void Start()
+    {
+        InitializeIfNeeded();
+    }
+
+    private void FixedUpdate()
+    {
+        if (!InitializeIfNeeded())
+            return;
+
+        float dt = Time.fixedDeltaTime;
+
+        // simple velocity estimate for impulses
+        Vector3 curPos = _rb.position;
+        _estimatedVel = (curPos - _prevPos) / Mathf.Max(0.0001f, dt);
+        _prevPos = curPos;
+
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+
+        UpdateIgnoredCollisions(now);
+
+        if (_state == State.FrozenCooldown)
+        {
+            // Fully kill all motion while frozen (your request)
+            if (now < _frozenUntil)
+            {
+                // If we're in the settle window, let physics resolve contacts without rail forcing.
+                if (_isSettling && now < _settleUntil)
+                    return;
+
+                // After settle: freeze hard
+                _rb.isKinematic = true;
+                _rb.velocity = Vector3.zero;
+                _rb.angularVelocity = Vector3.zero;
+                _rb.MovePosition(_frozenPos);
+                _rb.MoveRotation(_frozenRot);
+                return;
+            }
+
+
+            // Start a new bounce
+            StartBounce(now);
+        }
+
+        // Bouncing
+        float t01 = Mathf.Clamp01(_bounceT);
+
+        float distNow = Mathf.Lerp(_bounceStartDist, _bounceEndDist, t01);
+        _dist = distNow;
+
+        SampleAlongPath(distNow, out Vector3 center, out Vector3 forward);
+
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        float lateral = _lateralOffset;
+        if (clampToRoadWidth && trackGenerator != null)
+        {
+            float halfWidth = Mathf.Max(0.1f, trackGenerator.RoadWidth * 0.5f);
+            float maxLat = halfWidth * lateralClampFraction;
+            lateral = Mathf.Clamp(lateral, -maxLat, maxLat);
+        }
+
+        Vector3 basePos = center + right * lateral;
+
+        // Ground snap under the track-glued XZ (road OR obstacle if in groundMask)
+        float groundY = basePos.y;
+        if (RaycastGroundY(basePos, out RaycastHit hit))
+        {
+            groundY = hit.point.y + _pivotToBottomUp + heightOffset;
+        }
+        else
+        {
+            // fallback: keep current Y if we somehow miss
+            groundY = _rb.position.y;
+        }
+
+        // Arc (parabola): 4h t(1-t)
+        float arc = 0f;
+        if (bounceJumpHeight > 0f)
+            arc = 4f * bounceJumpHeight * t01 * (1f - t01);
+
+        Vector3 desired = new Vector3(basePos.x, groundY + arc, basePos.z);
+
+        Quaternion desiredRot = ComputeRotation(flatForward);
+
+        _rb.MovePosition(desired);
+        _rb.MoveRotation(desiredRot);
+
+        if (_state == State.Bouncing)
+            CheckCarHitQuery(now);
+
+        // End bounce when tween completes
+        if (t01 >= 0.9999f)
+        {
+            EndBounce(now, desired, desiredRot);
+        }
+    }
+
+    private bool InitializeIfNeeded()
+    {
+        if (_initialized) return true;
+
+        if (!trackGenerator) trackGenerator = FindFirstObjectByType<ProceduralTrackGenerator>();
+        if (!trackGenerator) return false;
+
+        RebuildPath();
+        if (_path.Count < 2 || _totalLength <= 0.01f)
+            return false;
+
+        // Compute a stable pivot->bottom offset along world up.
+        // This avoids the "sink deeper every jump" problem.
+        if (_col != null)
+        {
+            // pivot->bottom = pivotY - bottomY ; bottomY = bounds.centerY - extentsY
+            // => pivot->bottom = (pivotY - centerY) + extentsY
+            Bounds b = _col.bounds;
+            _pivotToBottomUp = (transform.position.y - b.center.y) + b.extents.y;
+            _pivotToBottomUp = Mathf.Max(0f, _pivotToBottomUp);
+        }
+        else
+        {
+            _pivotToBottomUp = 0f;
+        }
+
+        // Find current distance + lateral offset at spawn
+        _dist = GetDistanceAlongTrack(transform.position);
+
+        SampleAlongPath(_dist, out Vector3 center, out Vector3 forward);
+        Vector3 flatForward = forward; flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+        _lateralOffset = Vector3.Dot(transform.position - center, right);
+
+        // Snap once immediately, then start bouncing
+        Vector3 snapPos = transform.position;
+        if (RaycastGroundY(new Vector3(transform.position.x, transform.position.y, transform.position.z), out RaycastHit hit))
+        {
+            snapPos.y = hit.point.y + _pivotToBottomUp + heightOffset;
+        }
+
+        Quaternion snapRot = ComputeRotation(flatForward);
+        _rb.position = snapPos;
+        _rb.rotation = snapRot;
+
+        _frozenPos = snapPos;
+        _frozenRot = snapRot;
+
+        _state = State.FrozenCooldown;
+
+        // Randomize initial cooldown so obstacles don't all bounce in sync
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+        if (randomizeInitialCooldown)
+        {
+            float minDelay = Mathf.Min(initialCooldownRange.x, initialCooldownRange.y);
+            float maxDelay = Mathf.Max(initialCooldownRange.x, initialCooldownRange.y);
+            _frozenUntil = now + UnityEngine.Random.Range(minDelay, maxDelay);
+        }
+        else
+        {
+            _frozenUntil = now; // can bounce immediately
+        }
+
+        _initialized = true;
+        return true;
+    }
+
+    private void StartBounce(float now)
+    {
+        _isSettling = false;
+        _settleUntil = 0f;
+
+        _rb.isKinematic = true;
+        _rb.velocity = Vector3.zero;
+        _rb.angularVelocity = Vector3.zero;
+
+
+        _state = State.Bouncing;
+
+        _bounceStartDist = _dist;
+        _bounceEndDist = Mathf.Max(0f, _dist - bounceStepDistance);
+
+        _bounceTween?.Kill();
+        _bounceT = 0f;
+
+        // DOTween drives progress; FixedUpdate applies physics motion
+        _bounceTween = DOTween.To(() => _bounceT, v => _bounceT = v, 1f, Mathf.Max(0.05f, bounceDuration))
+            .SetEase(Ease.OutQuad)
+            .SetUpdate(useUnscaledTime); // true => ignore timeScale
+    }
+
+    private void EndBounce(float now, Vector3 finalPos, Quaternion finalRot)
+    {
+        _bounceTween?.Kill();
+        _bounceTween = null;
+        _bounceT = 1f;
+
+        // HARD snap to ground at end, then FREEZE completely until next bounce.
+        // This kills the vibration/jitter during cooldown.
+        Vector3 snapPos = finalPos;
+
+        // Snap ground without arc
+        Vector3 xz = new Vector3(finalPos.x, finalPos.y, finalPos.z);
+        if (RaycastGroundY(xz, out RaycastHit hit))
+        {
+            snapPos.y = hit.point.y + _pivotToBottomUp + heightOffset;
+        }
+
+        _frozenPos = snapPos + Vector3.up * landingLift;
+        _frozenRot = finalRot;
+
+        // Let physics settle for a brief moment to prevent kinematic-vs-collider fight jitter
+        _isSettling = landingSettleTime > 0f;
+        _settleUntil = now + landingSettleTime;
+
+        // Temporarily hand off to physics
+        _rb.isKinematic = false;
+        _rb.velocity = Vector3.zero;
+        _rb.angularVelocity = Vector3.zero;
+
+        // Put it slightly above the surface so it can land cleanly
+        _rb.position = _frozenPos;
+        _rb.rotation = _frozenRot;
+
+        _state = State.FrozenCooldown;
+        _frozenUntil = now + bounceCooldown;
+
+    }
+
+    private Quaternion ComputeRotation(Vector3 flatForward)
+    {
+        Vector3 lookDir = faceDirectionOfTravel ? -flatForward : flatForward;
+        if (lookDir.sqrMagnitude < 0.0001f) lookDir = transform.forward;
+
+        if (keepUpright)
+            return Quaternion.LookRotation(lookDir, Vector3.up);
+
+        // If you ever want slope tilt later, you’d feed in hit.normal, but upright is the stable/AAA choice here.
+        return Quaternion.LookRotation(lookDir, Vector3.up);
+    }
+
+    private bool RaycastGroundY(Vector3 aroundPos, out RaycastHit hit)
+    {
+        Vector3 origin = new Vector3(aroundPos.x, aroundPos.y + raycastStartHeight, aroundPos.z);
+        float maxRay = raycastStartHeight + raycastDownDistance;
+
+        return Physics.Raycast(origin, Vector3.down, out hit, maxRay, groundMask, QueryTriggerInteraction.Ignore);
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+        IgnoreCollisionTemporarily(collision.collider, now);
+
+        // Other obstacle reaction only
+        if (reactToOtherObstacles && obstacleReactMask.value != 0)
+        {
+            if (now < _nextAllowedObstacleImpulseTime) return;
+
+            int otherLayerMaskBit = 1 << collision.collider.gameObject.layer;
+            if ((obstacleReactMask.value & otherLayerMaskBit) == 0) return;
+
+            Rigidbody otherRb = collision.rigidbody;
+            if (otherRb != null && otherRb != _rb && !otherRb.isKinematic)
+            {
+                ContactPoint cp = collision.GetContact(0);
+
+                Vector3 dir = _estimatedVel;
+                dir.y = 0f;
+                if (dir.sqrMagnitude < 0.001f) dir = transform.forward;
+                dir.Normalize();
+
+                Vector3 impulse = dir * obstacleImpulse + Vector3.up * obstacleUpImpulse;
+                otherRb.AddForceAtPosition(impulse, cp.point, ForceMode.Impulse);
+            }
+
+            _nextAllowedObstacleImpulseTime = now + obstacleImpactCooldown;
+        }
+    }
+
+
+    // ---------------- path utils ----------------
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+
+        List<Vector3> src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private void IgnoreCollisionTemporarily(Collider other, float now)
+    {
+        if (other == null || _col == null) return;
+
+        int bit = 1 << other.gameObject.layer;
+        if ((noPhysicalCollisionMask.value & bit) == 0) return;
+
+        Physics.IgnoreCollision(_col, other);
+
+        _ignoredUntil[other] = now + ignoreCollisionSeconds;
+    }
+
+
+    private void UpdateIgnoredCollisions(float now)
+    {
+        if (_ignoredUntil.Count == 0) return;
+
+        _toRestore.Clear();
+
+        foreach (var kv in _ignoredUntil)
+        {
+            if (kv.Key == null || now >= kv.Value)
+                _toRestore.Add(kv.Key);
+        }
+
+        for (int i = 0; i < _toRestore.Count; i++)
+        {
+            var c = _toRestore[i];
+            if (c != null && _col != null)
+                Physics.IgnoreCollision(_col, c, false);
+
+            _ignoredUntil.Remove(c);
+        }
+    }
+
+
+
+    private float GetDistanceAlongTrack(Vector3 worldPos)
+    {
+        float best = float.MaxValue;
+        int bestIdx = 0;
+        float bestT = 0f;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i];
+            Vector3 b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(worldPos - a, ab) / abSqr);
+            Vector3 proj = Vector3.Lerp(a, b, t);
+            float d = (worldPos - proj).sqrMagnitude;
+
+            if (d < best)
+            {
+                best = d;
+                bestIdx = i;
+                bestT = t;
+            }
+        }
+
+        float segLen = Vector3.Distance(_path[bestIdx], _path[bestIdx + 1]);
+        return _cumLengths[bestIdx] + bestT * segLen;
+    }
+
+    private void CheckCarHitQuery(float now)
+    {
+        if (!damagePlayerOnHit) return;
+        if (now < _nextAllowedCarHitTime) return;
+        if (carDetectMask.value == 0) return;
+
+        Collider[] hits = Physics.OverlapSphere(_rb.position, carDetectRadius, carDetectMask, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return;
+
+        CarController car = null;
+        Collider carCol = null;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            car = hits[i].GetComponentInParent<CarController>();
+            if (car != null) { carCol = hits[i]; break; }
+        }
+        if (car == null) return;
+
+        // NOW ignore this specific collider instance (prevents the “yeet” impulse)
+        IgnoreCollisionTemporarily(carCol, now);
+
+
+        Vector3 contactPoint = carCol.ClosestPoint(_rb.position);
+        Vector3 contactNormal = (_rb.position - contactPoint);
+        if (contactNormal.sqrMagnitude < 0.0001f) contactNormal = Vector3.up;
+        contactNormal.Normalize();
+
+        Vector3 hitDir = (car.transform.position - _rb.position);
+        hitDir.y = 0f;
+        if (hitDir.sqrMagnitude < 0.0001f) hitDir = -contactNormal;
+        hitDir.Normalize();
+
+        // Use your existing "damage + crash FX" function (with overrides)
+        car.ApplyDirectDamageWithCrashFX(
+            hitHpDamage,
+            hitFuelPercent,
+            contactPoint,
+            contactNormal,
+            hitDir,
+            crashImpactSpeed,
+            crashFxSeverity
+        );
+
+        // Immediate bounce again after player hit
+        _frozenUntil = now;
+        _state = State.FrozenCooldown;
+
+        _nextAllowedCarHitTime = now + hitDamageCooldown;
+    }
+
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= dist) { idx = i; break; }
+        }
+
+        float segLen = _cumLengths[idx + 1] - _cumLengths[idx];
+        float t = (dist - _cumLengths[idx]) / Mathf.Max(segLen, 0.0001f);
+
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        fwd = (_path[idx + 1] - _path[idx]).normalized;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> src, int subdivisionsPerSegment, List<Vector3> outPts)
+    {
+        outPts.Clear();
+        if (src == null || src.Count < 2) return;
+
+        for (int i = 0; i < src.Count - 1; i++)
+        {
+            Vector3 p0 = src[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = src[i];
+            Vector3 p2 = src[i + 1];
+            Vector3 p3 = src[Mathf.Min(i + 2, src.Count - 1)];
+
+            for (int s = 0; s < subdivisionsPerSegment; s++)
+            {
+                float t = s / (float)subdivisionsPerSegment;
+                outPts.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+
+        outPts.Add(src[src.Count - 1]);
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
     }
 }
 ```
@@ -20238,6 +23910,12 @@ public class RacingSkillUIEntry : MonoBehaviour
     [SerializeField] private TMP_Text costText;
     [SerializeField] private Button buyButton; // disabled (buy in detail panel)
 
+    [SerializeField] private Image button; // disabled (buy in detail panel)
+
+    [SerializeField] private Color affordableColor = Color.green;
+    [SerializeField] private Color unaffordableColor = Color.red;
+    [SerializeField] private Color maxedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
     private SkillDefinition def;
     private RacingSkillTreeManager mgr;
 
@@ -20273,11 +23951,51 @@ public class RacingSkillUIEntry : MonoBehaviour
     public void Refresh()
     {
         if (!def || mgr == null) return;
+
         int lvl = mgr.GetLevel(def.type);
+        bool isMaxed = lvl >= def.maxLevel;
+
         if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
         if (effectText) effectText.text = $"Effect: {FormatEffect(def.type)}";
-        if (costText)
-            costText.text = (lvl >= def.maxLevel) ? "Maxed" : $"Cost: {mgr.GetNextLevelCost(def.type)}";
+
+        if (!costText) return;
+
+        if (isMaxed)
+        {
+            costText.text = "Maxed";
+            costText.color = maxedColor;
+            return;
+        }
+
+
+
+
+    }
+
+    public void ColorChange()
+    {
+        int nextCost = mgr.GetNextLevelCost(def.type);
+        int lvl = mgr.GetLevel(def.type);
+        bool isMaxed = lvl >= def.maxLevel;
+        int currency = GetCurrency();
+        button.color = (currency >= nextCost) ? affordableColor : unaffordableColor;
+        Debug.Log($"Currency: {currency}, Next Cost: {nextCost}, Color: {button.color}");
+
+        if (button)
+        {
+            if (isMaxed) button.color = maxedColor;
+            else button.color = (GetCurrency() >= mgr.GetNextLevelCost(def.type)) ? affordableColor : unaffordableColor;
+        }
+    }
+
+    public void LateUpdate()
+    {
+        ColorChange();
+    }
+
+    private int GetCurrency()
+    {
+        return mgr != null ? mgr.Currency : 0;
     }
 
     private string FormatEffect(SkillType type)
@@ -20481,6 +24199,190 @@ public class UIManager_Racing : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/VintageTVController.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class VintageTVController : MonoBehaviour
+{
+    [Header("Material (uses Hidden/VintageTV)")]
+    [SerializeField] private Material vintageMat;
+
+    [Header("Enable / Debug")]
+    [SerializeField] private bool effectEnabled = true;
+    [SerializeField] private bool allowKeyboardToggles = true;
+    [SerializeField] private KeyCode toggleKey = KeyCode.F6;
+
+    [Header("Base Look")]
+    [Range(0f, 1f)] public float baseIntensity = 0.45f;
+    [Range(0f, 1f)] public float scanlineStrength = 0.45f;
+    [Range(100f, 1200f)] public float scanlineDensity = 520f;
+    [Range(0f, 1f)] public float jitter = 0.12f;
+    [Range(0f, 1f)] public float noise = 0.08f;
+    [Range(0f, 1f)] public float vignette = 0.25f;
+    [Range(0f, 1f)] public float chromatic = 0.08f;
+
+    [Header("Scaling (optional)")]
+    [SerializeField] private bool scaleWithSpeed = true;
+
+    [Tooltip("Speed (m/s) where speed scaling starts contributing.")]
+    [SerializeField] private float speedMin = 6f;
+
+    [Tooltip("Speed (m/s) where speed scaling hits max contribution.")]
+    [SerializeField] private float speedMax = 38f;
+
+    [Tooltip("How much extra intensity you get at speedMax (0..1 added).")]
+    [Range(0f, 1f)]
+    [SerializeField] private float speedIntensityAdd = 0.25f;
+
+    [Header("Boost реакция (optional)")]
+    [SerializeField] private bool boostPulse = true;
+
+    [Tooltip("Extra intensity added while boosting (then it eases out).")]
+    [Range(0f, 1f)]
+    [SerializeField] private float boostIntensityAdd = 0.25f;
+
+    [Tooltip("How fast boost intensity eases back to zero after boost ends.")]
+    [SerializeField] private float boostEaseOutSpeed = 4f;
+
+    [Header("Time Scale")]
+    [SerializeField] private float timeScale = 1f;
+
+    // runtime refs
+    private Rigidbody _carRb;
+    private CarController _car;
+    private float _boost01; // 0..1
+
+    private static readonly int ID_Intensity = Shader.PropertyToID("_Intensity");
+    private static readonly int ID_ScanlineStrength = Shader.PropertyToID("_ScanlineStrength");
+    private static readonly int ID_ScanlineDensity = Shader.PropertyToID("_ScanlineDensity");
+    private static readonly int ID_Jitter = Shader.PropertyToID("_Jitter");
+    private static readonly int ID_Noise = Shader.PropertyToID("_Noise");
+    private static readonly int ID_Vignette = Shader.PropertyToID("_Vignette");
+    private static readonly int ID_Chromatic = Shader.PropertyToID("_Chromatic");
+    private static readonly int ID_TimeScale = Shader.PropertyToID("_TimeScale");
+
+    private void Awake()
+    {
+        if (vintageMat == null)
+            Debug.LogWarning("[VintageTVController] No material assigned. Effect will do nothing.");
+    }
+
+    private void OnEnable()
+    {
+        TryBindToActiveCar();
+    }
+
+    private void OnDisable()
+    {
+        UnbindCarEvents();
+    }
+
+    private void Update()
+    {
+        if (allowKeyboardToggles && Input.GetKeyDown(toggleKey))
+            effectEnabled = !effectEnabled;
+
+        // if car got respawned, rebind
+        if (_car == null)
+            TryBindToActiveCar();
+
+        float dt = Time.deltaTime;
+
+        // ease boost contribution back down
+        if (_boost01 > 0f)
+            _boost01 = Mathf.MoveTowards(_boost01, 0f, boostEaseOutSpeed * dt);
+
+        PushToMaterial();
+    }
+
+    private void TryBindToActiveCar()
+    {
+        var gm = GameManager_Racing.Instance;
+        if (gm == null) return;
+
+        var active = gm.ActiveCar; // GameManager_Racing already exposes the current car :contentReference[oaicite:3]{index=3}
+        if (active == null) return;
+
+        if (_car == active) return;
+
+        UnbindCarEvents();
+
+        _car = active;
+        _carRb = _car.GetComponent<Rigidbody>();
+
+        // Subscribe to boost events exposed on CarController :contentReference[oaicite:4]{index=4}
+        _car.OnBoostStarted += HandleBoostStarted;
+        _car.OnBoostEnded += HandleBoostEnded;
+    }
+
+    private void UnbindCarEvents()
+    {
+        if (_car != null)
+        {
+            _car.OnBoostStarted -= HandleBoostStarted;
+            _car.OnBoostEnded -= HandleBoostEnded;
+        }
+
+        _car = null;
+        _carRb = null;
+        _boost01 = 0f;
+    }
+
+    private void HandleBoostStarted()
+    {
+        if (!boostPulse) return;
+        _boost01 = 1f; // immediate spike; we’ll ease out later
+    }
+
+    private void HandleBoostEnded()
+    {
+        // don’t hard drop to 0; let the ease-out handle it
+    }
+
+    private void PushToMaterial()
+    {
+        if (vintageMat == null) return;
+
+        if (!effectEnabled)
+        {
+            vintageMat.SetFloat(ID_Intensity, 0f);
+            return;
+        }
+
+        float intensity = baseIntensity;
+
+        // Speed contribution (m/s)
+        if (scaleWithSpeed && _carRb != null)
+        {
+            float spd = _carRb.velocity.magnitude;
+            float s01 = Mathf.InverseLerp(speedMin, speedMax, spd);
+            intensity += s01 * speedIntensityAdd;
+        }
+
+        // Boost contribution
+        if (boostPulse)
+        {
+            intensity += _boost01 * boostIntensityAdd;
+        }
+
+        intensity = Mathf.Clamp01(intensity);
+
+        vintageMat.SetFloat(ID_Intensity, intensity);
+        vintageMat.SetFloat(ID_ScanlineStrength, scanlineStrength);
+        vintageMat.SetFloat(ID_ScanlineDensity, scanlineDensity);
+        vintageMat.SetFloat(ID_Jitter, jitter);
+        vintageMat.SetFloat(ID_Noise, noise);
+        vintageMat.SetFloat(ID_Vignette, vignette);
+        vintageMat.SetFloat(ID_Chromatic, chromatic);
+        vintageMat.SetFloat(ID_TimeScale, timeScale);
+    }
+}
+
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/WheelSkidSpawner.cs
 
 ```csharp
@@ -20554,6 +24456,87 @@ public class WheelSkidSpawner : MonoBehaviour
         {
             sms.lifetime = skidLifetime;
         }
+    }
+}
+
+```
+
+## Assets/Racing_Assets/VintageTVRendererFeature.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+public class VintageTVRendererFeature : ScriptableRendererFeature
+{
+    [System.Serializable]
+    public class Settings
+    {
+        public RenderPassEvent passEvent = RenderPassEvent.AfterRenderingPostProcessing;
+        public Material material;
+    }
+
+    public Settings settings = new Settings();
+
+    class Pass : ScriptableRenderPass
+    {
+        private Material _mat;
+        private RTHandle _temp;
+        private static readonly ProfilingSampler _prof = new ProfilingSampler("VintageTV Pass");
+
+        public void SetMaterial(Material mat) => _mat = mat;
+
+        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        {
+            if (_mat == null) return;
+
+            var camType = renderingData.cameraData.cameraType;
+            if (camType == CameraType.Preview || camType == CameraType.Reflection)
+                return;
+
+            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            desc.depthBufferBits = 0;
+            RenderingUtils.ReAllocateIfNeeded(ref _temp, desc, name: "_VintageTV_Temp");
+        }
+
+        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        {
+            if (_mat == null) return;
+
+            var camType = renderingData.cameraData.cameraType;
+            if (camType == CameraType.Preview || camType == CameraType.Reflection)
+                return;
+
+            var colorTarget = renderingData.cameraData.renderer.cameraColorTargetHandle;
+            if (colorTarget == null || _temp == null) return;
+
+            var cmd = CommandBufferPool.Get();
+            using (new ProfilingScope(cmd, _prof))
+            {
+                Blitter.BlitCameraTexture(cmd, colorTarget, _temp);
+                Blitter.BlitCameraTexture(cmd, _temp, colorTarget, _mat, 0);
+            }
+
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
+        }
+    }
+
+    private Pass _pass;
+
+    public override void Create()
+    {
+        _pass = new Pass();
+    }
+
+    public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
+    {
+        if (settings.material == null) return;
+
+        _pass.renderPassEvent = settings.passEvent;
+        _pass.SetMaterial(settings.material); // <- critical: refresh the material reference
+        renderer.EnqueuePass(_pass);
     }
 }
 
@@ -28357,6 +32340,8 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 /// Pinball gameplay state machine
 public enum PinballState
@@ -28440,6 +32425,11 @@ public class Pinball : MonoBehaviour, IRunContext
     [SerializeField] private float camFovTween = 0.12f;
     [SerializeField] private CameraFollowSimple camFollow;
     private readonly object _skillAimSlowmoToken = new object();
+
+    [Header("URP Renderer Control")]
+    [SerializeField] private UniversalRendererData urpRendererAsset;
+    [SerializeField] private string[] enabledRendererFeatures = new string[] { };
+    [SerializeField] private string[] disabledRendererFeatures = new string[] { };
 
     private Ball _aimBall;
     private Transform _aimFocus;
@@ -28650,6 +32640,9 @@ public class Pinball : MonoBehaviour, IRunContext
             _ballStartRot = ball.transform.rotation;
             _primaryBallId = ball.GetInstanceID();
         }
+
+        ConfigureURPRenderers();
+
         maxXP = XPFormula.XpReq(level);
         maxLives = Mathf.Max(1, maxLives);
         startingLives = Mathf.Clamp(startingLives, 0, maxLives);
@@ -30129,6 +34122,25 @@ public class Pinball : MonoBehaviour, IRunContext
         {
             Time.timeScale = 1f;
             Time.fixedDeltaTime = _defaultFixedDeltaTime;
+        }
+    }
+
+    private void ConfigureURPRenderers()
+    {
+        if (urpRendererAsset == null) return;
+
+        // Disable specified features
+        foreach (var featureName in disabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(false);
+        }
+
+        // Enable specified features
+        foreach (var featureName in enabledRendererFeatures)
+        {
+            var feature = urpRendererAsset.rendererFeatures.Find(f => f.name == featureName);
+            if (feature != null) feature.SetActive(true);
         }
     }
     #endregion

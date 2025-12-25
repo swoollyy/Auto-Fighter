@@ -128,7 +128,7 @@ MonoBehaviour:
   continuousCollision: 1
   hitLayers:
     serializedVersion: 2
-    m_Bits: 264192
+    m_Bits: 788480
 --- !u!54 &1400436043011949409
 Rigidbody:
   m_ObjectHideFlags: 0

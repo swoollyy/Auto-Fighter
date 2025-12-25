@@ -4,6 +4,7 @@ ScriptsOnlyBuild:
     - PowerupPickup
     - PowerupPickupTween
     Assembly-CSharp.dll:
+    - AstarRuntimeBootstrap
     - CameraFollow
     - CarController
     - CarForcefield
@@ -25,6 +26,8 @@ ScriptsOnlyBuild:
     - IcePath
     - IcePathSpawner
     - MirzaBeig.VolumetricFogLite.VolumetricFogRendererFeatureLite
+    - NPCTrafficCar
+    - NPCTrafficCarSpawner
     - ObstaclePathPreview
     - PowerupPickupTween
     - ProceduralTrackGenerator
@@ -57,8 +60,22 @@ ScriptsOnlyBuild:
     - UIButtonSfx
     - UIManager_Racing
     - WheelSkidSpawner
+    AstarPathfindingProject.dll:
+    - AstarPath
+    - Pathfinding.NavmeshCut
+    - Pathfinding.RVO.RVOController
+    - Pathfinding.RVO.RVOSimulator
+    - Pathfinding.RichAI
+    - Pathfinding.Seeker
+    - Pathfinding.Util.BatchedEvents
+    AstarPathfindingProjectEditor.dll:
+    - Pathfinding.PathfindingEditorSettings
     DOTween.dll:
     - DG.Tweening.Core.DOTweenSettings
+    Drawing.dll:
+    - Pathfinding.Drawing.DrawingManager
+    Unity.AI.Navigation.Editor.dll:
+    - Unity.AI.Navigation.Editor.NavigationWindow
     Unity.Addressables.Editor.dll:
     - UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject
     - UnityEditor.AddressableAssets.Build.DataBuilders.BuildScriptFastMode
@@ -147,6 +164,7 @@ ScriptsOnlyBuild:
     - UnityEditor.Graphs.AnimatorControllerTool
     UnityEditor.TestRunner.dll:
     - UnityEditor.TestTools.TestRunner.Api.CallbacksHolder
+    - UnityEditor.TestTools.TestRunner.CommandLineTest.RunData
     - UnityEditor.TestTools.TestRunner.TestListCacheData
     - UnityEditor.TestTools.TestRunner.TestRun.TestJobDataHolder
     UnityEngine.UI:
@@ -176,9 +194,19 @@ ScriptsOnlyBuild:
     - CoinPickup/VFXColorEntry
     - MirzaBeig.VolumetricFogLite.VolumetricFogRendererFeatureLite/RenderTextureQuality
     - MirzaBeig.VolumetricFogLite.VolumetricFogRendererFeatureLite/Settings
+    - NPCCarType
     - ObstacleType
     - SkillDefinition/ProgressiveUnlock
     - WheelSkidSpawner/WheelData
+    AstarPathfindingProject:
+    - Pathfinding.AstarColor
+    - Pathfinding.AstarData
+    - Pathfinding.AutoRepathPolicy
+    - Pathfinding.GraphMask
+    - Pathfinding.Graphs.Navmesh.NavmeshUpdates
+    - Pathfinding.Graphs.Util.EuclideanEmbedding
+    - Pathfinding.RVO.RVODestinationCrowdedBehavior
+    - Pathfinding.StartEndModifier
     DOTween:
     - DG.Tweening.Core.DOTweenSettings/ModulesSetup
     - DG.Tweening.Core.DOTweenSettings/SafeModeOptions
@@ -325,239 +353,265 @@ ScriptsOnlyBuild:
     - Class: 108
       Script: {instanceID: 0}
     - Class: 114
-      Script: {instanceID: 1838}
+      Script: {instanceID: 1866}
     - Class: 114
-      Script: {instanceID: 1842}
+      Script: {instanceID: 1870}
     - Class: 114
-      Script: {instanceID: 1844}
+      Script: {instanceID: 1872}
     - Class: 114
-      Script: {instanceID: 1846}
+      Script: {instanceID: 1874}
     - Class: 114
-      Script: {instanceID: 1850}
+      Script: {instanceID: 1878}
     - Class: 114
-      Script: {instanceID: 1852}
+      Script: {instanceID: 1880}
     - Class: 114
-      Script: {instanceID: 1858}
+      Script: {instanceID: 1890}
     - Class: 114
-      Script: {instanceID: 2008}
+      Script: {instanceID: 2048}
     - Class: 114
-      Script: {instanceID: 2044}
+      Script: {instanceID: 2090}
     - Class: 114
-      Script: {instanceID: 2260}
+      Script: {instanceID: 2286}
     - Class: 114
-      Script: {instanceID: 2332}
+      Script: {instanceID: 2344}
     - Class: 114
-      Script: {instanceID: 2384}
+      Script: {instanceID: 2422}
     - Class: 114
-      Script: {instanceID: 2622}
+      Script: {instanceID: 2476}
     - Class: 114
-      Script: {instanceID: 2662}
+      Script: {instanceID: 2746}
     - Class: 114
-      Script: {instanceID: 2946}
+      Script: {instanceID: 2788}
     - Class: 114
-      Script: {instanceID: 2956}
+      Script: {instanceID: 2918}
     - Class: 114
-      Script: {instanceID: 3036}
+      Script: {instanceID: 3102}
     - Class: 114
-      Script: {instanceID: 3314}
+      Script: {instanceID: 3114}
     - Class: 114
-      Script: {instanceID: 3548}
+      Script: {instanceID: 3210}
     - Class: 114
-      Script: {instanceID: 3628}
+      Script: {instanceID: 3518}
     - Class: 114
-      Script: {instanceID: 3666}
+      Script: {instanceID: 3780}
     - Class: 114
-      Script: {instanceID: 3744}
+      Script: {instanceID: 3820}
     - Class: 114
-      Script: {instanceID: 3792}
+      Script: {instanceID: 3870}
     - Class: 114
-      Script: {instanceID: 4310}
+      Script: {instanceID: 3912}
     - Class: 114
-      Script: {instanceID: 4366}
+      Script: {instanceID: 3990}
     - Class: 114
-      Script: {instanceID: 4412}
+      Script: {instanceID: 4002}
     - Class: 114
-      Script: {instanceID: 5102}
+      Script: {instanceID: 4066}
     - Class: 114
-      Script: {instanceID: 5154}
+      Script: {instanceID: 4236}
     - Class: 114
-      Script: {instanceID: 5206}
+      Script: {instanceID: 4646}
     - Class: 114
-      Script: {instanceID: 5260}
+      Script: {instanceID: 4704}
     - Class: 114
-      Script: {instanceID: 5324}
+      Script: {instanceID: 4750}
     - Class: 114
-      Script: {instanceID: 5382}
+      Script: {instanceID: 5514}
     - Class: 114
-      Script: {instanceID: 5408}
+      Script: {instanceID: 5572}
     - Class: 114
-      Script: {instanceID: 5564}
+      Script: {instanceID: 5628}
     - Class: 114
-      Script: {instanceID: 5584}
+      Script: {instanceID: 5688}
     - Class: 114
-      Script: {instanceID: 5608}
+      Script: {instanceID: 5758}
     - Class: 114
-      Script: {instanceID: 6104}
+      Script: {instanceID: 5828}
     - Class: 114
-      Script: {instanceID: 6112}
+      Script: {instanceID: 5862}
     - Class: 114
-      Script: {instanceID: 6200}
+      Script: {instanceID: 5936}
     - Class: 114
-      Script: {instanceID: 6302}
+      Script: {instanceID: 6062}
     - Class: 114
-      Script: {instanceID: 6328}
+      Script: {instanceID: 6084}
     - Class: 114
-      Script: {instanceID: 6384}
+      Script: {instanceID: 6110}
     - Class: 114
-      Script: {instanceID: 6470}
+      Script: {instanceID: 6672}
     - Class: 114
-      Script: {instanceID: 6492}
+      Script: {instanceID: 6680}
     - Class: 114
-      Script: {instanceID: 6570}
+      Script: {instanceID: 6782}
     - Class: 114
-      Script: {instanceID: 6642}
+      Script: {instanceID: 6896}
     - Class: 114
-      Script: {instanceID: 6658}
+      Script: {instanceID: 6928}
     - Class: 114
-      Script: {instanceID: 6748}
+      Script: {instanceID: 6992}
     - Class: 114
-      Script: {instanceID: 6810}
+      Script: {instanceID: 7084}
     - Class: 114
-      Script: {instanceID: 6862}
+      Script: {instanceID: 7106}
     - Class: 114
-      Script: {instanceID: 6900}
+      Script: {instanceID: 7186}
     - Class: 114
-      Script: {instanceID: 7072}
+      Script: {instanceID: 7268}
     - Class: 114
-      Script: {instanceID: 7440}
+      Script: {instanceID: 7286}
     - Class: 114
-      Script: {instanceID: 7612}
+      Script: {instanceID: 7382}
     - Class: 114
-      Script: {instanceID: 7774}
+      Script: {instanceID: 7450}
     - Class: 114
-      Script: {instanceID: 7806}
+      Script: {instanceID: 7510}
     - Class: 114
-      Script: {instanceID: 7872}
+      Script: {instanceID: 7552}
     - Class: 114
-      Script: {instanceID: 7896}
+      Script: {instanceID: 7738}
     - Class: 114
-      Script: {instanceID: 7958}
+      Script: {instanceID: 7882}
     - Class: 114
-      Script: {instanceID: 8764}
+      Script: {instanceID: 8142}
     - Class: 114
-      Script: {instanceID: 8830}
+      Script: {instanceID: 8336}
     - Class: 114
-      Script: {instanceID: 8836}
+      Script: {instanceID: 8506}
     - Class: 114
-      Script: {instanceID: 8972}
+      Script: {instanceID: 8546}
     - Class: 114
-      Script: {instanceID: 9092}
+      Script: {instanceID: 8594}
     - Class: 114
-      Script: {instanceID: 9176}
+      Script: {instanceID: 8620}
     - Class: 114
-      Script: {instanceID: 9192}
+      Script: {instanceID: 8648}
     - Class: 114
-      Script: {instanceID: 9360}
+      Script: {instanceID: 8714}
     - Class: 114
-      Script: {instanceID: 9388}
+      Script: {instanceID: 9612}
     - Class: 114
-      Script: {instanceID: 9392}
+      Script: {instanceID: 9688}
     - Class: 114
-      Script: {instanceID: 9448}
+      Script: {instanceID: 9694}
     - Class: 114
-      Script: {instanceID: 9560}
+      Script: {instanceID: 9852}
     - Class: 114
-      Script: {instanceID: 9644}
+      Script: {instanceID: 9980}
     - Class: 114
-      Script: {instanceID: 9710}
+      Script: {instanceID: 10070}
     - Class: 114
-      Script: {instanceID: 9758}
+      Script: {instanceID: 10086}
     - Class: 114
-      Script: {instanceID: 9970}
+      Script: {instanceID: 10118}
     - Class: 114
-      Script: {instanceID: 10088}
+      Script: {instanceID: 10266}
     - Class: 114
-      Script: {instanceID: 10096}
+      Script: {instanceID: 10294}
     - Class: 114
-      Script: {instanceID: 10168}
+      Script: {instanceID: 10300}
     - Class: 114
-      Script: {instanceID: 10186}
+      Script: {instanceID: 10360}
     - Class: 114
-      Script: {instanceID: 10432}
+      Script: {instanceID: 10478}
     - Class: 114
-      Script: {instanceID: 10496}
+      Script: {instanceID: 10564}
     - Class: 114
-      Script: {instanceID: 10536}
+      Script: {instanceID: 10640}
     - Class: 114
-      Script: {instanceID: 10558}
+      Script: {instanceID: 10686}
     - Class: 114
-      Script: {instanceID: 10688}
+      Script: {instanceID: 10922}
     - Class: 114
-      Script: {instanceID: 10716}
+      Script: {instanceID: 11052}
     - Class: 114
-      Script: {instanceID: 10772}
+      Script: {instanceID: 11060}
     - Class: 114
-      Script: {instanceID: 10776}
+      Script: {instanceID: 11134}
     - Class: 114
-      Script: {instanceID: 10800}
+      Script: {instanceID: 11152}
     - Class: 114
-      Script: {instanceID: 10868}
+      Script: {instanceID: 11428}
     - Class: 114
-      Script: {instanceID: 11002}
+      Script: {instanceID: 11498}
     - Class: 114
-      Script: {instanceID: 11006}
+      Script: {instanceID: 11540}
     - Class: 114
-      Script: {instanceID: 11098}
+      Script: {instanceID: 11570}
     - Class: 114
-      Script: {instanceID: 11296}
+      Script: {instanceID: 11724}
     - Class: 114
-      Script: {instanceID: 11524}
+      Script: {instanceID: 11754}
     - Class: 114
-      Script: {instanceID: 11574}
+      Script: {instanceID: 11814}
     - Class: 114
-      Script: {instanceID: 11752}
+      Script: {instanceID: 11818}
     - Class: 114
-      Script: {instanceID: 11978}
+      Script: {instanceID: 11842}
     - Class: 114
-      Script: {instanceID: 12022}
+      Script: {instanceID: 11924}
     - Class: 114
-      Script: {instanceID: 12344}
+      Script: {instanceID: 12082}
     - Class: 114
-      Script: {instanceID: 12368}
+      Script: {instanceID: 12086}
     - Class: 114
-      Script: {instanceID: 12370}
+      Script: {instanceID: 12190}
     - Class: 114
-      Script: {instanceID: 12492}
+      Script: {instanceID: 12196}
     - Class: 114
-      Script: {instanceID: 12574}
+      Script: {instanceID: 12412}
     - Class: 114
-      Script: {instanceID: 12586}
+      Script: {instanceID: 12418}
     - Class: 114
-      Script: {instanceID: 12682}
+      Script: {instanceID: 12680}
     - Class: 114
-      Script: {instanceID: 12812}
+      Script: {instanceID: 12738}
     - Class: 114
-      Script: {instanceID: 12964}
+      Script: {instanceID: 12942}
     - Class: 114
-      Script: {instanceID: 13236}
+      Script: {instanceID: 13192}
     - Class: 114
-      Script: {instanceID: 13238}
+      Script: {instanceID: 13244}
     - Class: 114
-      Script: {instanceID: 13282}
+      Script: {instanceID: 13606}
     - Class: 114
-      Script: {instanceID: 13296}
+      Script: {instanceID: 13632}
     - Class: 114
-      Script: {instanceID: 13298}
+      Script: {instanceID: 13634}
     - Class: 114
-      Script: {instanceID: 13336}
+      Script: {instanceID: 13770}
     - Class: 114
-      Script: {instanceID: 13732}
+      Script: {instanceID: 13866}
     - Class: 114
-      Script: {instanceID: 13774}
+      Script: {instanceID: 13878}
     - Class: 114
-      Script: {instanceID: 13856}
+      Script: {instanceID: 13982}
     - Class: 114
-      Script: {instanceID: 14120}
+      Script: {instanceID: 14140}
+    - Class: 114
+      Script: {instanceID: 14316}
+    - Class: 114
+      Script: {instanceID: 14622}
+    - Class: 114
+      Script: {instanceID: 14624}
+    - Class: 114
+      Script: {instanceID: 14676}
+    - Class: 114
+      Script: {instanceID: 14692}
+    - Class: 114
+      Script: {instanceID: 14694}
+    - Class: 114
+      Script: {instanceID: 14740}
+    - Class: 114
+      Script: {instanceID: 14950}
+    - Class: 114
+      Script: {instanceID: 15086}
+    - Class: 114
+      Script: {instanceID: 15178}
+    - Class: 114
+      Script: {instanceID: 15220}
+    - Class: 114
+      Script: {instanceID: 15324}
+    - Class: 114
+      Script: {instanceID: 15616}
     - Class: 115
       Script: {instanceID: 0}
     - Class: 120
@@ -655,6 +709,12 @@ ScriptsOnlyBuild:
     className: Image
   - hash:
       serializedVersion: 2
+      Hash: e3f8c3e38d1acc9e0fc73ca2ecf9b57a
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: FollowerEntity
+  - hash:
+      serializedVersion: 2
       Hash: ed2c59b75f8f3cd8df4cd4387d965e71
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
@@ -715,6 +775,12 @@ ScriptsOnlyBuild:
     className: CinemachineCameraOffset
   - hash:
       serializedVersion: 2
+      Hash: b7d7ab84adf45f8dc6fc10ce423e5053
+    assemblyName: AstarPathfindingProject
+    namespaceName: 
+    className: AstarPath
+  - hash:
+      serializedVersion: 2
       Hash: 65d7429f900cd0d7d58933027dfdd825
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
@@ -755,6 +821,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerObjectPopupField
+  - hash:
+      serializedVersion: 2
+      Hash: c25874a91e6f5c8cf892615b8eaf1503
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AlternativePath
   - hash:
       serializedVersion: 2
       Hash: ad49e20f31ed572e586aa8bbaafb591b
@@ -877,6 +949,12 @@ ScriptsOnlyBuild:
     className: TMP_TextSelector_A
   - hash:
       serializedVersion: 2
+      Hash: 9a64f642d5f66a6124898037b4a29ceb
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AIDestinationSetter
+  - hash:
+      serializedVersion: 2
       Hash: fbfaf6fa3c117d94485094947e77ad93
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -913,6 +991,12 @@ ScriptsOnlyBuild:
     className: DebugUIHandlerWidget
   - hash:
       serializedVersion: 2
+      Hash: 7332c3f4e495412c959fdd2f5ab0f654
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.Graphs.Navmesh
+    className: RelevantGraphSurface
+  - hash:
+      serializedVersion: 2
       Hash: fce9b835d1e8b08e7ecea8da19f21986
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -935,6 +1019,18 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnButtonClickMessageListener
+  - hash:
+      serializedVersion: 2
+      Hash: e117696abf236aa74ae874b71efc664b
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AstarDebugger
+  - hash:
+      serializedVersion: 2
+      Hash: f4c71f205d0ae3f393dc4f52becb5a7b
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: RecastNavmeshModifier
   - hash:
       serializedVersion: 2
       Hash: 411dca89ce6c84e1ee77e2edd6d26208
@@ -1009,6 +1105,12 @@ ScriptsOnlyBuild:
     className: UniversalRenderPipelineGlobalSettings
   - hash:
       serializedVersion: 2
+      Hash: ddd0643d1ae1c6618a7ec56cd5702ddb
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.RVO
+    className: RVOSimulator
+  - hash:
+      serializedVersion: 2
       Hash: 09c44708c2c8837c59e1632c99222152
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -1051,10 +1153,22 @@ ScriptsOnlyBuild:
     className: UnityOnSelectMessageListener
   - hash:
       serializedVersion: 2
+      Hash: dd5958e36f25bdd8b55882dd52275b83
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NavmeshPrefab
+  - hash:
+      serializedVersion: 2
       Hash: 5089e363985f998e2c41966710e4d5ce
     assemblyName: Assembly-CSharp
     namespaceName: MirzaBeig.VolumetricFogLite
     className: Rotator
+  - hash:
+      serializedVersion: 2
+      Hash: e6ea5e3d1c202d2dcbe3c4746152542b
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.RVO
+    className: RVOController
   - hash:
       serializedVersion: 2
       Hash: 2a4bf9bfa4fc85b7c3fd76767f844af6
@@ -1111,6 +1225,12 @@ ScriptsOnlyBuild:
     className: UnityOnCollisionExit2DMessageListener
   - hash:
       serializedVersion: 2
+      Hash: e66bcf2074284195c059cd643631f96a
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NavmeshCut
+  - hash:
+      serializedVersion: 2
       Hash: 0a3f328f3ea906bbbcf794f4c27ee59d
     assemblyName: Unity.VisualScripting.Flow
     namespaceName: Unity.VisualScripting
@@ -1159,6 +1279,12 @@ ScriptsOnlyBuild:
     className: EnvMapAnimator
   - hash:
       serializedVersion: 2
+      Hash: d72b0704a23a1cd8a7be572aa28bfe44
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NodeLink2
+  - hash:
+      serializedVersion: 2
       Hash: 682dfc653b22feea53b38adb3bc66414
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
@@ -1181,6 +1307,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
     className: MotionBlur
+  - hash:
+      serializedVersion: 2
+      Hash: 45f76b71c3478bb74295beef33fa9bda
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.Examples
+    className: AnimationLinkTraverser
   - hash:
       serializedVersion: 2
       Hash: fe0a072dbdcbca34d5003c5299de3aaf
@@ -1309,6 +1441,12 @@ ScriptsOnlyBuild:
     className: CarForcefield
   - hash:
       serializedVersion: 2
+      Hash: f0b3e0c9b5a90386f53945df649c8db3
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: SingleNodeBlocker
+  - hash:
+      serializedVersion: 2
       Hash: db9b308769d19e1f9e161df0392c23ca
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -1345,6 +1483,12 @@ ScriptsOnlyBuild:
     className: CinemachineVolumeSettings
   - hash:
       serializedVersion: 2
+      Hash: 5680dd3535dcd87638aa6d99113671df
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: LocalSpaceGraph
+  - hash:
+      serializedVersion: 2
       Hash: c833d8ddc320fe5153f6a88cef23c858
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
@@ -1363,6 +1507,12 @@ ScriptsOnlyBuild:
     className: HorizontalLayoutGroup
   - hash:
       serializedVersion: 2
+      Hash: 4104f4b14af760fc50bb887b5d342a77
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: BlockManager
+  - hash:
+      serializedVersion: 2
       Hash: 191cd500c627cd6682ef6f70b8e47f2c
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -1375,13 +1525,25 @@ ScriptsOnlyBuild:
     className: DebugUIHandlerIndirectToggle
   - hash:
       serializedVersion: 2
+      Hash: 061a5d77ce0aa52a60c21c566c6d8af2
+    assemblyName: Unity.AI.Navigation
+    namespaceName: Unity.AI.Navigation
+    className: NavMeshModifierVolume
+  - hash:
+      serializedVersion: 2
       Hash: de1aefae5f99f33390c2edc64b86434b
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: UIManager_Racing
   - hash:
       serializedVersion: 2
-      Hash: 83340dc0b1d4c0eeffd4923c95b87593
+      Hash: 05f5028974176b0b956ffe134fc9c0c0
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: RichAI
+  - hash:
+      serializedVersion: 2
+      Hash: 86dc548234b497d78e9cce7f591db977
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: Pinball
@@ -1403,6 +1565,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering
     className: ProbeVolumeAsset
+  - hash:
+      serializedVersion: 2
+      Hash: d55f2269ad91ffec07cfa0cbbfc73aa9
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AIPathAlignedToSurface
   - hash:
       serializedVersion: 2
       Hash: 5874b789cd9832847c61ebfa803213af
@@ -1471,6 +1639,12 @@ ScriptsOnlyBuild:
     className: DamageRewardSO
   - hash:
       serializedVersion: 2
+      Hash: fe0d99f802fcfe65235c74ed6b47dea5
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NavmeshAdd
+  - hash:
+      serializedVersion: 2
       Hash: 96f2309663796de0137da7344709f4a8
     assemblyName: Cinemachine
     namespaceName: Cinemachine
@@ -1481,6 +1655,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.ResourceManager
     namespaceName: 
     className: MonoBehaviourCallbackHooks
+  - hash:
+      serializedVersion: 2
+      Hash: c31549b75b00406c2c242a1be58bb189
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: UnityReferenceHelper
   - hash:
       serializedVersion: 2
       Hash: 560346f4cbb7006f1b0bb6c77805d7ec
@@ -1573,6 +1753,12 @@ ScriptsOnlyBuild:
     className: CrossTrackObstacle
   - hash:
       serializedVersion: 2
+      Hash: eefbc0dea6724cdb3486ff0318273b94
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NodeLink
+  - hash:
+      serializedVersion: 2
       Hash: cb49ce80d4b69cb2ed30d83bfcb146ae
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
@@ -1615,7 +1801,7 @@ ScriptsOnlyBuild:
     className: GrenadeAbilityRewardSO
   - hash:
       serializedVersion: 2
-      Hash: 9beddd060fe891b38c57b7a3a2eaa6cb
+      Hash: 3883a6ba439c9d579eab6ee6e0d26165
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: GameManager_Racing
@@ -1625,12 +1811,6 @@ ScriptsOnlyBuild:
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineImpulseSource
-  - hash:
-      serializedVersion: 2
-      Hash: 672716ae97f6ddb615fa5ac3ec9da349
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools
-    className: BeforeAfterTestCommandState
   - hash:
       serializedVersion: 2
       Hash: 84fd5b58131005680184ae89163ce396
@@ -1729,6 +1909,12 @@ ScriptsOnlyBuild:
     className: ProbeVolume
   - hash:
       serializedVersion: 2
+      Hash: 515e4a14e4ef23b6ee3844a9a0f9440e
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.Examples
+    className: LocalSpaceRichAI
+  - hash:
+      serializedVersion: 2
       Hash: ed4fcf2ade8076bb6191eb1482871107
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -1807,6 +1993,12 @@ ScriptsOnlyBuild:
     className: UnityOnSubmitMessageListener
   - hash:
       serializedVersion: 2
+      Hash: 12b12f930d40d6928cc75673f531ce28
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCar
+  - hash:
+      serializedVersion: 2
       Hash: 5ebc58ec194dd44630b25fcc270ad4af
     assemblyName: UnityEngine.UI
     namespaceName: UnityEngine.UI
@@ -1855,6 +2047,12 @@ ScriptsOnlyBuild:
     className: CinemachineStoryboard
   - hash:
       serializedVersion: 2
+      Hash: e4890c3ec174f5c1a7f8dd24cd6dbaca
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: ProceduralGraphMover
+  - hash:
+      serializedVersion: 2
       Hash: 5498aa497cfc934cb07e7a0de44857e6
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -1871,6 +2069,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnParticleCollisionMessageListener
+  - hash:
+      serializedVersion: 2
+      Hash: 60d703167e2c750c0878a3bee1650066
+    assemblyName: Drawing
+    namespaceName: Pathfinding.Drawing
+    className: DrawingManager
   - hash:
       serializedVersion: 2
       Hash: 0f5a086d4d028363983ba6ca30a01397
@@ -1975,6 +2179,12 @@ ScriptsOnlyBuild:
     className: CinemachineBasicMultiChannelPerlin
   - hash:
       serializedVersion: 2
+      Hash: 35363b4e37b858534d358e78e6e688c2
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: FunnelModifier
+  - hash:
+      serializedVersion: 2
       Hash: cb8e797ddaff1969ecd0efb52dc544a5
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -2023,10 +2233,22 @@ ScriptsOnlyBuild:
     className: DiagnosticEventCollector
   - hash:
       serializedVersion: 2
+      Hash: ab71d3c5bc70aa835b608238e2fc76ca
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: GraphUpdateScene
+  - hash:
+      serializedVersion: 2
       Hash: 8d7ab1303b1c14da5fdd62bf96ca6e89
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering
     className: FreeCamera
+  - hash:
+      serializedVersion: 2
+      Hash: 8ba9f27469f74ceb8e782ba3eea3b37f
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.RVO
+    className: RVONavmesh
   - hash:
       serializedVersion: 2
       Hash: a3901985eb076c1c9b7562fca82ca3e0
@@ -2077,6 +2299,12 @@ ScriptsOnlyBuild:
     className: SimpleScript
   - hash:
       serializedVersion: 2
+      Hash: 0cb492c5b417559ce83a50ddfe02d965
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: SimpleSmoothModifier
+  - hash:
+      serializedVersion: 2
       Hash: b23bbdd042e54b46b7a4507b2fa290b3
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -2117,12 +2345,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnPointerUpMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 7e93247d600e115dac0cdd880de94e99
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools.TestRunner
-    className: PlaymodeTestsController
   - hash:
       serializedVersion: 2
       Hash: 83cfda82082c233d96cc677c19f57e07
@@ -2239,6 +2461,12 @@ ScriptsOnlyBuild:
     className: UnityOnCollisionEnterMessageListener
   - hash:
       serializedVersion: 2
+      Hash: 79f97726bd47bc33673316c13b00ac5e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: AstarRuntimeBootstrap
+  - hash:
+      serializedVersion: 2
       Hash: db79736741eab4b57f517a51185b9563
     assemblyName: Unity.ProBuilder
     namespaceName: UnityEngine.ProBuilder.Shapes
@@ -2255,12 +2483,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: BumperElementalState
-  - hash:
-      serializedVersion: 2
-      Hash: 6ddf94363c6ce4b02d9fdd51290cb0f9
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestRunner.Utils
-    className: TestRunCallbackListener
   - hash:
       serializedVersion: 2
       Hash: 5a4aa2850fe11587f47e34c270c7fd22
@@ -2303,12 +2525,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: TurretUnlockBinding
-  - hash:
-      serializedVersion: 2
-      Hash: bf40c7a9dc15bc219687c9838aa9b41f
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools.TestRunner.Callbacks
-    className: TestResultRendererCallback
   - hash:
       serializedVersion: 2
       Hash: 1de42070c8cfb5ce0dd077efe6147882
@@ -2419,10 +2635,10 @@ ScriptsOnlyBuild:
     className: SkidMaskClearer
   - hash:
       serializedVersion: 2
-      Hash: 5b8b7230ad968399f6726aa1269dcdcb
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools.TestRunner.Callbacks
-    className: PlayerQuitHandler
+      Hash: 5df4ea05dd84a593a3116e25a650e5c1
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AdvancedSmooth
   - hash:
       serializedVersion: 2
       Hash: d3bece132a2b48e63d78047dece48ba7
@@ -2599,6 +2815,12 @@ ScriptsOnlyBuild:
     className: RectMask2D
   - hash:
       serializedVersion: 2
+      Hash: dbfb15e547306a41e76864445a7a3508
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AIPath
+  - hash:
+      serializedVersion: 2
       Hash: 56532204797f5a2b1bc93ed565da5ea3
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -2653,16 +2875,34 @@ ScriptsOnlyBuild:
     className: DebugUIHandlerEnumHistory
   - hash:
       serializedVersion: 2
+      Hash: 716c1a55b820af38a146579276a05df2
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.Util
+    className: BatchedEvents
+  - hash:
+      serializedVersion: 2
       Hash: 9078325c2a6f6a2d9612ade897511860
     assemblyName: Unity.TextMeshPro
     namespaceName: TMPro
     className: TMP_SpriteAsset
   - hash:
       serializedVersion: 2
+      Hash: 4c5cb6954f3c4fcb5124c61c085bfddb
+    assemblyName: Drawing
+    namespaceName: Pathfinding.Drawing
+    className: DrawingSettings
+  - hash:
+      serializedVersion: 2
       Hash: 11d65a9119626daae656690fd1fb8d1e
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineCollisionImpulseSource
+  - hash:
+      serializedVersion: 2
+      Hash: 6b609a12e154edd60b74d06666a01270
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: Patrol
   - hash:
       serializedVersion: 2
       Hash: 09a9ebb3299853f8a1d66f750e11097e
@@ -2693,6 +2933,12 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: CameraFollow
+  - hash:
+      serializedVersion: 2
+      Hash: 53f52e521774f7377ca1d5b93f2148e4
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: Seeker
   - hash:
       serializedVersion: 2
       Hash: 59513b3a2054997e4a4a73834e43a91a
@@ -2731,16 +2977,34 @@ ScriptsOnlyBuild:
     className: TMP_TextEventCheck
   - hash:
       serializedVersion: 2
+      Hash: 8a2f78c25d5e92eb97ee5544a162a2e9
+    assemblyName: Unity.AI.Navigation
+    namespaceName: Unity.AI.Navigation
+    className: NavMeshLink
+  - hash:
+      serializedVersion: 2
       Hash: f2098fcd8ee983a05ec192f63904298f
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnEndDragMessageListener
   - hash:
       serializedVersion: 2
+      Hash: 23ce777f17abe20e89b8041bd4815460
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCarSpawner
+  - hash:
+      serializedVersion: 2
       Hash: 570aaa0553d201594695339632c95a46
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: RacingSkillDetailPanel
+  - hash:
+      serializedVersion: 2
+      Hash: 59ca989dd6a462af32a1d8afa22f3ce6
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AILerp
   - hash:
       serializedVersion: 2
       Hash: 51b80d3734ea86b38e3101db98029e15
@@ -2833,6 +3097,12 @@ ScriptsOnlyBuild:
     className: UnityOnBecameInvisibleMessageListener
   - hash:
       serializedVersion: 2
+      Hash: d55992199bd2f5a5502658391cdf8ba7
+    assemblyName: Unity.AI.Navigation
+    namespaceName: Unity.AI.Navigation
+    className: NavMeshSurface
+  - hash:
+      serializedVersion: 2
       Hash: 953fad5c5ab1e7bb889420c434db93fe
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
@@ -2875,16 +3145,34 @@ ScriptsOnlyBuild:
     className: UIFoldout
   - hash:
       serializedVersion: 2
+      Hash: bf941de9d112c9b324c3a6280697b4d2
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: DynamicObstacle
+  - hash:
+      serializedVersion: 2
       Hash: 35e0b31791c377513b6fc7b9568c50cd
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: Benchmark02
   - hash:
       serializedVersion: 2
+      Hash: 7770054758564b5083bb34eb879763c0
+    assemblyName: Drawing
+    namespaceName: Pathfinding.Drawing
+    className: AlineURPRenderPassFeature
+  - hash:
+      serializedVersion: 2
       Hash: 488f3922fa1ec8f7d72cbb04b88bf18d
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineBrain
+  - hash:
+      serializedVersion: 2
+      Hash: 50c29729092b82ee330a26c058268d8f
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: NodeLink3
   - hash:
       serializedVersion: 2
       Hash: 33656f83bb0079184b2206a69690ec46
@@ -2897,6 +3185,12 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: BallElementalState
+  - hash:
+      serializedVersion: 2
+      Hash: 67f346c6d5300cdf2ed108c25d4d3293
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.RVO
+    className: RVOSquareObstacle
   - hash:
       serializedVersion: 2
       Hash: b72839eb6e4350778dc879d98832aa2b
@@ -2927,6 +3221,18 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: TireMarkPainter
+  - hash:
+      serializedVersion: 2
+      Hash: 3524942466abe894542dbbe19196d3be
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: RadiusModifier
+  - hash:
+      serializedVersion: 2
+      Hash: 71fd3f915587f137571ded4f05158441
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: RaycastModifier
   - hash:
       serializedVersion: 2
       Hash: da5a949a0bbd2ff91bc51c5805c2c41f
@@ -2971,6 +3277,12 @@ ScriptsOnlyBuild:
     className: MarkerTrack
   - hash:
       serializedVersion: 2
+      Hash: 68f2cb287af2eee1f639824485a3402b
+    assemblyName: Unity.AI.Navigation
+    namespaceName: Unity.AI.Navigation
+    className: NavMeshModifier
+  - hash:
+      serializedVersion: 2
       Hash: ea5e0cb2f62c5bafc3dfb7bcdc9595e1
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering
@@ -2981,6 +3293,12 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerCanvas
+  - hash:
+      serializedVersion: 2
+      Hash: 29a5b2df2668bfb2c64678657486caaa
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: MoveInCircle
   - hash:
       serializedVersion: 2
       Hash: 8bbce9932f67ad8e7f4eefec87800f94
@@ -3007,16 +3325,16 @@ ScriptsOnlyBuild:
     className: FilmGrain
   - hash:
       serializedVersion: 2
-      Hash: dd7d764d8a48d06d028912c8778936de
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: PortalWarpRewardSO
-  - hash:
-      serializedVersion: 2
       Hash: a471de7e090987d25cf1957287144ebd
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: ElectricPaddleRewardSO
+  - hash:
+      serializedVersion: 2
+      Hash: dd7d764d8a48d06d028912c8778936de
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: PortalWarpRewardSO
   - hash:
       serializedVersion: 2
       Hash: 17142b03663387290480c82303274c02
@@ -3055,12 +3373,6 @@ ScriptsOnlyBuild:
     className: BasicPlayableBehaviour
   - hash:
       serializedVersion: 2
-      Hash: 19824dd35debb3fff0983df49f8359ab
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools.TestRunner.Callbacks
-    className: PlayModeRunnerCallback
-  - hash:
-      serializedVersion: 2
       Hash: 519b4878834526d289aade456ab468da
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3089,12 +3401,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnScrollRectValueChangedMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 830c3b545f6e6ee60a4cebab90516f2c
-    assemblyName: UnityEngine.TestRunner
-    namespaceName: UnityEngine.TestTools.TestRunner.Callbacks
-    className: RemoteTestResultSender
   - hash:
       serializedVersion: 2
       Hash: d0cdd713f9bf4e6a625d9e7804deca42
@@ -3133,7 +3439,13 @@ ScriptsOnlyBuild:
     className: ProjectilePool
   - hash:
       serializedVersion: 2
-      Hash: 4c82f30e8443afc39eacf3ec6ec4c3cf
+      Hash: 3ecd1417017431868676fbb2488b4721
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding
+    className: AnimationLink
+  - hash:
+      serializedVersion: 2
+      Hash: 2cbed724613139bc4429dc27bbaad03d
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: TrackObstacleBounceBack
@@ -3215,6 +3527,12 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: ObstaclePathPreview
+  - hash:
+      serializedVersion: 2
+      Hash: c1c9b51f36957c038799b38f2c90ec06
+    assemblyName: AstarPathfindingProject
+    namespaceName: Pathfinding.Examples
+    className: TurnBasedAI
   - hash:
       serializedVersion: 2
       Hash: 8d7fb44cf293fd68a81a8e4505ba94c2

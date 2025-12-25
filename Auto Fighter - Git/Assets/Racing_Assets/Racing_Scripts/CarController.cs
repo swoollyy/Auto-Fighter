@@ -2129,16 +2129,26 @@ public class CarController : MonoBehaviour
             else
             {
                 // Drifting/gliding with fuel
+                bool consumedFuelThisFrame = false;
+
                 if (accelerating && !brakingOrReverse)
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
                     rb.AddForce(forward * effectiveAcceleration * accelMul, ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
+                    consumedFuelThisFrame = true;
                 }
 
                 if (brakingOrReverse && isDrifting)
                 {
                     ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                    consumedFuelThisFrame = true;
+                }
+
+                // Drift/glide without accel or brake still burns fuel (you're moving fast)
+                if (!consumedFuelThisFrame && (isDrifting || _driftGlideActive))
+                {
+                    ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
             }
 

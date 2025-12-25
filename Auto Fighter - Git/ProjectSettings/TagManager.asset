@@ -15,6 +15,8 @@ TagManager:
   - Paddle
   - Wall
   - NoTouch
+  - BoostPad
+  - Ice
   layers:
   - Default
   - TransparentFX
@@ -35,7 +37,7 @@ TagManager:
   - Grass
   - Forcefield
   - Non-Colliding Projectile
-  - 
+  - NPCCar
   - 
   - 
   - 

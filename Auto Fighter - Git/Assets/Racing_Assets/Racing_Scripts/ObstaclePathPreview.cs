@@ -44,7 +44,8 @@ public class ObstaclePathPreview : MonoBehaviour
         if (seconds <= 0f) seconds = defaultFadeSeconds;
 
         if (_fadeCo != null) StopCoroutine(_fadeCo);
-        _fadeCo = StartCoroutine(FadeRoutine(targetAlpha, seconds));
+        if(this.gameObject.activeInHierarchy)
+            _fadeCo = StartCoroutine(FadeRoutine(targetAlpha, seconds));
     }
 
     private IEnumerator FadeRoutine(float target, float seconds)

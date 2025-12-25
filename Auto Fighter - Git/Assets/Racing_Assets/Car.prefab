@@ -541,7 +541,7 @@ MonoBehaviour:
   coneAngle: 360
   targetLayers:
     serializedVersion: 2
-    m_Bits: 264192
+    m_Bits: 788480
   useAutoTargeting: 1
   travelAllowanceMultiplier: 1.1
   pathPriorityWeight: 2
@@ -780,6 +780,7 @@ GameObject:
   - component: {fileID: 2006204842711436354}
   - component: {fileID: 3055004073125483376}
   - component: {fileID: 3332605381436512579}
+  - component: {fileID: 2808327493097887410}
   m_Layer: 0
   m_Name: Car
   m_TagString: Untagged
@@ -902,11 +903,11 @@ MonoBehaviour:
   baseAcceleration: 4.7
   baseMaxSpeed: 3.5
   baseBrakingForce: 0.01
-  turnSpeed: 10
+  turnSpeed: 11
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
   lowSpeedSteerMultiplier: 8
-  highSpeedSteerMultiplier: 1
+  highSpeedSteerMultiplier: 1.3
   speedForSteerCurve: 3.45
   steeringInputSmooth: 5
   useAutoAlignToVelocity: 0
@@ -946,7 +947,7 @@ MonoBehaviour:
   baseDrag: 0.13
   groundLayers:
     serializedVersion: 2
-    m_Bits: 92160
+    m_Bits: 90112
   samplesX: 6
   samplesZ: 6
   raycastHeightOffset: 0.5
@@ -960,7 +961,7 @@ MonoBehaviour:
   idleSpeedThreshold: 0.5
   crashLayers:
     serializedVersion: 2
-    m_Bits: 2048
+    m_Bits: 788480
   minImpactSpeed: 2.25
   maxImpactSpeed: 8
   minCrashDuration: 1.08
@@ -977,7 +978,7 @@ MonoBehaviour:
   groundCheckDistance: 0.3
   groundCheckLayers:
     serializedVersion: 2
-    m_Bits: 288768
+    m_Bits: 24576
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
   maxHP: 100
@@ -1074,7 +1075,7 @@ MonoBehaviour:
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
   enableCloseCallNearMisses: 1
-  closeCallDistance: 0.4
+  closeCallDistance: 0.45
   closeCallMinSpeed: 2.88
   closeCallCooldown: 1.42
   closeCallRootCooldown: 4.39
@@ -1406,6 +1407,35 @@ MonoBehaviour:
   spatialize: 1
   spatialBlend: 1
   outputMixerGroup: {fileID: -5018588845661870095, guid: 261796ce193c2ca459a261d29b7256dc, type: 2}
+--- !u!114 &2808327493097887410
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 1073741824
+  graphMask:
+    value: -1
+  type: 3
+  mesh: {fileID: 0}
+  rectangleSize: {x: 0.5, y: 0.5}
+  circleRadius: 1
+  circleResolution: 6
+  height: 0.5
+  meshScale: 1
+  center: {x: 0, y: 0, z: 0}
+  updateDistance: 0.4
+  isDual: 0
+  radiusExpansionMode: 0
+  cutsAddedGeom: 1
+  updateRotationDistance: 10
+  useRotationAndScale: 0
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0

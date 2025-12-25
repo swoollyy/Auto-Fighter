@@ -1,5 +1,5 @@
 sceneSetups:
-- path: Assets/Scenes/Pinball.unity
+- path: Assets/Scenes/Racer_Incremental.unity
   isLoaded: 1
   isActive: 1
   isSubScene: 0

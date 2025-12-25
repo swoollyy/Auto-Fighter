@@ -17,6 +17,7 @@ GameObject:
   - component: {fileID: 8621392272164817498}
   - component: {fileID: 4974092278974423632}
   - component: {fileID: 3991895392150841357}
+  - component: {fileID: 3627431031129848850}
   m_Layer: 11
   m_Name: CrossTrackObstacle
   m_TagString: Untagged
@@ -177,12 +178,12 @@ MonoBehaviour:
   debugMassComparison: 1
   enableScreenShake: 1
   shakeIntensity: 0.1
-  shakeFrequency: 12
+  shakeFrequency: 6
   shakeMaxDistance: 14
   shakeFullIntensityDistance: 3
   reactLayers:
     serializedVersion: 2
-    m_Bits: 133121
+    m_Bits: 919553
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
   pushDeltaVRange: {x: 0, y: 0}
@@ -343,6 +344,35 @@ MonoBehaviour:
   yOffset: 0.15
   useWorldSpace: 1
   defaultFadeSeconds: 0.25
+--- !u!114 &3627431031129848850
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 1073741824
+  graphMask:
+    value: -1
+  type: 3
+  mesh: {fileID: 0}
+  rectangleSize: {x: 1.7, y: 1.7}
+  circleRadius: 1
+  circleResolution: 6
+  height: 1.7
+  meshScale: 1
+  center: {x: 0, y: 0, z: 0}
+  updateDistance: 0.4
+  isDual: 0
+  radiusExpansionMode: 1
+  cutsAddedGeom: 1
+  updateRotationDistance: 10
+  useRotationAndScale: 1
 --- !u!1 &5520407943575544695
 GameObject:
   m_ObjectHideFlags: 0

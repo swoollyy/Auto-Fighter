@@ -152,6 +152,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private Collider[] _childColliders;
     private float _overlapTimer;
     private float _baseLightIntensity = 3.5f;
+    private float _spawnGraceUntil = 0f;
 
     // NEW: collision tracking for delayed conversion
     private int _pendingCollisionFrames = 0;
@@ -266,6 +267,29 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
+        _spawnGraceUntil = Time.time + 0.1f;
+    }
+
+    private void OnEnable()
+    {
+        // Reset state flags for pooling / re-enable support
+        _convertedToPhysics = false;
+        _fxKilled = false;
+        _waiting = false;
+        _pendingCollisionFrames = 0;
+        _pendingCollider = null;
+
+        _prevPosition = transform.position;
+        _lastVelocity = Vector3.zero;
+        _overlapTimer = 0f;
+
+        // Ensure light and preview are OFF until Start() properly initializes
+        if (telegraphLight != null)
+            telegraphLight.enabled = false;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+            preview.FadeOut(0f); // Instant off
     }
 
     private void Update()
@@ -492,6 +516,17 @@ public class ShuttleTrackObstacle : MonoBehaviour
         return Mathf.Max(0f, approx);
     }
 
+    private void OnDisable()
+    {
+        // Ensure FX are killed when disabled
+        if (telegraphLight != null)
+            telegraphLight.enabled = false;
+
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+            preview.FadeOut(0f);
+    }
+
     public void ConvertToPhysicsOnHit()
     {
         if (_convertedToPhysics) return;
@@ -503,12 +538,21 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _waiting = false;
 
 
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview) preview.FadeOut(0.2f);
+        // Kill all FX immediately
+        _fxKilled = true;
 
-        // NEW: ENSURE LIGHT IS OFF when converting to physics
-        if (telegraphLight)
+        var preview = GetComponent<ObstaclePathPreview>();
+        if (preview != null)
+        {
+            preview.FadeOut(0f); // Instant
+            preview.enabled = false;
+        }
+
+        if (telegraphLight != null)
+        {
             telegraphLight.enabled = false;
+            telegraphLight.intensity = 0f;
+        }
 
         if (!_rb)
             _rb = GetComponent<Rigidbody>() ?? gameObject.AddComponent<Rigidbody>();
@@ -621,6 +665,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void OnCollisionEnter(Collision collision)
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (collision == null || collision.collider == null) return;
 
         Debug.Log($"[ShuttleTrackObstacle] OnCollisionEnter with {collision.collider.name} (layer={collision.collider.gameObject.layer})");
@@ -669,6 +714,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (other == null) return;
 
         Debug.Log($"[ShuttleTrackObstacle] OnTriggerEnter with {other.name} (layer={other.gameObject.layer})");
@@ -738,6 +784,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void CheckForOverlapAndConvert()
     {
         if (_convertedToPhysics) return;
+        if (Time.time < _spawnGraceUntil) return;
         if (_childColliders == null || _childColliders.Length == 0) return;
 
         Bounds combined = new Bounds(_childColliders[0].bounds.center, _childColliders[0].bounds.size);

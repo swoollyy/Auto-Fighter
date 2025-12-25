@@ -1,9 +1,9 @@
 ﻿using System.Collections;
+using Unity.AI.Navigation;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
-
+using UnityEngine.SceneManagement;
 using Debug = UnityEngine.Debug;
 
 public class GameManager_Racing : MonoBehaviour
@@ -23,6 +23,16 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
+    [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
+
+    [Header("NavMesh (for NPC AI)")]
+    [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
+    [SerializeField] private bool enableNavMeshBaking = true;
+    [Tooltip("NavMeshSurface component on the track (auto-created if null).")]
+    [SerializeField] private NavMeshSurface navMeshSurface;
+    [Tooltip("Agent type ID (0 = Humanoid default, or use custom).")]
+    [SerializeField] private int navMeshAgentTypeID = 0;
+
 
     [Header("URP Renderer Control")]
     [SerializeField] private UniversalRendererData urpRendererAsset;
@@ -157,6 +167,8 @@ public class GameManager_Racing : MonoBehaviour
 
     void Awake()
     {
+        QualitySettings.vSyncCount = 0;          // since you said you don’t want to disable vsync, leave this alone if you do want vsync
+        Application.targetFrameRate = 120;       // or 60/144 based on preference
 
         if (Instance != null && Instance != this)
         {
@@ -242,6 +254,7 @@ public class GameManager_Racing : MonoBehaviour
         if (carController == null)
             return;
 
+            Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
 
         if (_finalizePending && Input.GetKeyDown(KeyCode.R))
         {
@@ -863,13 +876,13 @@ public class GameManager_Racing : MonoBehaviour
 
         _deathStopBurstPlayed = false;
 
-
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-
+        npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
+        AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -908,6 +921,52 @@ public class GameManager_Racing : MonoBehaviour
         // Now hide the skill tree
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
+    }
+
+    private void BakeNavMeshForTrack()
+    {
+        if (!enableNavMeshBaking) return;
+
+        // NavMeshSurface must be ON the track generator itself (segments are children of it)
+        if (navMeshSurface == null)
+        {
+            // Try to find existing one on the track generator
+            navMeshSurface = trackGenerator.GetComponent<NavMeshSurface>();
+
+            // If still null, ADD it to the track generator (not a child!)
+            if (navMeshSurface == null)
+            {
+                navMeshSurface = trackGenerator.gameObject.AddComponent<NavMeshSurface>();
+                Debug.Log("[GameManager_Racing] Added NavMeshSurface to track generator");
+            }
+        }
+
+        // Configure the surface
+        navMeshSurface.collectObjects = CollectObjects.Children;  // Bake all child segments
+        navMeshSurface.agentTypeID = navMeshAgentTypeID;
+
+        // IMPORTANT: Set the layer mask to only include road
+        int roadLayer = LayerMask.NameToLayer("RoadSurface");
+        if (roadLayer >= 0)
+        {
+            navMeshSurface.layerMask = 1 << roadLayer;
+        }
+        else
+        {
+            // Fallback: try RoadSurface layer
+            int roadSurfaceLayer = LayerMask.NameToLayer("Road");
+            if (roadSurfaceLayer >= 0)
+                navMeshSurface.layerMask = 1 << roadSurfaceLayer;
+        }
+
+        // Bake!
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
+
+        navMeshSurface.BuildNavMesh();
+
+        sw.Stop();
+        Debug.Log($"[GameManager_Racing] NavMesh baked in {sw.ElapsedMilliseconds}ms on {trackGenerator.gameObject.name}");
     }
 
     public void OnCarCrashLethal(float severity)

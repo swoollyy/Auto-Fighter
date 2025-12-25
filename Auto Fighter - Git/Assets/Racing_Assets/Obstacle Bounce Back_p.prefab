@@ -40,6 +40,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3081672520961261259}
     m_Modifications:
+    - target: {fileID: 375196817257799255, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: height
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 375196817257799255, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: rectangleSize.x
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 375196817257799255, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: rectangleSize.y
+      value: 1.5
+      objectReference: {fileID: 0}
     - target: {fileID: 3874382558013832276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Name
       value: Obstacle Bounce Back

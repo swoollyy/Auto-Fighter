@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: 7149760031323651416}
   m_Layer: 13
   m_Name: Ice_Segment
-  m_TagString: Untagged
+  m_TagString: Ice
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
