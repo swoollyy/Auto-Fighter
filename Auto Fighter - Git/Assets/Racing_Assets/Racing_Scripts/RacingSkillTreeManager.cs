@@ -11,6 +11,22 @@ public class RacingSkillTreeManager : MonoBehaviour
     [Header("Load")]
     public List<SkillDefinition> skills = new();
 
+    [Header("Master Control")]
+    [Tooltip("If disabled, all skills return level 0 and have no effect.")]
+    [SerializeField] private bool skillsEnabled = true;
+
+    [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
+    [SerializeField] private bool revealAllSkillsAtStart = true;
+
+    /// <summary>
+    /// Master toggle to enable/disable all skill effects at runtime.
+    /// </summary>
+    public bool SkillsEnabled
+    {
+        get => skillsEnabled;
+        set => skillsEnabled = value;
+    }
+
     [Header("Economy")]
     [SerializeField] private int playerCurrency = 0;
 
@@ -49,8 +65,13 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         _revealedSkills.Clear();
         foreach (var def in skills)
-            if (def && def.revealedAtStart)
+        {
+            if (def == null) continue;
+
+            // Reveal if master toggle is on OR individual skill has revealedAtStart
+            if (revealAllSkillsAtStart || def.revealedAtStart)
                 RevealSkill(def);
+        }
 
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
@@ -103,7 +124,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     public IReadOnlyList<SkillDefinition> AllSkills => skills;
-    public int GetLevel(SkillType t) => _state.GetLevel(t);
+    public int GetLevel(SkillType t) => skillsEnabled ? _state.GetLevel(t) : 0;
 
     public bool TryPurchase(SkillType type)
     {
@@ -211,6 +232,9 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     public float ApplyStatChain(float baseValue, params SkillType[] types)
     {
+        // If skills disabled, return base value unchanged
+        if (!skillsEnabled) return baseValue;
+
         float val = baseValue;
         if (types == null) return val;
         for (int i = 0; i < types.Length; i++)
@@ -303,6 +327,37 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0.01f, v);
     }
 
+    // ------------------------------------------------------------------------
+    // Master Skill Control
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Enable all skill effects.
+    /// </summary>
+    public void EnableAllSkills()
+    {
+        skillsEnabled = true;
+        Debug.Log("[SkillTreeManager] All skills ENABLED");
+    }
+
+    /// <summary>
+    /// Disable all skill effects (skills return to level 0 behavior).
+    /// </summary>
+    public void DisableAllSkills()
+    {
+        skillsEnabled = false;
+        Debug.Log("[SkillTreeManager] All skills DISABLED");
+    }
+
+    /// <summary>
+    /// Toggle skill effects on/off.
+    /// </summary>
+    public void ToggleSkills()
+    {
+        skillsEnabled = !skillsEnabled;
+        Debug.Log($"[SkillTreeManager] Skills {(skillsEnabled ? "ENABLED" : "DISABLED")}");
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();
@@ -314,8 +369,11 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         _revealedSkills.Clear();
         foreach (var def in skills)
-            if (def && def.revealedAtStart)
+        {
+            if (def == null) continue;
+            if (revealAllSkillsAtStart || def.revealedAtStart)
                 RevealSkill(def);
+        }
 
         OnSkillsReset?.Invoke();
     }

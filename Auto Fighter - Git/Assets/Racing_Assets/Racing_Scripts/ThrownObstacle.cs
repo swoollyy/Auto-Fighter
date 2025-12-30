@@ -6,8 +6,8 @@ using UnityEngine;
 /// Deterministic thrown projectile:
 /// - Moves via Rigidbody.MovePosition along a straight horizontal path while adding a height arc (configurable).
 /// - Rigidbody is non-kinematic, gravity disabled, collision detection ContinuousDynamic so collisions with CarController/obstacles invoke physics callbacks.
-/// - Explosive variant spawns a GroundRing and applies binary full damage to any car/obstacle whose center is inside radius.
-/// - On destruction awards currency to player via RacingSkillTreeManager.AddCurrency.
+/// - Explosive variant uses radius overlap on arrival/impact.
+/// - Plain variant now ALSO uses a radius overlap "impact zone" on arrival (so it isn't purely collider-contact based).
 /// - Returns itself to ProjectilePool when done.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -28,6 +28,9 @@ public class ThrownObstacle : MonoBehaviour
     private GameObject _ringPrefab;
     private int _rewardOnDestroy;
 
+    // NEW: non-explosive landing impact radius (derived from collider footprint)
+    private float _impactRadius = 1.5f;
+
     [Header("VFX")]
     [Tooltip("Optional impact VFX prefab to spawn at contact/arrival point.")]
     [SerializeField] private GameObject impactVFXPrefab;
@@ -37,6 +40,14 @@ public class ThrownObstacle : MonoBehaviour
     [Header("Orientation")]
     [Tooltip("If true the projectile will orient smoothly toward its motion/target. Disable to avoid sharp rotations on arrival.")]
     [SerializeField] private bool orientToMotion = false;
+
+    [Header("Plain Impact Zone")]
+    [Tooltip("Multiplier applied to the derived collider footprint to form the non-explosive 'impact zone' radius.")]
+    [SerializeField, Min(0.1f)] private float plainImpactRadiusMultiplier = 1.0f;
+    [Tooltip("Clamp for non-explosive impact radius.")]
+    [SerializeField] private Vector2 plainImpactRadiusClamp = new Vector2(0.75f, 5.0f);
+    [Tooltip("If true, plain projectiles apply an AoE-style crash/knockback on arrival using the derived radius.")]
+    [SerializeField] private bool enablePlainImpactZone = true;
 
     private Rigidbody _rb;
     private Collider _col;
@@ -49,19 +60,19 @@ public class ThrownObstacle : MonoBehaviour
     private bool _initialized;
     private bool _hasImpacted;
 
-    // NEW: whether the director already spawned a preview ring for this projectile
+    // whether the director already spawned a preview telegraph
     private bool _previewRingSpawned;
 
-    // NEW: close-call detection
+    // close-call detection
     private bool _closeCallArmed;
     private float _closestDistanceToCar = float.MaxValue;
     [Header("Close Call")]
     [Tooltip("Distance (meters) within which a passing projectile is considered a close call.")]
-    [SerializeField, Min(0f)] private float closeCallThreshold = 3.5f; // tune in inspector
+    [SerializeField, Min(0f)] private float closeCallThreshold = 3.5f;
     [Tooltip("If true, close-call triggers will be sent to the director/manager.")]
     [SerializeField] private bool enableCloseCall = true;
 
-    // NEW: suppression window to avoid creating explosions / crash damage when forcefield intercepts the projectile
+    // suppression window to avoid explosions/crash damage when forcefield intercepts
     private float _suppressExplodeUntil = 0f;
 
     public void Initialize(
@@ -77,7 +88,7 @@ public class ThrownObstacle : MonoBehaviour
         GameObject prefabReference,
         GameObject ringPrefab,
         int rewardOnDestroy,
-        bool previewRingSpawned = false    // NEW optional param
+        bool previewRingSpawned = false
     )
     {
         _director = director;
@@ -86,16 +97,17 @@ public class ThrownObstacle : MonoBehaviour
         _speed = Mathf.Max(0.01f, speed);
         _arcHeight = Mathf.Max(0f, arcHeight);
         _explosive = explosive;
-        _explosionRadius = explosionRadius;
+        _explosionRadius = Mathf.Max(0.01f, explosionRadius);
         _explosionImpulse = explosionImpulse;
         _hitLayers = hitLayers;
         _prefabRef = prefabReference;
         _ringPrefab = ringPrefab;
         _rewardOnDestroy = rewardOnDestroy;
 
-        _previewRingSpawned = previewRingSpawned; // store preview flag
+        _previewRingSpawned = previewRingSpawned;
 
         if (_rb == null) _rb = GetComponent<Rigidbody>();
+        if (_col == null) _col = GetComponent<Collider>();
 
         // keep gravity off; collision enabled only after we place the projectile to avoid phantom hits at pool root
         _rb.useGravity = false;
@@ -103,7 +115,6 @@ public class ThrownObstacle : MonoBehaviour
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        _col = GetComponent<Collider>();
         _col.isTrigger = false;
 
         // IMPORTANT: disable collider while we position the projectile to avoid instant overlaps/collisions
@@ -128,6 +139,11 @@ public class ThrownObstacle : MonoBehaviour
         _initialized = true;
         _hasImpacted = false;
 
+        // derive plain impact radius from collider footprint (world-ish)
+        _impactRadius = DeriveFootprintRadius(_col);
+        _impactRadius *= Mathf.Max(0.1f, plainImpactRadiusMultiplier);
+        _impactRadius = Mathf.Clamp(_impactRadius, plainImpactRadiusClamp.x, plainImpactRadiusClamp.y);
+
         // optional lifetime
         StopAllCoroutines();
         StartCoroutine(AutoTimeoutCoroutine(_lifetimeMax));
@@ -140,26 +156,39 @@ public class ThrownObstacle : MonoBehaviour
         _closeCallArmed = false;
         _closestDistanceToCar = float.MaxValue;
 
-        // Reset suppression
+        // reset suppression
         _suppressExplodeUntil = 0f;
     }
 
-    /// <summary>
-    /// Called by projectiles when they deactivate so director can track concurrent count
-    /// </summary>
-    private IEnumerator EnableColliderNextFixedUpdate()
+    private static float DeriveFootprintRadius(Collider col)
     {
-        // Wait a single FixedUpdate so transform positioning has been applied and we avoid colliding at pool root/previous location
-        yield return new WaitForFixedUpdate();
+        if (col == null) return 1.5f;
 
-        if (_col != null)
+        // Prefer actual collider geometry if available (local space, then scale)
+        if (col is SphereCollider sc)
         {
-            // Enable the collider now that the projectile is positioned where it should be
-            _col.enabled = true;
+            float s = Mathf.Max(col.transform.lossyScale.x, col.transform.lossyScale.z);
+            return Mathf.Max(0.1f, sc.radius * s);
         }
 
-        if (_rb != null)
-            _rb.WakeUp();
+        if (col is CapsuleCollider cc)
+        {
+            // Capsule radius is in local space; footprint depends on X/Z scale
+            float s = Mathf.Max(col.transform.lossyScale.x, col.transform.lossyScale.z);
+            return Mathf.Max(0.1f, cc.radius * s);
+        }
+
+        // Fallback: use bounds extents in XZ
+        Bounds b = col.bounds;
+        return Mathf.Max(0.1f, Mathf.Max(b.extents.x, b.extents.z));
+    }
+
+    private IEnumerator EnableColliderNextFixedUpdate()
+    {
+        yield return new WaitForFixedUpdate();
+
+        if (_col != null) _col.enabled = true;
+        if (_rb != null) _rb.WakeUp();
     }
 
     private IEnumerator AutoTimeoutCoroutine(float sec)
@@ -180,37 +209,28 @@ public class ThrownObstacle : MonoBehaviour
             if (d <= closeCallThreshold) _closeCallArmed = true;
         }
 
-        // horizontal step per FixedDeltaTime
         float step = _speed * Time.fixedDeltaTime;
         float remaining = _travelDistance * (1f - _travelT);
         float advance = Mathf.Min(step, remaining);
         if (_travelDistance <= 0f) advance = _speed * Time.fixedDeltaTime;
 
-        // update t
         float moved = advance / Mathf.Max(0.0001f, _travelDistance);
         _travelT = Mathf.Clamp01(_travelT + moved);
 
-        // compute horizontal position
         Vector3 horiz = Vector3.Lerp(_spawnPos, _landPos, _travelT);
-        // arc height (parabolic)
         float y = Mathf.Sin(Mathf.Clamp01(_travelT) * Mathf.PI) * _arcHeight;
         Vector3 target = new Vector3(horiz.x, Mathf.Lerp(_spawnPos.y, _landPos.y, _travelT) + y, horiz.z);
 
-        // move rigidbody so physics collisions happen
         _rb.MovePosition(target);
 
-        // rotate to face motion only if enabled (user requested no rotation)
         if (orientToMotion)
         {
             Vector3 fwd = (target - transform.position);
-            if (fwd.sqrMagnitude > 1e-6f) transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(fwd.normalized, Vector3.up), 0.9f);
+            if (fwd.sqrMagnitude > 1e-6f)
+                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(fwd.normalized, Vector3.up), 0.9f);
         }
 
-        // handle arrival
-        if (_travelT >= 1f)
-        {
-            OnArrived();
-        }
+        if (_travelT >= 1f) OnArrived();
     }
 
     private void OnArrived()
@@ -221,49 +241,44 @@ public class ThrownObstacle : MonoBehaviour
         // If suppressed by forcefield, avoid explosion/damage and simply deactivate gracefully
         if (Time.time < _suppressExplodeUntil)
         {
-            // Play non-damaging impact VFX and deactivate
             SpawnImpactVFX(transform.position, Vector3.up);
             ExplodeOrDeactivate();
             return;
         }
 
+        // Always spawn impact VFX at arrival
+        SpawnImpactVFX(transform.position, Vector3.up);
+
         if (_explosive)
         {
-            // only spawn a new ring here if director did not already preview one
-            if (!_previewRingSpawned)
-                SpawnRing();
+            // optional: only spawn fallback ring if director did not already preview one
+            if (!_previewRingSpawned) SpawnRing();
 
-            // spawn impact VFX at arrival position then explode
-            SpawnImpactVFX(transform.position, Vector3.up);
-
-            // Notify manager/director about explosion proximity (even if it didn't collide with car)
-            var gm = GameManager_Racing.Instance;
-            gm?.HandleProjectileExplosion(transform.position, _explosionRadius);
-
+            GameManager_Racing.Instance?.HandleProjectileExplosion(transform.position, _explosionRadius);
             ExplodeAt(transform.position);
         }
         else
         {
-            // plain impact: apply damage/physics if appropriate, then deactivate
-            // spawn small impact VFX
-            SpawnImpactVFX(transform.position, Vector3.up);
+            // NEW: Plain impact zone (AoE-like) so it doesn't rely only on collider contact
+            if (enablePlainImpactZone)
+                ApplyPlainImpactZone(transform.position);
 
-            // No explosion, but still notify proximity if very close to car (optional)
-            var gm = GameManager_Racing.Instance;
-            gm?.HandleProjectileProximity(transform.position, _explosionRadius * 0.5f);
+            // Use the same radius you’re telegraphing for proximity feedback
+            GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _impactRadius);
 
             ExplodeOrDeactivate();
         }
     }
 
-    // spawn a visual ring (pooled)
+    // (legacy) ring prefab support: if you’ve swapped to decals and this prefab has no GroundRing component,
+    // it will simply be returned to the pool and do nothing.
     private void SpawnRing()
     {
         if (_ringPrefab == null) return;
+
         var ring = ProjectilePool.Instance.Get(_ringPrefab);
         if (ring == null) return;
 
-        // Position BEFORE activation to avoid visible pop at pool location
         ring.transform.position = _landPos + Vector3.up * 0.05f;
         ring.transform.rotation = Quaternion.identity;
         ring.SetActive(true);
@@ -275,10 +290,67 @@ public class ThrownObstacle : MonoBehaviour
             ProjectilePool.Instance.Return(_ringPrefab, ring);
     }
 
-    // explosion effect: apply binary full damage to car/obstacles within radius, apply impulses to Rigidbodies
+    // NEW: plain arrival AoE impact
+    private void ApplyPlainImpactZone(Vector3 pos)
+    {
+        // Respect hit layers; ignore triggers
+        Collider[] hits = Physics.OverlapSphere(pos, _impactRadius, _hitLayers.value, QueryTriggerInteraction.Ignore);
+
+        foreach (var c in hits)
+        {
+            if (c == null) continue;
+
+            // CAR HIT (arrival AoE)
+            var car = c.GetComponentInParent<CarController>();
+            if (car != null)
+            {
+                float d = Vector3.Distance(car.transform.position, pos);
+                if (d <= _impactRadius)
+                {
+                    float severity = 1f - Mathf.Clamp01(d / Mathf.Max(0.01f, _impactRadius));
+                    severity *= 0.65f; // plain hits are softer than explosions
+
+                    Vector3 hitDir = (car.transform.position - pos);
+                    if (hitDir.sqrMagnitude < 0.0001f) hitDir = -car.transform.forward;
+                    hitDir.Normalize();
+
+                    var carCol = car.GetComponent<Collider>();
+                    Vector3 contactPoint = carCol != null ? carCol.ClosestPoint(pos) : car.transform.position;
+
+                    // impact speed floor so it always "feels like something"
+                    float impactSpeed = Mathf.Max(car.CurrentSpeed, 9f);
+                    car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
+                }
+            }
+
+            // OBSTACLE HIT (small knock)
+            var obstacle = c.GetComponentInParent<RacingObstacle>();
+            if (obstacle != null)
+            {
+                Rigidbody obr = EnsureRigidbodyForObstacle(obstacle.gameObject);
+                if (obr != null)
+                {
+                    if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
+
+                    Vector3 dir = (obr.position - pos);
+                    if (dir.sqrMagnitude < 0.0001f) dir = Vector3.up;
+                    dir.Normalize();
+
+                    float mass = Mathf.Max(0.01f, obr.mass);
+                    // gentler than explosion
+                    Vector3 impulse = dir * (_explosionImpulse * 0.35f * mass);
+                    obr.AddForce(impulse, ForceMode.Impulse);
+                }
+
+                // light damage ping
+                obstacle.ApplyDamage(5f);
+            }
+        }
+    }
+
+    // explosion effect
     private void ExplodeAt(Vector3 pos)
     {
-        // If suppressed by forcefield, skip damaging overlap behavior and just deactivate.
         if (Time.time < _suppressExplodeUntil)
         {
             SpawnImpactVFX(pos, Vector3.up);
@@ -286,79 +358,54 @@ public class ThrownObstacle : MonoBehaviour
             return;
         }
 
-        // spawn impact VFX (if any) at explosion center
         SpawnImpactVFX(pos, Vector3.up);
 
-        // overlap (respect configured hit layers so we don't pick up unrelated colliders)
         Collider[] hits = Physics.OverlapSphere(pos, _explosionRadius, _hitLayers.value, QueryTriggerInteraction.Ignore);
-        var mgr = RacingSkillTreeManager.Instance;
-        var gm = GameManager_Racing.Instance;
 
         foreach (var c in hits)
         {
             if (c == null) continue;
 
-            // -------------------------
-            // CAR HIT (AoE explosion)
-            // -------------------------
             var car = c.GetComponentInParent<CarController>();
             if (car)
             {
                 float d = Vector3.Distance(car.transform.position, pos);
                 if (d <= _explosionRadius)
                 {
-                    // Full blast severity for now (you can scale by distance if you want)
                     float severity = 1f - Mathf.Clamp01(d / _explosionRadius);
 
-                    // Direction the car is pushed: from explosion center toward the car
                     Vector3 hitDir = (car.transform.position - pos);
-                    if (hitDir.sqrMagnitude < 0.0001f)
-                        hitDir = -car.transform.forward;  // fallback if somehow on top of center
+                    if (hitDir.sqrMagnitude < 0.0001f) hitDir = -car.transform.forward;
                     hitDir.Normalize();
 
-                    // Contact point: closest point on the car collider to explosion center
                     var carCol = car.GetComponent<Collider>();
-                    Vector3 contactPoint = carCol != null
-                        ? carCol.ClosestPoint(pos)
-                        : car.transform.position;
+                    Vector3 contactPoint = carCol != null ? carCol.ClosestPoint(pos) : car.transform.position;
 
-                    // Approximate impact speed: at least current speed, plus a floor so it feels impactful
                     float impactSpeed = Mathf.Max(car.CurrentSpeed, 12f);
-
-                    // Let CarController handle the full crash: physics, HP/fuel, cooldown, GM.OnCarCrash, etc.
                     car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
                 }
             }
 
-            // -------------------------
-            // Obstacles (RacingObstacle)
-            // -------------------------
             var obstacle = c.GetComponentInParent<RacingObstacle>();
             if (obstacle)
             {
-                // Ensure obstacle uses physics (non-kinematic) and get a usable Rigidbody
                 Rigidbody obr = EnsureRigidbodyForObstacle(obstacle.gameObject);
+                if (obr != null)
+                {
+                    if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
 
-                // If mass is tiny, assign a sane default
-                if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
+                    Vector3 dir = (obr.position - pos).normalized;
+                    float mass = Mathf.Max(0.01f, obr.mass);
+                    Vector3 impulse = dir * (_explosionImpulse * mass);
+                    obr.AddForce(impulse, ForceMode.Impulse);
+                }
 
-                Vector3 dir = (obr.position - pos).normalized;
-                float mass = Mathf.Max(0.01f, obr.mass);
-                // Mass-aware impulse: desired deltaV = explosion impulse magnitude; impulse = deltaV * mass
-                Vector3 impulse = dir * (_explosionImpulse * mass);
-                obr.AddForce(impulse, ForceMode.Impulse);
-
-                // apply damage if RacingObstacle supports ApplyDamage (it does)
-                obstacle.ApplyDamage(_explosionRadius > 0f ? 10f : 5f); // simple flat value – tweakable
+                obstacle.ApplyDamage(10f);
             }
 
-            // -------------------------
-            // Generic rigidbodies in radius
-            // -------------------------
             var rb = c.attachedRigidbody;
             if (rb && obstacle == null)
             {
-                // Ensure it's non-kinematic before applying force
                 if (rb.isKinematic)
                 {
                     rb.isKinematic = false;
@@ -375,28 +422,22 @@ public class ThrownObstacle : MonoBehaviour
         ExplodeOrDeactivate();
     }
 
-
     private void ExplodeOrDeactivate()
     {
-        // Award reward to player if destroyed by player (the director / other code should call DestroyProjectileToReward when appropriate).
-        // Here we just deactivate.
         StartCoroutine(DeactivateNextFrame());
     }
 
     private IEnumerator DeactivateNextFrame()
     {
-        // Wait for physics to finish the current step to avoid race/queued contact callbacks.
         yield return new WaitForFixedUpdate();
 
-        // If the projectile never impacted anything but was armed as a close call, notify director/manager
+        // Close call only matters if we never impacted
         if (!_hasImpacted && _closeCallArmed && enableCloseCall)
         {
-            // provide closest distance info if available
             _director?.NotifyProjectileCloseCall(this, _closestDistanceToCar);
             GameManager_Racing.Instance?.HandleProjectileCloseCall(transform.position, _closestDistanceToCar);
         }
 
-        // Reset physics state so the pooled instance won't carry over velocities/collisions.
         if (_rb != null)
         {
             _rb.velocity = Vector3.zero;
@@ -405,7 +446,6 @@ public class ThrownObstacle : MonoBehaviour
         }
         if (_col != null)
         {
-            // disable collider while pooled (will be re-enabled in Initialize)
             _col.enabled = false;
         }
 
@@ -425,262 +465,167 @@ public class ThrownObstacle : MonoBehaviour
         var ro = other.GetComponentInParent<RacingObstacle>();
         if (ro != null)
         {
-            // Ensure the obstacle is converted from any scripted motion to physics if it supports that
             var shuttle = ro.GetComponentInChildren<ShuttleTrackObstacle>(true);
-            if (shuttle)
-                shuttle.ConvertToPhysicsOnHit();
+            if (shuttle) shuttle.ConvertToPhysicsOnHit();
 
             Rigidbody obr = EnsureRigidbodyForObstacle(ro.gameObject);
+            if (obr != null)
+            {
+                if (obr.mass < 0.01f) obr.mass = Mathf.Max(0.1f, 10f);
 
-            // If mass is not set sensibly, ensure a reasonable mass
-            if (obr.mass < 0.01f) obr.mass = Mathf.Max(0.1f, 10f);
+                Vector3 away = (obr.position - transform.position).normalized;
+                float mass = Mathf.Max(0.01f, obr.mass);
+                Vector3 impulse = away * (_explosionImpulse * 0.7f * mass);
+                obr.AddForce(impulse, ForceMode.Impulse);
+            }
 
-            Vector3 away = (obr.position - transform.position).normalized;
-            float mass = Mathf.Max(0.01f, obr.mass);
-            // mass-aware impulse (= deltaV * mass). Use explosionImpulse * 0.7 as desired deltaV
-            Vector3 impulse = away * (_explosionImpulse * 0.7f * mass);
-            obr.AddForce(impulse, ForceMode.Impulse);
+            ro.ApplyDamage(_explosive ? 10f : 5f);
 
-            // if explosive, also explode
             if (_explosive)
             {
-                // if director already previewed the ring, OnArrived logic will avoid double-spawn
+                // avoid double telegraph; director may already have preview
                 SpawnRing();
 
-                // prefer the actual contact point if available
                 Vector3 contactPoint = transform.position;
+                Vector3 normal = Vector3.up;
                 if (collision.contactCount > 0)
-                    contactPoint = collision.GetContact(0).point;
+                {
+                    var ct = collision.GetContact(0);
+                    contactPoint = ct.point;
+                    normal = ct.normal;
+                }
 
-                // spawn impact VFX at contact point and explode there
-                SpawnImpactVFX(contactPoint, collision.GetContact(0).normal);
-                // Notify manager/director about explosion proximity
+                SpawnImpactVFX(contactPoint, normal);
                 GameManager_Racing.Instance?.HandleProjectileExplosion(contactPoint, _explosionRadius);
+                _hasImpacted = true;
                 ExplodeAt(contactPoint);
                 return;
             }
         }
 
-        // If collided with a car, apply crash/damage now (non-explosive should still hurt)
+        // Car collision should still hurt (even non-explosive)
         var car = other.GetComponentInParent<CarController>();
         if (car != null)
         {
-            // If suppressed by forcefield, skip applying crash/damage to the car
             if (Time.time < _suppressExplodeUntil)
             {
-                // spawn a harmless impact VFX and deactivate
                 SpawnImpactVFX(transform.position, Vector3.up);
+                _hasImpacted = true;
                 ExplodeOrDeactivate();
                 return;
             }
 
-            // Compute impact speed from relative velocity
             float impactSpeed = collision.relativeVelocity.magnitude;
-
-            // Clamp into the car's expected crash speed range
             float min = car.MinImpactSpeed;
             float max = car.MaxImpactSpeed;
             impactSpeed = Mathf.Clamp(impactSpeed, min, max);
 
-            // Direction from projectile toward car → impulse pushes car away
             Vector3 hitDir = (car.transform.position - transform.position).normalized;
 
-            // Best available contact point
             Vector3 contactPoint = collision.contactCount > 0
                 ? collision.GetContact(0).point
                 : car.transform.position;
 
-            // Map impact speed to 0..1 severity like CarController does
             float severity = Mathf.InverseLerp(min, max, impactSpeed);
-
-            // Let the car handle EVERYTHING: physics, HP/fuel, SFX, cooldown, etc.
             car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
         }
 
-
-        // For all other cases treat as arrival
+        // For all other cases treat as impact and deactivate / explode depending on type
         _hasImpacted = true;
 
-        // choose contact point if available
         Vector3 impactPoint = transform.position;
-        Vector3 normal = Vector3.up;
+        Vector3 nrm = Vector3.up;
         if (collision.contactCount > 0)
         {
             var contact = collision.GetContact(0);
             impactPoint = contact.point;
-            normal = contact.normal;
+            nrm = contact.normal;
         }
 
-        // If suppressed by forcefield, avoid explosion/damage and deactivate
         if (Time.time < _suppressExplodeUntil)
         {
-            SpawnImpactVFX(impactPoint, normal);
+            SpawnImpactVFX(impactPoint, nrm);
             ExplodeOrDeactivate();
             return;
         }
 
         if (_explosive)
         {
-            if (!_previewRingSpawned)
-                SpawnRing();
-            SpawnImpactVFX(impactPoint, normal);
-            // Notify manager/director about explosion proximity
+            if (!_previewRingSpawned) SpawnRing();
+            SpawnImpactVFX(impactPoint, nrm);
             GameManager_Racing.Instance?.HandleProjectileExplosion(impactPoint, _explosionRadius);
             ExplodeAt(impactPoint);
         }
         else
         {
-            // plain impact; let physics handle collision consequences (CarController should receive OnCollisionEnter)
-            SpawnImpactVFX(impactPoint, normal);
+            SpawnImpactVFX(impactPoint, nrm);
             ExplodeOrDeactivate();
         }
     }
 
-    // Called externally (e.g. turret shot, player hit) to destroy projectile early with reward to player
     public void DestroyByPlayer()
     {
-        // award currency
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null && _rewardOnDestroy > 0)
             mgr.AddCurrency(_rewardOnDestroy);
 
-        // small VFX can be spawned here
         SpawnImpactVFX(transform.position, Vector3.up);
-        // notify explosion proximity (small radius)
-        GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _explosionRadius * 0.5f);
+        GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _impactRadius);
         ExplodeOrDeactivate();
     }
 
-    // NEW: public API invoked by CarForcefield when the forcefield intercepts a thrown projectile.
-    // It will:
-    // - ensure the projectile uses physics (non-kinematic),
-    // - add an immunity marker so the projectile won't damage the car for a short window,
-    // - apply a mass-aware impulse away from the car,
-    // - suppress explosions/damage for the ignoreWithCarSeconds window.
     public void InterceptedByForcefield(Vector3 awayDir, float awayDeltaV, float upDeltaV, float ignoreWithCarSeconds)
     {
         if (_rb == null) _rb = GetComponent<Rigidbody>();
 
-        // ensure physics enabled
         _rb.isKinematic = false;
         _rb.useGravity = true;
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
         _rb.WakeUp();
 
-        // ensure a LaunchImmunityMarker exists so other systems know this was force-launched
         var immunity = GetComponent<LaunchImmunityMarker>();
         if (!immunity) immunity = gameObject.AddComponent<LaunchImmunityMarker>();
         immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
 
-        // set suppression window so this projectile won't explode or damage cars during that time
         _suppressExplodeUntil = Time.time + Mathf.Max(0f, ignoreWithCarSeconds);
 
-        // apply mass-aware impulse
         float mass = Mathf.Max(0.01f, _rb.mass);
         Vector3 desiredDeltaV = awayDir.normalized * awayDeltaV + Vector3.up * upDeltaV;
         Vector3 impulse = desiredDeltaV * mass;
         _rb.AddForce(impulse, ForceMode.Impulse);
 
-        // Small visual/feedback: spawn impact VFX at current position to show "deflection"
         SpawnImpactVFX(transform.position, Vector3.up);
     }
 
-    // Use reflection to reduce CarController private HP / fuel since no public API exposed for subtraction.
-    private void TryApplyCarDamageViaReflection(CarController car, float severity)
-    {
-        if (car == null) return;
-
-        try
-        {
-            var t = car.GetType();
-            var currentHPField = t.GetField("currentHP", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var maxHPField = t.GetField("maxHP", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var fuelField = t.GetField("currentFuel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var fuelMaxField = t.GetField("maxFuel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            float maxHP = (float)(maxHPField?.GetValue(car) ?? 0f);
-            float maxFuel = (float)(fuelMaxField?.GetValue(car) ?? 0f);
-
-            // Use fields from CarController for base crash penalties if available
-            var hpCrashField = t.GetField("hpCrashDamageAtSeverity1", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var fuelLossField = t.GetField("fuelLossAtSeverity1", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            float hpAt1 = hpCrashField != null ? (float)hpCrashField.GetValue(car) : Mathf.Max(10f, maxHP * 0.15f);
-            float fuelAt1 = fuelLossField != null ? (float)fuelLossField.GetValue(car) : Mathf.Max(5f, maxFuel * 0.1f);
-
-            // full (binary) damage: severity is expected 0..1; we pass computed severity
-            float hpLoss = Mathf.Max(0f, hpAt1 * Mathf.Clamp01(severity));
-            float fuelLoss = Mathf.Max(0f, fuelAt1 * Mathf.Clamp01(severity));
-
-            if (currentHPField != null)
-            {
-                float curHP = (float)currentHPField.GetValue(car);
-                curHP = Mathf.Max(0f, curHP - hpLoss);
-                currentHPField.SetValue(car, curHP);
-            }
-
-            if (fuelField != null)
-            {
-                float curFuel = (float)fuelField.GetValue(car);
-                curFuel = Mathf.Max(0f, curFuel - fuelLoss);
-                fuelField.SetValue(car, curFuel);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[ThrownObstacle] Reflection damage apply failed: {ex}");
-        }
-    }
-
-    /// <summary>
-    /// Ensure the target GameObject (obstacle root) has an active, non-kinematic Rigidbody and return it.
-    /// Also attempts to convert shuttle-style scripted obstacles to physics-driven by calling ConvertToPhysicsOnHit when available.
-    /// </summary>
     private Rigidbody EnsureRigidbodyForObstacle(GameObject rootObj)
     {
         if (rootObj == null) return null;
 
-        // If the obstacle provides a ShuttleTrackObstacle conversion API, call it first
         var shuttle = rootObj.GetComponentInChildren<ShuttleTrackObstacle>(true);
-        if (shuttle != null)
-        {
-            shuttle.ConvertToPhysicsOnHit();
-        }
+        if (shuttle != null) shuttle.ConvertToPhysicsOnHit();
 
-        // Find existing rigidbody (on root or children)
         Rigidbody found = rootObj.GetComponent<Rigidbody>() ?? rootObj.GetComponentInChildren<Rigidbody>();
         if (found == null)
         {
-            // add a Rigidbody and configure it for dynamic physics
             found = rootObj.AddComponent<Rigidbody>();
             found.mass = Mathf.Max(0.1f, 10f);
         }
 
-        // Ensure it's ready for impulses
-        if (found.isKinematic)
-            found.isKinematic = false;
+        if (found.isKinematic) found.isKinematic = false;
         found.useGravity = true;
         found.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         found.interpolation = RigidbodyInterpolation.Interpolate;
         found.WakeUp();
 
-        // Make sure transforms are synchronized before applying forces
         Physics.SyncTransforms();
-
         return found;
     }
 
-    /// <summary>
-    /// Spawn the optional impact VFX at the provided world position.
-    /// Normal is used to orient the VFX if desired.
-    /// </summary>
     private void SpawnImpactVFX(Vector3 worldPos, Vector3 normal)
     {
         if (impactVFXPrefab == null) return;
 
-        // Prefer pooling pattern when ProjectilePool exists & prefab was pooled there
-        // (ProjectilePool returns inactive instance ready to position)
         try
         {
             GameObject inst = null;
@@ -692,20 +637,16 @@ public class ThrownObstacle : MonoBehaviour
                     inst.transform.position = worldPos;
                     inst.transform.rotation = Quaternion.LookRotation(normal, Vector3.up);
                     inst.SetActive(true);
-                    // If this VFX is not a GroundRing (pooled with its own return), return it after lifetime
-                    // We'll schedule a return to the pool after impactVFXLifetime seconds.
                     StartCoroutine(ReturnPooledVFXLater(impactVFXPrefab, inst, impactVFXLifetime));
                     return;
                 }
             }
 
-            // Fallback to Instantiate
             inst = Instantiate(impactVFXPrefab, worldPos, Quaternion.LookRotation(normal, Vector3.up));
             Destroy(inst, impactVFXLifetime);
         }
         catch (Exception)
         {
-            // If anything goes wrong with pool, fallback to simple instantiate/destroy
             var inst = Instantiate(impactVFXPrefab, worldPos, Quaternion.LookRotation(normal, Vector3.up));
             Destroy(inst, impactVFXLifetime);
         }
@@ -721,7 +662,7 @@ public class ThrownObstacle : MonoBehaviour
 
 public class SimpleSpin : MonoBehaviour
 {
-    public Vector3 rpm = new Vector3(0f, 360f, 0f); // degrees per second
+    public Vector3 rpm = new Vector3(0f, 360f, 0f);
 
     void Update()
     {

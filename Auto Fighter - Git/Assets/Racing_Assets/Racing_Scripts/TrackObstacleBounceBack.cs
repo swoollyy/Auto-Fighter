@@ -1,5 +1,6 @@
 ﻿using DG.Tweening;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -76,6 +77,20 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
     [SerializeField, Min(0.01f)] private float carDetectRadius = 0.6f;
 
+    [Header("Landing Preview (Decal / GroundRing)")]
+    [SerializeField, Tooltip("Use the SAME prefab you use for ThrownObstacleDirector.groundRingPrefab (pooled).")]
+    private GameObject landingTelegraphPrefab;
+
+    [SerializeField, Tooltip("If true, use this obstacle's collider footprint as telegraph radius.")]
+    private bool telegraphRadiusFromCollider = true;
+
+    [SerializeField, Min(0.1f)]
+    private float telegraphRadiusOverride = 1.5f;
+
+    [SerializeField]
+    private Vector2 telegraphRadiusClamp = new Vector2(0.75f, 4.0f);
+
+
 
     [Header("Landing Settle (Fix Shake)")]
     [SerializeField, Min(0f), Tooltip("Time in seconds to let physics settle after landing before freezing.")]
@@ -139,6 +154,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
     private Rigidbody _rb;
     private Collider _col;
 
+    private float _telegraphRadiusCached = 1.5f;
+    private GameObject _landingTeleInst;
 
     // stable pivot->bottom offset along world up
     private float _pivotToBottomUp;
@@ -203,6 +220,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     {
         _bounceTween?.Kill();
         _bounceTween = null;
+        ClearLandingTelegraph();
     }
 
     private void Start()
@@ -334,6 +352,17 @@ public class TrackObstacleBounceBack : MonoBehaviour
             _pivotToBottomUp = 0f;
         }
 
+        if (telegraphRadiusFromCollider && _col != null)
+        {
+            Bounds b = _col.bounds;
+            float r = Mathf.Max(b.extents.x, b.extents.z);
+            _telegraphRadiusCached = Mathf.Clamp(r, telegraphRadiusClamp.x, telegraphRadiusClamp.y);
+        }
+        else
+        {
+            _telegraphRadiusCached = Mathf.Clamp(telegraphRadiusOverride, telegraphRadiusClamp.x, telegraphRadiusClamp.y);
+        }
+
         // Find current distance + lateral offset at spawn
         _dist = GetDistanceAlongTrack(transform.position);
 
@@ -393,6 +422,37 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _bounceStartDist = _dist;
         _bounceEndDist = Mathf.Max(0f, _dist - bounceStepDistance);
 
+        // Preview the landing spot for THIS bounce (same as thrown obstacles)
+        SampleAlongPath(_bounceEndDist, out Vector3 centerEnd, out Vector3 forwardEnd);
+
+        Vector3 flatForward = forwardEnd;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        // lateral clamp must match movement
+        float lateral = _lateralOffset;
+        if (clampToRoadWidth && trackGenerator != null)
+        {
+            float halfWidth = Mathf.Max(0.1f, trackGenerator.RoadWidth * 0.5f);
+            float maxLat = halfWidth * lateralClampFraction;
+            lateral = Mathf.Clamp(lateral, -maxLat, maxLat);
+        }
+
+        Vector3 landingXZ = centerEnd + right * lateral;
+
+        // project to surface (use hit.point for decal placement)
+        Vector3 landingPoint = landingXZ;
+        if (RaycastGroundY(landingXZ, out RaycastHit hit))
+            landingPoint = hit.point;
+
+        // show for (almost) the bounce duration
+        float holdSeconds = Mathf.Max(0.05f, bounceDuration - 0.02f);
+        SpawnLandingTelegraph(landingPoint, holdSeconds);
+
+
         _bounceTween?.Kill();
         _bounceT = 0f;
 
@@ -451,6 +511,77 @@ public class TrackObstacleBounceBack : MonoBehaviour
         // If you ever want slope tilt later, you’d feed in hit.normal, but upright is the stable/AAA choice here.
         return Quaternion.LookRotation(lookDir, Vector3.up);
     }
+
+    private void SpawnLandingTelegraph(Vector3 landingPoint, float seconds)
+    {
+        if (landingTelegraphPrefab == null) return;
+        if (ProjectilePool.Instance == null) return;
+
+        // Clear any previous preview (safety)
+        ClearLandingTelegraph();
+
+        var tele = ProjectilePool.Instance.Get(landingTelegraphPrefab);
+        if (tele == null) return;
+
+        _landingTeleInst = tele;
+        tele.SetActive(true);
+
+        // Prefer URPDecalTelegraph, fall back to GroundRing, else just return later.
+        var decalTele = tele.GetComponent<URPDecalTelegraph>();
+        if (decalTele != null)
+        {
+            decalTele.SetWorldPose(landingPoint);
+            decalTele.Play(
+                radius: _telegraphRadiusCached,
+                seconds: Mathf.Max(0.05f, seconds),
+                onComplete: () =>
+                {
+                    if (_landingTeleInst == tele) _landingTeleInst = null;
+                    ProjectilePool.Instance.Return(landingTelegraphPrefab, tele);
+                }
+            );
+            return;
+        }
+
+        var gr = tele.GetComponent<GroundRing>();
+        if (gr != null)
+        {
+            gr.Play(
+                _telegraphRadiusCached,
+                onComplete: () =>
+                {
+                    if (_landingTeleInst == tele) _landingTeleInst = null;
+                    ProjectilePool.Instance.Return(landingTelegraphPrefab, tele);
+                },
+                holdOverride: Mathf.Max(0.05f, seconds)
+            );
+            return;
+        }
+
+        StartCoroutine(ReturnTelegraphLater(landingTelegraphPrefab, tele, Mathf.Max(0.1f, seconds)));
+    }
+
+    private void ClearLandingTelegraph()
+    {
+        if (_landingTeleInst == null) return;
+
+        // If it was pooled, just return it immediately.
+        if (landingTelegraphPrefab != null && ProjectilePool.Instance != null)
+            ProjectilePool.Instance.Return(landingTelegraphPrefab, _landingTeleInst);
+
+        _landingTeleInst = null;
+    }
+
+    private IEnumerator ReturnTelegraphLater(GameObject prefab, GameObject inst, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (_landingTeleInst == inst) _landingTeleInst = null;
+
+        if (prefab != null && inst != null && ProjectilePool.Instance != null)
+            ProjectilePool.Instance.Return(prefab, inst);
+    }
+
 
     private bool RaycastGroundY(Vector3 aroundPos, out RaycastHit hit)
     {

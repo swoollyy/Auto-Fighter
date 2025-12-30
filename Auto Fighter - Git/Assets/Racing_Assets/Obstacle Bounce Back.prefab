@@ -66,7 +66,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
+  - {fileID: 2100000, guid: e0153e31099a10c4cbadad9d40f08e8f, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -125,7 +125,7 @@ MonoBehaviour:
   maxHealth: 2
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
@@ -175,7 +175,7 @@ MonoBehaviour:
   bounceDuration: 0.5
   bounceCooldown: 1
   randomizeInitialCooldown: 1
-  initialCooldownRange: {x: 0, y: 1.5}
+  initialCooldownRange: {x: 0, y: 1.58}
   useUnscaledTime: 1
   bounceJumpHeight: 1
   clampToRoadWidth: 1
@@ -190,26 +190,30 @@ MonoBehaviour:
   keepUpright: 1
   noPhysicalCollisionMask:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 0
   carDetectMask:
     serializedVersion: 2
     m_Bits: 1
-  carDetectRadius: 0.15
+  carDetectRadius: 0.01
+  landingTelegraphPrefab: {fileID: 4108758772899792739, guid: 6e526491afa36544aa8130216c672992, type: 3}
+  telegraphRadiusFromCollider: 1
+  telegraphRadiusOverride: 1.5
+  telegraphRadiusClamp: {x: 0.75, y: 4}
   landingSettleTime: 0.06
   landingLift: 0
   reactToOtherObstacles: 1
   obstacleReactMask:
     serializedVersion: 2
     m_Bits: 264192
-  obstacleImpulse: 9.9
+  obstacleImpulse: 9.48
   obstacleUpImpulse: 2.8
   obstacleImpactCooldown: 0.08
   damagePlayerOnHit: 1
   hitHpDamage: 30
-  hitFuelPercent: 0.3
-  hitDamageCooldown: 0.5
+  hitFuelPercent: 0.155
+  hitDamageCooldown: 1.01
   crashFxSeverity: 0.752
-  crashImpactSpeed: 17.9
+  crashImpactSpeed: 13.5
   ignoreCollisionSeconds: 0.25
 --- !u!114 &375196817257799255
 MonoBehaviour:

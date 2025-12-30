@@ -5,7 +5,8 @@ public enum SurfaceType
     Default,
     Grass,
     Dirt,
-    Ice
+    Ice,
+    Boost   // NEW: Auto-acceleration surface
 }
 
 [DisallowMultipleComponent]
@@ -40,4 +41,22 @@ public class GroundSurface : MonoBehaviour
     [Tooltip("How ice affects rotation vs velocity alignment (0 = slides straight, 1 = normal grip). Works like drift physics.")]
     [Range(0f, 1f)]
     public float iceHandlingMultiplier = 0.3f;
+
+    // NEW: Boost-specific properties
+    [Header("Boost Properties (when surfaceType = Boost)")]
+    [Tooltip("If true, car automatically accelerates forward on this surface (no input needed).")]
+    public bool autoAccelerate = true;
+
+    [Tooltip("Forward acceleration force applied (m/s²). Higher = faster push.")]
+    public float boostAcceleration = 15f;
+
+    [Tooltip("Maximum speed the boost can push you to. 0 = no limit (uses car's max).")]
+    public float boostMaxSpeed = 0f;
+
+    [Tooltip("If true, boost works even during crash/recovery states.")]
+    public bool boostDuringCrash = true;
+
+    [Tooltip("Multiplier for boost effect during crash recovery (0.5 = half strength).")]
+    [Range(0f, 1f)]
+    public float boostCrashMultiplier = 0.5f;
 }

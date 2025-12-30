@@ -129,7 +129,7 @@ MonoBehaviour:
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
   baseImpactVelocityThreshold: 2
   impactDamageCooldown: 0.25
@@ -361,7 +361,7 @@ MonoBehaviour:
     value: -1
   type: 3
   mesh: {fileID: 0}
-  rectangleSize: {x: 1.7, y: 1.7}
+  rectangleSize: {x: 2, y: 2}
   circleRadius: 1
   circleResolution: 6
   height: 1.7

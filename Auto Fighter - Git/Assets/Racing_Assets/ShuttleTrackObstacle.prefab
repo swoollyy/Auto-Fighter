@@ -129,7 +129,7 @@ MonoBehaviour:
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
@@ -199,13 +199,13 @@ MonoBehaviour:
   moveShakeFrequency: 5
   waitShakeIntensity: 0.04
   waitShakeFrequency: 3
-  snapShakeIntensity: 0.6
-  snapShakeFrequency: 30
+  snapShakeIntensity: 0.15
+  snapShakeFrequency: 10
   shakeMaxDistance: 14
   shakeFullIntensityDistance: 3
   convertOnCollisionLayers:
     serializedVersion: 2
-    m_Bits: 526337
+    m_Bits: 788481
   ignoreRoadAndTerrain: 1
   minTransferVelocity: 0
   collisionDelayFrames: 3

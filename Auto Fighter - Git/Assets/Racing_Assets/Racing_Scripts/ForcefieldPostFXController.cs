@@ -9,7 +9,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     [SerializeField, Tooltip("Try to find any PostProcessVolume in the scene if none assigned.")]
     private bool autoFindVolume = true;
 
-        [Header("Setup (URP Volume)")]
+    [Header("Setup (URP Volume)")]
     [SerializeField] private Volume volume;
 
     [Header("Lens Distortion (PPSv2 Funky)")]
@@ -21,6 +21,9 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     [Range(-1f, 1f)] private float lensCenterX = 0f;
     [SerializeField, Tooltip("[-1..1] normalized lens center Y")]
     [Range(-1f, 1f)] private float lensCenterY = 0f;
+
+    [Header("Bloom")]
+    [SerializeField, Range(0f, 5f)] private float bloomIntensity = 1.2f;
 
     [Header("Chromatic")]
     [SerializeField, Range(0f, 1f)] private float chromaticIntensity = 0.55f;
@@ -46,6 +49,10 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
     private ChromaticAberration _ca;
     private LensDistortion _ld;
+    private Bloom _bloom;
+
+    private float _baseBloom = 1.3f;
+    private bool _cachedBaseBloom;
 
     private Coroutine _fxCR;
 
@@ -99,6 +106,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         // Start from base
         SetCA(0f);
         SetLD(0f, 1f, 0f, 0f);
+        SetBloom(_baseBloom);
 
         // Fade in
         float t = 0f;
@@ -113,6 +121,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                   Mathf.Lerp(1f, lensScale, e),
                   Mathf.Lerp(0f, lensCenterX, e),
                   Mathf.Lerp(0f, lensCenterY, e));
+            SetBloom(Mathf.Lerp(_baseBloom, bloomIntensity, e));
             yield return null;
         }
 
@@ -129,11 +138,13 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                 SetLD(lensIntensity, lensScale,
                       Mathf.Clamp(lensCenterX + wob, -1f, 1f),
                       Mathf.Clamp(lensCenterY - wob, -1f, 1f));
+                SetBloom(bloomIntensity);
             }
             else
             {
                 SetCA(chromaticIntensity);
                 SetLD(lensIntensity, lensScale, lensCenterX, lensCenterY);
+                SetBloom(bloomIntensity);
             }
             yield return null;
         }
@@ -151,6 +162,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                   Mathf.Lerp(lensScale, 1f, k),
                   Mathf.Lerp(lensCenterX, 0f, k),
                   Mathf.Lerp(lensCenterY, 0f, k));
+            SetBloom(Mathf.Lerp(bloomIntensity, _baseBloom, k));
             yield return null;
         }
 
@@ -168,6 +180,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float localLensScale = Mathf.Clamp(lensScale, 0.01f, 1f);
         float localCenterX = lensCenterX;
         float localCenterY = lensCenterY;
+        float localBloom = bloomIntensity;
         float fi = Mathf.Max(0.01f, fadeInSeconds);
         float fo = Mathf.Max(0.01f, fadeOutSeconds);
         AnimationCurve easeInLocal = easeIn;
@@ -179,9 +192,11 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         // start
         SetCA(0f);
         SetLD(0f, 1f, 0f, 0f);
+        SetBloom(_baseBloom);
 
         // fade in
         float t = 0f;
+
         while (t < fi)
         {
             t += Time.unscaledDeltaTime;
@@ -192,6 +207,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                   Mathf.Lerp(1f, localLensScale, e),
                   Mathf.Lerp(0f, localCenterX, e),
                   Mathf.Lerp(0f, localCenterY, e));
+            SetBloom(Mathf.Lerp(_baseBloom, localBloom, e));
             yield return null;
         }
 
@@ -200,6 +216,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float endHold = Time.unscaledTime + Mathf.Max(0f, holdSeconds);
         while (Time.unscaledTime < endHold)
         {
+
             if (wobble && wobAmp > 0f && wobFreq > 0f)
             {
                 wobT += Time.unscaledDeltaTime;
@@ -208,11 +225,13 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                 SetLD(localLens, localLensScale,
                     Mathf.Clamp(localCenterX + wob, -1f, 1f),
                     Mathf.Clamp(localCenterY - wob, -1f, 1f));
+                SetBloom(bloomIntensity);
             }
             else
             {
                 SetCA(localChroma);
                 SetLD(localLens, localLensScale, localCenterX, localCenterY);
+                SetBloom(localBloom);
             }
             yield return null;
         }
@@ -241,6 +260,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         if (!EnsureSettings()) return;
         SetCA(0f);
         SetLD(0f, 1f, 0f, 0f);
+        SetBloom(_baseBloom);
     }
 
     private void SetCA(float intensity)
@@ -249,6 +269,13 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
         _ca.intensity.overrideState = true;
         _ca.intensity.value = Mathf.Clamp01(intensity);
+    }
+
+    private void SetBloom(float intensity)
+    {
+        if (_bloom == null) return;
+        _bloom.intensity.overrideState = true;
+        _bloom.intensity.value = Mathf.Clamp(intensity, 0f, 20f);
     }
 
     private void SetLD(float intensity, float scale, float cx, float cy)
@@ -281,6 +308,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
         volume.profile.TryGet(out _ca);
         volume.profile.TryGet(out _ld);
+        volume.profile.TryGet(out _bloom);
 
         if (_ca != null)
         {
@@ -300,13 +328,31 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             _ld.center.value = Vector2.zero;
         }
 
-        return (_ca != null) || (_ld != null);
+        if (_bloom != null)
+        {
+            _bloom.intensity.overrideState = true;
+
+            // Cache whatever the volume currently uses as the "base" bloom once
+            if (!_cachedBaseBloom)
+            {
+                _baseBloom = Mathf.Clamp(_bloom.intensity.value, 0f, 20f);
+                if (_baseBloom <= 0f) _baseBloom = 1.3f; // fallback
+                _cachedBaseBloom = true;
+            }
+
+            // Make sure we're sitting at base when not playing FX
+            _bloom.intensity.value = _baseBloom;
+        }
+
+
+        return (_ca != null) || (_ld != null) || (_bloom != null);
     }
 
     private static void EnsureOverridesExist(VolumeProfile profile)
     {
         if (!profile.TryGet<ChromaticAberration>(out _)) profile.Add<ChromaticAberration>(true);
         if (!profile.TryGet<LensDistortion>(out _)) profile.Add<LensDistortion>(true);
+        if (!profile.TryGet<Bloom>(out _)) profile.Add<Bloom>(true);
     }
 
 }

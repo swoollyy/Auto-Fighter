@@ -26,6 +26,12 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private TMP_Text runPickupCoinsText;
     [SerializeField] private TMP_Text runObstacleCoinsText;
 
+    [Header("Crash Recovery Mash UI")]
+    [SerializeField] private GameObject crashRecoveryRoot;      // Parent object to show/hide
+    [SerializeField] private Button crashRecoveryButton;        // The button player mashes
+    [SerializeField] private Image crashRecoveryFill;           // Progress bar fill
+    [SerializeField] private TMP_Text crashRecoveryText;        // "MASH TO RECOVER!" or click count
+
     // NEW: show the *final* total currency from the skill tree
     [SerializeField] private TMP_Text runTotalCurrencyText; // e.g. "Total Currency: 250"
 
@@ -45,10 +51,16 @@ public class UIManager_Racing : MonoBehaviour
 
     private void Start()
     {
-        // Ensure overlay is hidden on scene start
         HideRunComplete();
         HideRunCoins();
+        HideCrashRecoveryUI();  // ADD THIS
 
+        // Bind crash recovery button
+        if (crashRecoveryButton != null)
+        {
+            crashRecoveryButton.onClick.RemoveAllListeners();
+            crashRecoveryButton.onClick.AddListener(OnCrashRecoveryButtonClicked);
+        }
     }
 
     private void Update()
@@ -60,6 +72,8 @@ public class UIManager_Racing : MonoBehaviour
 
         if (hpFillImage != null)
             hpFillImage.fillAmount = car.HPPercent;
+
+        UpdateCrashRecoveryUI();
     }
 
     // NEW API: show/hide "Run Complete"
@@ -135,4 +149,51 @@ public class UIManager_Racing : MonoBehaviour
     {
         if (runCompleteRoot) runCompleteRoot.SetActive(false);
     }
+
+
+    // ============================================
+    // CRASH RECOVERY MASH UI
+    // ============================================
+
+    private bool _crashRecoveryUIActive;
+
+    private void UpdateCrashRecoveryUI()
+    {
+        if (car == null) return;
+
+        bool shouldShow = car.IsFlipMashActive;
+
+        // Show/hide the UI
+        if (shouldShow != _crashRecoveryUIActive)
+        {
+            _crashRecoveryUIActive = shouldShow;
+
+            if (crashRecoveryRoot != null)
+                crashRecoveryRoot.SetActive(shouldShow);
+        }
+
+        // Update progress if active
+        if (shouldShow)
+        {
+            if (crashRecoveryFill != null)
+                crashRecoveryFill.fillAmount = car.FlipMashProgress;
+
+            if (crashRecoveryText != null)
+                crashRecoveryText.text = $"MASH! ({car.FlipMashClicksRemaining} left)";
+        }
+    }
+
+    public void OnCrashRecoveryButtonClicked()
+    {
+        if (car != null)
+            car.RegisterFlipMashClick();
+    }
+
+    public void HideCrashRecoveryUI()
+    {
+        _crashRecoveryUIActive = false;
+        if (crashRecoveryRoot != null)
+            crashRecoveryRoot.SetActive(false);
+    }
+
 }

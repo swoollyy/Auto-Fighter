@@ -1,4 +1,5 @@
 ﻿using Pathfinding;
+using Pathfinding.RVO;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -87,9 +88,9 @@ public class NPCTrafficCar : MonoBehaviour
     [Header("Collision Detection")]
     [SerializeField] private LayerMask crashLayers;
     [SerializeField] private bool ignoreRoadAndTerrain = true;
-    [SerializeField] private bool enableOverlapDetection = true;
-    [SerializeField] private float overlapCheckInterval = 0.1f;
-    [SerializeField] private float overlapRadius = 1f;
+    [SerializeField] private bool enableOverlapDetection = false;
+    [SerializeField] private float overlapCheckInterval = 0f;
+    [SerializeField] private float overlapRadius = 0f;
 
     [Header("Crash Physics")]
     [SerializeField] private float minTransferVelocity = 2f;
@@ -115,9 +116,74 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private float enginePitchMin = 0.7f;
     [SerializeField] private float enginePitchMax = 1.3f;
 
+    [Header("Surface Effects")]
+    [Tooltip("Enable detection of GroundSurface components for speed modifiers.")]
+    [SerializeField] private bool enableSurfaceEffects = true;
+
+    [Tooltip("Layers to check for surface effects.")]
+    [SerializeField] private LayerMask surfaceDetectionLayers;
+
+    [Tooltip("How often to check surface (seconds).")]
+    [SerializeField] private float surfaceCheckInterval = 0.1f;
+
+    [Tooltip("How quickly to lerp to new speed multiplier.")]
+    [SerializeField] private float surfaceSpeedLerpRate = 5f;
+
+    [Header("Boost Pad Response")]
+    [Tooltip("Extra speed added when on boost pad.")]
+    [SerializeField] private float boostPadSpeedBonus = 8f;
+
+    [Tooltip("How long boost lasts after leaving pad.")]
+    [SerializeField] private float boostPadDuration = 1.5f;
+
+    [Tooltip("Threshold: surface with speedMul > this is considered a boost pad.")]
+    [SerializeField] private float boostPadThreshold = 1.3f;
+
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
     [SerializeField] private bool drawDestinationGizmo = true;
+
+    // ============================================
+    // RVO "THREAT" BOOST (speed/accel while avoiding)
+    // ============================================
+    [Header("RVO Avoidance Boost")]
+    [SerializeField] private bool enableAvoidanceBoost = true;
+
+    [SerializeField, Min(1f)] private float avoidanceSpeedMult = 1.35f;
+    [SerializeField, Min(1f)] private float avoidanceAccelMult = 1.75f;
+
+    [SerializeField, Min(0f)] private float avoidanceHoldSeconds = 0.25f; // extra time AFTER RVO stops avoiding
+    [SerializeField, Min(0f)] private float avoidanceRampIn = 16f;        // higher = faster boost
+    [SerializeField, Min(0f)] private float avoidanceRampOut = 9f;        // higher = faster return
+
+    [SerializeField, Tooltip("Avoidance boost only applies if the NPC's SPAWN speed is <= this value.")]
+    private float maxSpawnSpeedForAvoidanceBoost = 5f;
+
+    [Header("Crash NavmeshCut")]
+    [SerializeField] private bool addNavmeshCutOnCrash = true;
+
+    [SerializeField] private bool crashCutUsePrefab = false;
+    [SerializeField] private GameObject crashCutPrefab; // optional: prefab with NavmeshCut already configured
+
+    // If not using prefab, we create one with these settings:
+    [SerializeField] private Vector3 crashCutBoxSize = new Vector3(1.5f, 3f, 1.5f); // Width, Height, Depth
+    [SerializeField] private float crashCutUpdateDistance = 0.4f;
+    [SerializeField] private float crashCutUpdateRotationDistance = 10f;
+    [SerializeField] private bool crashCutUseRotationAndScale = true;
+    [SerializeField] private bool crashCutCutsAddedGeometry = true;
+
+    private NavmeshCut _crashCut;
+
+    private float _spawnSpeed;
+    private bool _allowAvoidanceBoostForThisUnit;
+
+    private RVOController _rvo;
+
+    private float _defaultMaxSpeed;      // baseline (including surface effects)
+    private float _defaultRichAccel;     // baseline accel we want to return to
+
+    private float _avoidUntil = -999f;
+    private float _avoidBlend01 = 0f;
 
     // ============================================
     // INTERNALS - Track Path
@@ -129,6 +195,8 @@ public class NPCTrafficCar : MonoBehaviour
     private float _dist;                    // Current distance along path
     private float _lateralOffset;           // Side offset from center
     private float _pivotToBottom;           // Distance from pivot to collider bottom
+
+
 
     // ============================================
     // INTERNALS - Components
@@ -157,6 +225,14 @@ public class NPCTrafficCar : MonoBehaviour
     private Vector3 _lastDestination;
     private bool _hasSetDestination;
 
+    private float _baseSpeed;                   // Original speed before modifiers
+    private float _currentSpeedMultiplier = 1f;
+    private float _targetSpeedMultiplier = 1f;
+    private float _surfaceCheckTimer;
+    private float _boostEndTime;
+    private bool _onBoostPad;
+    private string _currentSurfaceType = "Normal";
+
     // ============================================
     // UNITY LIFECYCLE
     // ============================================
@@ -169,6 +245,7 @@ public class NPCTrafficCar : MonoBehaviour
         _ai = GetComponent<IAstarAI>();
         _richAI = GetComponent<RichAI>();
         _aiBase = GetComponent<AIBase>();
+        _rvo = GetComponent<RVOController>();
 
         // Configure rigidbody
         if (_rb != null)
@@ -177,6 +254,7 @@ public class NPCTrafficCar : MonoBehaviour
             _rb.useGravity = false;
             _rb.interpolation = RigidbodyInterpolation.Interpolate;
         }
+
     }
 
     private void OnEnable()
@@ -190,6 +268,12 @@ public class NPCTrafficCar : MonoBehaviour
         _smoothedVelocity = Vector3.zero;      // ADD THIS
         _smoothedForward = transform.forward;   // ADD THIS
         _hasSetDestination = false;
+
+        _currentSpeedMultiplier = 1f;
+        _targetSpeedMultiplier = 1f;
+        _surfaceCheckTimer = 0f;
+        _boostEndTime = 0f;
+        _onBoostPad = false;
     }
 
     private void Start()
@@ -219,7 +303,11 @@ public class NPCTrafficCar : MonoBehaviour
         }
 
 
-
+        if (enableSurfaceEffects)
+        {
+            UpdateSurfaceEffects(dt);
+        }
+        UpdateAvoidanceBoost(dt);
         SyncSpeedIfNeeded();
 
         // Update engine audio
@@ -245,6 +333,9 @@ public class NPCTrafficCar : MonoBehaviour
             return;
 
         _lastAppliedSpeed = speed;
+
+        // Only apply baseline if we're NOT currently blending boost.
+        if (_avoidBlend01 > 0.0001f) return;
 
         if (_ai != null) _ai.maxSpeed = speed;
         if (_richAI != null) _richAI.maxSpeed = speed;
@@ -279,37 +370,37 @@ public class NPCTrafficCar : MonoBehaviour
         else
             _smoothedVelocity = Vector3.Lerp(_smoothedVelocity, _lastVelocity, dt / Mathf.Max(0.01f, velocitySmoothTime));
 
-        // Rotate to face movement direction
         if (rotateToVelocity)
         {
-            Vector3 moveDir = _smoothedVelocity;
-            moveDir.y = 0f;
+            // Prefer A*'s velocity (more stable than position-delta when repathing)
+            Vector3 v = Vector3.zero;
 
-            float currentSpeed = moveDir.magnitude;
+            // RichAI inherits AIBase, which exposes velocity
+            if (_aiBase != null) v = _aiBase.velocity;
+            else v = (transform.position - _prevPosition) / dt; // fallback
 
-            // Only rotate if moving fast enough
-            if (currentSpeed > minSpeedForRotation)
+            v.y = 0f;
+
+            if (v.sqrMagnitude > (minSpeedForRotation * minSpeedForRotation))
             {
-                // Get track forward direction for blending
-                SampleAlongPath(_dist, out _, out Vector3 trackFwd);
-                Vector3 flatTrackFwd = new Vector3(trackFwd.x, 0f, trackFwd.z).normalized;
-
-                // Blend between track direction and actual movement direction
-                Vector3 blendedDir = Vector3.Slerp(flatTrackFwd, moveDir.normalized, trackVelocityBlend);
-
                 Vector3 up = alignToGround ? _groundNormal : Vector3.up;
-                Vector3 fwdOnPlane = Vector3.ProjectOnPlane(blendedDir, up);
+                Vector3 fwd = Vector3.ProjectOnPlane(v.normalized, up);
 
-                if (fwdOnPlane.sqrMagnitude > 0.0001f)
+                if (fwd.sqrMagnitude > 0.0001f)
                 {
-                    Quaternion targetRot = Quaternion.LookRotation(fwdOnPlane.normalized, up);
+                    Quaternion target = Quaternion.LookRotation(fwd, up);
 
-                    // Exponential smoothing for rotation (more stable than linear)
-                    float smoothFactor = 1f - Mathf.Exp(-rotationSpeed * dt);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, smoothFactor);
+                    // HARD ASSURANCE OPTION:
+                    // If you truly want "always face velocity", snap:
+                    // transform.rotation = target;
+
+                    // Smooth option (recommended): still always aims at velocity, just not instant
+                    float t = 1f - Mathf.Exp(-rotationSpeed * dt);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, target, t);
                 }
             }
         }
+
     }
 
     // ============================================
@@ -381,11 +472,13 @@ public class NPCTrafficCar : MonoBehaviour
         RebuildPath(srcPoints);
         if (_path.Count < 2 || _totalLength < 1f) return false;
 
-        // Randomize speed
         if (randomizeSpeed)
         {
             speed = UnityEngine.Random.Range(speedRange.x, speedRange.y);
         }
+
+        // Store base speed for surface modifiers
+        _baseSpeed = speed;
 
         if (_ai != null)
         {
@@ -398,6 +491,7 @@ public class NPCTrafficCar : MonoBehaviour
         {
             _richAI.maxSpeed = speed;
             _richAI.acceleration = Mathf.Max(30f, speed * 6f);
+
             _richAI.slowdownTime = 0f;
             _richAI.endReachedDistance = 3f;
             _richAI.whenCloseToDestination = CloseToDestinationMode.ContinueToExactDestination;
@@ -410,6 +504,11 @@ public class NPCTrafficCar : MonoBehaviour
         {
             ForceAstarFixedUpdate(_aiBase);   // ✅ fallback for AIPath, etc.
         }
+        _defaultMaxSpeed = speed;
+        _defaultRichAccel = _richAI.acceleration;
+        _spawnSpeed = speed;
+        _allowAvoidanceBoostForThisUnit = _spawnSpeed <= maxSpawnSpeedForAvoidanceBoost;
+
 
         // Compute pivot to bottom
         ComputePivotToBottom();
@@ -513,6 +612,96 @@ public class NPCTrafficCar : MonoBehaviour
         pos = Vector3.Lerp(a, b, t);
         forward = (b - a).normalized;
         if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+    }
+
+    private void UpdateSurfaceEffects(float dt)
+    {
+        // Check surface periodically
+        _surfaceCheckTimer -= dt;
+        if (_surfaceCheckTimer <= 0f)
+        {
+            _surfaceCheckTimer = surfaceCheckInterval;
+            CheckSurfaceUnderCar();
+        }
+
+        // Handle boost duration
+        if (_boostEndTime > 0f && Time.time > _boostEndTime)
+        {
+            _boostEndTime = 0f;
+            _onBoostPad = false;
+        }
+
+        // Lerp speed multiplier
+        _currentSpeedMultiplier = Mathf.Lerp(_currentSpeedMultiplier, _targetSpeedMultiplier, surfaceSpeedLerpRate * dt);
+
+        // Calculate final speed
+        float newSpeed = _baseSpeed * _currentSpeedMultiplier;
+
+        // Add boost bonus if active
+        if (_onBoostPad || _boostEndTime > Time.time)
+        {
+            newSpeed += boostPadSpeedBonus;
+        }
+
+        speed = newSpeed;
+    }
+
+    private void CheckSurfaceUnderCar()
+    {
+        Vector3 origin = transform.position + Vector3.up * raycastStartHeight;
+        float maxDist = raycastStartHeight + raycastDownDistance;
+
+        // Use surfaceDetectionLayers if set, otherwise use roadLayer
+        LayerMask checkLayers = surfaceDetectionLayers.value != 0 ? surfaceDetectionLayers : roadLayer;
+
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxDist, checkLayers, QueryTriggerInteraction.Collide))
+        {
+            // Check for GroundSurface component
+            GroundSurface surface = hit.collider.GetComponent<GroundSurface>();
+            if (surface == null)
+                surface = hit.collider.GetComponentInParent<GroundSurface>();
+
+            if (surface != null)
+            {
+                ApplySurfaceEffects(surface);
+            }
+            else
+            {
+                // No surface component - reset to normal
+                _targetSpeedMultiplier = 1f;
+                _currentSurfaceType = "Normal";
+            }
+        }
+    }
+
+    private void ApplySurfaceEffects(GroundSurface surface)
+    {
+        _currentSurfaceType = surface.surfaceType.ToString();
+
+        // Apply speed multiplier from surface
+        _targetSpeedMultiplier = Mathf.Clamp(surface.maxSpeedMultiplier, 0.1f, 5f);
+
+        // Detect boost pad (high speed + high acceleration = boost)
+        bool isBoostPad = surface.maxSpeedMultiplier > boostPadThreshold &&
+                          surface.accelerationMultiplier > boostPadThreshold;
+
+        if (isBoostPad && !_onBoostPad)
+        {
+            // Just entered boost pad
+            _onBoostPad = true;
+            _boostEndTime = Time.time + boostPadDuration;
+
+            if (verboseDebug)
+                Debug.Log($"[NPCTrafficCar] BOOST PAD! Speed: {speed:F1} -> {speed + boostPadSpeedBonus:F1}");
+        }
+        else if (!isBoostPad)
+        {
+            _onBoostPad = false;
+        }
+
+        // Update A* speed immediately for boost response
+        if (_ai != null) _ai.maxSpeed = speed;
+        if (_richAI != null) _richAI.maxSpeed = speed;
     }
 
     private float GetDistanceAlongPath(Vector3 worldPos)
@@ -630,8 +819,18 @@ public class NPCTrafficCar : MonoBehaviour
     {
         if (_crashed) return;
         if (crashLayers.value == 0) return;
+        if (_col == null) return;
 
-        Collider[] hits = Physics.OverlapSphere(transform.position, overlapRadius, crashLayers, QueryTriggerInteraction.Ignore);
+        // Tight search radius based on our real collider size (not an arbitrary 1.0m sphere)
+        float searchRadius = Mathf.Max(0.05f, GetPlanarColliderRadius(_col) + 0.05f);
+
+        Collider[] hits = Physics.OverlapSphere(
+            _col.bounds.center,
+            searchRadius,
+            crashLayers,
+            QueryTriggerInteraction.Ignore
+        );
+
         if (hits == null || hits.Length == 0) return;
 
         foreach (var other in hits)
@@ -639,15 +838,28 @@ public class NPCTrafficCar : MonoBehaviour
             if (other == null) continue;
             if (other.transform.IsChildOf(transform)) continue;
             if (other == _col) continue;
+            if (!ShouldCrashWith(other)) continue;
 
-            if (ShouldCrashWith(other))
+            // ✅ Only crash if colliders are ACTUALLY overlapping
+            if (Physics.ComputePenetration(
+                    _col, transform.position, transform.rotation,
+                    other, other.transform.position, other.transform.rotation,
+                    out Vector3 pushDir, out float pushDist))
             {
-                Vector3 impactDir = (other.transform.position - transform.position).normalized;
+                Vector3 impactDir = (pushDist > 0.0001f) ? -pushDir : (other.transform.position - transform.position).normalized;
                 TriggerCrash(impactDir, _lastVelocity.magnitude, other);
                 return;
             }
         }
     }
+
+    private static float GetPlanarColliderRadius(Collider c)
+    {
+        // “radius” in XZ plane from bounds (good for boxy cars)
+        Bounds b = c.bounds;
+        return Mathf.Max(b.extents.x, b.extents.z);
+    }
+
 
     private bool ShouldCrashWith(Collider other)
     {
@@ -670,6 +882,7 @@ public class NPCTrafficCar : MonoBehaviour
     {
         if (_crashed) return;
         _crashed = true;
+        EnableCrashNavmeshCut();
 
         if (verboseDebug)
             Debug.Log($"[NPCTrafficCar] CRASHED with {other.name}");
@@ -770,6 +983,54 @@ public class NPCTrafficCar : MonoBehaviour
         _engineSource.Play();
     }
 
+    private void EnableCrashNavmeshCut()
+    {
+        if (!addNavmeshCutOnCrash) return;
+        if (_crashCut != null) return; // already created
+
+        // Prefer prefab if you want exact inspector settings without code drift
+        if (crashCutUsePrefab && crashCutPrefab != null)
+        {
+            GameObject go = Instantiate(crashCutPrefab, transform);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+
+            _crashCut = go.GetComponent<NavmeshCut>();
+            if (_crashCut == null) _crashCut = go.AddComponent<NavmeshCut>();
+        }
+        else
+        {
+            // Create child
+            GameObject go = new GameObject("Crash_NavmeshCut");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+
+            _crashCut = go.AddComponent<NavmeshCut>();
+
+            // Match your screenshot-ish settings
+            _crashCut.type = NavmeshCut.MeshType.Box;
+            _crashCut.center = Vector3.zero;
+
+            // A* uses 'rectangleSize' for box width/depth and 'height' for Y
+            _crashCut.rectangleSize = new Vector2(crashCutBoxSize.x, crashCutBoxSize.z);
+            _crashCut.height = crashCutBoxSize.y;
+
+            _crashCut.updateDistance = crashCutUpdateDistance;
+            _crashCut.useRotationAndScale = crashCutUseRotationAndScale;
+            _crashCut.updateRotationDistance = crashCutUpdateRotationDistance;
+
+            _crashCut.cutsAddedGeom = crashCutCutsAddedGeometry;
+            _crashCut.radiusExpansionMode = NavmeshCut.RadiusExpansionMode.DontExpand;
+            _crashCut.graphMask = GraphMask.everything;
+        }
+
+        // Force immediate update so others repath ASAP
+        _crashCut.enabled = true;
+        _crashCut.ForceUpdate();
+    }
+
+
     private void UpdateEngineAudio()
     {
         if (_engineSource == null) return;
@@ -799,9 +1060,56 @@ public class NPCTrafficCar : MonoBehaviour
         Destroy(vfx, crashVFXLifetime);
     }
 
+    private void UpdateAvoidanceBoost(float dt)
+    {
+        if (!enableAvoidanceBoost) return;
+        if (!_allowAvoidanceBoostForThisUnit)
+            return;
+        if (_crashed) return;
+        if (_ai == null) return;
+
+        // If RVO says we're actively avoiding, extend the boost window.
+        // This acts like your "threat is imminent / dodge now" signal.
+        if (_rvo != null && _rvo.AvoidingAnyAgents)
+            _avoidUntil = Time.time + avoidanceHoldSeconds;
+
+        bool active = Time.time <= _avoidUntil;
+
+        float target = active ? 1f : 0f;
+        float rate = active ? avoidanceRampIn : avoidanceRampOut;
+        _avoidBlend01 = Mathf.MoveTowards(_avoidBlend01, target, rate * dt);
+
+        // While not boosted, keep baseline caches fresh (surface effects may change speed/accel)
+        if (_avoidBlend01 <= 0.0001f)
+        {
+            _defaultMaxSpeed = speed;
+            if (_richAI != null) _defaultRichAccel = _richAI.acceleration;
+            return;
+        }
+
+        float boostedSpeed = speed * avoidanceSpeedMult;
+        float appliedSpeed = Mathf.Lerp(speed, boostedSpeed, _avoidBlend01);
+
+        if (_ai != null) _ai.maxSpeed = appliedSpeed;
+        if (_richAI != null) _richAI.maxSpeed = appliedSpeed;
+
+        // Accel only applies if we're using RichAI (you are)
+        if (_richAI != null)
+        {
+            // If default accel wasn't cached yet, treat current as default
+            if (_defaultRichAccel <= 0f) _defaultRichAccel = _richAI.acceleration;
+
+            float boostedAccel = _defaultRichAccel * avoidanceAccelMult;
+            _richAI.acceleration = Mathf.Lerp(_defaultRichAccel, boostedAccel, _avoidBlend01);
+        }
+    }
+
+
     // ============================================
     // CLEANUP
     // ============================================
+
+
 
     private void DestroySelf()
     {
@@ -813,6 +1121,19 @@ public class NPCTrafficCar : MonoBehaviour
     // ============================================
 
     public bool HasCrashed => _crashed;
+
+    public void ForceCrashFromForcefield(Vector3 worldImpactFrom, float impactSpeed, Collider source)
+    {
+        if (_crashed) return;
+
+        // Impact dir should point from THIS NPC toward the thing that hit it.
+        Vector3 impactDir = (worldImpactFrom - transform.position);
+        impactDir.y = 0f;
+        if (impactDir.sqrMagnitude < 0.0001f) impactDir = transform.forward;
+        impactDir.Normalize();
+
+        TriggerCrash(impactDir, impactSpeed, source != null ? source : _col);
+    }
 
     public void SetGenerator(ProceduralTrackGenerator generator)
     {

@@ -119,7 +119,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 392f2a5971013a341b2e673cd62d9d06, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  surfaceType: 0
+  surfaceType: 4
   maxSpeedMultiplier: 7
   accelerationMultiplier: 4
   turnSpeedMultiplier: 1
@@ -127,6 +127,11 @@ MonoBehaviour:
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.3
+  autoAccelerate: 1
+  boostAcceleration: 15
+  boostMaxSpeed: 0
+  boostDuringCrash: 1
+  boostCrashMultiplier: 0.5
 --- !u!1 &8764533053249983857
 GameObject:
   m_ObjectHideFlags: 0

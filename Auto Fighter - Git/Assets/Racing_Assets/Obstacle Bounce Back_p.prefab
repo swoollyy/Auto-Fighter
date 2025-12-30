@@ -46,16 +46,28 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 375196817257799255, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: rectangleSize.x
-      value: 1.5
+      value: 1.7
       objectReference: {fileID: 0}
     - target: {fileID: 375196817257799255, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: rectangleSize.y
-      value: 1.5
+      value: 1.7
       objectReference: {fileID: 0}
     - target: {fileID: 3874382558013832276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Name
       value: Obstacle Bounce Back
       objectReference: {fileID: 0}
+    - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: carDetectRadius
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: landingTelegraphPrefab
+      value: 
+      objectReference: {fileID: 4108758772899792739, guid: 6e526491afa36544aa8130216c672992, type: 3}
+    - target: {fileID: 7000252740046131143, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: e0153e31099a10c4cbadad9d40f08e8f, type: 2}
     - target: {fileID: 7497818950983598276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

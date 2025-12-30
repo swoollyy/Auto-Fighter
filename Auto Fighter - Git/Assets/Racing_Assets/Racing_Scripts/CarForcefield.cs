@@ -341,6 +341,49 @@ public sealed class CarForcefield : MonoBehaviour
             return;
         }
 
+
+        // NEW: If an NPC traffic car hits the forcefield, crash the NPC.
+        var npc = other.GetComponentInParent<NPCTrafficCar>();
+        if (npc != null && !npc.HasCrashed)
+        {
+            // Compute impact speed similar to your obstacle path (relative velocity)
+            Rigidbody npcRb = other.attachedRigidbody;
+            Vector3 relVel = npcRb ? (npcRb.velocity - (carRigidbody ? carRigidbody.velocity : Vector3.zero))
+                                   : (carRigidbody ? -carRigidbody.velocity : Vector3.zero);
+
+            float impactSpeed = relVel.magnitude;
+
+            // Crash the NPC away from the player car (use player car position as "impact from")
+            npc.ForceCrashFromForcefield(transform.position, impactSpeed, ownerCollider);
+
+            // FX/SFX like your other intercepts
+            Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
+
+            if (launchVFX != null)
+            {
+                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
+                var vfx = Instantiate(launchVFX, fxPos, fxRot);
+                if (parentVfxToObstacle && vfx != null)
+                    vfx.transform.SetParent(other.transform.root, true);
+            }
+
+            if (enableLaunchSlowMo)
+                StartLaunchSlowMo();
+
+            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
+
+            if (postFX != null)
+                postFX.PlayBurst();
+
+            // Consume the forcefield (optional — delete this if you want NPC-crash to NOT consume it)
+            SetArmed(false);
+            _cooldownRemain = cooldownSeconds;
+            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+
+            return;
+        }
+
+
         if (_recentlyLaunched.Contains(other)) return;
 
         if (gatherAllCarColliders && _car != null)

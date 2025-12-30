@@ -15,7 +15,7 @@ MonoBehaviour:
   type: 21
   displayName: Max Fuel
   description: Boosts Max Fuel by 15
-  maxLevel: 20
+  maxLevel: 40
   costCurve:
     serializedVersion: 2
     m_Curve:
@@ -38,8 +38,8 @@ MonoBehaviour:
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 20
-      value: 60
+      time: 40
+      value: 120
       inSlope: 3
       outSlope: 3
       tangentMode: 34

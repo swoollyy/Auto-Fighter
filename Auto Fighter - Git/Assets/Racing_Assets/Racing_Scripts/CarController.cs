@@ -176,8 +176,14 @@ public class CarController : MonoBehaviour
     [Header("Health")]
     [SerializeField] private float maxHP = 100f;
     [SerializeField] private float hpCrashDamageAtSeverity1 = 40f;
-    [Tooltip("Optional passive HP regen per second when not crashing. 0 = none.")]
-    [SerializeField] private float hpRegenPerSecond = 0f;
+
+    private float baseMaxHP;
+
+    [SerializeField, Tooltip("Base HP regenerated per second (before skills).")]
+    private float baseHpRegenPerSecond = 0f;
+
+    // Runtime (after skills applied)
+    private float hpRegenPerSecond = 0f;
 
     [Header("Performance Degradation (vs HP)")]
     [SerializeField, Range(0.1f, 1f)] private float performanceAtZeroHP = 0.35f;
@@ -311,6 +317,149 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0f, 1f)]
     private float deathExplodeVolume = 1f;
 
+    [Header("Flip Recovery (Mash)")]
+    [SerializeField] private bool enableFlipRecoveryMash = true;
+
+    // If dot < threshold, we consider the car "flipped enough" to require recovery.
+    // dot = 1 means perfectly upright, 0 means sideways, -1 means upside down.
+    [SerializeField, Range(-1f, 1f)] private float flipDotThreshold = 0.25f;
+
+    // Optional: also require an angle beyond this many degrees before we trigger recovery.
+    [SerializeField, Range(0f, 180f)] private float flipAngleThreshold = 80f;
+
+    [Header("Crash Recovery Click Calculation")]
+    [Tooltip("Minimum clicks required for recovery (light tap at 0 severity).")]
+    [SerializeField, Min(1)] private int mashClicksMin = 3;
+
+    [Tooltip("Maximum clicks from severity alone (massive crash at 1.0 severity).")]
+    [SerializeField, Min(1)] private int mashClicksMaxFromSeverity = 15;
+
+    [Tooltip("Extra clicks added per crash this run.")]
+    [SerializeField, Min(0)] private int mashClicksPerCrash = 2;
+
+    [Tooltip("Maximum extra clicks from crash count.")]
+    [SerializeField, Min(0)] private int mashClicksMaxFromCrashCount = 10;
+
+    [Tooltip("Clicks added per X meters traveled (scales difficulty over time).")]
+    [SerializeField] private float mashClicksPerDistanceUnit = 0.01f;
+
+    [Tooltip("Distance unit in meters (e.g., 100 = 1 click per 100m).")]
+    [SerializeField] private float mashDistanceUnit = 100f;
+
+    [Tooltip("Maximum extra clicks from distance.")]
+    [SerializeField, Min(0)] private int mashClicksMaxFromDistance = 8;
+
+
+    [Header("Crash Recovery Progress Scaling")]
+    [Tooltip("Curve applied to normalized run progress (0=start, 1=end) to shape how aggressively mash clicks ramp up over the run.\n\nTypical: very low early, spikes hard near the end.")]
+    [SerializeField] private AnimationCurve mashClicksByProgress = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+    [Tooltip("Fallback total track length (meters) used if GameManager_Racing doesn't expose a total track length. Set this to your typical full-run distance so progress scaling behaves correctly.")]
+    [SerializeField, Min(1f)] private float mashProgressTotalDistanceFallback = 1000f;
+
+    [Tooltip("Random variance added/subtracted to final click count.")]
+    [SerializeField, Min(0)] private int mashClicksRandomVariance = 2;
+
+    [Tooltip("Absolute minimum clicks (never go below this).")]
+    [SerializeField, Min(1)] private int mashClicksAbsoluteMin = 2;
+
+    [Tooltip("Absolute maximum clicks (never exceed this). Set this very high if you want late-run requirements like 10k+ clicks.")]
+    [SerializeField, Min(1)] private int mashClicksAbsoluteMax = 500000;
+
+
+    [Header("Crash Recovery Click Model (Multiplicative)")]
+    [Tooltip("If true, mash clicks are computed as: baseClicks * distanceFactor * severityFactor * crashFactor * (optional multipliers).")]
+    [SerializeField] private bool useMultiplicativeMashClicks = true;
+
+    [Tooltip("Starting click count before factors (keep this fairly small; distance scaling is meant to do the heavy lifting).")]
+    [SerializeField, Min(1)] private int mashBaseClicks = 15;
+
+    [Tooltip("How strongly run progress ramps clicks. This should be BIG (this is your primary difficulty driver).")]
+    [SerializeField, Min(0f)] private float mashDistanceWeight = 450f;
+
+    [Tooltip("Power applied to progress (after curve). Higher = stays low early, explodes near the end.")]
+    [SerializeField, Min(0.1f)] private float mashDistanceExponent = 4.0f;
+
+    [Tooltip("Additional multiplier based on last crash severity (0..1).")]
+    [SerializeField, Min(0f)] private float mashSeverityWeight = 1.75f;
+
+    [Tooltip("Power applied to last crash severity. >1 means small crashes barely add anything.")]
+    [SerializeField, Min(0.1f)] private float mashSeverityExponent = 1.25f;
+
+    [Tooltip("Extra multiplier per crash count (monotonic). Example: 0.35 = ~35% more per crash.")]
+    [SerializeField, Min(0f)] private float mashCrashCountWeight = 0.35f;
+
+    [Tooltip("Extra multiplier based on cumulative crash severities this run. Makes repeated crashing ramp fast.")]
+    [SerializeField, Min(0f)] private float mashSeveritySumWeight = 0.80f;
+
+    [Header("Crash Recovery Multipliers")]
+    [Tooltip("If true, mash recovery triggers on ANY crash, not just flips.")]
+    [SerializeField] private bool enableCrashRecoveryAlways = true;
+
+    [Tooltip("Click multiplier when car is flipped (e.g., 1.5 = 50% more clicks).")]
+    [SerializeField, Min(1f)] private float flippedClickMultiplier = 1.5f;
+
+    [Tooltip("Click multiplier when airborne during crash.")]
+    [SerializeField, Min(1f)] private float airborneClickMultiplier = 1.25f;
+
+    [Header("Mash Click Skills")]
+    [Tooltip("Base clicks registered per button press (before skills).")]
+    [SerializeField] private int baseClicksPerClick = 1;
+
+    [Tooltip("Base passive auto-clicks per second while mashing (0 = disabled).")]
+    [SerializeField] private float basePassiveClickRate = 0f;
+
+    [Tooltip("Base clicks added per passive tick.")]
+    [SerializeField] private int basePassiveClickStrength = 1;
+
+    // Runtime (after skills applied)
+    private int effectiveClicksPerClick = 1;
+    private float effectivePassiveClickRate = 0f;
+    private int effectivePassiveClickStrength = 1;
+    private float effectiveFuelPerClick = 0f;
+
+    // Passive click timer
+    private float _passiveClickTimer;
+
+
+    [Header("Flip Mash Rewards")]
+    [SerializeField, Tooltip("Base fuel recovered per click.")]
+    private float mashBaseFuelPerClick = 0.3f;
+
+    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
+    private float mashFuelSpeedBonusMax = 2f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
+    private float mashMaxSpeedThreshold = 0.1f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
+    private float mashMinSpeedThreshold = 0.5f;
+
+    // Small lift to avoid sticking into ground when you snap upright.
+    [SerializeField, Min(0f)] private float flipUprightLift = 0.20f;
+
+    // Runtime
+    private bool _flipMashActive;
+    private int _flipMashClicks;
+    private int _flipMashClicksNeeded;
+
+    private float _lastMashTime;
+    private float _currentMashSpeed;        // 0 to 1, where 1 = max speed
+    private float _mashSpeedSmoothed;
+
+    public bool IsFlipMashActive => _flipMashActive;
+    public float FlipMashProgress => _flipMashClicksNeeded > 0 ? (float)_flipMashClicks / _flipMashClicksNeeded : 0f;
+    public int FlipMashClicksRemaining => Mathf.Max(0, _flipMashClicksNeeded - _flipMashClicks);
+    public float MashSpeedRating => _mashSpeedSmoothed;  // 0-1, for UI speed indicator
+    public bool IsFlippedDuringRecovery => _isFlippedDuringRecovery;
+    public float LastCrashSeverity => _lastCrashSeverity;
+
+    private int _crashCount;                    // counts all crashes for scaling
+    private float _crashSeveritySum;            // cumulative severity this run (for repeated-crash ramp)
+    private bool _isFlippedDuringRecovery;      // track if we were flipped when recovery started
+    private float _lastCrashSeverity;           // severity of the most recent crash (0-1)
+    private bool _wasAirborneDuringCrash;       // was car airborne when crash happened
+
     [Header("Death Explosion Spatialization")]
     [SerializeField, Tooltip("If true, explosion plays spatial (3D). If false it plays 2D.")]
     private bool deathExplodeUseSpatial = true;
@@ -387,7 +536,7 @@ public class CarController : MonoBehaviour
     private float baseBoostFuelCost;
     private float baseDriftBoostCooldown;
 
-    private float _rawSteer;   
+    private float _rawSteer;
 
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
@@ -410,6 +559,12 @@ public class CarController : MonoBehaviour
     private float _reorientElapsed;
     private Quaternion _reorientStartRot;
     private Quaternion _reorientTargetRot;
+
+    private bool _onBoostSurface;
+    private float _currentBoostAccel;
+    private float _currentBoostMaxSpeed;
+    private bool _currentBoostDuringCrash;
+    private float _currentBoostCrashMultiplier;
 
     // Runtime ice state
     private bool _onIceSurface;
@@ -604,6 +759,12 @@ public class CarController : MonoBehaviour
     private float _smoothedSurfaceMaxSpeed = -1f;
 
 
+    // "Dead" for mash = no minigame if out of fuel OR out of HP
+    private bool IsDeadForMashRecovery => IsOutOfFuel || IsOutOfHP;
+
+    // "Dead" for auto-upright = only true death should block final reorientation
+    // (out of fuel should STILL allow the auto flatten at the end)
+    private bool IsDeadForAutoUpright => IsOutOfHP;
 
     private readonly Dictionary<int, float> _lastCloseCallTime = new Dictionary<int, float>();
 
@@ -702,6 +863,7 @@ public class CarController : MonoBehaviour
         currentFuelUseMultiplier = 1f;
 
         baseMaxFuel = maxFuel;
+        baseMaxHP = maxHP;
         baseIdleFuelUse = idleFuelUsePerSecond;
         baseFuelUseFullThrottle = fuelUsePerSecondAtFullThrottle;
         baseFuelUseBraking = fuelUsePerSecondBraking;
@@ -745,9 +907,22 @@ public class CarController : MonoBehaviour
     private void Update()
     {
 
+        if (_flipMashActive && Input.GetKeyDown(KeyCode.Space))
+        {
+            RegisterFlipMashClick();
+        }
 
+        if (Input.GetKeyDown(KeyCode.F9))
+        {
+            var mgr = RacingSkillTreeManager.Instance;
+            if (mgr != null)
+            {
+                mgr.ToggleSkills();
+            }
+        }
 
         UpdateCrashReorientation();
+
         HandleInput();
 
         if (Input.GetKeyDown(boostKey) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
@@ -792,8 +967,73 @@ public class CarController : MonoBehaviour
     {
         float dt = Time.fixedDeltaTime;
 
+        if (_flipMashActive)
+        {
+            // If HP hits 0, you're dead: no mash, no flatten.
+            if (IsOutOfHP)
+            {
+                _flipMashActive = false;
+                return;
+            }
+
+            // If fuel hits 0 mid-mash, mash fails/stops
+            if (IsOutOfFuel)
+            {
+                _flipMashActive = false;
+                if (NeedsUprightFlatten())
+                    StartReorientToFlat();
+                return;
+            }
+
+            // IMPORTANT: Keep sampling ground even during recovery (fixes ice sticking)
+            SampleGroundAndUpdateMultipliers();
+
+            // Apply boost surface during recovery
+            ApplyBoostSurfaceForce(true);
+
+            // === PASSIVE AUTO-CLICKS (Skill-based) ===
+            if (effectivePassiveClickRate > 0f)
+            {
+                _passiveClickTimer += Time.fixedDeltaTime;
+                float passiveInterval = 1f / effectivePassiveClickRate;
+
+                while (_passiveClickTimer >= passiveInterval)
+                {
+                    _passiveClickTimer -= passiveInterval;
+
+                    // Add passive clicks
+                    _flipMashClicks += effectivePassiveClickStrength;
+
+                    // Optional: Apply partial fuel reward for passive clicks
+                    float passiveFuelReward = effectiveFuelPerClick * 0.5f; // Half reward for passive
+                    if (passiveFuelReward > 0f && maxFuel > 0f)
+                    {
+                        currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                    }
+
+                    // Check if recovery complete
+                    if (_flipMashClicks >= _flipMashClicksNeeded)
+                    {
+                        EndFlipMashRecoveryAndUpright();
+                        return;
+                    }
+                }
+            }
+
+            // Fuel burn while in recovery
+            ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
+
+            return;
+        }
+
         if (_inCrash)
         {
+            // IMPORTANT: Keep sampling ground even during crash (fixes ice sticking)
+            SampleGroundAndUpdateMultipliers();
+
+            // Apply boost surface during crash
+            ApplyBoostSurfaceForce(true);
+
             // Check if grounded during crash
             _isGrounded = CheckIfGrounded();
 
@@ -842,29 +1082,53 @@ public class CarController : MonoBehaviour
 
                 if (rb != null)
                 {
-                    rb.freezeRotation = true;
+                    if (!WillStartMashRecoveryNow())
+                    {
+                        rb.freezeRotation = true;
+                    }
+                    else
+                    {
+                        // During mash recovery we stay fully physical (no artificial freezing)
+                        rb.freezeRotation = false;
+                    }
+
                     rb.drag = _baseDrag;
                     rb.angularDrag = _baseAngularDrag;
                     rb.angularVelocity = Vector3.zero;
                 }
 
-                if (IsOutOfFuel || IsOutOfHP)
+                if (IsDeadForAutoUpright)
                 {
-                    _inCrash = false;           // exit crash state so timers stop
-                    rb.freezeRotation = false;  // keep physics natural (optional)
-                    rb.drag = _baseDrag;
-                    rb.angularDrag = _baseAngularDrag;
+                    rb.freezeRotation = true;
+                    // your end-run behavior
                     return;
                 }
 
-                _isReorienting = true;
-                _reorientElapsed = 0f;
-                _reorientStartRot = transform.rotation;
+                // ---- 2) Crash recovery decision point (ONLY when HP>0 AND fuel>0) ----
+                if (enableFlipRecoveryMash && !IsDeadForMashRecovery)
+                {
+                    bool isFlipped = NeedsFlipRecovery();
 
-                Vector3 euler = transform.eulerAngles;
-                _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
+                    // Trigger recovery on any crash if enabled, or only when flipped
+                    if (enableCrashRecoveryAlways || isFlipped)
+                    {
+                        BeginCrashMashRecovery(isFlipped);
+                        _groundedTime = 0f;
+                        return; // IMPORTANT: do not start any auto flatten while mashing
+                    }
+                }
 
-                // Reset grounded tracking
+                // ---- 3) Final "make it flat" guarantee ----
+                if (NeedsUprightFlatten())
+                {
+                    StartReorientToFlat();
+                }
+                else
+                {
+                    rb.freezeRotation = true;
+                    rb.angularVelocity = Vector3.zero;
+                }
+
                 _groundedTime = 0f;
             }
             return;
@@ -902,6 +1166,7 @@ public class CarController : MonoBehaviour
         HandleSteering();
         HandleMovement();                 // coasting + existing decel logic still works
         if (!outOfFuel) HandleBoost();    // block boost when fuel is 0
+        ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
 
@@ -926,7 +1191,7 @@ public class CarController : MonoBehaviour
         Vector3 baselineLocal = cameraShakeTarget.localPosition - _lastAppliedShakeOffset;
 
         // Blend toward requested shake strength
-        _shakeBlendAmp = Mathf.MoveTowards(_shakeBlendAmp, _shakeAmp, Time.deltaTime * 60f);
+        _shakeBlendAmp = Mathf.MoveTowards(_shakeBlendAmp, _shakeAmp, Time.deltaTime * 5f);
 
         Vector3 newOffset = Vector3.zero;
 
@@ -953,6 +1218,55 @@ public class CarController : MonoBehaviour
         _shakeFreq = 0f;
     }
 
+    private void StartReorientToFlat()
+    {
+        _isReorienting = true;
+        _reorientElapsed = 0f;
+
+        rb.freezeRotation = true;
+        rb.angularVelocity = Vector3.zero;
+
+        _reorientStartRot = transform.rotation;
+
+        // Keep yaw, remove pitch/roll
+        Vector3 e = transform.eulerAngles;
+        _reorientTargetRot = Quaternion.Euler(0f, e.y, 0f);
+    }
+
+    private void ApplyBoostSurfaceForce(bool duringCrashOrRecovery)
+    {
+        if (!_onBoostSurface) return;
+        if (rb == null) return;
+
+        // Check if boost works during crash/recovery
+        if (duringCrashOrRecovery && !_currentBoostDuringCrash) return;
+
+        // Calculate boost strength
+        float boostStrength = _currentBoostAccel;
+        if (duringCrashOrRecovery)
+        {
+            boostStrength *= _currentBoostCrashMultiplier;
+        }
+
+        if (boostStrength <= 0f) return;
+
+        // Check max speed limit
+        float currentSpeed = rb.velocity.magnitude;
+        float maxSpeed = _currentBoostMaxSpeed > 0f ? _currentBoostMaxSpeed : effectiveMaxSpeed;
+
+        if (currentSpeed >= maxSpeed) return;
+
+        // Apply forward acceleration
+        Vector3 forwardDir = transform.forward;
+        forwardDir.y = 0f;
+        forwardDir.Normalize();
+
+        // Scale force if approaching max speed
+        float speedRatio = currentSpeed / maxSpeed;
+        float forceMult = Mathf.Lerp(1f, 0f, Mathf.Pow(speedRatio, 2f));
+
+        rb.AddForce(forwardDir * boostStrength * forceMult, ForceMode.Acceleration);
+    }
 
     private void UpdateIcePhysicsTransitions()
     {
@@ -1784,6 +2098,12 @@ public class CarController : MonoBehaviour
         _inCrash = true;
         _crashTimer = crashDuration;
 
+        // Store crash info for recovery calculation
+        _lastCrashSeverity = Mathf.Clamp01(severity);
+        _crashCount++; // counts all crashes for scaling
+        _crashSeveritySum += _lastCrashSeverity;
+        _wasAirborneDuringCrash = !_isGrounded;
+
         _groundedTime = 0f;
         _isGrounded = false;
 
@@ -1907,6 +2227,8 @@ public class CarController : MonoBehaviour
         {
             Debug.Log($"[CarController] Crash occurred but damage skipped (cooldown active, {Mathf.Max(0f, _nextCrashAllowedTime - Time.time):F2}s remain).");
         }
+
+
     }
 
 
@@ -1914,6 +2236,7 @@ public class CarController : MonoBehaviour
     {
         if (rb == null) return;
         if (_inCrash || _isReorienting) return;
+        if (_flipMashActive) return;
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, transform.forward);
@@ -2019,6 +2342,15 @@ public class CarController : MonoBehaviour
             forwardKey = false;
             reverseKey = false;
         }
+
+        if (_flipMashActive)
+        {
+            // You are flipped: no throttle/brake/steer (the only “input” is the UI mash)
+            forwardKey = false;
+            reverseKey = false;
+            steeringInput = 0f; // if steeringInput is your cached axis
+        }
+
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
@@ -2267,7 +2599,11 @@ public class CarController : MonoBehaviour
     {
         if (isOutOfFuel || maxFuel <= 0f) return;
 
-        amount *= Mathf.Max(0f, currentFuelUseMultiplier);
+        if (!_flipMashActive)
+        {
+            amount *= Mathf.Max(0f, currentFuelUseMultiplier);
+        }
+
 
         var mgr = RacingSkillTreeManager.Instance;
         int lvlFuel = mgr?.GetLevel(SkillType.FuelEfficiency) ?? 0;
@@ -2400,6 +2736,13 @@ public class CarController : MonoBehaviour
             }
         }
 
+        _onBoostSurface = false;
+        _currentBoostAccel = 0f;
+        _currentBoostMaxSpeed = 0f;
+        _currentBoostDuringCrash = false;
+        _currentBoostCrashMultiplier = 0.5f;
+
+
         if (samplesCounted == 0)
         {
             ApplySurfaceMultipliers(1f, 1f, 1f, 1f);
@@ -2441,6 +2784,29 @@ public class CarController : MonoBehaviour
                 _iceDynamicFrictionTarget = 1f;
                 _iceStaticFrictionTarget = 1f;
                 _iceHandlingTarget = 1f;
+            }
+        }
+
+        CheckForBoostSurface();
+    }
+
+    private void CheckForBoostSurface()
+    {
+        Vector3 origin = transform.position + Vector3.up * 0.5f;
+        float rayDist = 2f;
+
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDist, groundLayers, QueryTriggerInteraction.Collide))
+        {
+            GroundSurface surface = hit.collider.GetComponent<GroundSurface>()
+                                 ?? hit.collider.GetComponentInParent<GroundSurface>();
+
+            if (surface != null && surface.surfaceType == SurfaceType.Boost)
+            {
+                _onBoostSurface = true;
+                _currentBoostAccel = surface.boostAcceleration;
+                _currentBoostMaxSpeed = surface.boostMaxSpeed;
+                _currentBoostDuringCrash = surface.boostDuringCrash;
+                _currentBoostCrashMultiplier = surface.boostCrashMultiplier;
             }
         }
     }
@@ -2486,7 +2852,8 @@ public class CarController : MonoBehaviour
         if (rb == null) return;
         if (_inCrash || _isReorienting) return;     // don't fight crash/recovery
         if (IsCrashInvulnerable) return;
-        if (IsOutOfHP) return;
+        if (IsDeadForMashRecovery || _flipMashActive)
+            return;
 
         // We will align to either:
         // - current ground normal (if grounded)
@@ -2887,11 +3254,11 @@ public class CarController : MonoBehaviour
                 SkillType.Acceleration_Mul
             );
 
-                effectiveMaxSpeed = mgr.ApplyStatChain(
-                    currentMaxSpeed,
-                    SkillType.MaxSpeed_Add,
-                    SkillType.MaxSpeed_Mul
-            );
+            effectiveMaxSpeed = mgr.ApplyStatChain(
+                currentMaxSpeed,
+                SkillType.MaxSpeed_Add,
+                SkillType.MaxSpeed_Mul
+        );
 
             float prevMaxFuel = maxFuel;
 
@@ -2915,6 +3282,29 @@ public class CarController : MonoBehaviour
                 currentFuel = Mathf.Clamp(currentFuel, 0f, maxFuel);
             }
 
+            float prevMaxHP = maxHP;
+
+            maxHP = mgr.ApplyStatChain(
+                baseMaxHP,
+                SkillType.MaxHP_Add,
+                SkillType.MaxHP_Mul
+            );
+
+            // Scale current HP proportionally when max changes
+            if (!Mathf.Approximately(prevMaxHP, maxHP))
+            {
+                if (prevMaxHP <= 0f)
+                {
+                    currentHP = maxHP;
+                }
+                else
+                {
+                    float percent = Mathf.Clamp01(currentHP / prevMaxHP);
+                    currentHP = percent * maxHP;
+                }
+                currentHP = Mathf.Clamp(currentHP, 0f, maxHP);
+            }
+
             idleFuelUsePerSecond = mgr.ApplyStatChain(
                 baseIdleFuelUse,
                 SkillType.IdleFuelUse_Add,
@@ -2925,6 +3315,32 @@ public class CarController : MonoBehaviour
                 1f,
                 SkillType.DrivingFuelUse_Add,
                 SkillType.DrivingFuelUse_Mul
+            );
+
+            hpRegenPerSecond = mgr.ApplyStatChain(
+    baseHpRegenPerSecond,
+    SkillType.HPRegen_Add,
+    SkillType.HPRegen_Mul
+);
+
+            effectiveClicksPerClick = Mathf.Max(1, Mathf.RoundToInt(
+    mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
+));
+
+            effectivePassiveClickRate = mgr.ApplyStatChain(
+                basePassiveClickRate,
+                SkillType.MashPassiveClickRate_Add,
+                SkillType.MashPassiveClickRate_Mul
+            );
+
+            effectivePassiveClickStrength = Mathf.Max(1, Mathf.RoundToInt(
+                mgr.ApplyStatChain(basePassiveClickStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul)
+            ));
+
+            effectiveFuelPerClick = mgr.ApplyStatChain(
+                mashBaseFuelPerClick,
+                SkillType.MashFuelPerClick_Add,
+                SkillType.MashFuelPerClick_Mul
             );
 
             fuelUsePerSecondAtFullThrottle = baseFuelUseFullThrottle * drivingFactor;
@@ -3067,6 +3483,25 @@ public class CarController : MonoBehaviour
         TriggerCrash(hitDirection, crashDuration, impulseMag, torqueMag, sev01, contactPointWS, damageWindowOpen);
     }
 
+    // True if we're meaningfully rolled/pitched (even slightly)
+    private bool NeedsUprightFlatten()
+    {
+        // dot=1 perfectly upright, lower = tilted/flipped
+        float dot = Vector3.Dot(transform.up, Vector3.up);
+
+        // This threshold is intentionally strict: even "a bit tilted" should reorient.
+        // 0.999 ~ about 2.6 degrees off upright.
+        if (dot < 0.999f) return true;
+
+        // Extra safety: if you ever get tiny but visible roll/pitch, catch it anyway.
+        Vector3 e = transform.eulerAngles;
+        float pitch = Mathf.DeltaAngle(0f, e.x);
+        float roll = Mathf.DeltaAngle(0f, e.z);
+
+        return Mathf.Abs(pitch) > 1.0f || Mathf.Abs(roll) > 1.0f;
+    }
+
+
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
     {
@@ -3079,6 +3514,123 @@ public class CarController : MonoBehaviour
     {
         return Time.time < _tempHandlingExpireAt ? _tempHandlingMultiplier : 1f;
     }
+
+    private bool NeedsFlipRecovery()
+    {
+        float upDot = Vector3.Dot(transform.up, Vector3.up);
+        if (upDot > flipDotThreshold) return false;
+
+        float angle = Vector3.Angle(transform.up, Vector3.up);
+        return angle >= flipAngleThreshold;
+    }
+
+    public void RegisterFlipMashClick()
+    {
+        if (!_flipMashActive) return;
+
+        // Can't recover if dead from fuel OR HP
+        if (IsDeadForMashRecovery)
+        {
+            _flipMashActive = false;
+            return;
+        }
+
+        // Calculate mash speed (time since last click)
+        float timeSinceLastMash = Time.time - _lastMashTime;
+        _lastMashTime = Time.time;
+
+        // Convert to 0-1 speed rating (faster = higher)
+        _currentMashSpeed = CalculateMashSpeedRating(timeSinceLastMash);
+        _mashSpeedSmoothed = Mathf.Lerp(_mashSpeedSmoothed, _currentMashSpeed, 0.3f);
+
+        // Apply rewards
+        ApplyMashRewards(_currentMashSpeed);
+
+        _flipMashClicks += effectiveClicksPerClick;
+
+        if (_flipMashClicks >= _flipMashClicksNeeded)
+            EndFlipMashRecoveryAndUpright();
+    }
+
+    private float CalculateMashSpeedRating(float timeBetweenClicks)
+    {
+        // Clamp between thresholds
+        if (timeBetweenClicks <= mashMaxSpeedThreshold)
+            return 1f; // Max speed
+        if (timeBetweenClicks >= mashMinSpeedThreshold)
+            return 0f; // No bonus
+
+        // Inverse lerp: faster clicks = higher rating
+        return 1f - Mathf.InverseLerp(mashMaxSpeedThreshold, mashMinSpeedThreshold, timeBetweenClicks);
+    }
+
+    private void ApplyMashRewards(float speedRating)
+    {
+        // === FUEL REWARD ===
+        float fuelMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
+        float fuelReward = effectiveFuelPerClick * fuelMultiplier;
+
+        Debug.Log($"[Flip Mash] Speed Rating: {speedRating:F2}, Fuel Reward: {fuelReward:F2}");
+
+        if (fuelReward > 0f && maxFuel > 0f)
+        {
+            currentFuel = Mathf.Min(currentFuel + fuelReward, maxFuel);
+        }
+
+        // === FUTURE EXPANSION HOOKS ===
+        // Uncomment and implement as needed:
+
+        // ApplyMashBoostReward(speedRating);
+        // ApplyMashCoinReward(speedRating);
+        // ApplyMashScoreReward(speedRating);
+        // ApplyMashComboReward(speedRating);
+    }
+
+    // ============================================
+    // FUTURE EXPANSION STUBS (implement when ready)
+    // ============================================
+
+    /*
+    private void ApplyMashBoostReward(float speedRating)
+    {
+        // Example: Grant temporary speed boost based on mash speed
+        // float boostAmount = mashBaseBoost * Mathf.Lerp(1f, mashBoostSpeedBonusMax, speedRating);
+        // AddTemporarySpeedBoost(boostAmount, mashBoostDuration);
+    }
+    
+    private void ApplyMashCoinReward(float speedRating)
+    {
+        // Example: Chance to spawn coins based on mash speed
+        // float coinChance = mashBaseCoinChance * Mathf.Lerp(1f, mashCoinSpeedBonusMax, speedRating);
+        // if (Random.value < coinChance) AwardCoins(mashCoinsPerProc);
+    }
+    
+    */
+
+    private void EndFlipMashRecoveryAndUpright()
+    {
+        if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
+
+        _flipMashActive = false;
+
+        // Only do upright reorientation if we were actually flipped
+        if (_isFlippedDuringRecovery)
+        {
+            // Start the same reorientation flow you use after crashes.
+            _isReorienting = true;
+            _reorientElapsed = 0f;
+            _reorientStartRot = transform.rotation;
+
+            Vector3 euler = transform.eulerAngles;
+            _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
+
+            // Optional: tiny lift to prevent sticking into ground when snapping upright
+            if (rb != null)
+                rb.position += Vector3.up * flipUprightLift;
+        }
+        _isFlippedDuringRecovery = false;
+    }
+
 
     private void ApplyDamageDegradationToPerformance()
     {
@@ -3362,12 +3914,19 @@ public class CarController : MonoBehaviour
     private void UpdateCrashReorientation()
     {
         var gm = GameManager_Racing.Instance;
-        if(IsOutOfHP || IsOutOfFuel || (gm != null && gm.RunEnded))
+
+        if (!_isReorienting) return;
+
+        // Never fight flip-mash mode.
+        if (_flipMashActive) return;
+
+
+        if (IsDeadForMashRecovery || (gm != null && gm.RunEnded))
         {
             _isReorienting = false;
-        }
-        if (!_isReorienting)
+            _flipMashActive = false;
             return;
+        }
 
         _reorientElapsed += Time.deltaTime;
         float t = Mathf.Clamp01(_reorientElapsed / reorientDuration);
@@ -3444,6 +4003,198 @@ public class CarController : MonoBehaviour
             steeringInput = targetSteer;
         else
             steeringInput = Mathf.MoveTowards(steeringInput, targetSteer, smoothDelta);
+    }
+
+    private void TryStartPostCrashRecovery()
+    {
+        if (IsDeadForMashRecovery) return;
+        if (!enableFlipRecoveryMash) return;
+
+        bool isFlipped = NeedsFlipRecovery();
+
+        // Trigger recovery on any crash if enabled, or only when flipped
+        if (!enableCrashRecoveryAlways && !isFlipped) return;
+
+        // If we are already recovering, DO NOT restart a new sequence.
+        // Instead, increase the remaining clicks based on the new crash.
+        if (_flipMashActive)
+        {
+            AddMashDebtFromNewCrash(isFlipped);
+            return;
+        }
+
+        // If we were mid-reorient and got crashed again, cancel reorient and start mash instead.
+        if (_isReorienting)
+        {
+            _isReorienting = false;
+        }
+
+        BeginCrashMashRecovery(isFlipped);
+    }
+
+    /// <summary>
+    /// When we get crashed again during an active mash recovery, we don't want a second recovery prompt/sequence.
+    /// We simply increase the remaining click requirement (always grows).
+    /// </summary>
+    private void AddMashDebtFromNewCrash(bool isFlipped)
+    {
+        // Ensure flipped flag persists if any crash in the chain required it
+        _isFlippedDuringRecovery |= isFlipped;
+
+        // "How many clicks would recovery require if it started right now?"
+        int requiredIfStartedNow = CalculateMashClicksNeeded(isFlipped);
+
+        // Convert that into a total-needed count accounting for clicks already done.
+        int desiredTotalNeeded = _flipMashClicks + requiredIfStartedNow;
+
+        // Always grow when taking another crash, even if requiredIfStartedNow happens to be smaller.
+        if (desiredTotalNeeded <= _flipMashClicksNeeded)
+            desiredTotalNeeded = _flipMashClicksNeeded + 1;
+
+        _flipMashClicksNeeded = Mathf.Clamp(desiredTotalNeeded, mashClicksAbsoluteMin, mashClicksAbsoluteMax);
+
+        // Optional: treat new crash as a "speed reset" so you can't buffer super-fast clicks through impacts
+        _lastMashTime = Time.time;
+        _currentMashSpeed = 0f;
+        _mashSpeedSmoothed = 0f;
+    }
+
+
+    private void BeginCrashMashRecovery(bool isFlipped)
+    {
+        if (IsDeadForMashRecovery) return;
+        if (!enableFlipRecoveryMash) return;
+
+        _flipMashActive = true;
+        _isReorienting = false;
+        _isFlippedDuringRecovery = isFlipped;
+        // Calculate dynamic click count
+        _flipMashClicksNeeded = CalculateMashClicksNeeded(isFlipped);
+        _flipMashClicks = 0;
+        _passiveClickTimer = 0f;
+
+        // Reset mash speed tracking
+        _lastMashTime = Time.time;
+        _currentMashSpeed = 0f;
+        _mashSpeedSmoothed = 0f;
+    }
+
+    private int CalculateMashClicksNeeded(bool isFlipped)
+    {
+        // Distance (progress) is intended to be the primary driver.
+        // We compute: baseClicks * distanceFactor * severityFactor * crashFactor * (optional multipliers).
+        // This creates a smooth "always scaling" feel instead of lots of independent min/max caps.
+
+        float distanceTraveled = 0f;
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+            distanceTraveled = gm.DistanceAlongTrack;
+
+        float progress01 = GetTrackProgress01(distanceTraveled);
+        float t = mashClicksByProgress != null ? Mathf.Clamp01(mashClicksByProgress.Evaluate(progress01)) : progress01;
+
+        float totalClicks;
+
+        if (useMultiplicativeMashClicks)
+        {
+            // Distance factor: 1 + weight * t^exp   (huge near the end)
+            float distanceFactor = 1f + mashDistanceWeight * Mathf.Pow(t, mashDistanceExponent);
+
+            // Severity factor: 1 + weight * sev^exp
+            float sev01 = Mathf.Clamp01(_lastCrashSeverity);
+            float severityFactor = 1f + mashSeverityWeight * Mathf.Pow(sev01, mashSeverityExponent);
+
+            // Crash factor: 1 + weight * (crashCount-1)  (monotonic; first crash ~= 1)
+            float crashFactor = 1f + mashCrashCountWeight * Mathf.Max(0, _crashCount - 1);
+
+            // Cumulative severity factor (repeated crashing ramps fast)
+            float severitySumFactor = 1f + mashSeveritySumWeight * Mathf.Max(0f, _crashSeveritySum);
+
+            totalClicks = mashBaseClicks * distanceFactor * severityFactor * crashFactor * severitySumFactor;
+        }
+        else
+        {
+            // Legacy additive model (kept for safety/back-compat).
+            float severityClicks = Mathf.Lerp(mashClicksMin, mashClicksMaxFromSeverity, _lastCrashSeverity);
+            int crashCountClicks = Mathf.Min(_crashCount * mashClicksPerCrash, mashClicksMaxFromCrashCount);
+
+            int distanceClicks = 0;
+            if (mashClicksMaxFromDistance > 0)
+                distanceClicks = Mathf.Clamp(Mathf.RoundToInt(mashClicksMaxFromDistance * t), 0, mashClicksMaxFromDistance);
+
+            totalClicks = severityClicks + crashCountClicks + distanceClicks;
+        }
+
+        // Optional multipliers (these should feel like "situational difficulty")
+        float multiplier = 1f;
+        if (isFlipped) multiplier *= flippedClickMultiplier;
+        if (_wasAirborneDuringCrash) multiplier *= airborneClickMultiplier;
+        totalClicks *= multiplier;
+
+        // Random variance (small; keeps it from feeling too deterministic)
+        if (mashClicksRandomVariance > 0)
+        {
+            int variance = UnityEngine.Random.Range(-mashClicksRandomVariance, mashClicksRandomVariance + 1);
+            totalClicks += variance;
+        }
+
+        return Mathf.Clamp(Mathf.RoundToInt(totalClicks), mashClicksAbsoluteMin, mashClicksAbsoluteMax);
+    }
+
+    /// <summary>
+    /// Returns normalized progress (0..1) for the run based on distance traveled.
+    /// Tries to read a total track length from GameManager_Racing via reflection (so we don't hard-depend on a specific API),
+    /// otherwise falls back to mashProgressTotalDistanceFallback.
+    /// </summary>
+    private float GetTrackProgress01(float distanceTraveled)
+    {
+        float total = 0f;
+
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+        {
+            try
+            {
+                var t = gm.GetType();
+
+                // Try common property/field names
+                var prop = t.GetProperty("TrackTotalLength") ?? t.GetProperty("TotalTrackLength") ?? t.GetProperty("TrackLength");
+                if (prop != null && prop.PropertyType == typeof(float))
+                    total = (float)prop.GetValue(gm, null);
+
+                if (total <= 0f)
+                {
+                    var field = t.GetField("TrackTotalLength") ?? t.GetField("totalTrackLength") ?? t.GetField("trackTotalLength") ?? t.GetField("TrackLength") ?? t.GetField("trackLength");
+                    if (field != null && field.FieldType == typeof(float))
+                        total = (float)field.GetValue(gm);
+                }
+            }
+            catch { /* ignore and fall back */ }
+        }
+
+        if (total <= 0f)
+            total = mashProgressTotalDistanceFallback;
+
+        if (total <= 0f) return 0f;
+        return Mathf.Clamp01(distanceTraveled / total);
+    }
+    private bool WillStartMashRecoveryNow()
+    {
+        if (IsDeadForMashRecovery) return false;
+        if (!enableFlipRecoveryMash) return false;
+
+        bool isFlipped = NeedsFlipRecovery();
+        if (!enableCrashRecoveryAlways && !isFlipped) return false;
+
+        return true;
+    }
+
+
+
+    // Keep old method for any other calls
+    private void BeginFlipMashRecovery()
+    {
+        BeginCrashMashRecovery(NeedsFlipRecovery());
     }
 
     private void PlayDeathVFX()

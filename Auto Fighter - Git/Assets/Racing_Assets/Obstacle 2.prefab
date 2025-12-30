@@ -124,7 +124,7 @@ MonoBehaviour:
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
@@ -180,7 +180,7 @@ MonoBehaviour:
   center: {x: 0, y: 0, z: 0}
   updateDistance: 0.4
   isDual: 0
-  radiusExpansionMode: 0
+  radiusExpansionMode: 1
   cutsAddedGeom: 1
   updateRotationDistance: 10
   useRotationAndScale: 1

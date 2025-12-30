@@ -25,11 +25,25 @@ public class AstarRuntimeBootstrap : MonoBehaviour
     [Header("RVO")]
     [SerializeField] private bool ensureRvoSimulator = true;
 
+
+
+    
+
+    private int nonProjectileLayer;
+    private int projectileLayer;
+    private int npcLayer;
+    private int defaultLayer;
+
+
     private AstarPath _astar;
     private RVOSimulator _rvo;
 
     private void Awake()
     {
+        nonProjectileLayer = LayerMask.NameToLayer("Non-Colliding Projectile");
+        projectileLayer = LayerMask.NameToLayer("Projectile");
+        npcLayer = LayerMask.NameToLayer("NPCCar");
+        defaultLayer = LayerMask.NameToLayer("Default");
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
@@ -93,21 +107,50 @@ public class AstarRuntimeBootstrap : MonoBehaviour
         recast.rasterizeTrees = false;
         recast.rasterizeMeshes = true;     // road mesh layer-filtered
         recast.rasterizeColliders = false;
-
-
-
         // Rasterize ONLY the road layer(s), exclude agent layer so cars don't carve holes.
         recast.mask = roadSurfaceMask & ~agentLayerMaskToExclude;
 
         recast.forcedBoundsCenter = bounds.center;
         recast.forcedBoundsSize = bounds.size;
 
+        if (recast.perLayerModifications == null)
+            recast.perLayerModifications = new System.Collections.Generic.List<RecastGraph.PerLayerModification>();
+
+
+        /*MarkLayerUnwalkable(recast, "Obstacles");
+        MarkLayerUnwalkable(recast, "Projectile");
+        MarkLayerUnwalkable(recast, "NPCCar");
+        MarkLayerUnwalkable(recast, "Non-Colliding Projectile");
+        */
         // Async scan (old API returns IEnumerable<Progress>)
         foreach (var _ in AstarPath.active.ScanAsync(recast))
             yield return null;
 
         Debug.Log($"[AstarRuntimeBootstrap] Recast scan done. Bounds={bounds.size}");
     }
+
+    private void MarkLayerUnwalkable(RecastGraph graph, string layerName)
+    {
+        int layer = LayerMask.NameToLayer(layerName);
+        if (layer < 0 || layer >= 32) return;
+
+        if (graph.perLayerModifications == null)
+            graph.perLayerModifications = new System.Collections.Generic.List<RecastGraph.PerLayerModification>();
+
+        // Find existing entry for this layer
+        int idx = graph.perLayerModifications.FindIndex(m => m.layer == layer);
+
+        var mod = new RecastGraph.PerLayerModification
+        {
+            layer = layer,
+            mode = RecastNavmeshModifier.Mode.UnwalkableSurface,
+            // surfaceID not needed for UnwalkableSurface
+        };
+
+        if (idx >= 0) graph.perLayerModifications[idx] = mod;
+        else graph.perLayerModifications.Add(mod);
+    }
+
 
     private RecastGraph GetOrCreateRecastGraph()
     {
@@ -121,12 +164,12 @@ public class AstarRuntimeBootstrap : MonoBehaviour
         var g = (RecastGraph)data.AddGraph(typeof(RecastGraph));
 
         // Sensible defaults for a racing “ribbon” (you can tune later, but keep it minimal)
-        g.characterRadius = .12f;          // roughly half car width clearance feel
+        g.characterRadius = .25f;          // roughly half car width clearance feel
         g.walkableHeight = 2.0f;
         g.walkableClimb = 0.6f;
         g.cellSize = 0.1f;
         g.maxEdgeLength = 6f;
-        g.maxSlope = 45f;
+        g.maxSlope = 70f;
 
         // Tiles keep it reasonable (especially if track is long)
         g.useTiles = true;

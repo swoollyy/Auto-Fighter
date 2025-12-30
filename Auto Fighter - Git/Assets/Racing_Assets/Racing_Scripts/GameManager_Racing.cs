@@ -62,6 +62,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private AnimationCurve crashSlowMoCurve = AnimationCurve.Linear(0, 0.4f, 1, 1f);
 
 
+
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
 
@@ -91,7 +92,7 @@ public class GameManager_Racing : MonoBehaviour
 
     [Header("Explosion PostFX")]
     [SerializeField, Range(0f, 2f)] private float explosionChromaticMultiplier = 1.0f;
-    [SerializeField, Range(0f, 200f)] private float explosionLensMultiplier = 1.0f;
+     [SerializeField] private float explosionLensMultiplier = 1.0f;
 
     [Header("Close-Call (Near Miss) FX")]
     [SerializeField, Range(0.01f, 1f)] private float closeCallSlowMoScale = 0.6f;
@@ -158,6 +159,8 @@ public class GameManager_Racing : MonoBehaviour
     private int _obstacleCoinsThisRun = 0;
 
     private bool _depositSoundPlayed = false;
+
+    public float DistanceAlongTrack => runDistanceMeters;
 
 
     public bool RunEnded => runEnded;

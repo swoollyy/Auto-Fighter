@@ -113,7 +113,28 @@
     DistanceCoinsPerMeter_Mul = 4401,
 
     CoinBase_Add = 4450,
-    CoinBase_Mul = 4451
+    CoinBase_Mul = 4451,
+
+    HPRegen_Add = 4500,
+    HPRegen_Mul = 4501,
+
+    // ------------------------------------------------------------------------
+    // NEW: Crash Recovery Mash Skills
+    // ------------------------------------------------------------------------
+    MashClicksPerClick_Add = 4600,      // Each button press counts as multiple clicks
+    MashClicksPerClick_Mul = 4601,
+
+    MashPassiveClickRate_Add = 4610,    // Auto-clicks per second (passive)
+    MashPassiveClickRate_Mul = 4611,
+
+    MashPassiveClickStrength_Add = 4620, // How many clicks each passive tick provides
+    MashPassiveClickStrength_Mul = 4621,
+
+    MashFuelPerClick_Add = 4630,        // Fuel reward per click (bonus)
+    MashFuelPerClick_Mul = 4631,
+
+    MaxHP_Add = 4700,
+    MaxHP_Mul = 4701
 }
 
 

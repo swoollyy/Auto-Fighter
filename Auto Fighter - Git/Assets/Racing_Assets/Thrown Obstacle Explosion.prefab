@@ -126,7 +126,7 @@ MonoBehaviour:
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
@@ -169,9 +169,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ce5877d36b5cd3142be92c733fe86bf0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  impactVFXPrefab: {fileID: 208115153821778408, guid: fd8c411fa565e1c479a780420a1f5983, type: 3}
+  impactVFXPrefab: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   impactVFXLifetime: 0.4
   orientToMotion: 0
+  plainImpactRadiusMultiplier: 1
+  plainImpactRadiusClamp: {x: 0.75, y: 5}
+  enablePlainImpactZone: 1
   closeCallThreshold: 3.5
   enableCloseCall: 1
 --- !u!114 &1215463017983121784
