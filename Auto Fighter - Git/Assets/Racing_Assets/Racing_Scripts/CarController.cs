@@ -149,6 +149,22 @@ public class CarController : MonoBehaviour
     [SerializeField] private float crashDragMultiplier = 2f;
     [SerializeField] private float crashAngularDrag = 1.5f;
 
+    [Header("Popup Text Settings")]
+    [Tooltip("Enable floating popup text for damage, fuel, coins, etc.")]
+    [SerializeField] private bool enablePopupText = true;
+
+    [Tooltip("Vertical offset above car for popup spawn position.")]
+    [SerializeField] private float popupVerticalOffset = 2f;
+
+    [Tooltip("Minimum HP damage to show popup (prevents spam from tiny hits).")]
+    [SerializeField] private float minHPDamageForPopup = 1f;
+
+    [Tooltip("Minimum fuel loss to show popup.")]
+    [SerializeField] private float minFuelLossForPopup = 1f;
+
+    [Tooltip("Minimum fuel gain to show popup.")]
+    [SerializeField] private float minFuelGainForPopup = 0.5f;
+
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
 
@@ -2101,8 +2117,17 @@ public class CarController : MonoBehaviour
         // Store crash info for recovery calculation
         _lastCrashSeverity = Mathf.Clamp01(severity);
         _crashCount++; // counts all crashes for scaling
-        _crashSeveritySum += _lastCrashSeverity;
+
+        // Snapshot situational flags BEFORE we force grounded false.
         _wasAirborneDuringCrash = !_isGrounded;
+        bool flippedAtImpact = NeedsFlipRecovery();
+
+        float severityContribution = _lastCrashSeverity;
+
+            if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
+            if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
+
+        _crashSeveritySum += severityContribution;
 
         _groundedTime = 0f;
         _isGrounded = false;
@@ -2190,6 +2215,10 @@ public class CarController : MonoBehaviour
                 float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
                 hpLoss = Mathf.Min(hpLoss, currentHP);
                 currentHP = Mathf.Max(0f, currentHP - hpLoss);
+
+                if (hpLoss >= minHPDamageForPopup)
+                    TrySpawnPopup(RacingPopupType.HPDamage, hpLoss);
+
                 Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01ForDamage:F2}). HP={currentHP}/{maxHP}");
             }
 
@@ -3552,6 +3581,24 @@ public class CarController : MonoBehaviour
             EndFlipMashRecoveryAndUpright();
     }
 
+    /// <summary>
+    /// Get the position above the car for popup spawning.
+    /// </summary>
+    private Vector3 GetPopupPosition()
+    {
+        return transform.position + Vector3.up * popupVerticalOffset;
+    }
+
+    /// <summary>
+    /// Spawn a popup if the system is ready and enabled.
+    /// </summary>
+    private void TrySpawnPopup(RacingPopupType type, float value)
+    {
+        if (!enablePopupText) return;
+        if (!RacingPopups.IsReady) return;
+        RacingPopups.Spawn(type, value, GetPopupPosition());
+    }
+
     private float CalculateMashSpeedRating(float timeBetweenClicks)
     {
         // Clamp between thresholds
@@ -4110,7 +4157,7 @@ public class CarController : MonoBehaviour
             // Cumulative severity factor (repeated crashing ramps fast)
             float severitySumFactor = 1f + mashSeveritySumWeight * Mathf.Max(0f, _crashSeveritySum);
 
-            totalClicks = mashBaseClicks * distanceFactor * severityFactor * crashFactor * severitySumFactor;
+            totalClicks = mashBaseClicks * distanceFactor * crashFactor * severitySumFactor;
         }
         else
         {
@@ -4125,18 +4172,6 @@ public class CarController : MonoBehaviour
             totalClicks = severityClicks + crashCountClicks + distanceClicks;
         }
 
-        // Optional multipliers (these should feel like "situational difficulty")
-        float multiplier = 1f;
-        if (isFlipped) multiplier *= flippedClickMultiplier;
-        if (_wasAirborneDuringCrash) multiplier *= airborneClickMultiplier;
-        totalClicks *= multiplier;
-
-        // Random variance (small; keeps it from feeling too deterministic)
-        if (mashClicksRandomVariance > 0)
-        {
-            int variance = UnityEngine.Random.Range(-mashClicksRandomVariance, mashClicksRandomVariance + 1);
-            totalClicks += variance;
-        }
 
         return Mathf.Clamp(Mathf.RoundToInt(totalClicks), mashClicksAbsoluteMin, mashClicksAbsoluteMax);
     }
@@ -4349,9 +4384,11 @@ public class CarController : MonoBehaviour
     // PUBLIC READ-ONLY
     public float CurrentSpeed => rb != null ? rb.velocity.magnitude : 0f;
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
-    public float CurrentFuel => currentFuel;
     public bool IsOutOfFuel => isOutOfFuel;
     public bool IsOutOfHP => isOutOfHP;
+    public float CurrentFuel => currentFuel;
+    public float MaxFuel => maxFuel;
+
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;

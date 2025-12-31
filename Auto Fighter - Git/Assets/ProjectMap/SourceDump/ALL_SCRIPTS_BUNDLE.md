@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2025-12-29T22:28:35.7027516Z (UTC)
+- Generated: 2025-12-30T22:43:39.8426080Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 201
 
@@ -4299,8 +4299,14 @@ public class CarController : MonoBehaviour
     [Header("Health")]
     [SerializeField] private float maxHP = 100f;
     [SerializeField] private float hpCrashDamageAtSeverity1 = 40f;
-    [Tooltip("Optional passive HP regen per second when not crashing. 0 = none.")]
-    [SerializeField] private float hpRegenPerSecond = 0f;
+
+    private float baseMaxHP;
+
+    [SerializeField, Tooltip("Base HP regenerated per second (before skills).")]
+    private float baseHpRegenPerSecond = 0f;
+
+    // Runtime (after skills applied)
+    private float hpRegenPerSecond = 0f;
 
     [Header("Performance Degradation (vs HP)")]
     [SerializeField, Range(0.1f, 1f)] private float performanceAtZeroHP = 0.35f;
@@ -4518,6 +4524,25 @@ public class CarController : MonoBehaviour
 
     [Tooltip("Click multiplier when airborne during crash.")]
     [SerializeField, Min(1f)] private float airborneClickMultiplier = 1.25f;
+
+    [Header("Mash Click Skills")]
+    [Tooltip("Base clicks registered per button press (before skills).")]
+    [SerializeField] private int baseClicksPerClick = 1;
+
+    [Tooltip("Base passive auto-clicks per second while mashing (0 = disabled).")]
+    [SerializeField] private float basePassiveClickRate = 0f;
+
+    [Tooltip("Base clicks added per passive tick.")]
+    [SerializeField] private int basePassiveClickStrength = 1;
+
+    // Runtime (after skills applied)
+    private int effectiveClicksPerClick = 1;
+    private float effectivePassiveClickRate = 0f;
+    private int effectivePassiveClickStrength = 1;
+    private float effectiveFuelPerClick = 0f;
+
+    // Passive click timer
+    private float _passiveClickTimer;
 
 
     [Header("Flip Mash Rewards")]
@@ -4961,6 +4986,7 @@ public class CarController : MonoBehaviour
         currentFuelUseMultiplier = 1f;
 
         baseMaxFuel = maxFuel;
+        baseMaxHP = maxHP;
         baseIdleFuelUse = idleFuelUsePerSecond;
         baseFuelUseFullThrottle = fuelUsePerSecondAtFullThrottle;
         baseFuelUseBraking = fuelUsePerSecondBraking;
@@ -5007,6 +5033,15 @@ public class CarController : MonoBehaviour
         if (_flipMashActive && Input.GetKeyDown(KeyCode.Space))
         {
             RegisterFlipMashClick();
+        }
+
+        if (Input.GetKeyDown(KeyCode.F9))
+        {
+            var mgr = RacingSkillTreeManager.Instance;
+            if (mgr != null)
+            {
+                mgr.ToggleSkills();
+            }
         }
 
         UpdateCrashReorientation();
@@ -5064,15 +5099,12 @@ public class CarController : MonoBehaviour
                 return;
             }
 
-            // If fuel hits 0 mid-mash, mash fails/stops,
-            // but we STILL must flatten if tilted (since HP>0).
+            // If fuel hits 0 mid-mash, mash fails/stops
             if (IsOutOfFuel)
             {
                 _flipMashActive = false;
-
                 if (NeedsUprightFlatten())
                     StartReorientToFlat();
-
                 return;
             }
 
@@ -5082,11 +5114,39 @@ public class CarController : MonoBehaviour
             // Apply boost surface during recovery
             ApplyBoostSurfaceForce(true);
 
-            // Fuel burn while flipped (multiplier inside ConsumeFuel if you coded it that way)
+            // === PASSIVE AUTO-CLICKS (Skill-based) ===
+            if (effectivePassiveClickRate > 0f)
+            {
+                _passiveClickTimer += Time.fixedDeltaTime;
+                float passiveInterval = 1f / effectivePassiveClickRate;
+
+                while (_passiveClickTimer >= passiveInterval)
+                {
+                    _passiveClickTimer -= passiveInterval;
+
+                    // Add passive clicks
+                    _flipMashClicks += effectivePassiveClickStrength;
+
+                    // Optional: Apply partial fuel reward for passive clicks
+                    float passiveFuelReward = effectiveFuelPerClick * 0.5f; // Half reward for passive
+                    if (passiveFuelReward > 0f && maxFuel > 0f)
+                    {
+                        currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                    }
+
+                    // Check if recovery complete
+                    if (_flipMashClicks >= _flipMashClicksNeeded)
+                    {
+                        EndFlipMashRecoveryAndUpright();
+                        return;
+                    }
+                }
+            }
+
+            // Fuel burn while in recovery
             ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
 
-            // Do NOT return: remain fully physical and controllable during recovery.
-            // We only block auto-upright logic while _flipMashActive is true.
+            return;
         }
 
         if (_inCrash)
@@ -5254,7 +5314,7 @@ public class CarController : MonoBehaviour
         Vector3 baselineLocal = cameraShakeTarget.localPosition - _lastAppliedShakeOffset;
 
         // Blend toward requested shake strength
-        _shakeBlendAmp = Mathf.MoveTowards(_shakeBlendAmp, _shakeAmp, Time.deltaTime * 60f);
+        _shakeBlendAmp = Mathf.MoveTowards(_shakeBlendAmp, _shakeAmp, Time.deltaTime * 5f);
 
         Vector3 newOffset = Vector3.zero;
 
@@ -6164,8 +6224,17 @@ public class CarController : MonoBehaviour
         // Store crash info for recovery calculation
         _lastCrashSeverity = Mathf.Clamp01(severity);
         _crashCount++; // counts all crashes for scaling
-        _crashSeveritySum += _lastCrashSeverity;
+
+        // Snapshot situational flags BEFORE we force grounded false.
         _wasAirborneDuringCrash = !_isGrounded;
+        bool flippedAtImpact = NeedsFlipRecovery();
+
+        float severityContribution = _lastCrashSeverity;
+
+            if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
+            if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
+
+        _crashSeveritySum += severityContribution;
 
         _groundedTime = 0f;
         _isGrounded = false;
@@ -7345,6 +7414,29 @@ public class CarController : MonoBehaviour
                 currentFuel = Mathf.Clamp(currentFuel, 0f, maxFuel);
             }
 
+            float prevMaxHP = maxHP;
+
+            maxHP = mgr.ApplyStatChain(
+                baseMaxHP,
+                SkillType.MaxHP_Add,
+                SkillType.MaxHP_Mul
+            );
+
+            // Scale current HP proportionally when max changes
+            if (!Mathf.Approximately(prevMaxHP, maxHP))
+            {
+                if (prevMaxHP <= 0f)
+                {
+                    currentHP = maxHP;
+                }
+                else
+                {
+                    float percent = Mathf.Clamp01(currentHP / prevMaxHP);
+                    currentHP = percent * maxHP;
+                }
+                currentHP = Mathf.Clamp(currentHP, 0f, maxHP);
+            }
+
             idleFuelUsePerSecond = mgr.ApplyStatChain(
                 baseIdleFuelUse,
                 SkillType.IdleFuelUse_Add,
@@ -7355,6 +7447,32 @@ public class CarController : MonoBehaviour
                 1f,
                 SkillType.DrivingFuelUse_Add,
                 SkillType.DrivingFuelUse_Mul
+            );
+
+            hpRegenPerSecond = mgr.ApplyStatChain(
+    baseHpRegenPerSecond,
+    SkillType.HPRegen_Add,
+    SkillType.HPRegen_Mul
+);
+
+            effectiveClicksPerClick = Mathf.Max(1, Mathf.RoundToInt(
+    mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
+));
+
+            effectivePassiveClickRate = mgr.ApplyStatChain(
+                basePassiveClickRate,
+                SkillType.MashPassiveClickRate_Add,
+                SkillType.MashPassiveClickRate_Mul
+            );
+
+            effectivePassiveClickStrength = Mathf.Max(1, Mathf.RoundToInt(
+                mgr.ApplyStatChain(basePassiveClickStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul)
+            ));
+
+            effectiveFuelPerClick = mgr.ApplyStatChain(
+                mashBaseFuelPerClick,
+                SkillType.MashFuelPerClick_Add,
+                SkillType.MashFuelPerClick_Mul
             );
 
             fuelUsePerSecondAtFullThrottle = baseFuelUseFullThrottle * drivingFactor;
@@ -7560,7 +7678,7 @@ public class CarController : MonoBehaviour
         // Apply rewards
         ApplyMashRewards(_currentMashSpeed);
 
-        _flipMashClicks++;
+        _flipMashClicks += effectiveClicksPerClick;
 
         if (_flipMashClicks >= _flipMashClicksNeeded)
             EndFlipMashRecoveryAndUpright();
@@ -7582,7 +7700,7 @@ public class CarController : MonoBehaviour
     {
         // === FUEL REWARD ===
         float fuelMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
-        float fuelReward = mashBaseFuelPerClick * fuelMultiplier;
+        float fuelReward = effectiveFuelPerClick * fuelMultiplier;
 
         Debug.Log($"[Flip Mash] Speed Rating: {speedRating:F2}, Fuel Reward: {fuelReward:F2}");
 
@@ -8085,6 +8203,7 @@ public class CarController : MonoBehaviour
         // Calculate dynamic click count
         _flipMashClicksNeeded = CalculateMashClicksNeeded(isFlipped);
         _flipMashClicks = 0;
+        _passiveClickTimer = 0f;
 
         // Reset mash speed tracking
         _lastMashTime = Time.time;
@@ -8123,7 +8242,7 @@ public class CarController : MonoBehaviour
             // Cumulative severity factor (repeated crashing ramps fast)
             float severitySumFactor = 1f + mashSeveritySumWeight * Mathf.Max(0f, _crashSeveritySum);
 
-            totalClicks = mashBaseClicks * distanceFactor * severityFactor * crashFactor * severitySumFactor;
+            totalClicks = mashBaseClicks * distanceFactor * crashFactor * severitySumFactor;
         }
         else
         {
@@ -8138,18 +8257,6 @@ public class CarController : MonoBehaviour
             totalClicks = severityClicks + crashCountClicks + distanceClicks;
         }
 
-        // Optional multipliers (these should feel like "situational difficulty")
-        float multiplier = 1f;
-        if (isFlipped) multiplier *= flippedClickMultiplier;
-        if (_wasAirborneDuringCrash) multiplier *= airborneClickMultiplier;
-        totalClicks *= multiplier;
-
-        // Random variance (small; keeps it from feeling too deterministic)
-        if (mashClicksRandomVariance > 0)
-        {
-            int variance = UnityEngine.Random.Range(-mashClicksRandomVariance, mashClicksRandomVariance + 1);
-            totalClicks += variance;
-        }
 
         return Mathf.Clamp(Mathf.RoundToInt(totalClicks), mashClicksAbsoluteMin, mashClicksAbsoluteMax);
     }
@@ -14029,7 +14136,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
     [Header("Path Sampling")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
-
+    
     [Header("Spawn Settings")]
     [Tooltip("Ideal spacing between potential spawn slots (meters).")]
     [SerializeField] private float carSpacing = 80f;
@@ -14138,6 +14245,42 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         if (!streamSpawnDuringRun)
             return;
+
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            if (_totalLength <= 0f || !HasAnyValidCarType())
+                return;
+
+            // pick a random distance along the track
+            float dist = UnityEngine.Random.Range(0.2f, 0.8f) * _totalLength;
+
+            // choose prefab using existing weighting logic
+            GameObject prefab = ChooseCarPrefab(dist);
+            if (prefab == null)
+                return;
+
+            // sample path (this is how your system is designed)
+            SampleAlongPath(dist, out Vector3 pos, out Vector3 forward);
+
+            // ground snap (same as normal spawn)
+            Vector3 origin = pos + Vector3.up * raycastStartHeight;
+            float maxRay = raycastStartHeight + raycastDownDistance;
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+                return;
+
+            Quaternion rot = Quaternion.LookRotation(forward.sqrMagnitude > 0.001f ? forward : Vector3.forward, Vector3.up);
+            Transform parent = carParent != null ? carParent : transform;
+
+            GameObject car = Instantiate(prefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
+
+            var npc = car.GetComponent<NPCTrafficCar>();
+            if (npc != null)
+                npc.SetGenerator(trackGenerator);
+
+            if (verboseDebug)
+                Debug.Log($"[TEST SPAWN] Spawned {prefab.name} at dist {dist:F1}");
+        }
+
 
         _updateTimer += Time.deltaTime;
         if (_updateTimer < updateInterval) return;
@@ -17785,6 +17928,22 @@ public class RacingSkillTreeManager : MonoBehaviour
     [Header("Load")]
     public List<SkillDefinition> skills = new();
 
+    [Header("Master Control")]
+    [Tooltip("If disabled, all skills return level 0 and have no effect.")]
+    [SerializeField] private bool skillsEnabled = true;
+
+    [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
+    [SerializeField] private bool revealAllSkillsAtStart = true;
+
+    /// <summary>
+    /// Master toggle to enable/disable all skill effects at runtime.
+    /// </summary>
+    public bool SkillsEnabled
+    {
+        get => skillsEnabled;
+        set => skillsEnabled = value;
+    }
+
     [Header("Economy")]
     [SerializeField] private int playerCurrency = 0;
 
@@ -17823,8 +17982,13 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         _revealedSkills.Clear();
         foreach (var def in skills)
-            if (def && def.revealedAtStart)
+        {
+            if (def == null) continue;
+
+            // Reveal if master toggle is on OR individual skill has revealedAtStart
+            if (revealAllSkillsAtStart || def.revealedAtStart)
                 RevealSkill(def);
+        }
 
         OnCurrencyChanged?.Invoke(playerCurrency);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
@@ -17877,7 +18041,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     public IReadOnlyList<SkillDefinition> AllSkills => skills;
-    public int GetLevel(SkillType t) => _state.GetLevel(t);
+    public int GetLevel(SkillType t) => skillsEnabled ? _state.GetLevel(t) : 0;
 
     public bool TryPurchase(SkillType type)
     {
@@ -17985,6 +18149,9 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     public float ApplyStatChain(float baseValue, params SkillType[] types)
     {
+        // If skills disabled, return base value unchanged
+        if (!skillsEnabled) return baseValue;
+
         float val = baseValue;
         if (types == null) return val;
         for (int i = 0; i < types.Length; i++)
@@ -18077,6 +18244,37 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0.01f, v);
     }
 
+    // ------------------------------------------------------------------------
+    // Master Skill Control
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Enable all skill effects.
+    /// </summary>
+    public void EnableAllSkills()
+    {
+        skillsEnabled = true;
+        Debug.Log("[SkillTreeManager] All skills ENABLED");
+    }
+
+    /// <summary>
+    /// Disable all skill effects (skills return to level 0 behavior).
+    /// </summary>
+    public void DisableAllSkills()
+    {
+        skillsEnabled = false;
+        Debug.Log("[SkillTreeManager] All skills DISABLED");
+    }
+
+    /// <summary>
+    /// Toggle skill effects on/off.
+    /// </summary>
+    public void ToggleSkills()
+    {
+        skillsEnabled = !skillsEnabled;
+        Debug.Log($"[SkillTreeManager] Skills {(skillsEnabled ? "ENABLED" : "DISABLED")}");
+    }
+
     public void ClearAllData()
     {
         _state.ClearPersistent();
@@ -18088,8 +18286,11 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         _revealedSkills.Clear();
         foreach (var def in skills)
-            if (def && def.revealedAtStart)
+        {
+            if (def == null) continue;
+            if (revealAllSkillsAtStart || def.revealedAtStart)
                 RevealSkill(def);
+        }
 
         OnSkillsReset?.Invoke();
     }
@@ -19655,7 +19856,28 @@ public enum SkillType
     DistanceCoinsPerMeter_Mul = 4401,
 
     CoinBase_Add = 4450,
-    CoinBase_Mul = 4451
+    CoinBase_Mul = 4451,
+
+    HPRegen_Add = 4500,
+    HPRegen_Mul = 4501,
+
+    // ------------------------------------------------------------------------
+    // NEW: Crash Recovery Mash Skills
+    // ------------------------------------------------------------------------
+    MashClicksPerClick_Add = 4600,      // Each button press counts as multiple clicks
+    MashClicksPerClick_Mul = 4601,
+
+    MashPassiveClickRate_Add = 4610,    // Auto-clicks per second (passive)
+    MashPassiveClickRate_Mul = 4611,
+
+    MashPassiveClickStrength_Add = 4620, // How many clicks each passive tick provides
+    MashPassiveClickStrength_Mul = 4621,
+
+    MashFuelPerClick_Add = 4630,        // Fuel reward per click (bonus)
+    MashFuelPerClick_Mul = 4631,
+
+    MaxHP_Add = 4700,
+    MaxHP_Mul = 4701
 }
 
 

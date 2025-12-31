@@ -6,9 +6,13 @@ public class UIManager_Racing : MonoBehaviour
 {
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
+    [SerializeField] private TMP_Text fuelText;    // NEW: Shows "85 / 100" or "85%"
+    [SerializeField] private bool showFuelAsPercent = false;
 
     [Header("Car HP UI")]
     [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
+    [SerializeField] private TMP_Text hpText;      // NEW: Shows "75 / 100" or "75%"
+    [SerializeField] private bool showHPAsPercent = false;
 
     [Header("In-Run UI")]
     [SerializeField] private TMP_Text runCoinsLiveText;   // e.g. top-left HUD text: "Coins: 0"
@@ -67,11 +71,31 @@ public class UIManager_Racing : MonoBehaviour
     {
         if (car == null) return;
 
+        // Fuel bar
         if (fuelFillImage != null)
             fuelFillImage.fillAmount = car.FuelPercent;
 
+        // Fuel text
+        if (fuelText != null)
+        {
+            if (showFuelAsPercent)
+                fuelText.text = $"{Mathf.RoundToInt(car.FuelPercent * 100)}%";
+            else
+                fuelText.text = $"{Mathf.RoundToInt(car.CurrentFuel)} / {Mathf.RoundToInt(car.MaxFuel)}";
+        }
+
+        // HP bar
         if (hpFillImage != null)
             hpFillImage.fillAmount = car.HPPercent;
+
+        // HP text
+        if (hpText != null)
+        {
+            if (showHPAsPercent)
+                hpText.text = $"{Mathf.RoundToInt(car.HPPercent * 100)}%";
+            else
+                hpText.text = $"{Mathf.RoundToInt(car.CurrentHP)} / {Mathf.RoundToInt(car.MaxHP)}";
+        }
 
         UpdateCrashRecoveryUI();
     }

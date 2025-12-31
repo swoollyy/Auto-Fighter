@@ -1095,7 +1095,7 @@ MonoBehaviour:
   useMultiplicativeMashClicks: 1
   mashBaseClicks: 15
   mashDistanceWeight: 200
-  mashDistanceExponent: 4
+  mashDistanceExponent: 1.5
   mashSeverityWeight: 1.75
   mashSeverityExponent: 1.25
   mashCrashCountWeight: 1.5
@@ -1124,7 +1124,7 @@ MonoBehaviour:
   enableLandingCarrySpeed: 1
   landingExcessBleedPerSecond: 4.3
   landingNoClampGraceSeconds: 0.85
-  grassFuelUseMultiplier: 3
+  grassFuelUseMultiplier: 1.5
   offDefaultFraction: 0
   grassFraction: 0
   coastLowDecelPerSecond: 0.81
