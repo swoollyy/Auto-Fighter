@@ -124,6 +124,8 @@
     MashClicksPerClick_Add = 4600,      // Each button press counts as multiple clicks
     MashClicksPerClick_Mul = 4601,
 
+    MashPassiveUnlock = 4605,
+
     MashPassiveClickRate_Add = 4610,    // Auto-clicks per second (passive)
     MashPassiveClickRate_Mul = 4611,
 

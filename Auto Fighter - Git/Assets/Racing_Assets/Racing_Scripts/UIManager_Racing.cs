@@ -1,4 +1,4 @@
-using TMPro; // ADD
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -6,41 +6,68 @@ public class UIManager_Racing : MonoBehaviour
 {
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
-    [SerializeField] private TMP_Text fuelText;    // NEW: Shows "85 / 100" or "85%"
+    [SerializeField] private TMP_Text fuelText;    // Shows "85 / 100" or "85%"
     [SerializeField] private bool showFuelAsPercent = false;
 
     [Header("Car HP UI")]
     [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
-    [SerializeField] private TMP_Text hpText;      // NEW: Shows "75 / 100" or "75%"
+    [SerializeField] private TMP_Text hpText;      // Shows "75 / 100" or "75%"
     [SerializeField] private bool showHPAsPercent = false;
 
     [Header("In-Run UI")]
-    [SerializeField] private TMP_Text runCoinsLiveText;   // e.g. top-left HUD text: "Coins: 0"
+    [SerializeField] private TMP_Text runCoinsLiveText;      // e.g. "Coins: 0"
+    [SerializeField] private TMP_Text runSprocketsLiveText;  // "Sprockets: 0"
 
-    // NEW: Run Complete UI
     [Header("Run Complete UI")]
     [SerializeField] private GameObject runCompleteRoot;
-    [SerializeField] private TMP_Text runCompleteTitle;     // optional (e.g., "Run Complete")
-    [SerializeField] private TMP_Text runDistanceText;      // e.g., "Distance: 123 m"
-    [SerializeField] private TMP_Text runCoinsText;         // e.g., "Coins: 184"
-    [SerializeField] private TMP_Text runRestartHintText;   // e.g., "Press R to restart"
+    [SerializeField] private TMP_Text runCompleteTitle;
+    [SerializeField] private TMP_Text runDistanceText;
+    [SerializeField] private TMP_Text runCoinsText;
+    [SerializeField] private TMP_Text runRestartHintText;
 
-    // NEW: breakdown texts
+    // Breakdown texts
     [SerializeField] private TMP_Text runDistanceCoinsText;
     [SerializeField] private TMP_Text runPickupCoinsText;
     [SerializeField] private TMP_Text runObstacleCoinsText;
+
+    // Sprocket breakdown
+    [SerializeField] private TMP_Text runSprocketsGainedText;    // "Sprockets Earned: +15"
+    [SerializeField] private TMP_Text runTotalSprocketsText;     // "Total Sprockets: 234"
+
+    // Total currency displays
+    [SerializeField] private TMP_Text runTotalCurrencyText;      // "Total Coins: 250"
+    [SerializeField] private TMP_Text totalCurrencyText;
+    [SerializeField] private TMP_Text totalSprocketsText;
 
     [Header("Crash Recovery Mash UI")]
     [SerializeField] private GameObject crashRecoveryRoot;      // Parent object to show/hide
     [SerializeField] private Button crashRecoveryButton;        // The button player mashes
     [SerializeField] private Image crashRecoveryFill;           // Progress bar fill
-    [SerializeField] private TMP_Text crashRecoveryText;        // "MASH TO RECOVER!" or click count
+    [SerializeField] private TMP_Text crashRecoveryText;        // "MASH! (x left)"
 
-    // NEW: show the *final* total currency from the skill tree
-    [SerializeField] private TMP_Text runTotalCurrencyText; // e.g. "Total Currency: 250"
+    [Header("Mash Gauge (Progress Bar)")]
+    [SerializeField] private Image mashGaugeFill;
+    [Tooltip("STATIC max target marker (98%). This must NOT be a 'recent best' marker.")]
+    [SerializeField] private Image mashGaugePeakMarker;
+    [SerializeField] private TMP_Text mashGaugePercentText;
+    [SerializeField] private GameObject mashGaugeMaxedIndicator;
+    [SerializeField] private Gradient mashGaugeGradient;
 
-    [SerializeField] private TMP_Text totalCurrencyText;
+    [Header("Gauge Threshold Markers")]
+    [Tooltip("Visual marker for 'good' threshold (e.g., 70%).")]
+    [SerializeField] private RectTransform gaugeGoodThresholdMarker;
 
+    [Tooltip("Visual marker for 'max' threshold (e.g., 98%).")]
+    [SerializeField] private RectTransform gaugeMaxThresholdMarker;
+
+    [Tooltip("STATIC container for the gauge (background/mask). DO NOT assign the Filled image.")]
+    [SerializeField] private RectTransform mashGaugeContainer;
+
+    [Tooltip("Optional: Text label for good threshold.")]
+    [SerializeField] private TMP_Text gaugeGoodLabel;
+
+    [Tooltip("Optional: Text label for max threshold.")]
+    [SerializeField] private TMP_Text gaugeMaxLabel;
 
     private CarController car;
 
@@ -51,13 +78,22 @@ public class UIManager_Racing : MonoBehaviour
     {
         car = carController;
         HideRunComplete();
+
+        // Place static threshold markers as soon as the car binds
+        UpdateThresholdMarkerPositions();
+    }
+
+    public void Awake()
+    {
+        InitializeMashGaugeGradient();
     }
 
     private void Start()
     {
         HideRunComplete();
         HideRunCoins();
-        HideCrashRecoveryUI();  // ADD THIS
+        HideCrashRecoveryUI();
+        HideTotalSprockets();
 
         // Bind crash recovery button
         if (crashRecoveryButton != null)
@@ -79,9 +115,9 @@ public class UIManager_Racing : MonoBehaviour
         if (fuelText != null)
         {
             if (showFuelAsPercent)
-                fuelText.text = $"{Mathf.RoundToInt(car.FuelPercent * 100)}%";
+                fuelText.text = $"Fuel - {car.FuelPercent * 100}%";
             else
-                fuelText.text = $"{Mathf.RoundToInt(car.CurrentFuel)} / {Mathf.RoundToInt(car.MaxFuel)}";
+                fuelText.text = $"Fuel - {Mathf.Round(car.CurrentFuel * 10f) * .1f} / {car.MaxFuel}";
         }
 
         // HP bar
@@ -92,21 +128,22 @@ public class UIManager_Racing : MonoBehaviour
         if (hpText != null)
         {
             if (showHPAsPercent)
-                hpText.text = $"{Mathf.RoundToInt(car.HPPercent * 100)}%";
+                hpText.text = $"Health - {car.HPPercent * 100}%";
             else
-                hpText.text = $"{Mathf.RoundToInt(car.CurrentHP)} / {Mathf.RoundToInt(car.MaxHP)}";
+                hpText.text = $"Health - {Mathf.Round(car.CurrentHP * 10f) * .1f} / {car.MaxHP}";
         }
 
         UpdateCrashRecoveryUI();
     }
 
-    // NEW API: show/hide "Run Complete"
     public void ShowRunComplete(
         int distanceMeters,
         int distanceCoins,
         int pickupCoins,
         int obstacleCoins,
-        int totalCurrency)
+        int totalCurrency,
+        int sprocketsGained = 0,
+        int totalSprockets = 0)
     {
         int totalThisRun = distanceCoins + pickupCoins + obstacleCoins;
 
@@ -122,11 +159,25 @@ public class UIManager_Racing : MonoBehaviour
         if (runObstacleCoinsText)
             runObstacleCoinsText.text = $"Obstacle Coins: {obstacleCoins}";
 
+        if (runCoinsText)
+            runCoinsText.text = $"Coins This Run: {totalThisRun}";
 
         if (runTotalCurrencyText)
         {
             runTotalCurrencyText.gameObject.SetActive(true);
-            runTotalCurrencyText.text = $"Total Currency: {totalCurrency}";
+            runTotalCurrencyText.text = $"Total Coins: {totalCurrency}";
+        }
+
+        if (runSprocketsGainedText)
+        {
+            runSprocketsGainedText.gameObject.SetActive(sprocketsGained > 0);
+            runSprocketsGainedText.text = $"Sprockets Earned: +{sprocketsGained}";
+        }
+
+        if (runTotalSprocketsText)
+        {
+            runTotalSprocketsText.gameObject.SetActive(true);
+            runTotalSprocketsText.text = $"Total Sprockets: {totalSprockets}";
         }
 
         if (runRestartHintText && string.IsNullOrEmpty(runRestartHintText.text))
@@ -138,9 +189,9 @@ public class UIManager_Racing : MonoBehaviour
         if (runCompleteRoot)
             runCompleteRoot.SetActive(true);
 
-        // Hide the in-run HUD coins on the summary screen
-        if (runCoinsLiveText)
-            runCoinsLiveText.gameObject.SetActive(false);
+        // Hide the in-run HUD on the summary screen
+        HideRunCoins();
+        HideRunSprockets();
     }
 
     public void UpdateRunCoins(int coinsThisRun)
@@ -154,26 +205,42 @@ public class UIManager_Racing : MonoBehaviour
         if (runCoinsLiveText)
             runCoinsLiveText.gameObject.SetActive(true);
 
+        ShowRunSprockets();
+
         HideTotalCoins();
+        HideTotalSprockets();
     }
 
     public void HideRunCoins()
     {
         if (runCoinsLiveText)
             runCoinsLiveText.gameObject.SetActive(false);
+
+        HideRunSprockets();
     }
 
     public void HideTotalCoins()
     {
         if (totalCurrencyText)
             totalCurrencyText.gameObject.SetActive(false);
+
+        HideTotalSprockets();
+    }
+
+    public void HideTotalSprockets()
+    {
+        if (totalSprocketsText)
+            totalSprocketsText.gameObject.SetActive(false);
     }
 
     public void HideRunComplete()
     {
-        if (runCompleteRoot) runCompleteRoot.SetActive(false);
-    }
+        if (runCompleteRoot)
+            runCompleteRoot.SetActive(false);
 
+        if (runSprocketsGainedText)
+            runSprocketsGainedText.gameObject.SetActive(false);
+    }
 
     // ============================================
     // CRASH RECOVERY MASH UI
@@ -194,6 +261,13 @@ public class UIManager_Racing : MonoBehaviour
 
             if (crashRecoveryRoot != null)
                 crashRecoveryRoot.SetActive(shouldShow);
+
+            if (shouldShow)
+            {
+                // Force layout ready THIS frame, then place markers immediately (no "first click")
+                Canvas.ForceUpdateCanvases();
+                UpdateThresholdMarkerPositions();
+            }
         }
 
         // Update progress if active
@@ -204,6 +278,162 @@ public class UIManager_Racing : MonoBehaviour
 
             if (crashRecoveryText != null)
                 crashRecoveryText.text = $"MASH! ({car.FlipMashClicksRemaining} left)";
+
+            UpdateMashGaugeVisuals();
+        }
+    }
+
+    /// <summary>
+    /// Places GOOD (70%) and MAX (98%) markers and also locks the "peak marker"
+    /// to MAX (98%) as a static target marker.
+    /// These markers NEVER move during gameplay.
+    /// </summary>
+    private void UpdateThresholdMarkerPositions()
+    {
+        if (car == null) return;
+
+        // mashGaugeContainer MUST be the full/static bar area (background/mask rect),
+        // not the Filled Image rect.
+        RectTransform containerRT = mashGaugeContainer;
+
+        // Safe fallback: parent of the fill is usually the stable container.
+        if (containerRT == null && mashGaugeFill != null)
+            containerRT = mashGaugeFill.rectTransform.parent as RectTransform;
+
+        if (containerRT == null) return;
+
+        float good = Mathf.Clamp01(car.GaugeGoodThreshold);
+        float max = Mathf.Clamp01(car.GaugeMaxThreshold);
+
+        SetupAndPlaceMarker(containerRT, gaugeGoodThresholdMarker, good);
+        SetupAndPlaceMarker(containerRT, gaugeMaxThresholdMarker, max);
+
+        // IMPORTANT: peak marker is a STATIC "max target" marker (same as max threshold)
+        if (mashGaugePeakMarker != null)
+            SetupAndPlaceMarker(containerRT, mashGaugePeakMarker.rectTransform, max);
+
+        if (gaugeGoodLabel != null) gaugeGoodLabel.text = $"{Mathf.RoundToInt(good * 100)}%";
+        if (gaugeMaxLabel != null) gaugeMaxLabel.text = $"{Mathf.RoundToInt(max * 100)}%";
+    }
+
+    /// <summary>
+    /// Anchor-based placement: Y is locked by anchors so it cannot "follow" the fill.
+    /// </summary>
+    private static void SetupAndPlaceMarker(RectTransform containerRT, RectTransform marker, float normalizedY)
+    {
+        if (containerRT == null || marker == null) return;
+
+        if (!marker.gameObject.activeSelf)
+            marker.gameObject.SetActive(true);
+
+        // Markers MUST live under the static container (never under the fill)
+        if (marker.parent != containerRT)
+            marker.SetParent(containerRT, worldPositionStays: false);
+
+        // Stretch across width, lock Y by anchors (this is the key)
+        marker.anchorMin = new Vector2(0f, normalizedY);
+        marker.anchorMax = new Vector2(1f, normalizedY);
+        marker.pivot = new Vector2(0.5f, 0.5f);
+
+        // No offset. The anchor IS the position.
+        marker.anchoredPosition = Vector2.zero;
+
+        // Width matches parent (sizeDelta.x ignored because we stretch)
+        Vector2 sd = marker.sizeDelta;
+        sd.x = 0f;
+        marker.sizeDelta = sd;
+    }
+
+    private void UpdateMashGaugeVisuals()
+    {
+        if (car == null) return;
+
+        float gaugeValue = car.MashGaugeValue;
+        bool isMaxed = car.MashGaugeMaxed;
+
+        float goodThreshold = car.GaugeGoodThreshold;
+        float maxThreshold = car.GaugeMaxThreshold;
+
+        // Update fill
+        if (mashGaugeFill != null)
+        {
+            mashGaugeFill.fillAmount = gaugeValue;
+
+            // Color based on tier
+            if (isMaxed || gaugeValue >= maxThreshold)
+            {
+                mashGaugeFill.color = Color.cyan;
+            }
+            else if (gaugeValue >= goodThreshold)
+            {
+                mashGaugeFill.color = mashGaugeGradient != null
+                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / Mathf.Max(0.0001f, (maxThreshold - goodThreshold)) * 0.3f)
+                    : Color.green;
+            }
+            else if (mashGaugeGradient != null)
+            {
+                mashGaugeFill.color = mashGaugeGradient.Evaluate((gaugeValue / Mathf.Max(0.0001f, goodThreshold)) * 0.7f);
+            }
+        }
+
+        // PEAK MARKER (STATIC MAX TARGET):
+        // Do not reposition it here. It is anchored once in UpdateThresholdMarkerPositions().
+        if (mashGaugePeakMarker != null && !mashGaugePeakMarker.gameObject.activeSelf)
+            mashGaugePeakMarker.gameObject.SetActive(true);
+
+        // Update percent text with tier indicator
+        if (mashGaugePercentText != null)
+        {
+            int percent = Mathf.RoundToInt(gaugeValue * 100);
+
+            if (isMaxed || gaugeValue >= maxThreshold)
+                mashGaugePercentText.text = $"{percent}% MAX!";
+            else if (gaugeValue >= goodThreshold)
+                mashGaugePercentText.text = $"{percent}% GOOD";
+            else
+                mashGaugePercentText.text = $"{percent}%";
+        }
+
+        // Maxed indicator
+        if (mashGaugeMaxedIndicator != null)
+            mashGaugeMaxedIndicator.SetActive(isMaxed);
+    }
+
+    public void UpdateRunSprockets(int sprocketsThisRun)
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.text = $"Sprockets: {sprocketsThisRun}";
+    }
+
+    public void ShowRunSprockets()
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.gameObject.SetActive(true);
+    }
+
+    public void HideRunSprockets()
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.gameObject.SetActive(false);
+    }
+
+    private void InitializeMashGaugeGradient()
+    {
+        if (mashGaugeGradient == null || mashGaugeGradient.colorKeys.Length == 0)
+        {
+            mashGaugeGradient = new Gradient();
+            mashGaugeGradient.SetKeys(
+                new GradientColorKey[] {
+                    new GradientColorKey(Color.red, 0f),
+                    new GradientColorKey(Color.yellow, 0.5f),
+                    new GradientColorKey(Color.green, 0.85f),
+                    new GradientColorKey(Color.cyan, 1f)
+                },
+                new GradientAlphaKey[] {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(1f, 1f)
+                }
+            );
         }
     }
 
@@ -219,5 +449,4 @@ public class UIManager_Racing : MonoBehaviour
         if (crashRecoveryRoot != null)
             crashRecoveryRoot.SetActive(false);
     }
-
 }

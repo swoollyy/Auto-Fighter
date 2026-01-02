@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2025-12-30T22:43:39.8426080Z (UTC)
+- Generated: 2026-01-02T16:20:34.2012256Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 201
+- Files: 211
 
 ## Assets/BumperAnimScript.cs
 
@@ -1086,6 +1086,46 @@ public class FireVelocityFeeder : MonoBehaviour
         if (sendAngular) _mpb.SetVector("_AngVelWS", _angSmoothed);
         _rend.SetPropertyBlock(_mpb, materialIndex);
     }
+}
+
+```
+
+## Assets/IcePathScreenFlashDriver.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class IcePathScreenFlashDriver : MonoBehaviour
+{
+    [Header("Refs")]
+    [SerializeField] private CarController car;
+    [SerializeField] private ScreenFlashManager flash;
+
+    private bool _lastIce;
+
+    private void Awake()
+    {
+        if (!flash) flash = ScreenFlashManager.Instance;
+    }
+
+    private void Update()
+    {
+        if (!flash || !car) return;
+
+        bool onIce = car.IsOnIceSurface;
+        if (onIce == _lastIce) return;
+
+        _lastIce = onIce;
+        flash.SetIcePersistent(onIce);
+    }
+
+
+    public void SetCarController(CarController car)
+    {
+        this.car = car;
+    }
+
 }
 
 ```
@@ -4159,7 +4199,68 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float iceSteerMinFactor = 0.15f; // starting steering on ice
     [SerializeField, Range(0f, 1f)] private float iceSteerFlipPenalty = 0.35f;
 
+    [Header("Arcade Coasting")]
+    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
+    private float coastLowDecelPerSecond = 1.2f;
+    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
+    private float coastHighDecelPerSecond = 3.5f;
+    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
+    private float coastHighSpeedFraction = 0.8f;
+    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
+    private bool useExponentialCoast = false;
+    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
+    private float coastDampingPerSecond = 2.0f;
 
+    [Header("Arcade Movement Tuning")]
+    [SerializeField] private float coastDecelFactor = 0.1f;
+    [SerializeField] private float brakeForwardFactor = 0.7f;
+    [SerializeField] private float reverseAccelFactor = 0.8f;
+    [SerializeField] private float brakeToReverseSpeed = 0.5f;
+
+    // NEW: caps so braking can’t be insanely hard at low max speeds
+    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
+    private float maxBrakeDecelPerSecond = 5f;
+    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
+    private float maxReverseAccelPerSecond = 4f;
+
+    [SerializeField] private float baseSteeringDamp = 1f;
+    private float currentSteeringDamp;
+
+
+    // ─────────────────────────────────────────────
+    // NEW: Steering traction while coasting (no throttle/brake, no drift)
+    // ─────────────────────────────────────────────
+    [Header("Steer Rolling Traction")]
+    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
+    private bool enableSteerTraction = true;
+    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
+    private float steerTractionReorientRate = 6f;
+    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
+    private float steerRollingAccel = 2.25f;
+    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
+    private float minSpeedForSteerTraction = 0.1f;
+    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
+    private float lateralFrictionWhileSteering = 3.5f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
+    private float steerTractionBlendIn = 10f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
+    private float steerTractionBlendOut = 14f;
+
+    private float _steerTractionBlend = 0f;
+
+    [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
+    private float steerRollingAccelCoastMultiplier = 1f;
+
+    [SerializeField, Tooltip("If true, steerRollingAccel is also applied on ice. If false, coasting-steer won't add forward push on ice.")]
+    private bool applySteerRollingAccelOnIce = false;
+
+    private bool _inputsSuppressedThisFrame = false;
+
+    // NEW: split suppression so steering is never fully blocked by malfunction
+    private bool _suppressThrottleBrakeThisFrame = false;
+    private bool _suppressSteeringThisFrame = false;
 
     [Header("Drift Unlock")]
     [SerializeField] private bool requireDriftUnlock = true; // if true, drift only works after skill unlocked
@@ -4272,8 +4373,31 @@ public class CarController : MonoBehaviour
     [SerializeField] private float crashDragMultiplier = 2f;
     [SerializeField] private float crashAngularDrag = 1.5f;
 
+    [Header("Popup Text Settings")]
+    [Tooltip("Enable floating popup text for damage, fuel, coins, etc.")]
+    [SerializeField] private bool enablePopupText = true;
+
+    [Tooltip("Vertical offset above car for popup spawn position.")]
+    [SerializeField] private float popupVerticalOffset = 2f;
+
+    [Tooltip("Minimum HP damage to show popup (prevents spam from tiny hits).")]
+    [SerializeField] private float minHPDamageForPopup = 1f;
+
+    [Tooltip("Minimum fuel loss to show popup.")]
+    [SerializeField] private float minFuelLossForPopup = 1f;
+
+    [Tooltip("Minimum fuel gain to show popup.")]
+    [SerializeField] private float minFuelGainForPopup = 0.5f;
+
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
+
+    [Header("Mash Screen Shake")]
+    [SerializeField] private bool enableMashScreenShake = true;
+    [SerializeField] private float mashShakeDuration = 0.08f;
+    [SerializeField] private float mashShakeStrength = 0.15f;
+    [SerializeField] private int mashShakeVibrato = 10;
+    [SerializeField] private float mashShakeRandomness = 0.5f;
 
     [Header("Crash Spin Tuning")]
     [SerializeField] private float crashYawTorqueMultiplier = 1f;
@@ -4362,6 +4486,12 @@ public class CarController : MonoBehaviour
     [Header("Boost Unlock")]
     [SerializeField] private bool requireBoostUnlock = true;
     private bool boostUnlocked;
+
+    [Header("Boost Screen Flash")]
+    [SerializeField] private float boostFlashSpeedThreshold = 2f; // Flash when speed multiplier exceeds this
+    [SerializeField] private float boostFlashCooldown = 0.3f; // Prevent spam
+    private bool _wasOnBoost;
+    private float _lastBoostFlashTime;
 
     [Header("Boost")]
     [SerializeField] private KeyCode boostKey = KeyCode.Space;
@@ -4557,6 +4687,105 @@ public class CarController : MonoBehaviour
 
     [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
     private float mashMinSpeedThreshold = 0.5f;
+
+    [Header("Mash Progress Gauge")]
+    [Tooltip("Enable the progress gauge that drains over time during mashing.")]
+    [SerializeField] private bool enableMashProgressGauge = true;
+
+    [Tooltip("Base drain rate per second (0-1 range). Increases with each crash.")]
+    [SerializeField, Range(0.05f, 0.5f)] private float gaugeDrainRateBase = 0.12f;
+
+    [Tooltip("Additional drain rate added per crash (makes it harder each time).")]
+    [SerializeField, Range(0f, 0.1f)] private float gaugeDrainRatePerCrash = 0.015f;
+
+    [Tooltip("Maximum drain rate cap.")]
+    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainRateMax = 0.4f;
+
+    [Tooltip("How much each click fills the gauge (0-1 range).")]
+    [SerializeField, Range(0.01f, 0.2f)] private float gaugeFillPerClick = 0.05f;
+
+    [Tooltip("Bonus fill multiplier at max mash speed.")]
+    [SerializeField, Range(1f, 3f)] private float gaugeFillSpeedBonus = 1.5f;
+
+    [Header("Mash Gauge Reward Tiers")]
+    [Tooltip("Gauge threshold for 'good' tier bonus (0-1). Marker line will show here.")]
+    [SerializeField, Range(0.5f, 0.9f)] private float gaugeGoodThreshold = 0.70f;
+
+    [Tooltip("Gauge threshold for 'max' tier bonus (0-1). Marker line will show here.")]
+    [SerializeField, Range(0.9f, 1f)] private float gaugeMaxThreshold = 0.98f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge is at 0%.")]
+    [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.5f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'good' threshold.")]
+    [SerializeField, Range(1f, 2f)] private float gaugeMultiplierAtGood = 1.5f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'max' threshold.")]
+    [SerializeField, Range(1.5f, 3f)] private float gaugeMultiplierAtMax = 2.5f;
+
+    [Header("Mash Resource Drain")]
+    [Tooltip("If true, drain health during mash. If false, drain fuel.")]
+    [SerializeField] private bool mashDrainsHealth = true;
+
+    [Tooltip("Health lost per second while in mash state (if mashDrainsHealth=true).")]
+    [SerializeField, Range(0f, 20f)] private float mashHealthDrainPerSecond = 5f;
+
+    [Tooltip("Additional health drain per crash (stacks).")]
+    [SerializeField, Range(0f, 5f)] private float mashHealthDrainPerCrash = 0.5f;
+
+    [Tooltip("Maximum health drain per second cap.")]
+    [SerializeField, Range(1f, 50f)] private float mashHealthDrainMax = 15f;
+
+    [Tooltip("Fuel lost per second while in mash state (if mashDrainsHealth=false).")]
+    [SerializeField, Range(0f, 10f)] private float mashFuelDrainPerSecond = 2f;
+
+    [Tooltip("Additional fuel drain per crash (stacks).")]
+    [SerializeField, Range(0f, 2f)] private float mashFuelDrainPerCrash = 0.25f;
+
+    [Tooltip("Maximum fuel drain per second cap.")]
+    [SerializeField, Range(1f, 20f)] private float mashFuelDrainMax = 8f;
+
+    // Public properties for UI to position threshold markers
+    public float GaugeGoodThreshold => gaugeGoodThreshold;
+    public float GaugeMaxThreshold => gaugeMaxThreshold;
+
+    [Header("Sprocket Rewards")]
+    [Tooltip("Enable sprocket currency rewards from mash minigame.")]
+    [SerializeField] private bool enableSprocketRewards = true;
+
+    [Tooltip("Base percentage of total clicks converted to sprockets.")]
+    [SerializeField, Range(0.05f, 0.5f)] private float sprocketBasePercent = 0.2f;
+
+    [Tooltip("Bonus sprocket multiplier at max gauge fill (stacks with base).")]
+    [SerializeField, Range(1f, 3f)] private float sprocketGaugeBonusMax = 2f;
+
+    [Tooltip("Extra sprocket multiplier when gauge was maxed.")]
+    [SerializeField, Range(1f, 2f)] private float sprocketMaxedBonusMultiplier = 1.25f;
+
+    [Tooltip("Minimum sprockets awarded (even if calculations result in 0).")]
+    [SerializeField, Min(0)] private int sprocketMinReward = 1;
+
+    [Tooltip("Maximum sprockets per mash session (prevents exploits).")]
+    [SerializeField, Min(1)] private int sprocketMaxReward = 50;
+
+    // Runtime gauge state
+    private float _mashGaugeValue;           // 0 to 1
+    private float _mashGaugePeakValue;       // highest value reached this session
+    private int _totalMashClicksThisSession; // total clicks for sprocket calculation
+    private bool _gaugeMaxedThisSession;     // did player max out the gauge?
+    private float _totalFuelGainedThisSession;   // track for end popup
+    private int _totalSprocketsThisSession;      // track for end popup
+
+    // Public properties for UI
+    public float MashGaugeValue => _mashGaugeValue;
+    public float MashGaugePeakValue => _mashGaugePeakValue;
+    public bool MashGaugeMaxed => _gaugeMaxedThisSession;
+    public int TotalMashClicksThisSession => _totalMashClicksThisSession;
+    public float TotalFuelGainedThisSession => _totalFuelGainedThisSession;
+    public int TotalSprocketsThisSession => _totalSprocketsThisSession;
+
+
+
 
     // Small lift to avoid sticking into ground when you snap upright.
     [SerializeField, Min(0f)] private float flipUprightLift = 0.20f;
@@ -4769,68 +4998,7 @@ public class CarController : MonoBehaviour
     private SkillApplicationMode fuelMode;
     private float fuelValue;
 
-    [Header("Arcade Coasting")]
-    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
-    private float coastLowDecelPerSecond = 1.2f;
-    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
-    private float coastHighDecelPerSecond = 3.5f;
-    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
-    private float coastHighSpeedFraction = 0.8f;
-    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
-    private bool useExponentialCoast = false;
-    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
-    private float coastDampingPerSecond = 2.0f;
 
-    [Header("Arcade Movement Tuning")]
-    [SerializeField] private float coastDecelFactor = 0.1f;
-    [SerializeField] private float brakeForwardFactor = 0.7f;
-    [SerializeField] private float reverseAccelFactor = 0.8f;
-    [SerializeField] private float brakeToReverseSpeed = 0.5f;
-
-    // NEW: caps so braking can’t be insanely hard at low max speeds
-    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
-    private float maxBrakeDecelPerSecond = 5f;
-    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
-    private float maxReverseAccelPerSecond = 4f;
-
-    [SerializeField] private float baseSteeringDamp = 1f;
-    private float currentSteeringDamp;
-
-
-    // ─────────────────────────────────────────────
-    // NEW: Steering traction while coasting (no throttle/brake, no drift)
-    // ─────────────────────────────────────────────
-    [Header("Steer Rolling Traction")]
-    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
-    private bool enableSteerTraction = true;
-    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
-    private float steerTractionReorientRate = 6f;
-    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
-    private float steerRollingAccel = 2.25f;
-    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
-    private float minSpeedForSteerTraction = 0.1f;
-    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
-    private float lateralFrictionWhileSteering = 3.5f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
-    private float steerTractionBlendIn = 10f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
-    private float steerTractionBlendOut = 14f;
-
-    private float _steerTractionBlend = 0f;
-
-    [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
-    private float steerRollingAccelCoastMultiplier = 1f;
-
-    [SerializeField, Tooltip("If true, steerRollingAccel is also applied on ice. If false, coasting-steer won't add forward push on ice.")]
-    private bool applySteerRollingAccelOnIce = false;
-
-    private bool _inputsSuppressedThisFrame = false;
-
-    // NEW: split suppression so steering is never fully blocked by malfunction
-    private bool _suppressThrottleBrakeThisFrame = false;
-    private bool _suppressSteeringThisFrame = false;
 
     // ------------------------------------------------------------------------
     // NEW: global near-miss / close-call detection for ALL obstacles
@@ -5108,6 +5276,41 @@ public class CarController : MonoBehaviour
                 return;
             }
 
+            if (enableMashProgressGauge && _flipMashActive)
+            {
+                // Drain gauge over time (difficulty scales with crash count)
+                float drainRate = Mathf.Min(gaugeDrainRateBase + (_crashCount * gaugeDrainRatePerCrash), gaugeDrainRateMax);
+                _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - drainRate * Time.deltaTime);
+
+                // Drain resource based on toggle
+                if (mashDrainsHealth)
+                {
+                    // Drain HEALTH
+                    float healthDrain = Mathf.Min(mashHealthDrainPerSecond + (_crashCount * mashHealthDrainPerCrash), mashHealthDrainMax);
+                    currentHP -= healthDrain * Time.deltaTime;
+
+                    if (currentHP <= 0f)
+                    {
+                        currentHP = 0f;
+                        _flipMashActive = false;
+                        isOutOfHP = true;
+                    }
+                }
+                else
+                {
+                    // Drain FUEL
+                    float fuelDrain = Mathf.Min(mashFuelDrainPerSecond + (_crashCount * mashFuelDrainPerCrash), mashFuelDrainMax);
+                    currentFuel -= fuelDrain * Time.deltaTime;
+
+                    if (currentFuel <= 0f)
+                    {
+                        currentFuel = 0f;
+                        _flipMashActive = false;
+                        isOutOfFuel = true;
+                    }
+                }
+            }
+
             // IMPORTANT: Keep sampling ground even during recovery (fixes ice sticking)
             SampleGroundAndUpdateMultipliers();
 
@@ -5131,7 +5334,12 @@ public class CarController : MonoBehaviour
                     float passiveFuelReward = effectiveFuelPerClick * 0.5f; // Half reward for passive
                     if (passiveFuelReward > 0f && maxFuel > 0f)
                     {
+                        float before = currentFuel;
                         currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                        float actual = currentFuel - before;
+
+                        if (actual > 0f)
+                            TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
                     }
 
                     // Check if recovery complete
@@ -5269,8 +5477,6 @@ public class CarController : MonoBehaviour
                 rb.velocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
 
-                // Prevent any further rotation changes from code or physics
-                rb.freezeRotation = true;
             }
 
             // Kill any pending reorientation
@@ -5292,6 +5498,8 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
+
+        CheckBoostFlash();
 
         // NEW: periodic near-miss sweep to detect close calls against ANY obstacle layers (uses crashLayers)
         // Throttle frequency to _closeCallSweepInterval to avoid expensive queries every fixed frame.
@@ -6322,6 +6530,10 @@ public class CarController : MonoBehaviour
                 float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * sev01ForDamage);
                 hpLoss = Mathf.Min(hpLoss, currentHP);
                 currentHP = Mathf.Max(0f, currentHP - hpLoss);
+
+                if (hpLoss >= minHPDamageForPopup)
+                    TrySpawnPopup(RacingPopupType.HPDamage, hpLoss);
+
                 Debug.Log($"[CarController] Crash damage applied: -{hpLoss} HP (sev={sev01ForDamage:F2}). HP={currentHP}/{maxHP}");
             }
 
@@ -6337,6 +6549,10 @@ public class CarController : MonoBehaviour
                     float shortfall = minFuelLossPerCrash - consumed;
                     currentFuel = Mathf.Max(0f, currentFuel - shortfall);
                 }
+
+                float actualFuelLoss = fuelBefore - currentFuel;
+                if (actualFuelLoss >= minFuelLossForPopup)
+                    TrySpawnPopup(RacingPopupType.FuelLoss, actualFuelLoss);
 
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
@@ -6730,6 +6946,12 @@ public class CarController : MonoBehaviour
     private void ConsumeFuel(float amount)
     {
         if (isOutOfFuel || maxFuel <= 0f) return;
+
+        // Skip fuel consumption during mash IF we're draining health instead
+        if (_flipMashActive && mashDrainsHealth) return;
+
+        // If draining fuel during mash, that's handled in the Update loop, not here
+        if (_flipMashActive && !mashDrainsHealth) return;
 
         if (!_flipMashActive)
         {
@@ -7633,6 +7855,26 @@ public class CarController : MonoBehaviour
         return Mathf.Abs(pitch) > 1.0f || Mathf.Abs(roll) > 1.0f;
     }
 
+    // === BOOST PAD SCREEN FLASH ===
+    private void CheckBoostFlash()
+    {
+        if (baseMaxSpeed <= 0f) return;
+
+        float speedMultiplier = currentMaxSpeed / baseMaxSpeed;
+        bool isOnBoost = speedMultiplier >= boostFlashSpeedThreshold;
+
+        // Flash when ENTERING boost (not every frame)
+        if (isOnBoost && !_wasOnBoost)
+        {
+            if (Time.time - _lastBoostFlashTime >= boostFlashCooldown)
+            {
+                ScreenFlashManager.Boost();
+                _lastBoostFlashTime = Time.time;
+            }
+        }
+
+        _wasOnBoost = isOnBoost;
+    }
 
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
@@ -7667,9 +7909,21 @@ public class CarController : MonoBehaviour
             return;
         }
 
+        _totalMashClicksThisSession++;
+
         // Calculate mash speed (time since last click)
         float timeSinceLastMash = Time.time - _lastMashTime;
         _lastMashTime = Time.time;
+
+        ScreenFlashManager.Mash();
+
+        var cameraFollow = Camera.main.GetComponent<CameraFollow>();
+
+        // Screen shake for mash
+        if (enableMashScreenShake && cameraFollow != null)
+        {
+            cameraFollow.StartShake(mashShakeDuration, mashShakeStrength, mashShakeVibrato, mashShakeRandomness);
+        }
 
         // Convert to 0-1 speed rating (faster = higher)
         _currentMashSpeed = CalculateMashSpeedRating(timeSinceLastMash);
@@ -7678,10 +7932,41 @@ public class CarController : MonoBehaviour
         // Apply rewards
         ApplyMashRewards(_currentMashSpeed);
 
+        if (enableMashProgressGauge)
+        {
+            UpdateMashGauge(_currentMashSpeed);
+        }
+
         _flipMashClicks += effectiveClicksPerClick;
 
         if (_flipMashClicks >= _flipMashClicksNeeded)
             EndFlipMashRecoveryAndUpright();
+    }
+
+    /// <summary>
+    /// Get the position above the car for popup spawning.
+    /// </summary>
+    private Vector3 GetPopupPosition()
+    {
+        return transform.position + Vector3.up * popupVerticalOffset;
+    }
+
+    /// <summary>
+    /// Spawn a popup if the system is ready and enabled.
+    /// </summary>
+    private void TrySpawnPopup(RacingPopupType type, float value)
+    {
+        if (!enablePopupText) return;
+        if (!RacingPopups.IsReady) return;
+        RacingPopups.Spawn(type, value, GetPopupPosition());
+    }
+
+    private void TrySpawnPopupRandomScreen(RacingPopupType type, float value)
+    {
+        if (!enablePopupText) return;
+        if (!RacingPopups.IsReady) return;
+
+        RacingPopups.MashFuelRandom(value);
     }
 
     private float CalculateMashSpeedRating(float timeBetweenClicks)
@@ -7698,24 +7983,50 @@ public class CarController : MonoBehaviour
 
     private void ApplyMashRewards(float speedRating)
     {
-        // === FUEL REWARD ===
-        float fuelMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
-        float fuelReward = effectiveFuelPerClick * fuelMultiplier;
+        // Calculate tiered gauge multiplier
+        float gaugeMultiplier = CalculateGaugeMultiplier(_mashGaugeValue);
 
-        Debug.Log($"[Flip Mash] Speed Rating: {speedRating:F2}, Fuel Reward: {fuelReward:F2}");
+        // === FUEL REWARD ===
+        float speedMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
+        float fuelReward = effectiveFuelPerClick * speedMultiplier * gaugeMultiplier;
 
         if (fuelReward > 0f && maxFuel > 0f)
         {
+            float before = currentFuel;
             currentFuel = Mathf.Min(currentFuel + fuelReward, maxFuel);
+            float actual = currentFuel - before;
+
+            if (actual > 0f)
+            {
+                _totalFuelGainedThisSession += actual;
+
+                // Show fuel gain popup
+                TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
+            }
         }
 
-        // === FUTURE EXPANSION HOOKS ===
-        // Uncomment and implement as needed:
+        Debug.Log($"[Flip Mash] Speed: {speedRating:F2}, Gauge: {_mashGaugeValue:F2}, Tier Multiplier: {gaugeMultiplier:F2}, Fuel: {fuelReward:F2}");
+    }
 
-        // ApplyMashBoostReward(speedRating);
-        // ApplyMashCoinReward(speedRating);
-        // ApplyMashScoreReward(speedRating);
-        // ApplyMashComboReward(speedRating);
+    private float CalculateGaugeMultiplier(float gaugeValue)
+    {
+        if (gaugeValue >= gaugeMaxThreshold)
+        {
+            // At or above max threshold - full max multiplier
+            return gaugeMultiplierAtMax;
+        }
+        else if (gaugeValue >= gaugeGoodThreshold)
+        {
+            // Between good and max - lerp between good and max multipliers
+            float t = Mathf.InverseLerp(gaugeGoodThreshold, gaugeMaxThreshold, gaugeValue);
+            return Mathf.Lerp(gaugeMultiplierAtGood, gaugeMultiplierAtMax, t);
+        }
+        else
+        {
+            // Below good threshold - lerp between zero and good multipliers
+            float t = Mathf.InverseLerp(0f, gaugeGoodThreshold, gaugeValue);
+            return Mathf.Lerp(gaugeMultiplierAtZero, gaugeMultiplierAtGood, t);
+        }
     }
 
     // ============================================
@@ -7743,12 +8054,26 @@ public class CarController : MonoBehaviour
     {
         if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
 
+        // Show summary popup for fuel gained this session
+        if (_totalFuelGainedThisSession > 0.1f && RacingPopups.IsReady)
+        {
+            // Could show a "Total Fuel: +X" popup here if desired
+        }
+
+        // Award sprockets based on performance
+        if (enableSprocketRewards)
+        {
+            AwardMashSprockets();
+        }
+
+        // REMOVED: The old gauge-based fuel curve reward
+        // The fuel is now gained per-click with gauge multiplier instead
+
         _flipMashActive = false;
 
         // Only do upright reorientation if we were actually flipped
         if (_isFlippedDuringRecovery)
         {
-            // Start the same reorientation flow you use after crashes.
             _isReorienting = true;
             _reorientElapsed = 0f;
             _reorientStartRot = transform.rotation;
@@ -7756,7 +8081,6 @@ public class CarController : MonoBehaviour
             Vector3 euler = transform.eulerAngles;
             _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
 
-            // Optional: tiny lift to prevent sticking into ground when snapping upright
             if (rb != null)
                 rb.position += Vector3.up * flipUprightLift;
         }
@@ -7818,6 +8142,31 @@ public class CarController : MonoBehaviour
         driftUnlocked = (mgr != null && mgr.GetLevel(SkillType.DriftUnlock) > 0);
     }
 
+    private void UpdateMashGauge(float speedRating)
+    {
+        // Calculate fill amount with speed bonus
+        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating);
+
+        // Add to gauge
+        _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
+
+        // Track peak
+        if (_mashGaugeValue > _mashGaugePeakValue)
+            _mashGaugePeakValue = _mashGaugeValue;
+
+        // Check for max gauge (using threshold, not 100%)
+        if (_mashGaugeValue >= gaugeMaxThreshold && !_gaugeMaxedThisSession)
+        {
+            _gaugeMaxedThisSession = true;
+
+            // Visual/audio feedback for reaching max tier
+            ScreenFlashManager.Instance?.Flash(Color.cyan, 1.5f, 0.3f, 0.3f);
+
+            // Future skill hook: maxGaugeRefillsFuel
+            // if (maxGaugeRefillsFuel) { ... }
+        }
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if (rb == null)
@@ -7846,6 +8195,9 @@ public class CarController : MonoBehaviour
         Debug.Log($"Impact Speed: {impactSpeed}");
 
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
+
+
+        ScreenFlashManager.Damage();
 
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
@@ -7974,6 +8326,50 @@ public class CarController : MonoBehaviour
         Destroy(go, deathExplodeClip.length / Mathf.Max(0.01f, src.pitch));
     }
 
+    private void AwardMashSprockets()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        // Base reward: percentage of total clicks
+        float baseReward = _totalMashClicksThisSession * sprocketBasePercent;
+
+        // Bonus based on gauge peak using tier system
+        float gaugeBonus = CalculateGaugeMultiplier(_mashGaugePeakValue);
+
+        // Extra bonus if gauge reached max tier
+        if (_gaugeMaxedThisSession)
+            gaugeBonus *= sprocketMaxedBonusMultiplier;
+
+        // Calculate final amount
+        int sprocketReward = Mathf.RoundToInt(baseReward * gaugeBonus);
+
+        // Clamp to min/max
+        sprocketReward = Mathf.Clamp(sprocketReward, sprocketMinReward, sprocketMaxReward);
+
+        // Track for summary
+        _totalSprocketsThisSession = sprocketReward;
+
+        // Award sprockets
+        if (sprocketReward > 0)
+        {
+            mgr.AddSprockets(sprocketReward);
+
+            // Notify game manager for UI tracking
+            GameManager_Racing.Instance?.RegisterSprocketGain(sprocketReward);
+
+            // Show sprocket popup
+            if (RacingPopups.IsReady)
+            {
+                RacingPopups.Spawn(RacingPopupType.SprocketGain, sprocketReward, GetPopupPosition());
+            }
+
+            // Screen flash for sprocket reward
+            ScreenFlashManager.Sprocket(sprocketReward);
+
+            Debug.Log($"[Mash Complete] Clicks: {_totalMashClicksThisSession}, Peak Gauge: {_mashGaugePeakValue:P0}, Maxed: {_gaugeMaxedThisSession}, Sprockets: {sprocketReward}");
+        }
+    }
 
     private void OnTriggerEnter(Collider other)
     {
@@ -8197,6 +8593,13 @@ public class CarController : MonoBehaviour
         if (IsDeadForMashRecovery) return;
         if (!enableFlipRecoveryMash) return;
 
+        _mashGaugeValue = 0f;
+        _mashGaugePeakValue = 0f;
+        _gaugeMaxedThisSession = false;
+        _totalMashClicksThisSession = 0;
+        _totalFuelGainedThisSession = 0f;
+        _totalSprocketsThisSession = 0;
+
         _flipMashActive = true;
         _isReorienting = false;
         _isFlippedDuringRecovery = isFlipped;
@@ -8400,8 +8803,13 @@ public class CarController : MonoBehaviour
         if (maxFuel <= 0f || amount <= 0f) return 0f;
         float before = currentFuel;
         currentFuel = Mathf.Min(maxFuel, currentFuel + amount);
-        if (currentFuel > 0f) isOutOfFuel = false; // allow driving again if we refueled
-        return Mathf.Max(0f, currentFuel - before);
+        if (currentFuel > 0f) isOutOfFuel = false;
+
+        float actual = currentFuel - before;
+        if (actual >= minFuelLossForPopup)
+            TrySpawnPopup(RacingPopupType.FuelGain, actual);
+
+        return Mathf.Max(0f, actual);
     }
 
     public float AddHP(float amount)
@@ -8409,7 +8817,14 @@ public class CarController : MonoBehaviour
         if (maxHP <= 0f || amount <= 0f) return 0f;
         float before = currentHP;
         currentHP = Mathf.Min(maxHP, currentHP + amount);
-        return Mathf.Max(0f, currentHP - before);
+
+        ScreenFlashManager.Heal();
+
+        float actual = currentHP - before;
+        if (actual >= minHPDamageForPopup)
+            TrySpawnPopup(RacingPopupType.HPGain, actual);
+
+        return Mathf.Max(0f, actual);
     }
 
     private void UpdateDamageVFXImmediate()
@@ -8469,9 +8884,13 @@ public class CarController : MonoBehaviour
     // PUBLIC READ-ONLY
     public float CurrentSpeed => rb != null ? rb.velocity.magnitude : 0f;
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
-    public float CurrentFuel => currentFuel;
     public bool IsOutOfFuel => isOutOfFuel;
     public bool IsOutOfHP => isOutOfHP;
+    public float CurrentFuel => currentFuel;
+    public float MaxFuel => maxFuel;
+
+    public bool IsOnIceSurface => _onIceSurface;
+
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;
@@ -8479,6 +8898,24 @@ public class CarController : MonoBehaviour
     public float CurrentHP => currentHP;
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
+
+
+    public float BaseAcceleration => baseAcceleration;
+    public float BaseMaxSpeed => baseMaxSpeed;
+    public float BaseMaxFuel => baseMaxFuel;
+    public float BaseMaxHP => baseMaxHP;
+    public float BaseTurnSpeed => baseTurnSpeed;
+    public float BaseDrivingFuelUse => baseFuelUseFullThrottle;
+    public float BaseHPRegen => baseHpRegenPerSecond;
+    public float BaseBoostForce => baseBoostForce;
+    public float BaseBoostDuration => baseBoostDuration;
+    public float BaseBoostCooldown => baseBoostCooldown;
+    public float BaseBoostFuelCost => baseBoostFuelCost;
+    public float BaseClicksPerClick => baseClicksPerClick;
+    public float BasePassiveClickRate => basePassiveClickRate;
+    public float BasePassiveClickStrength => basePassiveClickStrength;
+    public float BaseMashFuelPerClick => mashBaseFuelPerClick;
+
 }
 ```
 
@@ -9740,66 +10177,346 @@ public class CarVelocityAndPitch : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/CoinDatabase.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Central database/registry for all coin types.
+/// Singleton that provides easy access to coin data from anywhere.
+/// </summary>
+public class CoinDatabase : MonoBehaviour
+{
+    public static CoinDatabase Instance { get; private set; }
+
+    [Header("Coin Data Assets")]
+    [Tooltip("Assign all CoinDataSO assets here.")]
+    [SerializeField] private List<CoinDataSO> coinDataAssets = new List<CoinDataSO>();
+
+    [Header("Fallback (if coin type not found)")]
+    [SerializeField] private CoinDataSO fallbackCoinData;
+
+    // Lookup dictionary for fast access
+    private readonly Dictionary<CoinType, CoinDataSO> _coinLookup = new Dictionary<CoinType, CoinDataSO>();
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        BuildLookup();
+    }
+
+    private void BuildLookup()
+    {
+        _coinLookup.Clear();
+        foreach (var data in coinDataAssets)
+        {
+            if (data != null && !_coinLookup.ContainsKey(data.coinType))
+            {
+                _coinLookup[data.coinType] = data;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get coin data for a specific type.
+    /// </summary>
+    public CoinDataSO GetCoinData(CoinType type)
+    {
+        if (_coinLookup.TryGetValue(type, out var data))
+            return data;
+        
+        Debug.LogWarning($"[CoinDatabase] No data found for CoinType.{type}, using fallback.");
+        return fallbackCoinData;
+    }
+
+    /// <summary>
+    /// Get the base value for a coin type.
+    /// </summary>
+    public int GetBaseValue(CoinType type)
+    {
+        var data = GetCoinData(type);
+        return data != null ? data.baseValue : 1;
+    }
+
+    /// <summary>
+    /// Get the primary color for a coin type.
+    /// </summary>
+    public Color GetColor(CoinType type)
+    {
+        var data = GetCoinData(type);
+        return data != null ? data.primaryColor : Color.white;
+    }
+
+    /// <summary>
+    /// Get all registered coin data assets.
+    /// </summary>
+    public IReadOnlyList<CoinDataSO> GetAllCoinData() => coinDataAssets;
+
+    /// <summary>
+    /// Get a random coin type based on spawn weights.
+    /// </summary>
+    public CoinType GetRandomCoinType()
+    {
+        float totalWeight = 0f;
+        foreach (var data in coinDataAssets)
+        {
+            if (data != null)
+                totalWeight += data.spawnWeight;
+        }
+
+        if (totalWeight <= 0f)
+            return CoinType.Bronze;
+
+        float random = Random.Range(0f, totalWeight);
+        float accumulated = 0f;
+
+        foreach (var data in coinDataAssets)
+        {
+            if (data == null) continue;
+            accumulated += data.spawnWeight;
+            if (random <= accumulated)
+                return data.coinType;
+        }
+
+        return CoinType.Bronze;
+    }
+
+    // === STATIC SHORTCUTS ===
+
+    public static CoinDataSO Get(CoinType type) => Instance?.GetCoinData(type);
+    public static int Value(CoinType type) => Instance?.GetBaseValue(type) ?? 1;
+    public static Color GetCoinColor(CoinType type) => Instance?.GetColor(type) ?? UnityEngine.Color.white;
+}
+
+```
+
+## Assets/Racing_Assets/Racing_Scripts/CoinDataSO.cs
+
+```csharp
+using UnityEngine;
+
+/// <summary>
+/// ScriptableObject defining all properties for a specific coin type.
+/// Create one for each CoinType (Bronze, Silver, Gold, etc.)
+/// </summary>
+[CreateAssetMenu(menuName = "Racing/Coin Data", fileName = "CoinData_New")]
+public class CoinDataSO : ScriptableObject
+{
+    [Header("Identity")]
+    public CoinType coinType = CoinType.Bronze;
+    public string displayName = "Bronze Coin";
+
+    [Header("Prefab")]
+    [Tooltip("The prefab to spawn for this coin type.")]
+    public GameObject coinPrefab;
+
+    [Header("Value")]
+    [Tooltip("Base currency value of this coin.")]
+    public int baseValue = 1;
+
+    [Header("Visuals - Colors")]
+    [Tooltip("Primary color for this coin (used for popup text color, VFX main color).")]
+    public Color primaryColor = new Color(0.8f, 0.5f, 0.2f, 1f);
+
+    [Tooltip("Secondary/accent color (used for popup text outline, screen flash).")]
+    public Color secondaryColor = new Color(1f, 0.7f, 0.3f, 1f);
+
+    [Header("Screen Flash")]
+    [Tooltip("Enable screen flash when collected.")]
+    public bool enableScreenFlash = true;
+
+    [Tooltip("Screen flash intensity when collected.")]
+    public float flashIntensity = 0.8f;
+
+    [Tooltip("Screen flash duration.")]
+    public float flashDuration = 0.2f;
+
+    [Tooltip("Inner radius for edge glow (smaller = more dramatic).")]
+    [Range(0.1f, 0.8f)]
+    public float flashInnerRadius = 0.5f;
+
+    [Header("Screen Shake")]
+    [Tooltip("Enable screen shake when collected.")]
+    public bool enableScreenShake = false;
+
+    [Tooltip("Screen shake duration.")]
+    public float shakeDuration = 0.15f;
+
+    [Tooltip("Screen shake strength/intensity.")]
+    public float shakeStrength = 0.3f;
+
+    [Tooltip("Screen shake vibrato (number of shakes).")]
+    [Range(1, 20)]
+    public int shakeVibrato = 10;
+
+    [Tooltip("Screen shake randomness.")]
+    [Range(0f, 1f)]
+    public float shakeRandomness = 0.5f;
+
+    [Header("Popup Text")]
+    [Tooltip("Font size multiplier for popup text.")]
+    public float popupSizeMultiplier = 1f;
+
+    [Tooltip("Popup duration.")]
+    public float popupDuration = 1f;
+
+    [Tooltip("How high the popup rises.")]
+    public float popupRiseDistance = 1.5f;
+
+    [Header("Audio")]
+    [Tooltip("Sound clips to play when collected (randomly selected).")]
+    public AudioClip[] collectSounds;
+
+    [Tooltip("Volume for collect sound.")]
+    [Range(0f, 1f)]
+    public float collectVolume = 1f;
+
+    [Tooltip("Pitch variance for collect sound.")]
+    [Range(0f, 0.3f)]
+    public float pitchVariance = 0.05f;
+
+    [Tooltip("Base pitch (higher value coins can have higher pitch).")]
+    public float basePitch = 1f;
+
+    [Header("VFX")]
+    [Tooltip("Optional override VFX prefab for this coin type.")]
+    public GameObject vfxPrefab;
+
+    [Tooltip("VFX lifetime.")]
+    public float vfxLifetime = 2f;
+
+    [Tooltip("VFX scale multiplier.")]
+    public float vfxScale = 1f;
+
+    [Header("Spawn Settings")]
+    [Tooltip("Rotation speed when idle (degrees per second).")]
+    public float rotateSpeed = 90f;
+
+    [Tooltip("Optional bobbing animation amplitude.")]
+    public float bobAmplitude = 0f;
+
+    [Tooltip("Bobbing speed.")]
+    public float bobSpeed = 1f;
+
+    [Header("Rarity / Spawn Weight")]
+    [Tooltip("Higher weight = more likely to spawn. Used by spawners.")]
+    [Range(0f, 100f)]
+    public float spawnWeight = 50f;
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/CoinPickup.cs
 
 ```csharp
+using System;
 using System.Collections;
 using UnityEngine;
 
-[RequireComponent(typeof(Collider))]
+/// <summary>
+/// Coin pickup that uses the centralized CoinType system.
+/// All visuals, sounds, and values are determined by the coin type.
+/// </summary>
 public class CoinPickup : MonoBehaviour
 {
-    [Header("Coin Value")]
-    [SerializeField] private int value = 1;
+    [Header("Coin Type")]
+    [Tooltip("The type of coin - determines value, color, sounds, etc.")]
+    [SerializeField] private CoinType coinType = CoinType.Bronze;
 
-    [Header("Simple Visuals")]
-    [SerializeField] private float rotateSpeed = 90f; // optional little spin
+    [Header("Override Settings (Optional)")]
+    [Tooltip("If assigned, uses this data instead of looking up from CoinDatabase.")]
+    [SerializeField] private CoinDataSO overrideCoinData;
 
-    [Header("FX")]
-    [Tooltip("Optional VFX prefab to spawn when the coin is collected.")]
-    [SerializeField] private GameObject coinPickupVFX;
-    [Tooltip("Lifetime (seconds) for the spawned VFX when instantiated or returned to pool.")]
-    [SerializeField] private float coinPickupVFXLifetime = 2f;
+    [Header("Shared VFX (Fallback)")]
+    [Tooltip("VFX prefab to use if coin data doesn't specify one.")]
+    [SerializeField] private GameObject fallbackVFX;
+    [SerializeField] private float fallbackVFXLifetime = 2f;
 
-    [Header("VFX Color Mapping")]
-    [Tooltip("Map coin values to VFX colors. The system will try an exact match first; if none found it will use the highest mapped value <= coin value.")]
-    [SerializeField]
-    private VFXColorEntry[] vfxColorEntries =
+    // Runtime
+    private CoinDataSO _coinData;
+    private float _bobTimer;
+    private Vector3 _startPos;
+    private Transform _visualChild;
+
+    // Cached camera reference for screen shake
+    private static CameraFollow _cameraFollow;
+
+    public CoinType Type => coinType;
+    public CoinDataSO CoinData => _coinData;
+
+    private void Awake()
     {
-        // default entries: 1 = bronze, 2 = silver, 3 = gold
-        new VFXColorEntry { coinValue = 1, color = new Color(205f/255f, 127f/255f, 50f/255f, 1f) }, // bronze
-        new VFXColorEntry { coinValue = 2, color = new Color(192f/255f, 192f/255f, 192f/255f, 1f) }, // silver
-        new VFXColorEntry { coinValue = 3, color = new Color(1f, 215f/255f, 0f, 1f) } // gold
-    };
+        // Cache coin data
+        RefreshCoinData();
 
-    [SerializeField] private AudioClip[] coinCollectClips = new AudioClip[2]; // assign two coin sounds
-    [SerializeField, Range(0f, 0.25f)] private float coinPitchVariance = 0.06f;
-    [SerializeField, Range(0f, 1f)] private float coinCollectVolume = 1f;
+        _startPos = transform.position;
 
+        // Try to get visual child for rotation
+        if (transform.childCount > 0)
+            _visualChild = transform.GetChild(0);
 
-
-    [System.Serializable]
-    private class VFXColorEntry
-    {
-        public int coinValue = 1;
-        public Color color = Color.white;
+        // Cache camera follow for screen shake
+        if (_cameraFollow == null)
+            _cameraFollow = FindObjectOfType<CameraFollow>();
     }
 
-    private void Reset()
+    private void Start()
     {
-        // Make sure collider is trigger by default
+        // Ensure collider is trigger
         var col = GetComponent<Collider>();
         if (col != null)
             col.isTrigger = true;
     }
 
+    /// <summary>
+    /// Refresh coin data from database or override.
+    /// Call this if you change coinType at runtime.
+    /// </summary>
+    public void RefreshCoinData()
+    {
+        if (overrideCoinData != null)
+        {
+            _coinData = overrideCoinData;
+        }
+        else if (CoinDatabase.Instance != null)
+        {
+            _coinData = CoinDatabase.Instance.GetCoinData(coinType);
+        }
+    }
+
+    /// <summary>
+    /// Set the coin type at runtime.
+    /// </summary>
+    public void SetCoinType(CoinType type)
+    {
+        coinType = type;
+        RefreshCoinData();
+    }
+
     private void Update()
     {
-        // Optional spinning so it's more readable in world
-        if (rotateSpeed != 0f)
+        if (_coinData == null) return;
+
+        // Rotation
+        if (_coinData.rotateSpeed != 0f && _visualChild != null)
         {
-            
-            transform.GetChild(0).transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
+            _visualChild.Rotate(0f, _coinData.rotateSpeed * Time.deltaTime, 0f, Space.World);
+        }
+
+        // Bobbing
+        if (_coinData.bobAmplitude > 0f)
+        {
+            _bobTimer += Time.deltaTime * _coinData.bobSpeed;
+            float yOffset = Mathf.Sin(_bobTimer) * _coinData.bobAmplitude;
+            transform.position = _startPos + Vector3.up * yOffset;
         }
     }
 
@@ -9808,244 +10525,265 @@ public class CoinPickup : MonoBehaviour
         if (!other.TryGetComponent<CarController>(out var car))
             return;
 
-        var mgr = RacingSkillTreeManager.Instance;
-        int finalValue = value;
+        // Ensure we have coin data
+        if (_coinData == null)
+            RefreshCoinData();
 
+        // Calculate final value
+        int baseValue = _coinData?.baseValue ?? 1;
+        int finalValue = baseValue;
+
+        var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null)
         {
+            // Add skill bonus
             int baseAdd = mgr.GetCoinBaseAdd();
             if (baseAdd > 0)
                 finalValue += baseAdd;
-        }
 
-        // NEW: play coin SFX (random selection + slight pitch variance)
-        PlayRandomCoinSfx(transform.position);
-
-        // NEW: double-value chance skill
-        if (mgr != null)
-        {
+            // Double chance
             float dblChance = mgr.GetCoinDoubleChance();
-            if (dblChance > 0f && Random.value < dblChance)
+            if (dblChance > 0f && UnityEngine.Random.value < dblChance)
                 finalValue *= 2;
+
+            // Add currency
             mgr.AddCurrency(finalValue);
         }
-        else
-        {
-            // Fallback
-            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
-        }
 
+        // Register with game manager
         if (GameManager_Racing.Instance != null)
         {
             GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
         }
 
-        // Spawn VFX at the collision/closest point before destroying the coin
+        // Get spawn position for effects
         Vector3 spawnPos = transform.position;
-        // try to use the collider's closest contact point as a nicer VFX origin
         try
         {
             spawnPos = other.ClosestPoint(transform.position);
         }
-        catch { /* ignore and use transform.position */ }
+        catch { /* use transform.position */ }
 
-        // Pass the finalValue so the VFX color matches the collected coin value
-        SpawnPickupVFX(spawnPos, finalValue);
+        // === EFFECTS ===
 
+        // Screen Flash (uses secondary color)
+        if (_coinData != null && _coinData.enableScreenFlash && ScreenFlashManager.Instance != null)
+        {
+            ScreenFlashManager.Instance.Flash(
+                _coinData.secondaryColor,  // Use secondary color for flash
+                _coinData.flashIntensity,
+                _coinData.flashDuration,
+                _coinData.flashInnerRadius
+            );
+        }
+
+        // Screen Shake
+        if (_coinData != null && _coinData.enableScreenShake)
+        {
+            TriggerScreenShake();
+        }
+
+        // Popup Text (primary color for text, secondary for outline)
+        if (RacingPopups.IsReady && _coinData != null)
+        {
+            // Use the CoinGain popup with primary color
+            // The popup system will use secondary color for outline if configured
+            RacingPopups.SpawnCoin(
+                finalValue,
+                spawnPos + Vector3.up * 0.5f,
+                _coinData.primaryColor,
+                _coinData.secondaryColor
+            );
+        }
+        else if (RacingPopups.IsReady)
+        {
+            // Fallback
+            RacingPopups.Spawn(
+                RacingPopupType.CoinGain,
+                finalValue,
+                spawnPos + Vector3.up * 0.5f,
+                Color.yellow
+            );
+        }
+
+        // Sound
+        PlayCollectSound(spawnPos);
+
+        // VFX
+        SpawnVFX(spawnPos);
+
+        // Destroy
         Destroy(gameObject);
     }
 
-    // Add helper methods (inside the same class)
-    private void PlayRandomCoinSfx(Vector3 worldPos)
+    private void TriggerScreenShake()
     {
-        if (coinCollectClips == null || coinCollectClips.Length == 0) return;
+        if (_coinData == null) return;
 
-        // pick a non-null clip
-        AudioClip clip = null;
-        for (int i = 0; i < 8; i++) // try a few times (in case some array entries are null)
+        // Try to find camera follow if not cached
+        if (_cameraFollow == null)
+            _cameraFollow = FindObjectOfType<CameraFollow>();
+
+        if (_cameraFollow != null)
         {
-            var candidate = coinCollectClips[Random.Range(0, coinCollectClips.Length)];
+            _cameraFollow.StartShake(
+                _coinData.shakeDuration,
+                _coinData.shakeStrength,
+                _coinData.shakeVibrato,
+                _coinData.shakeRandomness
+            );
+        }
+    }
+
+    private void PlayCollectSound(Vector3 position)
+    {
+        if (_coinData == null) return;
+        if (_coinData.collectSounds == null || _coinData.collectSounds.Length == 0) return;
+
+        // Pick random sound
+        AudioClip clip = null;
+        for (int i = 0; i < 8; i++)
+        {
+            var candidate = _coinData.collectSounds[UnityEngine.Random.Range(0, _coinData.collectSounds.Length)];
             if (candidate != null) { clip = candidate; break; }
         }
         if (clip == null) return;
 
-        float pitch = 1f + UnityEngine.Random.Range(-coinPitchVariance, coinPitchVariance);
-        PlayClipAtPointWithPitch(clip, worldPos, coinCollectVolume, pitch);
+        // Calculate pitch
+        float pitch = _coinData.basePitch + UnityEngine.Random.Range(-_coinData.pitchVariance, _coinData.pitchVariance);
+
+        // Play
+        PlayClipAtPointWithPitch(clip, position, _coinData.collectVolume, pitch);
     }
 
-    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume = 1f, float pitch = 1f)
+    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume, float pitch)
     {
         if (clip == null) return;
-        GameObject go = new GameObject("SFX_OneShot");
+
+        GameObject go = new GameObject("CoinSFX");
         go.transform.position = pos;
+
         var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f; // 3D
+        src.spatialBlend = 1f;
         src.clip = clip;
         src.volume = Mathf.Clamp01(volume);
         src.pitch = Mathf.Max(0.01f, pitch);
         src.Play();
+
         Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
     }
 
-    // Spawns the assigned VFX prefab. Uses ProjectilePool when available, otherwise Instantiate.
-    // Keeps a fallback lifetime destroy for safety.
-    private void SpawnPickupVFX(Vector3 worldPos, int coinValue)
+    private void SpawnVFX(Vector3 position)
     {
-        if (coinPickupVFX == null) return;
+        // Determine which VFX to use
+        GameObject vfxPrefab = _coinData?.vfxPrefab ?? fallbackVFX;
+        if (vfxPrefab == null) return;
 
-        // get color for this coin value
-        Color col = GetColorForValue(coinValue);
+        float lifetime = _coinData?.vfxLifetime ?? fallbackVFXLifetime;
+        float scale = _coinData?.vfxScale ?? 1f;
+        Color color = _coinData?.primaryColor ?? Color.white;
 
-        // Desired rotation: -90� X, 0� Y, 0� Z
-        Quaternion desiredRot = Quaternion.Euler(-90f, 0f, 0f);
+        Quaternion rotation = Quaternion.Euler(-90f, 0f, 0f);
 
-        // Try using ProjectilePool (preferred). Pool returns inactive instances ready to position.
+        // Try pool first
         try
         {
             if (ProjectilePool.Instance != null)
             {
-                GameObject inst = ProjectilePool.Instance.Get(coinPickupVFX);
+                GameObject inst = ProjectilePool.Instance.Get(vfxPrefab);
                 if (inst != null)
                 {
-                    inst.transform.position = worldPos;
-                    inst.transform.rotation = desiredRot; // apply correct Euler rotation
-                    ApplyVFXColor(inst, col); // apply color before activation
+                    inst.transform.position = position;
+                    inst.transform.rotation = rotation;
+                    inst.transform.localScale = Vector3.one * scale;
+                    ApplyVFXColor(inst, color);
                     inst.SetActive(true);
-                    // Schedule return to pool
-                    StartCoroutine(ReturnPooledVFXLater(coinPickupVFX, inst, Mathf.Max(0.01f, coinPickupVFXLifetime)));
+                    StartCoroutine(ReturnPooledVFX(vfxPrefab, inst, lifetime));
                     return;
                 }
             }
         }
-        catch
-        {
-            // ignore pool errors and fallback to Instantiate
-        }
+        catch { /* fallback to instantiate */ }
 
-        // Fallback: instantiate and destroy after lifetime, with correct rotation and color
-        var go = Instantiate(coinPickupVFX, worldPos, desiredRot);
-        ApplyVFXColor(go, col);
-        Destroy(go, Mathf.Max(0.01f, coinPickupVFXLifetime));
+        // Fallback: instantiate
+        var go = Instantiate(vfxPrefab, position, rotation);
+        go.transform.localScale = Vector3.one * scale;
+        ApplyVFXColor(go, color);
+        Destroy(go, lifetime);
     }
 
-    private IEnumerator ReturnPooledVFXLater(GameObject prefab, GameObject instance, float delay)
+    private IEnumerator ReturnPooledVFX(GameObject prefab, GameObject instance, float delay)
     {
         yield return new WaitForSeconds(delay);
         if (instance != null && prefab != null && ProjectilePool.Instance != null)
             ProjectilePool.Instance.Return(prefab, instance);
     }
 
-    // Finds the best color entry for the given coin value.
-    // Strategy: exact match; else highest entry.coinValue <= value; else fallback to first entry or white.
-    private Color GetColorForValue(int coinValue)
+    private void ApplyVFXColor(GameObject vfxRoot, Color color)
     {
-        if (vfxColorEntries == null || vfxColorEntries.Length == 0)
-            return Color.white;
+        if (vfxRoot == null) return;
 
-        // Try exact match
-        for (int i = 0; i < vfxColorEntries.Length; i++)
+        // Apply to all particle systems
+        var particles = vfxRoot.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (var ps in particles)
         {
-            if (vfxColorEntries[i].coinValue == coinValue)
-                return vfxColorEntries[i].color;
+            var main = ps.main;
+            main.startColor = color;
         }
 
-        // Find highest <= coinValue
-        VFXColorEntry best = null;
-        for (int i = 0; i < vfxColorEntries.Length; i++)
+        // Apply to renderers with _Color property
+        var renderers = vfxRoot.GetComponentsInChildren<Renderer>(true);
+        foreach (var rend in renderers)
         {
-            if (vfxColorEntries[i].coinValue <= coinValue)
-            {
-                if (best == null || vfxColorEntries[i].coinValue > best.coinValue)
-                    best = vfxColorEntries[i];
-            }
+            if (rend.material.HasProperty("_Color"))
+                rend.material.color = color;
+            if (rend.material.HasProperty("_TintColor"))
+                rend.material.SetColor("_TintColor", color);
         }
-
-        if (best != null) return best.color;
-
-        // fallback to first entry
-        return vfxColorEntries[0].color;
     }
 
-    // Try to apply color to a VFX instance. Covers common cases:
-    // - ParticleSystem.main.startColor (applies to all child ParticleSystems)
-    // - Material color properties ("_BaseColor", "_Color", "_TintColor")
-    // - VisualEffect via reflection (attempts SetVector4("Color", color))
-    private void ApplyVFXColor(GameObject go, Color col)
+#if UNITY_EDITOR
+    private void OnValidate()
     {
-        if (go == null) return;
-
-        // 1) ParticleSystems
-        var systems = go.GetComponentsInChildren<ParticleSystem>(true);
-        if (systems != null && systems.Length > 0)
-        {
-            foreach (var ps in systems)
-            {
-                var main = ps.main;
-                main.startColor = col;
-            }
-            return;
-        }
-
-        // 2) Renderer materials
-        var renderers = go.GetComponentsInChildren<Renderer>(true);
-        if (renderers != null && renderers.Length > 0)
-        {
-            foreach (var r in renderers)
-            {
-                // Use sharedMaterials to avoid creating garbage if not necessary;
-                // but copying material arrays can instantiate instance materials which is OK for VFX.
-                var mats = r.materials;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    var mat = mats[i];
-                    if (mat == null) continue;
-                    if (mat.HasProperty("_BaseColor"))
-                        mat.SetColor("_BaseColor", col);
-                    else if (mat.HasProperty("_Color"))
-                        mat.SetColor("_Color", col);
-                    else if (mat.HasProperty("_TintColor"))
-                        mat.SetColor("_TintColor", col);
-                    // else: can't set color generically for this material
-                }
-            }
-            // don't return here � renderer coloring is often sufficient, but also try VFX
-        }
-
-        // 3) Try VisualEffect (VFX Graph) via reflection to avoid hard compile dependency
-        var veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, Unity.VisualEffectGraph");
-        if (veType == null)
-        {
-            // Some Unity versions use another assembly name; try fallback
-            veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, UnityEngine.VFX");
-        }
-
-        if (veType != null)
-        {
-            var ves = go.GetComponentsInChildren(veType, true);
-            foreach (var ve in ves)
-            {
-                // Try common parameter names
-                var setVector4 = veType.GetMethod("SetVector4", new[] { typeof(string), typeof(Vector4) });
-                if (setVector4 != null)
-                {
-                    // Try "Color" and "color"
-                    setVector4.Invoke(ve, new object[] { "Color", (Vector4)col });
-                    setVector4.Invoke(ve, new object[] { "color", (Vector4)col });
-                }
-                else
-                {
-                    // Try SetVector3
-                    var setVector3 = veType.GetMethod("SetVector3", new[] { typeof(string), typeof(Vector3) });
-                    if (setVector3 != null)
-                    {
-                        setVector3.Invoke(ve, new object[] { "Color", (Color32)col });
-                        setVector3.Invoke(ve, new object[] { "color", (Color32)col });
-                    }
-                }
-            }
-        }
+        // Auto-refresh in editor when type changes
+        if (Application.isPlaying && CoinDatabase.Instance != null)
+            RefreshCoinData();
     }
+
+    private void OnDrawGizmosSelected()
+    {
+        // Show coin type color in editor
+        if (CoinDatabase.Instance != null)
+        {
+            Gizmos.color = CoinDatabase.GetCoinColor(coinType);
+        }
+        else
+        {
+            Gizmos.color = Color.yellow;
+        }
+        Gizmos.DrawWireSphere(transform.position, 0.5f);
+    }
+#endif
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/CoinType.cs
+
+```csharp
+/// <summary>
+/// Defines all coin types in the game.
+/// Each type has associated value, visuals, and effects.
+/// </summary>
+public enum CoinType
+{
+    Bronze = 0,
+    Silver = 1,
+    Gold = 2,
+    Platinum = 3,
+    Diamond = 4,
+    Legendary = 5
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CrossObstacleDirector.cs
@@ -12100,6 +12838,7 @@ public class FuelPickup : MonoBehaviour
 ## Assets/Racing_Assets/Racing_Scripts/GameManager_Racing.cs
 
 ```csharp
+using System;
 using System.Collections;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -12126,6 +12865,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
+    [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -12259,6 +12999,7 @@ public class GameManager_Racing : MonoBehaviour
     private int _distanceCoinsThisRun = 0;
     private int _pickupCoinsThisRun = 0;
     private int _obstacleCoinsThisRun = 0;
+    private int _sprocketsThisRun;
 
     private bool _depositSoundPlayed = false;
 
@@ -12487,6 +13228,7 @@ public class GameManager_Racing : MonoBehaviour
         _distanceCoinsThisRun = 0;
         _pickupCoinsThisRun = 0;
         _obstacleCoinsThisRun = 0;
+        _sprocketsThisRun = 0;
 
         uiManager?.UpdateRunCoins(0);   // HUD shows 0 to start
         uiManager?.ShowRunCoins();
@@ -12536,13 +13278,17 @@ public class GameManager_Racing : MonoBehaviour
             _pickupCoinsThisRun +
             _obstacleCoinsThisRun;
 
+        int totalSprockets = mgr?.Sprockets ?? 0;
+
         // 4) Show breakdown + final total in the UI
         uiManager?.ShowRunComplete(
             distanceInt,
             _distanceCoinsThisRun,
             _pickupCoinsThisRun,
             _obstacleCoinsThisRun,
-            totalCoinsThisRun
+            totalCoinsThisRun,
+            _sprocketsThisRun,
+            totalSprockets
         );
         PlayRunCompleteCoinSound();
 
@@ -12947,6 +13693,15 @@ public class GameManager_Racing : MonoBehaviour
         }
     }
 
+    public void RegisterSprocketGain(int amount)
+    {
+        if (amount <= 0) return;
+        _sprocketsThisRun += amount;
+
+        // Update live UI
+        uiManager?.UpdateRunSprockets(_sprocketsThisRun);
+    }
+
     private void EnsureRefs()
     {
         if (cameraFollow == null) cameraFollow = FindObjectOfType<CameraFollow>(true);
@@ -12999,6 +13754,7 @@ public class GameManager_Racing : MonoBehaviour
         carController = carInstance.GetComponent<CarController>();
         crossObstacleDirector.SetCar(carController);
         thrownObstacleDirector.SetCar(carController);
+        iceScreenFlashDriver.SetCarController(carController);
 
         // NEW: reset distance tracking for the new run
         runDistanceMeters = 0f;
@@ -14084,6 +14840,123 @@ public class IcePathSpawner : MonoBehaviour
 
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/IRacingPopupSystem.cs
+
+```csharp
+using System;
+using UnityEngine;
+
+/// <summary>
+/// Interface for the racing popup system.
+/// Allows static access via RacingPopups facade.
+/// </summary>
+public interface IRacingPopupSystem
+{
+    /// <summary>
+    /// Spawn a popup at a world position.
+    /// </summary>
+    void Spawn(RacingPopupType type, float value, Vector3 worldPosition);
+
+    /// <summary>
+    /// Spawn a popup at a world position with custom text.
+    /// </summary>
+    void Spawn(RacingPopupType type, string text, Vector3 worldPosition);
+
+    /// <summary>
+    /// Spawn a popup with color override.
+    /// </summary>
+    void Spawn(RacingPopupType type, float value, Vector3 worldPosition, Color colorOverride);
+
+    /// <summary>
+    /// Spawn a popup with full customization.
+    /// </summary>
+    void Spawn(RacingPopupType type, float value, Vector3 worldPosition, Color? colorOverride, float? scaleOverride);
+
+    /// <summary>
+    /// Spawn at random screen position (for mash rewards, etc.)
+    /// </summary>
+    void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange);
+
+    /// <summary>
+    /// Spawn a coin popup with separate text color and outline color.
+    /// </summary>
+    void SpawnCoin(int value, Vector3 worldPosition, Color textColor, Color outlineColor);
+}
+
+public static class RacingPopups
+{
+    public static IRacingPopupSystem System { get; private set; }
+
+    public static bool IsReady => System != null;
+
+    public static void Register(IRacingPopupSystem system) => System = system;
+    public static void Unregister(IRacingPopupSystem system)
+    {
+        if (System == system) System = null;
+    }
+
+    // Convenience methods
+    public static void Spawn(RacingPopupType type, float value, Vector3 position)
+    {
+        System?.Spawn(type, value, position);
+    }
+
+    public static void Spawn(RacingPopupType type, string text, Vector3 position)
+    {
+        System?.Spawn(type, text, position);
+    }
+
+    public static void Spawn(RacingPopupType type, float value, Vector3 position, Color color)
+    {
+        System?.Spawn(type, value, position, color);
+    }
+
+    // === SHORTCUT METHODS FOR COMMON POPUPS ===
+
+    public static void HPDamage(float amount, Vector3 position)
+        => Spawn(RacingPopupType.HPDamage, amount, position);
+
+    public static void HPGain(float amount, Vector3 position)
+        => Spawn(RacingPopupType.HPGain, amount, position);
+
+    public static void FuelLoss(float amount, Vector3 position)
+        => Spawn(RacingPopupType.FuelLoss, amount, position);
+
+    public static void FuelGain(float amount, Vector3 position)
+        => Spawn(RacingPopupType.FuelGain, amount, position);
+
+    public static void CoinGain(int amount, Vector3 position)
+        => Spawn(RacingPopupType.CoinGain, amount, position);
+
+    public static void MashFuel(float amount, Vector3 position)
+        => Spawn(RacingPopupType.MashFuelReward, amount, position);
+
+    public static void NearMiss(Vector3 position)
+        => Spawn(RacingPopupType.NearMiss, "NEAR MISS!", position);
+
+    public static void Generic(string text, Vector3 position)
+        => Spawn(RacingPopupType.Generic, text, position);
+
+    public static void Warning(string text, Vector3 position)
+        => Spawn(RacingPopupType.Warning, text, position);
+
+    public static void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange)
+        => System?.SpawnRandomScreen(type, value, horizontalRange, verticalRange);
+
+    public static void MashFuelRandom(float amount)
+        => SpawnRandomScreen(RacingPopupType.MashFuelReward, amount, new Vector2(-3f, 3f), new Vector2(-1.5f, 1.5f));
+
+    public static void SprocketGain(int amount, Vector3 position)
+    => Spawn(RacingPopupType.SprocketGain, amount, position);
+
+    /// <summary>
+    /// Spawn a coin popup with separate text color and outline color.
+    /// </summary>
+    public static void SpawnCoin(int value, Vector3 position, Color textColor, Color outlineColor)
+        => System?.SpawnCoin(value, position, textColor, outlineColor);
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/LaunchImmunityMarker.cs
 
 ```csharp
@@ -14101,6 +14974,229 @@ public sealed class LaunchImmunityMarker : MonoBehaviour
         expiresAt = Time.time + Mathf.Max(0f, durationSeconds);
     }
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/MashGaugeUI.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// UI component to display the mash progress gauge during crash recovery.
+/// Shows a progress bar that fills with clicks and drains over time.
+/// </summary>
+public class MashGaugeUI : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private CarController carController;
+    [SerializeField] private GameObject gaugeContainer;
+    [SerializeField] private Image gaugeFillImage;
+    [SerializeField] private Image gaugeBackgroundImage;
+    [SerializeField] private Image peakMarker;
+    
+    [Header("Optional Elements")]
+    [SerializeField] private TextMeshProUGUI percentText;
+    [SerializeField] private TextMeshProUGUI clickCountText;
+    [SerializeField] private GameObject maxedIndicator;
+    
+    [Header("Colors")]
+    [SerializeField] private Gradient gaugeColorGradient;
+    [SerializeField] private Color peakMarkerColor = Color.white;
+    [SerializeField] private Color maxedColor = Color.yellow;
+    
+    [Header("Animation")]
+    [SerializeField] private float smoothSpeed = 10f;
+    [SerializeField] private bool pulseOnClick = true;
+    [SerializeField] private float pulseScale = 1.1f;
+    [SerializeField] private float pulseDuration = 0.1f;
+    
+    [Header("Visibility")]
+    [SerializeField] private float showDelay = 0.1f;
+    [SerializeField] private float hideDelay = 0.5f;
+    
+    // Runtime
+    private float _displayedValue;
+    private float _pulseTimer;
+    private Vector3 _originalScale;
+    private bool _wasActive;
+    private float _hideTimer;
+    private int _lastClickCount;
+    
+    private void Awake()
+    {
+        if (gaugeFillImage)
+            _originalScale = gaugeFillImage.transform.localScale;
+        
+        // Initialize gradient if not set
+        if (gaugeColorGradient == null || gaugeColorGradient.colorKeys.Length == 0)
+        {
+            gaugeColorGradient = new Gradient();
+            gaugeColorGradient.SetKeys(
+                new GradientColorKey[] {
+                    new GradientColorKey(Color.red, 0f),
+                    new GradientColorKey(Color.yellow, 0.5f),
+                    new GradientColorKey(Color.green, 0.8f),
+                    new GradientColorKey(Color.cyan, 1f)
+                },
+                new GradientAlphaKey[] {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(1f, 1f)
+                }
+            );
+        }
+        
+        // Try to find car controller if not assigned
+        if (!carController)
+            carController = FindObjectOfType<CarController>();
+        
+        // Hide initially
+        if (gaugeContainer)
+            gaugeContainer.SetActive(false);
+    }
+    
+    private void Update()
+    {
+        if (!carController) return;
+        
+        bool isActive = carController.IsFlipMashActive;
+        
+        // Handle visibility
+        if (isActive && !_wasActive)
+        {
+            // Just became active
+            ShowGauge();
+        }
+        else if (!isActive && _wasActive)
+        {
+            // Just became inactive - start hide timer
+            _hideTimer = hideDelay;
+        }
+        
+        // Hide after delay
+        if (!isActive && gaugeContainer && gaugeContainer.activeSelf)
+        {
+            _hideTimer -= Time.deltaTime;
+            if (_hideTimer <= 0f)
+                HideGauge();
+        }
+        
+        _wasActive = isActive;
+        
+        // Update visuals if visible
+        if (gaugeContainer && gaugeContainer.activeSelf)
+        {
+            UpdateGaugeVisuals();
+        }
+    }
+    
+    private void ShowGauge()
+    {
+        if (gaugeContainer)
+            gaugeContainer.SetActive(true);
+        
+        _displayedValue = 0f;
+        _lastClickCount = 0;
+        
+        if (maxedIndicator)
+            maxedIndicator.SetActive(false);
+    }
+    
+    private void HideGauge()
+    {
+        if (gaugeContainer)
+            gaugeContainer.SetActive(false);
+    }
+    
+    private void UpdateGaugeVisuals()
+    {
+        float targetValue = carController.MashGaugeValue;
+        float peakValue = carController.MashGaugePeakValue;
+        bool isMaxed = carController.MashGaugeMaxed;
+        int clickCount = carController.TotalMashClicksThisSession;
+        
+        // Smooth the displayed value
+        _displayedValue = Mathf.Lerp(_displayedValue, targetValue, Time.deltaTime * smoothSpeed);
+        
+        // Detect click for pulse
+        if (clickCount > _lastClickCount && pulseOnClick)
+        {
+            TriggerPulse();
+        }
+        _lastClickCount = clickCount;
+        
+        // Update fill
+        if (gaugeFillImage)
+        {
+            gaugeFillImage.fillAmount = _displayedValue;
+            
+            // Color based on value
+            Color fillColor = isMaxed ? maxedColor : gaugeColorGradient.Evaluate(_displayedValue);
+            gaugeFillImage.color = fillColor;
+        }
+        
+        // Update peak marker
+        if (peakMarker)
+        {
+            peakMarker.gameObject.SetActive(peakValue > 0.01f);
+            
+            // Position marker at peak
+            RectTransform rt = peakMarker.rectTransform;
+            RectTransform parentRT = gaugeFillImage?.rectTransform;
+            
+            if (parentRT)
+            {
+                float width = parentRT.rect.width;
+                rt.anchoredPosition = new Vector2(width * peakValue, rt.anchoredPosition.y);
+            }
+            
+            peakMarker.color = peakMarkerColor;
+        }
+        
+        // Update text
+        if (percentText)
+        {
+            percentText.text = $"{Mathf.RoundToInt(_displayedValue * 100)}%";
+        }
+        
+        if (clickCountText)
+        {
+            clickCountText.text = $"{clickCount} clicks";
+        }
+        
+        // Maxed indicator
+        if (maxedIndicator)
+        {
+            maxedIndicator.SetActive(isMaxed);
+        }
+        
+        // Handle pulse animation
+        if (_pulseTimer > 0f)
+        {
+            _pulseTimer -= Time.deltaTime;
+            float t = 1f - (_pulseTimer / pulseDuration);
+            float scale = Mathf.Lerp(pulseScale, 1f, t);
+            
+            if (gaugeFillImage)
+                gaugeFillImage.transform.localScale = _originalScale * scale;
+        }
+    }
+    
+    private void TriggerPulse()
+    {
+        _pulseTimer = pulseDuration;
+    }
+    
+    /// <summary>
+    /// Manually set the car controller reference.
+    /// </summary>
+    public void SetCarController(CarController controller)
+    {
+        carController = controller;
+    }
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/NPCCarSpawner.cs
@@ -17665,6 +18761,976 @@ public class RacingObstacle : MonoBehaviour, IDamageable
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/RacingPopupStyleSO.cs
+
+```csharp
+using System;
+using TMPro;
+using UnityEngine;
+
+/// <summary>
+/// ScriptableObject defining the visual style for a specific popup type.
+/// Create one for each RacingPopupType you want to customize.
+/// </summary>
+[CreateAssetMenu(menuName = "Racing/Popup Style", fileName = "NewPopupStyle")]
+public class RacingPopupStyleSO : ScriptableObject
+{
+    [Header("Type")]
+    [Tooltip("Which popup type this style applies to.")]
+    public RacingPopupType popupType = RacingPopupType.Generic;
+
+    [Header("Typography")]
+    [Tooltip("Font asset to use. If null, uses system default.")]
+    public TMP_FontAsset font;
+
+    [Tooltip("Font material override. If null, uses font's default material.")]
+    public Material fontMaterial;
+
+    [Tooltip("Sprite asset for this popup type (for icons like heart, fuel, coin).")]
+    public TMP_SpriteAsset spriteAsset;
+
+    [Tooltip("Base font size before scaling.")]
+    public float baseFontSize = 5f;
+
+    [Tooltip("Main text color.")]
+    public Color textColor = Color.white;
+
+    [Header("Text Content")]
+    [Tooltip("Text to show before the value (e.g., '-' for damage, '+' for gains).")]
+    public string prefix = "";
+
+    [Tooltip("Text to show after the value (e.g., ' HP', ' Fuel', or TMP sprite tag like '<sprite=0>').")]
+    public string suffix = "";
+
+    [Tooltip("Format string for the number (e.g., '0', '0.#', '0.00').")]
+    public string numberFormat = "0";
+
+    [Header("Outline")]
+    public bool enableOutline = true;
+
+    [Range(0f, 1f)]
+    public float outlineWidth = 0.3f;
+
+    [ColorUsage(true, true)]
+    [Tooltip("Outline color with HDR support. Set intensity in color picker.")]
+    public Color outlineColor = Color.black;
+
+    [Tooltip("HDR intensity multiplier for outline (default 3 for visibility).")]
+    [Range(0f, 10f)]
+    public float outlineIntensity = 3f;
+
+    [Range(0f, 0.5f)]
+    public float faceDilate = 0.05f;
+
+
+    [Header("Position Offset (Comic Style)")]
+    [Tooltip("Fixed horizontal offset from spawn point. Negative = left, Positive = right.")]
+    public float horizontalOffset = 0f;
+
+    [Tooltip("Fixed vertical offset from spawn point.")]
+    public float verticalOffset = 0f;
+
+    [Tooltip("Additional random horizontal drift on top of fixed offset.")]
+    public float horizontalDrift = 0f;
+
+    [Header("Fixed Rotation (Comic Style)")]
+    [Tooltip("Fixed Z rotation angle. Use for /\\ pyramid effect. Negative = tilt right (/), Positive = tilt left (\\).")]
+    public float fixedRotationZ = 0f;
+
+    [Header("Timing")]
+    [Tooltip("Total duration the popup is visible.")]
+    public float duration = 1.0f;
+
+    [Tooltip("Fraction of duration for fade in (0-1).")]
+    [Range(0.01f, 0.5f)]
+    public float fadeInFraction = 0.1f;
+
+    [Tooltip("Fraction of duration for fade out (0-1).")]
+    [Range(0.1f, 0.8f)]
+    public float fadeOutFraction = 0.3f;
+
+    [Tooltip("Use unscaled time (works during slow-mo).")]
+    public bool useUnscaledTime = true;
+
+    [Header("Motion")]
+    [Tooltip("How far the text rises during its lifetime.")]
+    public float riseDistance = 1.5f;
+
+    [Tooltip("Ease type for the rise motion.")]
+    public DG.Tweening.Ease riseEase = DG.Tweening.Ease.OutCubic;
+
+    [Header("Scale Animation (Pop Effect)")]
+    [Tooltip("Starting scale (before pop). Lower = more dramatic pop.")]
+    public float popFromScale = 0.3f;
+
+    [Tooltip("Peak scale (after pop). Higher = more 'punch'.")]
+    public float popToScale = 1.3f;
+
+    [Tooltip("Final scale (after shrink). Set to popToScale for no shrink.")]
+    public float endScale = 1.0f;
+
+    [Tooltip("Delay before the pop animation starts.")]
+    [Range(0f, 0.3f)]
+    public float popDelay = 0.02f;
+
+    [Tooltip("Fraction of duration for the pop-up animation.")]
+    [Range(0.05f, 0.4f)]
+    public float popDurationFraction = 0.12f;
+
+    [Tooltip("Ease for the pop-in scale.")]
+    public DG.Tweening.Ease popEase = DG.Tweening.Ease.OutBack;
+
+    [Header("Rotation Shake (Optional)")]
+    [Tooltip("Enable Z-axis tilt shake animation (on top of fixed rotation).")]
+    public bool enableTiltShake = false;
+
+    [Tooltip("Maximum shake tilt angle in degrees.")]
+    [Range(0f, 30f)]
+    public float tiltShakeAngle = 8f;
+
+    [Tooltip("Fraction of duration for tilt shake animation.")]
+    [Range(0.05f, 0.5f)]
+    public float tiltShakeDurationFraction = 0.2f;
+
+    [Header("Value-Based Scaling")]
+    [Tooltip("Enable scaling font size based on value magnitude.")]
+    public bool enableValueScaling = true;
+
+    [Tooltip("Minimum value for scale mapping.")]
+    public float minValueForScale = 1f;
+
+    [Tooltip("Maximum value for scale mapping.")]
+    public float maxValueForScale = 50f;
+
+    [Tooltip("Scale multiplier at minimum value.")]
+    public float minScaleMultiplier = 0.8f;
+
+    [Tooltip("Scale multiplier at maximum value.")]
+    public float maxScaleMultiplier = 1.4f;
+
+    [Tooltip("Use logarithmic scaling (better for wide ranges).")]
+    public bool useLogScale = false;
+
+    [Header("Rendering")]
+    public string sortingLayerName = "UI";
+    public int sortingOrder = 1000;
+
+    [Header("Sound (Optional)")]
+    [Tooltip("Sound to play when this popup spawns.")]
+    public AudioClip spawnSound;
+
+    [Range(0f, 1f)]
+    public float soundVolume = 0.5f;
+
+    /// <summary>
+    /// Compute scale multiplier based on the value.
+    /// </summary>
+    public float ComputeScaleMultiplier(float value)
+    {
+        if (!enableValueScaling) return 1f;
+
+        float absValue = Mathf.Abs(value);
+
+        if (useLogScale)
+        {
+            float minL = Mathf.Log(minValueForScale + 1f, 10f);
+            float maxL = Mathf.Log(maxValueForScale + 1f, 10f);
+            float valL = Mathf.Log(absValue + 1f, 10f);
+            float t = Mathf.InverseLerp(minL, maxL, valL);
+            return Mathf.Lerp(minScaleMultiplier, maxScaleMultiplier, t);
+        }
+
+        float linear = Mathf.InverseLerp(minValueForScale, maxValueForScale, absValue);
+        return Mathf.Lerp(minScaleMultiplier, maxScaleMultiplier, linear);
+    }
+
+    /// <summary>
+    /// Format the display text for a given value.
+    /// </summary>
+    public string FormatText(float value)
+    {
+        return $"{prefix}{value.ToString(numberFormat)}{suffix}";
+    }
+
+    /// <summary>
+    /// Format the display text for a given integer value.
+    /// </summary>
+    public string FormatText(int value)
+    {
+        return $"{prefix}{value}{suffix}";
+    }
+
+    /// <summary>
+    /// Get the spawn position offset for this style.
+    /// </summary>
+    public Vector3 GetPositionOffset()
+    {
+        float randomDrift = horizontalDrift > 0 ? UnityEngine.Random.Range(-horizontalDrift, horizontalDrift) : 0f;
+        return new Vector3(horizontalOffset + randomDrift, verticalOffset, 0f);
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/RacingPopupSystem.cs
+
+```csharp
+using DG.Tweening;
+using System;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.Pool;
+
+/// <summary>
+/// Main popup text system for racing game.
+/// Handles pooling, styling, and animation of floating text popups.
+/// Supports comic-style /\ positioning with HP left, Fuel right.
+/// </summary>
+public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
+{
+    [Header("Camera")]
+    [SerializeField] private Camera targetCamera;
+    [SerializeField] private float cameraForwardOffset = 0.1f;
+
+    [Header("Camera-Relative Spawning")]
+    [Tooltip("If true, popups are parented to camera and move with it.")]
+    [SerializeField] private bool attachToCamera = true;
+
+    [Tooltip("Distance in front of camera to spawn popups.")]
+    [SerializeField] private float cameraSpawnDistance = 5f;
+
+    [Tooltip("Base vertical offset from camera center.")]
+    [SerializeField] private float cameraVerticalOffset = -0.5f;
+
+    [Header("Styles")]
+    [Tooltip("List of styles for each popup type. Order doesn't matter.")]
+    [SerializeField] private List<RacingPopupStyleSO> styles = new();
+
+    [Header("Default Style (fallback)")]
+    [SerializeField] private TMP_FontAsset defaultFont;
+    [SerializeField] private Material defaultFontMaterial;
+    [SerializeField] private TMP_SpriteAsset defaultSpriteAsset;
+    [SerializeField] private float defaultFontSize = 5f;
+    [SerializeField] private Color defaultColor = Color.white;
+    [SerializeField] private float defaultDuration = 1f;
+    [SerializeField] private float defaultRiseDistance = 1.5f;
+
+    [Header("Default Outline")]
+    [SerializeField] private bool defaultEnableOutline = true;
+    [SerializeField, Range(0f, 1f)] private float defaultOutlineWidth = 0.3f;
+    [SerializeField] private Color defaultOutlineColor = Color.black;
+    [SerializeField, Range(0f, 0.5f)] private float defaultFaceDilate = 0.05f;
+
+    [Header("Default Animation")]
+    [SerializeField] private float defaultPopFromScale = 0.3f;
+    [SerializeField] private float defaultPopToScale = 1.3f;
+    [SerializeField] private float defaultEndScale = 1.0f;
+    [SerializeField, Range(0f, 0.3f)] private float defaultPopDelay = 0.02f;
+    [SerializeField, Range(0.05f, 0.4f)] private float defaultPopDurationFraction = 0.12f;
+
+    [SerializeField, Range(0.01f, 0.5f)] private float defaultFadeInFraction = 0.1f;
+    [SerializeField, Range(0.1f, 0.8f)] private float defaultFadeOutFraction = 0.3f;
+
+    [Header("Rendering")]
+    [SerializeField] private string defaultSortingLayer = "UI";
+    [SerializeField] private int baseSortingOrder = 1000;
+    [SerializeField] private bool incrementalSorting = true;
+    [SerializeField] private int sortingWrapRange = 5000;
+
+    [Header("Pool")]
+    [SerializeField] private int poolDefaultCapacity = 32;
+    [SerializeField] private int poolMaxSize = 128;
+    [SerializeField] private int prewarmCount = 16;
+
+    [Header("Audio")]
+    [SerializeField] private AudioSource audioSource;
+
+    // Internal
+    private readonly Dictionary<RacingPopupType, RacingPopupStyleSO> _styleMap = new();
+    private IObjectPool<GameObject> _pool;
+    private int _nextSortingOrder;
+
+    void Awake()
+    {
+        if (!targetCamera) targetCamera = Camera.main;
+
+        // Build style lookup
+        _styleMap.Clear();
+        foreach (var style in styles)
+        {
+            if (style && !_styleMap.ContainsKey(style.popupType))
+                _styleMap[style.popupType] = style;
+        }
+
+        // Create pool
+        _pool = new ObjectPool<GameObject>(
+            CreatePooledObject,
+            OnGetFromPool,
+            OnReleaseToPool,
+            OnDestroyPooled,
+            true,
+            poolDefaultCapacity,
+            poolMaxSize
+        );
+
+        // Prewarm
+        Prewarm(prewarmCount);
+
+        _nextSortingOrder = baseSortingOrder;
+
+        // Register with static facade
+        RacingPopups.Register(this);
+    }
+
+    void OnDestroy()
+    {
+        RacingPopups.Unregister(this);
+    }
+
+    private void Prewarm(int count)
+    {
+        var temp = new GameObject[count];
+        for (int i = 0; i < count; i++)
+            temp[i] = _pool.Get();
+        for (int i = 0; i < count; i++)
+            _pool.Release(temp[i]);
+    }
+
+    private GameObject CreatePooledObject()
+    {
+        var go = new GameObject("RacingPopup", typeof(TextMeshPro));
+        go.transform.SetParent(transform, false);
+
+        var tmp = go.GetComponent<TextMeshPro>();
+        tmp.enableWordWrapping = false;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.enableAutoSizing = false;
+        tmp.extraPadding = true;
+
+        if (defaultFont) tmp.font = defaultFont;
+        if (defaultSpriteAsset) tmp.spriteAsset = defaultSpriteAsset;
+
+        // Setup material
+        Material baseMat = null;
+        if (IsTMPMaterial(defaultFontMaterial))
+            baseMat = defaultFontMaterial;
+        else if (tmp.font)
+            baseMat = tmp.font.material;
+
+        if (baseMat)
+            tmp.fontSharedMaterial = baseMat;
+
+        tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+        tmp.fontSize = defaultFontSize;
+
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr)
+        {
+            mr.sortingLayerName = defaultSortingLayer;
+            mr.sortingOrder = baseSortingOrder;
+        }
+
+        tmp.color = new Color(defaultColor.r, defaultColor.g, defaultColor.b, 0f);
+        go.SetActive(false);
+
+        return go;
+    }
+
+    private static bool IsTMPMaterial(Material m)
+        => m && m.shader && m.shader.name.StartsWith("TextMeshPro/");
+
+    private void OnGetFromPool(GameObject go) => go.SetActive(true);
+
+    private void OnReleaseToPool(GameObject go)
+    {
+        ResetPopup(go);
+        go.transform.SetParent(transform, false); // Return to pool parent
+        go.SetActive(false);
+    }
+
+    private void OnDestroyPooled(GameObject go)
+    {
+        if (go) Destroy(go);
+    }
+
+    private void ResetPopup(GameObject go)
+    {
+        var tmp = go.GetComponent<TextMeshPro>();
+        if (tmp)
+        {
+            tmp.text = string.Empty;
+            var c = tmp.color;
+            c.a = 0f;
+            tmp.color = c;
+            tmp.fontSize = defaultFontSize;
+        }
+        go.transform.localScale = Vector3.one;
+        go.transform.localRotation = Quaternion.identity;
+    }
+
+    // === PUBLIC SPAWN METHODS ===
+
+    public void Spawn(RacingPopupType type, float value, Vector3 worldPosition)
+    {
+        SpawnInternal(type, value, null, worldPosition, null, null);
+    }
+
+    public void Spawn(RacingPopupType type, string text, Vector3 worldPosition)
+    {
+        SpawnInternal(type, 0f, text, worldPosition, null, null);
+    }
+
+    public void Spawn(RacingPopupType type, float value, Vector3 worldPosition, Color colorOverride)
+    {
+        SpawnInternal(type, value, null, worldPosition, colorOverride, null);
+    }
+
+    public void Spawn(RacingPopupType type, float value, Vector3 worldPosition, Color? colorOverride, float? scaleOverride)
+    {
+        SpawnInternal(type, value, null, worldPosition, colorOverride, scaleOverride);
+    }
+
+    /// <summary>
+    /// Spawn at random screen position (for mash rewards, etc.)
+    /// </summary>
+    public void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange)
+    {
+        Vector3 randomOffset = new Vector3(
+            UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
+            UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
+            0f
+        );
+        SpawnInternal(type, value, null, randomOffset, null, null, true);
+    }
+
+    /// <summary>
+    /// Spawn a coin popup with separate text color and outline color.
+    /// </summary>
+    public void SpawnCoin(int value, Vector3 worldPosition, Color textColor, Color outlineColor)
+    {
+        var go = _pool.Get();
+        DOTween.Kill(go.transform, false);
+
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, false);
+
+        // Get coin style
+        _styleMap.TryGetValue(RacingPopupType.CoinGain, out var style);
+
+        // Apply font
+        var useFont = style?.font ?? defaultFont;
+        if (useFont) tmp.font = useFont;
+
+        // Apply sprite asset
+        var useSpriteAsset = style?.spriteAsset ?? defaultSpriteAsset;
+        if (useSpriteAsset) tmp.spriteAsset = useSpriteAsset;
+
+        // Apply material
+        var useMat = style?.fontMaterial ?? defaultFontMaterial;
+        Material baseMat = null;
+        if (IsTMPMaterial(useMat))
+            baseMat = useMat;
+        else if (tmp.font)
+            baseMat = tmp.font.material;
+
+        if (baseMat)
+        {
+            tmp.fontSharedMaterial = baseMat;
+            tmp.fontMaterial = new Material(baseMat);
+        }
+
+        // Apply outline with custom color
+        ApplyOutlineWithColor(tmp, style, outlineColor);
+
+        // Set text
+        if (style != null)
+            tmp.text = style.FormatText(value);
+        else
+            tmp.text = $"+{value}";
+
+        // Use custom text color (start invisible for fade-in)
+        tmp.color = new Color(textColor.r, textColor.g, textColor.b, 0f);
+
+        // Font size with value scaling
+        float baseFontSize = style?.baseFontSize ?? defaultFontSize;
+        float valueScaleMult = style?.ComputeScaleMultiplier(value) ?? 1f;
+        tmp.fontSize = baseFontSize * valueScaleMult;
+
+        // Sorting
+        if (incrementalSorting)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr)
+            {
+                int baseOrder = style?.sortingOrder ?? baseSortingOrder;
+                string layer = style?.sortingLayerName ?? defaultSortingLayer;
+                mr.sortingLayerName = layer;
+
+                if (_nextSortingOrder < baseOrder) _nextSortingOrder = baseOrder;
+                mr.sortingOrder = _nextSortingOrder++;
+
+                if (_nextSortingOrder - baseOrder > sortingWrapRange)
+                    _nextSortingOrder = baseOrder;
+            }
+        }
+
+        // Position
+        Vector3 positionOffset = style?.GetPositionOffset() ?? Vector3.zero;
+
+        if (attachToCamera && targetCamera)
+        {
+            go.transform.SetParent(targetCamera.transform, false);
+            Vector3 localPos = Vector3.forward * cameraSpawnDistance
+                             + Vector3.up * cameraVerticalOffset
+                             + Vector3.right * positionOffset.x
+                             + Vector3.up * positionOffset.y;
+            go.transform.localPosition = localPos;
+        }
+        else
+        {
+            go.transform.SetParent(transform, false);
+            Vector3 basePos = worldPosition + positionOffset;
+            if (targetCamera)
+                basePos -= targetCamera.transform.forward * cameraForwardOffset;
+            go.transform.position = basePos;
+        }
+
+        go.SetActive(true);
+
+        // Animation
+        float duration = style?.duration ?? defaultDuration;
+        float fadeIn = style?.fadeInFraction ?? defaultFadeInFraction;
+        float fadeOut = style?.fadeOutFraction ?? defaultFadeOutFraction;
+        float riseDistance = style?.riseDistance ?? defaultRiseDistance;
+        var riseEase = style?.riseEase ?? Ease.OutCubic;
+        float popFrom = style?.popFromScale ?? defaultPopFromScale;
+        float popTo = style?.popToScale ?? defaultPopToScale;
+        float endScale = style?.endScale ?? defaultEndScale;
+        float popDelay = style?.popDelay ?? defaultPopDelay;
+        float popDurFrac = style?.popDurationFraction ?? defaultPopDurationFraction;
+        var popEase = style?.popEase ?? Ease.OutBack;
+        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+
+        var seq = DOTween.Sequence().SetTarget(go.transform);
+        if (style?.useUnscaledTime ?? true)
+            seq.SetUpdate(true);
+
+        // Fade in
+        seq.Append(DOTween.ToAlpha(
+            () => tmp.color, c => tmp.color = c, 1f, duration * fadeIn
+        ).SetEase(Ease.OutQuad));
+
+        // Hold then fade out
+        float holdTime = duration * (1f - fadeIn - fadeOut);
+        seq.AppendInterval(holdTime);
+        seq.Append(DOTween.ToAlpha(
+            () => tmp.color, c => tmp.color = c, 0f, duration * fadeOut
+        ).SetEase(Ease.InQuad));
+
+        // Rise motion
+        if (attachToCamera && targetCamera)
+        {
+            Vector3 startLocal = go.transform.localPosition;
+            Vector3 endLocal = startLocal + Vector3.up * riseDistance;
+            seq.Join(go.transform.DOLocalMove(endLocal, duration).SetEase(riseEase));
+        }
+        else
+        {
+            Vector3 endPos = go.transform.position + Vector3.up * riseDistance;
+            seq.Join(go.transform.DOMove(endPos, duration).SetEase(riseEase));
+        }
+
+        // Pop scale
+        go.transform.localScale = Vector3.one * popFrom;
+        var scaleSeq = DOTween.Sequence().SetTarget(go.transform);
+        scaleSeq.AppendInterval(popDelay);
+        scaleSeq.Append(go.transform.DOScale(popTo, duration * popDurFrac).SetEase(popEase));
+        scaleSeq.Append(go.transform.DOScale(endScale, duration * 0.2f).SetEase(Ease.InOutQuad));
+
+        // Rotation
+        float dynamicTiltZ = 0f;
+        seq.OnUpdate(() =>
+        {
+            if (attachToCamera && targetCamera)
+            {
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, fixedRotZ + dynamicTiltZ);
+            }
+            else
+            {
+                if (!targetCamera) return;
+                var face = Quaternion.LookRotation(targetCamera.transform.forward, Vector3.up);
+                go.transform.rotation = face * Quaternion.Euler(0f, 0f, fixedRotZ + dynamicTiltZ);
+            }
+        });
+
+        seq.OnComplete(() =>
+        {
+            go.SetActive(false);
+            _pool.Release(go);
+        });
+    }
+
+    private void ApplyOutlineWithColor(TextMeshPro tmp, RacingPopupStyleSO style, Color outlineColor)
+    {
+        bool enable = style?.enableOutline ?? defaultEnableOutline;
+        if (!enable) return;
+
+        var mat = tmp.fontMaterial;
+        if (!mat) return;
+
+        mat.EnableKeyword("OUTLINE_ON");
+
+        float width = style?.outlineWidth ?? defaultOutlineWidth;
+        float dilate = style?.faceDilate ?? defaultFaceDilate;
+
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineWidth))
+            mat.SetFloat(ShaderUtilities.ID_OutlineWidth, width);
+
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineColor))
+        {
+            if (outlineColor.a <= 0f) outlineColor.a = 1f;
+
+            float intensity = style?.outlineIntensity ?? 3f;
+            Color hdrColor = outlineColor * intensity;
+            hdrColor.a = outlineColor.a;
+
+            mat.SetColor(ShaderUtilities.ID_OutlineColor, hdrColor);
+        }
+
+        if (mat.HasProperty(ShaderUtilities.ID_FaceDilate))
+            mat.SetFloat(ShaderUtilities.ID_FaceDilate, dilate);
+
+        tmp.extraPadding = true;
+        tmp.UpdateMeshPadding();
+        tmp.SetMaterialDirty();
+    }
+    private void SpawnInternal(RacingPopupType type, float value, string customText, Vector3 worldPosition, Color? colorOverride, float? scaleOverride, bool useRandomScreenPos = false)
+    {
+        var go = _pool.Get();
+        DOTween.Kill(go.transform, false);
+
+        var tmp = go.GetComponent<TextMeshPro>();
+        DOTween.Kill(tmp, false);
+
+        // Get style (or use defaults)
+        _styleMap.TryGetValue(type, out var style);
+
+        // Apply font
+        var useFont = style?.font ?? defaultFont;
+        if (useFont) tmp.font = useFont;
+
+        // Apply sprite asset (style-specific first, then fallback to default)
+        var useSpriteAsset = style?.spriteAsset ?? defaultSpriteAsset;
+        if (useSpriteAsset) tmp.spriteAsset = useSpriteAsset;
+
+        // Apply material
+        var useMat = style?.fontMaterial ?? defaultFontMaterial;
+        Material baseMat = null;
+        if (IsTMPMaterial(useMat))
+            baseMat = useMat;
+        else if (tmp.font)
+            baseMat = tmp.font.material;
+
+        if (baseMat)
+        {
+            tmp.fontSharedMaterial = baseMat;
+            tmp.fontMaterial = new Material(baseMat);
+        }
+
+        // Apply outline
+        ApplyOutline(tmp, style);
+
+        // Set text
+        if (!string.IsNullOrEmpty(customText))
+        {
+            tmp.text = customText;
+        }
+        else if (style != null)
+        {
+            tmp.text = style.FormatText(value);
+        }
+        else
+        {
+            tmp.text = value.ToString("0.#");
+        }
+
+        // Color
+        var useColor = colorOverride ?? style?.textColor ?? defaultColor;
+        tmp.color = new Color(useColor.r, useColor.g, useColor.b, 0f);
+
+        // Font size with value scaling
+        float baseFontSize = style?.baseFontSize ?? defaultFontSize;
+        float valueScaleMult = style?.ComputeScaleMultiplier(value) ?? 1f;
+        float finalScale = scaleOverride ?? valueScaleMult;
+        tmp.fontSize = baseFontSize * finalScale;
+
+        // Sorting
+        if (incrementalSorting)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr)
+            {
+                int baseOrder = style?.sortingOrder ?? baseSortingOrder;
+                string layer = style?.sortingLayerName ?? defaultSortingLayer;
+                mr.sortingLayerName = layer;
+
+                if (_nextSortingOrder < baseOrder) _nextSortingOrder = baseOrder;
+                mr.sortingOrder = _nextSortingOrder++;
+
+                if (_nextSortingOrder - baseOrder > sortingWrapRange)
+                    _nextSortingOrder = baseOrder;
+            }
+        }
+
+
+
+        // === FIXED ROTATION (Comic Style /\ ) ===
+        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+
+        // === POSITION WITH OFFSET (Comic Style) ===
+        Vector3 positionOffset = style?.GetPositionOffset() ?? Vector3.zero;
+
+        if (attachToCamera && targetCamera)
+        {
+            // Parent to camera so it moves with it
+            go.transform.SetParent(targetCamera.transform, false);
+
+            // Set LOCAL position relative to camera
+            Vector3 localPos = Vector3.forward * cameraSpawnDistance
+                             + Vector3.up * cameraVerticalOffset
+                             + Vector3.right * positionOffset.x
+                             + Vector3.up * positionOffset.y;
+
+            // Apply random screen position if requested
+            if (useRandomScreenPos)
+            {
+                localPos += Vector3.right * worldPosition.x;
+                localPos += Vector3.up * worldPosition.y;
+            }
+
+            go.transform.localPosition = localPos;
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, fixedRotZ);
+        }
+        else
+        {
+            // Spawn at world position (original behavior)
+            go.transform.SetParent(transform, false);
+            Vector3 basePos = worldPosition + positionOffset;
+            if (targetCamera)
+                basePos -= targetCamera.transform.forward * cameraForwardOffset;
+            go.transform.position = basePos;
+        }
+
+        // Animation parameters
+        float duration = style?.duration ?? defaultDuration;
+        float riseDistance = style?.riseDistance ?? defaultRiseDistance;
+        float fadeInFrac = style?.fadeInFraction ?? 0.1f;
+        float fadeOutFrac = style?.fadeOutFraction ?? 0.3f;
+        float popFrom = style?.popFromScale ?? defaultPopFromScale;
+        float popTo = style?.popToScale ?? defaultPopToScale;
+        float endScaleVal = style?.endScale ?? defaultEndScale;
+        float popDelay = style?.popDelay ?? defaultPopDelay;
+        float popDurFrac = style?.popDurationFraction ?? defaultPopDurationFraction;
+        bool enableTiltShake = style?.enableTiltShake ?? false;
+        float tiltShakeAngle = style?.tiltShakeAngle ?? 8f;
+        float tiltShakeDurFrac = style?.tiltShakeDurationFraction ?? 0.2f;
+        bool useUnscaled = style?.useUnscaledTime ?? true;
+        var riseEase = style?.riseEase ?? Ease.OutCubic;
+        var popEase = style?.popEase ?? Ease.OutBack;
+
+        float fadeIn = Mathf.Clamp01(fadeInFrac) * duration;
+        float fadeOut = Mathf.Clamp01(fadeOutFrac) * duration;
+        float popTime = Mathf.Clamp(popDurFrac, 0.05f, 0.5f) * duration;
+        float shrinkTime = Mathf.Max(0.001f, duration - (popDelay + popTime));
+
+        // Initial scale
+        go.transform.localScale = Vector3.one * (popFrom * finalScale);
+
+        // Tilt tracking (for shake animation)
+        float dynamicTiltZ = 0f;
+
+        // Build sequence
+        var seq = DOTween.Sequence().SetUpdate(useUnscaled).SetRecyclable(true);
+
+        // Rise motion
+        if (attachToCamera && targetCamera)
+        {
+            // Local space rise (relative to camera)
+            Vector3 startLocal = go.transform.localPosition;
+            Vector3 endLocal = startLocal + Vector3.up * riseDistance;
+            seq.Join(go.transform.DOLocalMove(endLocal, duration).SetEase(riseEase));
+        }
+        else
+        {
+            // World space rise
+            Vector3 endPos = go.transform.position + Vector3.up * riseDistance;
+            seq.Join(go.transform.DOMove(endPos, duration).SetEase(riseEase));
+        }
+
+        // Fade in/out
+        seq.Insert(0f, tmp.DOFade(1f, fadeIn).SetEase(Ease.OutCubic));
+        seq.Insert(duration - fadeOut, tmp.DOFade(0f, fadeOut).SetEase(Ease.InCubic));
+
+        // Pop scale (comic book punch!)
+        seq.Insert(popDelay, go.transform.DOScale(popTo * finalScale, popTime).SetEase(popEase));
+
+        // Shrink after pop (if different from pop)
+        if (endScaleVal < popTo - 0.01f)
+        {
+            seq.Insert(popDelay + popTime, go.transform.DOScale(endScaleVal * finalScale, shrinkTime).SetEase(Ease.InQuad));
+        }
+
+        // Tilt shake animation (optional, on top of fixed rotation)
+        if (enableTiltShake && tiltShakeAngle > 0f)
+        {
+            float tiltTime = Mathf.Clamp(tiltShakeDurFrac, 0.02f, 0.9f) * duration;
+            float effectiveTiltTime = Mathf.Min(tiltTime, duration - popDelay);
+
+            var tiltSeq = DOTween.Sequence().SetUpdate(useUnscaled);
+            tiltSeq.Append(DOVirtual.Float(0f, tiltShakeAngle, effectiveTiltTime * 0.33f, v => dynamicTiltZ = v).SetEase(Ease.OutCubic));
+            tiltSeq.Append(DOVirtual.Float(tiltShakeAngle, -tiltShakeAngle, effectiveTiltTime * 0.33f, v => dynamicTiltZ = v).SetEase(Ease.InOutCubic));
+            tiltSeq.Append(DOVirtual.Float(-tiltShakeAngle, 0f, effectiveTiltTime * 0.34f, v => dynamicTiltZ = v).SetEase(Ease.InCubic));
+            seq.Insert(popDelay, tiltSeq);
+        }
+
+        // Face camera + apply fixed rotation + dynamic tilt
+        seq.OnUpdate(() =>
+        {
+            if (attachToCamera && targetCamera)
+            {
+                // Already parented to camera, just apply tilt
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, fixedRotZ + dynamicTiltZ);
+            }
+            else
+            {
+                if (!targetCamera) return;
+                var face = Quaternion.LookRotation(targetCamera.transform.forward, Vector3.up);
+                go.transform.rotation = face * Quaternion.Euler(0f, 0f, fixedRotZ + dynamicTiltZ);
+            }
+        });
+
+        // Cleanup
+        seq.OnComplete(() =>
+        {
+            ResetPopup(go);
+            _pool.Release(go);
+        });
+
+        // Play sound
+        if (style?.spawnSound && audioSource)
+        {
+            audioSource.PlayOneShot(style.spawnSound, style.soundVolume);
+        }
+    }
+
+    private void ApplyOutline(TextMeshPro tmp, RacingPopupStyleSO style)
+    {
+        bool enable = style?.enableOutline ?? defaultEnableOutline;
+        if (!enable) return;
+
+        var mat = tmp.fontMaterial;
+        if (!mat) return;
+
+        mat.EnableKeyword("OUTLINE_ON");
+
+        float width = style?.outlineWidth ?? defaultOutlineWidth;
+        Color outColor = style?.outlineColor ?? defaultOutlineColor;
+        float dilate = style?.faceDilate ?? defaultFaceDilate;
+
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineWidth))
+            mat.SetFloat(ShaderUtilities.ID_OutlineWidth, width);
+
+        if (mat.HasProperty(ShaderUtilities.ID_OutlineColor))
+        {
+            if (outColor.a <= 0f) outColor.a = 1f;
+
+            // Apply HDR intensity
+            float intensity = style?.outlineIntensity ?? 3f;
+            Color hdrColor = outColor * intensity;
+            hdrColor.a = outColor.a; // Keep original alpha
+
+            mat.SetColor(ShaderUtilities.ID_OutlineColor, hdrColor);
+        }
+
+        if (mat.HasProperty(ShaderUtilities.ID_FaceDilate))
+            mat.SetFloat(ShaderUtilities.ID_FaceDilate, dilate);
+
+
+        tmp.extraPadding = true;
+        tmp.UpdateMeshPadding();
+        tmp.SetMaterialDirty();
+    }
+
+    // === EDITOR HELPER ===
+
+#if UNITY_EDITOR
+    [ContextMenu("Test HP Damage Popup")]
+    private void TestHPDamage()
+    {
+        if (!Application.isPlaying) return;
+        Spawn(RacingPopupType.HPDamage, 25f, transform.position + Vector3.up * 2f);
+    }
+
+    [ContextMenu("Test Fuel Loss Popup")]
+    private void TestFuelLoss()
+    {
+        if (!Application.isPlaying) return;
+        Spawn(RacingPopupType.FuelLoss, 15f, transform.position + Vector3.up * 2f);
+    }
+
+    [ContextMenu("Test Both (Comic Style)")]
+    private void TestBothComicStyle()
+    {
+        if (!Application.isPlaying) return;
+        Vector3 pos = transform.position + Vector3.up * 2f;
+        Spawn(RacingPopupType.HPDamage, 30f, pos);
+        Spawn(RacingPopupType.FuelLoss, 12f, pos);
+    }
+#endif
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/RacingPopupType.cs
+
+```csharp
+/// <summary>
+/// Types of popup text that can be displayed in the racing game.
+/// Add new types here as needed for future functionality.
+/// </summary>
+public enum RacingPopupType
+{
+    // Damage / Loss
+    HPDamage,           // HP lost from crash
+    FuelLoss,           // Fuel lost from crash
+    
+    // Gains / Recovery
+    HPGain,             // HP recovered (pickup, regen)
+    FuelGain,           // Fuel recovered (pickup, mash reward)
+    CoinGain,           // Coins collected
+    
+    // Mash Recovery specific
+    MashFuelReward,     // Fuel gained per mash click
+    MashClickBonus,     // Multi-click bonus display
+    
+    // Boost / Speed
+    BoostActivate,      // Boost activated
+    SpeedBonus,         // Speed bonus text
+    
+    // Combo / Multiplier
+    ComboText,          // Combo counter
+    MultiplierText,     // Score multiplier
+    
+    // Near Miss / Close Call
+    NearMiss,           // Close call with obstacle
+    SprocketGain,
+    // Generic
+    Generic,            // Generic popup (white, neutral)
+    Warning,            // Warning text (orange/yellow)
+    Critical            // Critical/important (red, large)
+}
+
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/RacingSkillDetailPanel.cs
 
 ```csharp
@@ -17840,7 +19906,10 @@ public class RacingSkillDetailPanel : MonoBehaviour
     private void OnBuyClicked()
     {
         if (mgr == null || def == null) return;
-        bool purchased = mgr.TryPurchase(def.type);
+
+        // Use smart purchase that checks usesSprockets flag
+        bool purchased = mgr.TryPurchaseSmart(def.type);
+
         if (purchased)
         {
             // Play UI purchase SFXs if available
@@ -17848,7 +19917,7 @@ public class RacingSkillDetailPanel : MonoBehaviour
             if (sfx != null)
             {
                 sfx.PlayPurchaseSkill();
-                sfx.PlayPurchaseCurrency(); // user said currency sound may be played along with purchase
+                sfx.PlayPurchaseCurrency();
             }
             Refresh();
         }
@@ -17863,52 +19932,208 @@ public class RacingSkillDetailPanel : MonoBehaviour
         if (nameText) nameText.text = def.displayName;
         if (descText) descText.text = def.description;
         if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
-        if (effectText) effectText.text = $"Effect: {FormatEffect(def.type)}";
+        if (effectText) effectText.text = FormatEffect(def.type);
 
+        // Cost display with currency type
         if (costText)
         {
-            costText.text = (lvl >= def.maxLevel) ? "Maxed" : $"Cost: {mgr.GetNextLevelCost(def.type)}";
+            if (lvl >= def.maxLevel)
+            {
+                costText.text = "Maxed";
+            }
+            else
+            {
+                int cost = mgr.GetNextLevelCostSmart(def.type);
+                string currencyName = mgr.GetCurrencyNameForSkill(def.type);
+                costText.text = $"Cost: {cost} {currencyName}";
+            }
         }
 
+        // Buy button - check correct currency
         if (buyButton)
         {
-            bool canBuy = false;
-            if (lvl < def.maxLevel)
-            {
-                int cost = mgr.GetNextLevelCost(def.type);
-                canBuy = cost > 0 && mgr.Currency >= cost;
-            }
+            bool canBuy = mgr.CanAffordNextLevel(def.type);
             buyButton.interactable = canBuy;
         }
     }
 
+    /// <summary>
+    /// Formats the effect text showing: CurrentStat + Upgrade -> NewStat
+    /// Example: "100 + 15 -> 115" for Max Fuel
+    /// </summary>
     private string FormatEffect(SkillType type)
     {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr == null) return "x1";
+        if (mgr == null || def == null) return "---";
+
+        int currentLevel = mgr.GetLevel(def.type);
+        int nextLevel = currentLevel + 1;
+        bool isMaxed = currentLevel >= def.maxLevel;
+
+        // Get the actual current stat and projected stat after upgrade
+        float currentStat = GetCurrentStatValue(def.type);
+        float nextStat = isMaxed ? currentStat : GetStatValueAtLevel(def.type, nextLevel);
+        float upgradeAmount = nextStat - currentStat;
+
+        // Format output
+        if (isMaxed)
+        {
+            return $"{currentStat:0.##} (MAX)";
+        }
+
+        string sign = upgradeAmount >= 0 ? "+" : "";
+        return $"{currentStat:0.##} {sign}{upgradeAmount:0.##} -> {nextStat:0.##}";
+    }
+
+    /// <summary>
+    /// Gets the current actual stat value for a skill type.
+    /// </summary>
+    private float GetCurrentStatValue(SkillType type)
+    {
+        // Try to get CarController for base stats
+        var car = FindObjectOfType<CarController>();
 
         switch (type)
         {
-            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
-            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
-            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
-            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            // === CORE STATS (read from car's base values) ===
+            case SkillType.Acceleration:
+            case SkillType.Acceleration_Add:
+            case SkillType.Acceleration_Mul:
+                float baseAccel = car != null ? car.BaseAcceleration : 10f;
+                return mgr.ApplyStatChain(baseAccel, SkillType.Acceleration_Add, SkillType.Acceleration_Mul);
+
+            case SkillType.MaxSpeed:
+            case SkillType.MaxSpeed_Add:
+            case SkillType.MaxSpeed_Mul:
+                float baseSpeed = car != null ? car.BaseMaxSpeed : 20f;
+                return mgr.ApplyStatChain(baseSpeed, SkillType.MaxSpeed_Add, SkillType.MaxSpeed_Mul);
+
+            case SkillType.MaxFuel_Add:
+            case SkillType.MaxFuel_Mul:
+                float baseFuel = car != null ? car.BaseMaxFuel : 100f;
+                return mgr.ApplyStatChain(baseFuel, SkillType.MaxFuel_Add, SkillType.MaxFuel_Mul);
+
+            case SkillType.MaxHP_Add:
+            case SkillType.MaxHP_Mul:
+                float baseHP = car != null ? car.BaseMaxHP : 100f;
+                return mgr.ApplyStatChain(baseHP, SkillType.MaxHP_Add, SkillType.MaxHP_Mul);
+
+            case SkillType.TurnSpeed_Add:
+            case SkillType.TurnSpeed_Mul:
+                float baseTurn = car != null ? car.BaseTurnSpeed : 100f;
+                return mgr.ApplyStatChain(baseTurn, SkillType.TurnSpeed_Add, SkillType.TurnSpeed_Mul);
+
+            case SkillType.DrivingFuelUse_Add:
+            case SkillType.DrivingFuelUse_Mul:
+                float baseDriving = car != null ? car.BaseDrivingFuelUse : 2f;
+                return mgr.ApplyStatChain(baseDriving, SkillType.DrivingFuelUse_Add, SkillType.DrivingFuelUse_Mul);
+
+            case SkillType.HPRegen_Add:
+            case SkillType.HPRegen_Mul:
+                float baseRegen = car != null ? car.BaseHPRegen : 0f;
+                return mgr.ApplyStatChain(baseRegen, SkillType.HPRegen_Add, SkillType.HPRegen_Mul);
+
+            // === BOOST STATS ===
+            case SkillType.BoostForce_Add:
+            case SkillType.BoostForce_Mul:
+                float baseBoost = car != null ? car.BaseBoostForce : 50f;
+                return mgr.ApplyStatChain(baseBoost, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+
+            case SkillType.BoostDuration_Add:
+            case SkillType.BoostDuration_Mul:
+                float baseDur = car != null ? car.BaseBoostDuration : 1f;
+                return mgr.ApplyStatChain(baseDur, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+
+            case SkillType.BoostCooldown_Add:
+            case SkillType.BoostCooldown_Mul:
+                float baseCD = car != null ? car.BaseBoostCooldown : 3f;
+                return mgr.ApplyStatChain(baseCD, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+
+            case SkillType.BoostFuelCost_Add:
+            case SkillType.BoostFuelCost_Mul:
+                float baseCost = car != null ? car.BaseBoostFuelCost : 10f;
+                return mgr.ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+
+            // === MASH SKILLS ===
+            case SkillType.MashClicksPerClick_Add:
+            case SkillType.MashClicksPerClick_Mul:
+                float baseClicks = car != null ? car.BaseClicksPerClick : 1f;
+                return mgr.ApplyStatChain(baseClicks, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul);
+
+            case SkillType.MashPassiveClickRate_Add:
+            case SkillType.MashPassiveClickRate_Mul:
+                float baseRate = car != null ? car.BasePassiveClickRate : 0f;
+                return mgr.ApplyStatChain(baseRate, SkillType.MashPassiveClickRate_Add, SkillType.MashPassiveClickRate_Mul);
+
+            case SkillType.MashPassiveClickStrength_Add:
+            case SkillType.MashPassiveClickStrength_Mul:
+                float baseStrength = car != null ? car.BasePassiveClickStrength : 1f;
+                return mgr.ApplyStatChain(baseStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul);
+
+            case SkillType.MashFuelPerClick_Add:
+            case SkillType.MashFuelPerClick_Mul:
+                float baseMashFuel = car != null ? car.BaseMashFuelPerClick : 0.3f;
+                return mgr.ApplyStatChain(baseMashFuel, SkillType.MashFuelPerClick_Add, SkillType.MashFuelPerClick_Mul);
+
+            // === PERCENTAGE/CHANCE STATS ===
             case SkillType.CoinSpawnRate_Add:
             case SkillType.CoinSpawnRate_Mul:
-                return $"SpawnRate x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+                return mgr.GetCoinSpawnRateMultiplier() * 100f; // Show as percentage
+
             case SkillType.CoinDoubleChance_Add:
             case SkillType.CoinDoubleChance_Mul:
-                return $"Double Chance {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+                return mgr.GetCoinDoubleChance() * 100f; // Show as percentage
+
+            // === UNLOCK SKILLS (just show level) ===
+            case SkillType.BoostUnlock:
+            case SkillType.DriftUnlock:
+            case SkillType.TurretUnlock:
+            case SkillType.ForcefieldUnlock:
+            case SkillType.FuelPickupUnlock:
+            case SkillType.HPPickupUnlock:
+                return mgr.GetLevel(type);
+
+            // === DEFAULT: Use raw skill value ===
             default:
-                return "x1";
+                return def.GetValueAtLevel(mgr.GetLevel(def.type));
         }
     }
-}
 
-public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
-{
-    public Action onClicked;
-    public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
+    /// <summary>
+    /// Gets what the stat value WOULD be at a specific skill level.
+    /// </summary>
+    private float GetStatValueAtLevel(SkillType type, int level)
+    {
+        // Temporarily calculate what the stat would be at the given level
+        float currentSkillValue = def.GetValueAtLevel(mgr.GetLevel(def.type));
+        float nextSkillValue = def.GetValueAtLevel(level);
+        float skillDelta = nextSkillValue - currentSkillValue;
+
+        // Get current stat and add the delta
+        float currentStat = GetCurrentStatValue(type);
+
+        // For multiplicative skills, we need to calculate differently
+        if (def.mode == SkillApplicationMode.Multiplicative)
+        {
+            // Current stat already has current multiplier applied
+            // We need to apply the ratio of new/old multiplier
+            if (currentSkillValue > 0.001f)
+            {
+                return currentStat * (nextSkillValue / currentSkillValue);
+            }
+            return currentStat + skillDelta;
+        }
+        else
+        {
+            // Additive: just add the delta
+            return currentStat + skillDelta;
+        }
+    }
+
+    public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
+    {
+        public Action onClicked;
+        public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
+    }
 }
 ```
 
@@ -17935,6 +20160,8 @@ public class RacingSkillTreeManager : MonoBehaviour
     [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
     [SerializeField] private bool revealAllSkillsAtStart = true;
 
+
+
     /// <summary>
     /// Master toggle to enable/disable all skill effects at runtime.
     /// </summary>
@@ -17946,6 +20173,13 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     [Header("Economy")]
     [SerializeField] private int playerCurrency = 0;
+
+    [Header("Sprockets Currency")]
+    [SerializeField] private int playerSprockets = 0;
+
+    private const string SprocketsKey = "Racing_Sprockets";
+
+    public event Action<int> OnSprocketsChanged;
 
     public event Action<int> OnCurrencyChanged;
     public event Action<SkillType, int> OnLevelChanged;
@@ -17980,6 +20214,8 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
 
+        playerSprockets = PlayerPrefs.GetInt(SprocketsKey, playerSprockets);
+
         _revealedSkills.Clear();
         foreach (var def in skills)
         {
@@ -17991,6 +20227,7 @@ public class RacingSkillTreeManager : MonoBehaviour
         }
 
         OnCurrencyChanged?.Invoke(playerCurrency);
+        OnSprocketsChanged?.Invoke(playerSprockets);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, GetLevel(t));
     }
@@ -18244,6 +20481,132 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0.01f, v);
     }
 
+
+    /// <summary>
+    /// Current sprockets balance.
+    /// </summary>
+    public int Sprockets => playerSprockets;
+
+    private void SaveSprockets()
+    {
+        PlayerPrefs.SetInt(SprocketsKey, playerSprockets);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Add sprockets to player balance.
+    /// </summary>
+    public void AddSprockets(int amount)
+    {
+        if (amount <= 0) return;
+        playerSprockets += amount;
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+    }
+
+    /// <summary>
+    /// Remove sprockets from player balance.
+    /// </summary>
+    public void RemoveSprockets(int amount)
+    {
+        if (amount <= 0) return;
+        playerSprockets = Mathf.Max(0, playerSprockets - amount);
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+    }
+
+    /// <summary>
+    /// Check if player can afford a sprocket cost.
+    /// </summary>
+    public bool CanAffordSprockets(int cost) => playerSprockets >= cost;
+
+
+    /// <summary>
+    /// Try to purchase a skill using sprockets instead of coins.
+    /// </summary>
+    public bool TryPurchaseWithSprockets(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        // Use sprocket cost (you can add a separate field to SkillDefinition for this)
+        int cost = def.GetSprocketCostForLevel(nextLevel);
+        if (playerSprockets < cost) return false;
+
+        if (_state.Increment(type, def.maxLevel))
+        {
+            playerSprockets -= cost;
+            SaveSprockets();
+            _state.Save();
+            int newLvl = GetLevel(type);
+            OnSprocketsChanged?.Invoke(playerSprockets);
+            OnLevelChanged?.Invoke(type, newLvl);
+            EvaluateProgressiveUnlocks(def, newLvl);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Smart purchase that automatically uses the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public bool TryPurchaseSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+
+        if (def.usesSprockets)
+            return TryPurchaseWithSprockets(type);
+        else
+            return TryPurchase(type);
+    }
+
+    /// <summary>
+    /// Get the next level cost in the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public int GetNextLevelCostSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return 0;
+
+        if (def.usesSprockets)
+            return def.GetSprocketCostForLevel(nextLevel);
+        else
+            return def.GetCostForLevel(nextLevel);
+    }
+
+    /// <summary>
+    /// Check if player can afford the next level of a skill (checks correct currency).
+    /// </summary>
+    public bool CanAffordNextLevel(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        if (def.usesSprockets)
+        {
+            int cost = def.GetSprocketCostForLevel(nextLevel);
+            return playerSprockets >= cost;
+        }
+        else
+        {
+            int cost = def.GetCostForLevel(nextLevel);
+            return playerCurrency >= cost;
+        }
+    }
+
+    /// <summary>
+    /// Get the currency name for display based on skill's usesSprockets flag.
+    /// </summary>
+    public string GetCurrencyNameForSkill(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return "Coins";
+        return def.usesSprockets ? "Sprockets" : "Coins";
+    }
+
+
     // ------------------------------------------------------------------------
     // Master Skill Control
     // ------------------------------------------------------------------------
@@ -18293,6 +20656,9 @@ public class RacingSkillTreeManager : MonoBehaviour
         }
 
         OnSkillsReset?.Invoke();
+        playerSprockets = 0;
+        PlayerPrefs.DeleteKey(SprocketsKey);
+        OnSprocketsChanged?.Invoke(playerSprockets);
     }
 
     public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
@@ -18396,6 +20762,403 @@ public class RacingUISoundManager : MonoBehaviour
         yield return new WaitForSeconds(t);
         if (go) Destroy(go);
     }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/ScreenFlashManager.cs
+
+```csharp
+using DG.Tweening;
+using UnityEngine;
+using UnityEngine.UI;
+
+/// <summary>
+/// Manages screen flash/edge glow effects for game events.
+/// Integrates with CoinDatabase for coin-specific flashes.
+/// </summary>
+public class ScreenFlashManager : MonoBehaviour
+{
+    public static ScreenFlashManager Instance { get; private set; }
+
+    [Header("Setup")]
+    [Tooltip("The RawImage or Image covering the full screen with EdgeGlow material.")]
+    [SerializeField] private Graphic flashImage;
+    [SerializeField] private Material edgeGlowMaterial;
+
+    [Header("Default Settings")]
+    [SerializeField] private float defaultOuterRadius = 1.2f;
+    [SerializeField] private float defaultSoftness = 0.3f;
+
+    [Header("Preset: Mash Click")]
+    [SerializeField] private Color mashColor = new Color(1f, 0.9f, 0.3f, 1f);
+    [SerializeField] private float mashIntensity = 0.8f;
+    [SerializeField] private float mashDuration = 0.15f;
+    [SerializeField] private float mashInnerRadius = 0.5f;
+
+    [Header("Preset: Damage")]
+    [SerializeField] private Color damageColor = new Color(1f, 0.2f, 0.1f, 1f);
+    [SerializeField] private float damageIntensity = 1.5f;
+    [SerializeField] private float damageDuration = 0.35f;
+    [SerializeField] private float damageInnerRadius = 0.2f;
+
+    [Header("Preset: Heal/HP Gain")]
+    [SerializeField] private Color healColor = new Color(0.3f, 1f, 0.4f, 1f);
+    [SerializeField] private float healIntensity = 1f;
+    [SerializeField] private float healDuration = 0.3f;
+    [SerializeField] private float healInnerRadius = 0.4f;
+
+    [Header("Preset: Fuel Gain")]
+    [SerializeField] private Color fuelColor = new Color(0.2f, 0.8f, 1f, 1f);
+    [SerializeField] private float fuelIntensity = 0.8f;
+    [SerializeField] private float fuelDuration = 0.25f;
+    [SerializeField] private float fuelInnerRadius = 0.45f;
+
+    [Header("Preset: Boost")]
+    [SerializeField] private Color boostColor = new Color(0.3f, 0.7f, 1f, 1f);
+    [SerializeField] private float boostIntensity = 1.3f;
+    [SerializeField] private float boostDuration = 0.2f;
+    [SerializeField] private float boostInnerRadius = 0.35f;
+
+    [Header("Preset: Level Up / Big Event")]
+    [SerializeField] private Color levelUpColor = new Color(1f, 1f, 1f, 1f);
+    [SerializeField] private float levelUpIntensity = 2f;
+    [SerializeField] private float levelUpDuration = 0.5f;
+    [SerializeField] private float levelUpInnerRadius = 0.1f;
+
+    [Header("Persistent: Ice Path")]
+    [SerializeField] private Color iceColor = new Color(0.55f, 0.85f, 1f, 1f);
+    [SerializeField, Min(0f)] private float icePersistentIntensity = 0.75f;
+    [SerializeField, Min(0f)] private float iceFadeIn = 0.12f;
+    [SerializeField, Min(0f)] private float iceFadeOut = 0.12f;
+    [SerializeField] private float iceInnerRadius = 0.55f;
+    [SerializeField] private float iceOuterRadius = 1.2f;
+    [SerializeField] private float iceSoftness = 0.35f;
+
+    [Header("Preset: Sprocket Gain")]
+    [SerializeField] private Color sprocketColor = new Color(0.7f, 0.5f, 0.2f, 1f);
+    [SerializeField] private float sprocketIntensity = 1.2f;
+    [SerializeField] private float sprocketDuration = 0.3f;
+    [SerializeField] private float sprocketInnerRadius = 0.35f;
+
+    // Material property IDs
+    private static readonly int ColorID = Shader.PropertyToID("_Color");
+    private static readonly int IntensityID = Shader.PropertyToID("_Intensity");
+    private static readonly int InnerRadiusID = Shader.PropertyToID("_InnerRadius");
+    private static readonly int OuterRadiusID = Shader.PropertyToID("_OuterRadius");
+    private static readonly int SoftnessID = Shader.PropertyToID("_Softness");
+
+    private Material _instanceMaterial;
+    private Tween _currentTween;
+    private float _currentIntensity;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+
+        SetupMaterial();
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        if (_instanceMaterial) Destroy(_instanceMaterial);
+    }
+
+    private void SetupMaterial()
+    {
+        if (edgeGlowMaterial == null)
+        {
+            Debug.LogWarning("[ScreenFlashManager] No EdgeGlow material assigned!");
+            return;
+        }
+
+        _instanceMaterial = new Material(edgeGlowMaterial);
+
+        if (flashImage)
+        {
+            flashImage.material = _instanceMaterial;
+            _instanceMaterial.SetFloat(IntensityID, 0f);
+        }
+    }
+
+
+    private bool _icePersistentActive;
+    private Tween _iceTween;
+
+    private bool IsFlashingNow()
+    {
+        return _currentTween != null && _currentTween.IsActive() && _currentIntensity > 0.001f;
+    }
+
+    private void ApplyIceMaterialSettings()
+    {
+        _instanceMaterial.SetColor(ColorID, iceColor);
+        _instanceMaterial.SetFloat(InnerRadiusID, iceInnerRadius);
+        _instanceMaterial.SetFloat(OuterRadiusID, iceOuterRadius > 0f ? iceOuterRadius : defaultOuterRadius);
+        _instanceMaterial.SetFloat(SoftnessID, iceSoftness > 0f ? iceSoftness : defaultSoftness);
+    }
+
+    private void RestorePersistentIfNeeded()
+    {
+        if (_icePersistentActive)
+            SetIcePersistent(true);
+    }
+
+
+    // === CORE FLASH METHODS ===
+
+    /// <summary>
+    /// Flash with full customization.
+    /// </summary>
+    public void Flash(Color color, float intensity, float duration, float innerRadius = 0.3f, float outerRadius = 1.2f, float softness = 0.3f)
+    {
+        if (_instanceMaterial == null) return;
+
+        _currentTween?.Kill();
+
+        _instanceMaterial.SetColor(ColorID, color);
+        _instanceMaterial.SetFloat(InnerRadiusID, innerRadius);
+        _instanceMaterial.SetFloat(OuterRadiusID, outerRadius);
+        _instanceMaterial.SetFloat(SoftnessID, softness);
+
+        _currentIntensity = 0f;
+        _currentTween = DOTween.To(
+            () => _currentIntensity,
+            x => {
+                _currentIntensity = x;
+                _instanceMaterial.SetFloat(IntensityID, x);
+            },
+            intensity,
+            duration * 0.3f
+        )
+        .SetEase(Ease.OutQuad)
+        .OnComplete(() => {
+            _currentTween = DOTween.To(
+                () => _currentIntensity,
+                x => {
+                    _currentIntensity = x;
+                    _instanceMaterial.SetFloat(IntensityID, x);
+                },
+                0f,
+                duration * 0.7f
+            )
+            .SetEase(Ease.InQuad)
+            .OnComplete(RestorePersistentIfNeeded);
+        });
+    }
+
+    public void SetIcePersistent(bool active)
+    {
+        if (_instanceMaterial == null) return;
+
+        _icePersistentActive = active;
+        _iceTween?.Kill();
+
+        // If a one-shot flash is currently playing, let it finish.
+        // We'll restore ice in RestorePersistentIfNeeded().
+        if (IsFlashingNow())
+            return;
+
+        float startIntensity = _instanceMaterial.GetFloat(IntensityID);
+
+        if (active)
+        {
+            ApplyIceMaterialSettings();
+
+            _iceTween = DOTween.To(
+                () => startIntensity,
+                x =>
+                {
+                    startIntensity = x;
+                    _instanceMaterial.SetFloat(IntensityID, x);
+                },
+                icePersistentIntensity,
+                iceFadeIn
+            ).SetEase(Ease.OutQuad);
+        }
+        else
+        {
+            _iceTween = DOTween.To(
+                () => startIntensity,
+                x =>
+                {
+                    startIntensity = x;
+                    _instanceMaterial.SetFloat(IntensityID, x);
+                },
+                0f,
+                iceFadeOut
+            ).SetEase(Ease.OutQuad);
+        }
+    }
+
+
+    /// <summary>
+    /// Additive flash that stacks with current intensity (for rapid events).
+    /// </summary>
+    public void FlashAdditive(Color color, float intensityAdd, float duration, float innerRadius = 0.4f)
+    {
+        if (_instanceMaterial == null) return;
+
+        _instanceMaterial.SetColor(ColorID, color);
+        _instanceMaterial.SetFloat(InnerRadiusID, innerRadius);
+
+        float targetIntensity = Mathf.Min(_currentIntensity + intensityAdd, 3f);
+
+        _currentTween?.Kill();
+        _currentIntensity = targetIntensity;
+        _instanceMaterial.SetFloat(IntensityID, _currentIntensity);
+
+        _currentTween = DOTween.To(
+            () => _currentIntensity,
+            x => {
+                _currentIntensity = x;
+                _instanceMaterial.SetFloat(IntensityID, x);
+            },
+            0f,
+            duration
+        )
+        .SetEase(Ease.OutQuad)
+        .OnComplete(RestorePersistentIfNeeded);
+    }
+
+    // === PRESET METHODS ===
+
+    public void FlashMash()
+    {
+        FlashAdditive(mashColor, mashIntensity, mashDuration, mashInnerRadius);
+    }
+
+    /// <summary>
+    /// Flash for coin - uses CoinDatabase to get settings.
+    /// </summary>
+    public void FlashCoin(CoinType coinType)
+    {
+        var data = CoinDatabase.Get(coinType);
+        if (data != null)
+        {
+            Flash(data.primaryColor, data.flashIntensity, data.flashDuration, data.flashInnerRadius);
+        }
+        else
+        {
+            // Fallback
+            Flash(Color.yellow, 1f, 0.25f, 0.4f);
+        }
+    }
+
+    /// <summary>
+    /// Flash for coin using CoinDataSO directly.
+    /// </summary>
+    public void FlashCoin(CoinDataSO coinData)
+    {
+        if (coinData != null)
+        {
+            Flash(coinData.primaryColor, coinData.flashIntensity, coinData.flashDuration, coinData.flashInnerRadius);
+        }
+        else
+        {
+            Flash(Color.yellow, 1f, 0.25f, 0.4f);
+        }
+    }
+
+    public void FlashDamage()
+    {
+        Flash(damageColor, damageIntensity, damageDuration, damageInnerRadius);
+    }
+
+    public void FlashDamage(float damageAmount)
+    {
+        float scaledIntensity = Mathf.Lerp(damageIntensity * 0.5f, damageIntensity * 1.5f, Mathf.Clamp01(damageAmount / 50f));
+        Flash(damageColor, scaledIntensity, damageDuration, damageInnerRadius);
+    }
+
+    public void FlashHeal()
+    {
+        Flash(healColor, healIntensity, healDuration, healInnerRadius);
+    }
+
+    public void FlashHeal(float amount)
+    {
+        float scaledIntensity = Mathf.Lerp(healIntensity * 0.5f, healIntensity * 1.2f, Mathf.Clamp01(amount / 30f));
+        Flash(healColor, scaledIntensity, healDuration, healInnerRadius);
+    }
+
+    public void FlashFuelGain()
+    {
+        Flash(fuelColor, fuelIntensity, fuelDuration, fuelInnerRadius);
+    }
+
+    public void FlashFuelGain(float amount)
+    {
+        float scaledIntensity = Mathf.Lerp(fuelIntensity * 0.5f, fuelIntensity * 1.2f, Mathf.Clamp01(amount / 20f));
+        Flash(fuelColor, scaledIntensity, fuelDuration, fuelInnerRadius);
+    }
+
+    public void FlashBoost()
+    {
+        Flash(boostColor, boostIntensity, boostDuration, boostInnerRadius);
+    }
+
+    public void FlashLevelUp()
+    {
+        Flash(levelUpColor, levelUpIntensity, levelUpDuration, levelUpInnerRadius);
+    }
+
+    public void FlashSprocket()
+    {
+        Flash(sprocketColor, sprocketIntensity, sprocketDuration, sprocketInnerRadius);
+    }
+
+    public void FlashSprocket(int amount)
+    {
+        float scaledIntensity = Mathf.Lerp(sprocketIntensity * 0.7f, sprocketIntensity * 1.5f, Mathf.Clamp01(amount / 30f));
+        Flash(sprocketColor, scaledIntensity, sprocketDuration, sprocketInnerRadius);
+    }
+
+    public void Flash(ScreenFlashType type)
+    {
+        switch (type)
+        {
+            case ScreenFlashType.Mash: FlashMash(); break;
+            case ScreenFlashType.Damage: FlashDamage(); break;
+            case ScreenFlashType.Heal: FlashHeal(); break;
+            case ScreenFlashType.FuelGain: FlashFuelGain(); break;
+            case ScreenFlashType.Boost: FlashBoost(); break;
+            case ScreenFlashType.LevelUp: FlashLevelUp(); break;
+            case ScreenFlashType.Sprocket: FlashSprocket(); break;
+        }
+    }
+
+    // === STATIC SHORTCUTS ===
+
+    public static void Mash() => Instance?.FlashMash();
+    public static void Coin(CoinType type) => Instance?.FlashCoin(type);
+    public static void Coin(CoinDataSO data) => Instance?.FlashCoin(data);
+    public static void Damage() => Instance?.FlashDamage();
+    public static void Damage(float amount) => Instance?.FlashDamage(amount);
+    public static void Heal() => Instance?.FlashHeal();
+    public static void Heal(float amount) => Instance?.FlashHeal(amount);
+    public static void FuelGain() => Instance?.FlashFuelGain();
+    public static void FuelGain(float amount) => Instance?.FlashFuelGain(amount);
+    public static void Boost() => Instance?.FlashBoost();
+    public static void LevelUp() => Instance?.FlashLevelUp();
+    public static void Sprocket() => Instance?.FlashSprocket();
+    public static void Sprocket(int amount) => Instance?.FlashSprocket(amount);
+}
+
+public enum ScreenFlashType
+{
+    Mash,
+    Damage,
+    Heal,
+    FuelGain,
+    Boost,
+    LevelUp,
+    Sprocket
 }
 ```
 
@@ -19510,6 +22273,16 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("If true this skill is visible from the start of a new run.")]
     public bool revealedAtStart = false;
 
+    [Header("Sprocket Currency (for Crash-Related Skills)")]
+    [Tooltip("If true, this skill uses Sprockets instead of Coins.")]
+    public bool usesSprockets = false;
+
+    [Tooltip("Base sprocket cost for level 1.")]
+    [Min(1)] public int baseSprocketCost = 5;
+
+    [Tooltip("Sprocket cost increase per level.")]
+    [Min(0)] public int sprocketCostPerLevel = 3;
+
     [System.Serializable]
     public class ProgressiveUnlock
     {
@@ -19528,6 +22301,16 @@ public class SkillDefinition : ScriptableObject
         if (costCurve != null && costCurve.keys.Length > 0)
             return Mathf.Max(1, Mathf.RoundToInt(costCurve.Evaluate(nextLevel)));
         return flatCost;
+    }
+
+    /// <summary>
+    /// Get the sprocket cost for a specific level.
+    /// Uses linear scaling: baseSprocketCost + (level-1) * sprocketCostPerLevel
+    /// </summary>
+    public int GetSprocketCostForLevel(int nextLevel)
+    {
+        if (nextLevel <= 0) nextLevel = 1;
+        return baseSprocketCost + (nextLevel - 1) * sprocketCostPerLevel;
     }
 
     /// <summary>
@@ -21529,67 +24312,42 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Spawns coins along the track using the CoinType system.
+/// Each coin type uses its own prefab from CoinDataSO.
+/// Combines base spawn weights from CoinDatabase with distance-based weight curves.
+/// </summary>
 public class TrackCoinSpawner : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
 
-    [Header("Prefabs (Order: Bronze / Silver / Gold)")]
-    [SerializeField] private GameObject bronzePrefab;
-    [SerializeField] private GameObject silverPrefab;
-    [SerializeField] private GameObject goldPrefab;
-
-    [Header("Coin Values")]
-    [SerializeField] private int bronzeValue = 1;
-    [SerializeField] private int silverValue = 3;
-    [SerializeField] private int goldValue = 8;
-
-    [Header("Weight Curves (Track Fraction 0..1)")]
-    [Tooltip("Bronze starts high then fades out strongly by mid/end.")]
+    [Header("Coin Type Weights")]
+    [Tooltip("Configure which coin types can spawn and their distance-based weights.")]
     [SerializeField]
-    private AnimationCurve bronzeWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 1f),
-        new Keyframe(0.25f, 1f),
-        new Keyframe(0.45f, 0.6f),
-        new Keyframe(0.60f, 0.25f),
-        new Keyframe(0.75f, 0.12f),
-        new Keyframe(0.90f, 0.05f),
-        new Keyframe(1f, 0.03f)
-    );
+    private List<CoinTypeWeight> coinTypeWeights = new List<CoinTypeWeight>()
+    {
+        new CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, globalScale = 1.12f },
+        new CoinTypeWeight { coinType = CoinType.Silver, enabled = true, globalScale = 0.95f },
+        new CoinTypeWeight { coinType = CoinType.Gold, enabled = true, globalScale = 0.8f },
+        new CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, globalScale = 0.4f },
+        new CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, globalScale = 0.15f },
+        new CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, globalScale = 0.05f }
+    };
 
-    [Tooltip("Silver ramps up, dominates mid track, tapers near end.")]
-    [SerializeField]
-    private AnimationCurve silverWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(0.15f, 0.25f),
-        new Keyframe(0.30f, 0.9f),
-        new Keyframe(0.50f, 1.2f),
-        new Keyframe(0.65f, 1.1f),
-        new Keyframe(0.80f, 0.7f),
-        new Keyframe(1f, 0.4f)
-    );
+    [System.Serializable]
+    public class CoinTypeWeight
+    {
+        public CoinType coinType = CoinType.Bronze;
+        public bool enabled = true;
 
-    [Tooltip("Gold very rare early, increases late and becomes dominant.")]
-    [SerializeField]
-    private AnimationCurve goldWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(0.25f, 0.05f),
-        new Keyframe(0.40f, 0.15f),
-        new Keyframe(0.55f, 0.25f),
-        new Keyframe(0.70f, 0.55f),
-        new Keyframe(0.85f, 1.2f),
-        new Keyframe(0.95f, 1.4f),
-        new Keyframe(1f, 1.5f)
-    );
+        [Tooltip("Multiplier applied to the base spawn weight from CoinDatabase.")]
+        public float globalScale = 1f;
 
-    [Header("Global Variant Tweaks")]
-    [SerializeField, Tooltip("Extra overall scaling applied to bronze weights.")]
-    private float bronzeGlobalScale = 1f;
-    [SerializeField, Tooltip("Extra overall scaling applied to silver weights.")]
-    private float silverGlobalScale = 1f;
-    [SerializeField, Tooltip("Extra overall scaling applied to gold weights.")]
-    private float goldGlobalScale = 1f;
+        [Tooltip("Distance-based weight curve (0 = track start, 1 = track end). Multiplies base weight.")]
+        public AnimationCurve distanceCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
+    }
 
     [Header("Spawn Layout")]
     [SerializeField, Min(0.1f)] private float coinSpacing = 6f;
@@ -21699,103 +24457,111 @@ public class TrackCoinSpawner : MonoBehaviour
         _totalLength = length;
     }
 
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        int n = raw.Count;
-        if (n < 2)
-        {
-            outList.AddRange(raw);
-            return;
-        }
-        outList.Add(raw[0]);
-        for (int i = 0; i < n - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        float t2 = t * t;
-        float t3 = t2 * t;
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
-    }
-
     private void SetupSlots()
     {
-        if (_totalLength <= 0f || coinSpacing <= 0f)
-        {
-            _maxSlotIndex = 0;
-            return;
-        }
-        _maxSlotIndex = Mathf.FloorToInt(_totalLength / coinSpacing);
+        _maxSlotIndex = coinSpacing > 0f ? Mathf.CeilToInt(_totalLength / coinSpacing) : 0;
+    }
+
+    private void ClearAllCoins()
+    {
+        foreach (var kvp in _coinsBySlot)
+            if (kvp.Value) Destroy(kvp.Value);
+        _coinsBySlot.Clear();
     }
 
     private void PreSpawnInitialCoins()
     {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
-        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.FloorToInt(endDist / coinSpacing);
+        if (_path.Count < 2 || coinSpacing <= 0f) return;
 
-        for (int slot = 0; slot <= endSlot; slot++)
+        float playerDist = GetPlayerDistance();
+        float aheadLimit = Mathf.Min(playerDist + initialPreSpawnDistance, _totalLength);
+
+        for (float d = playerDist; d < aheadLimit; d += coinSpacing)
         {
-            if (_coinsBySlot.Count >= maxActiveCoins) break;
-            float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist, true);
+            int slot = Mathf.FloorToInt(d / coinSpacing);
+            if (!_coinsBySlot.ContainsKey(slot))
+                SpawnCoinAtSlot(slot, d);
         }
     }
 
     private void StreamCoins()
     {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+        if (_path.Count < 2 || coinSpacing <= 0f) return;
 
-        float playerDist = GetPlayerDistanceAlongTrack();
-        float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
+        float playerDist = GetPlayerDistance();
+        float minD = playerDist + minSpawnDistanceAhead;
+        float maxD = Mathf.Min(playerDist + maxSpawnDistanceAhead, _totalLength);
 
+        // Spawn ahead
+        for (float d = minD; d < maxD; d += coinSpacing)
+        {
+            int slot = Mathf.FloorToInt(d / coinSpacing);
+            if (slot < 0 || slot > _maxSlotIndex) continue;
+            if (_coinsBySlot.ContainsKey(slot)) continue;
+            if (_coinsBySlot.Count >= maxActiveCoins) break;
+
+            SpawnCoinAtSlot(slot, d);
+        }
+
+        // Despawn behind
+        float despawnThreshold = playerDist - despawnBehindDistance;
         _toRemove.Clear();
         foreach (var kvp in _coinsBySlot)
         {
             float slotDist = kvp.Key * coinSpacing;
-            if (slotDist < despawnStart)
+            if (slotDist < despawnThreshold)
             {
                 if (kvp.Value) Destroy(kvp.Value);
                 _toRemove.Add(kvp.Key);
             }
         }
-        for (int i = 0; i < _toRemove.Count; i++)
-            _coinsBySlot.Remove(_toRemove[i]);
-
-        float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spanStart / coinSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spanEnd / coinSpacing), 0, _maxSlotIndex);
-
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            if (_coinsBySlot.ContainsKey(slot)) continue;
-            if (_coinsBySlot.Count >= maxActiveCoins) break;
-            float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist, false);
-        }
+        foreach (var k in _toRemove)
+            _coinsBySlot.Remove(k);
     }
 
-    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
+    private float GetPlayerDistance()
+    {
+        if (_path.Count < 2 || playerTransform == null) return 0f;
+
+        Vector3 playerPos = playerTransform.position;
+        float bestDist = float.MaxValue;
+        int bestIdx = _lastClosestSegmentIndex;
+
+        // Search around last known position
+        int searchStart = Mathf.Max(0, _lastClosestSegmentIndex - 5);
+        int searchEnd = Mathf.Min(_path.Count - 1, _lastClosestSegmentIndex + 20);
+
+        for (int i = searchStart; i < searchEnd; i++)
+        {
+            float d = PointSegmentDistanceSqr(playerPos, _path[i], _path[i + 1]);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+        _lastClosestSegmentIndex = bestIdx;
+
+        // Project onto segment
+        Vector3 a = _path[bestIdx];
+        Vector3 b = _path[bestIdx + 1];
+        Vector3 ab = b - a;
+        float segLen = ab.magnitude;
+        if (segLen < 0.001f) return _cumLengths[bestIdx];
+
+        float t = Mathf.Clamp01(Vector3.Dot(playerPos - a, ab) / (segLen * segLen));
+        return _cumLengths[bestIdx] + t * segLen;
+    }
+
+    private static float PointSegmentDistanceSqr(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude);
+        Vector3 proj = a + t * ab;
+        return (p - proj).sqrMagnitude;
+    }
+
+    private void SpawnCoinAtSlot(int slotIndex, float distanceAlongTrack)
     {
         float jitter = distanceJitter > 0f ? UnityEngine.Random.Range(-distanceJitter, distanceJitter) : 0f;
         float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
@@ -21804,38 +24570,17 @@ public class TrackCoinSpawner : MonoBehaviour
         if (UnityEngine.Random.value > spawnChance)
             return;
 
-        // Compute normalized distance
+        // Compute normalized distance (0 = start, 1 = end)
         float norm = _totalLength > 0f ? dist / _totalLength : 0f;
 
-        // Variant weights
-        float wBronze = Mathf.Max(0f, bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(norm) * bronzeGlobalScale : 0f);
-        float wSilver = Mathf.Max(0f, silverWeightCurve != null ? silverWeightCurve.Evaluate(norm) * silverGlobalScale : 0f);
-        float wGold = Mathf.Max(0f, goldWeightCurve != null ? goldWeightCurve.Evaluate(norm) * goldGlobalScale : 0f);
-
-        float total = wBronze + wSilver + wGold;
-        if (total <= 0f) return;
-
-        float pick = UnityEngine.Random.value * total;
-        GameObject chosen = null;
-        int chosenValue = 1;
-
-        if (pick <= wBronze)
+        // Select coin type and get its data
+        CoinDataSO coinData = SelectCoinData(norm);
+        if (coinData == null || coinData.coinPrefab == null)
         {
-            chosen = bronzePrefab;
-            chosenValue = bronzeValue;
+            if (verboseDebug)
+                Debug.LogWarning($"[TrackCoinSpawner] No prefab for selected coin type at slot {slotIndex}");
+            return;
         }
-        else if (pick <= wBronze + wSilver)
-        {
-            chosen = silverPrefab;
-            chosenValue = silverValue;
-        }
-        else
-        {
-            chosen = goldPrefab;
-            chosenValue = goldValue;
-        }
-
-        if (!chosen) return;
 
         SampleAlongPath(dist, out var centerPos, out var forward);
 
@@ -21870,23 +24615,75 @@ public class TrackCoinSpawner : MonoBehaviour
         Transform parent = transform;
         Vector3 spawnPos = hit.point + up * coinHeightOffset;
 
-        GameObject inst = Instantiate(chosen, spawnPos, rot, parent);
+        // Instantiate the correct prefab for this coin type
+        GameObject inst = Instantiate(coinData.coinPrefab, spawnPos, rot, parent);
         _coinsBySlot[slotIndex] = inst;
 
-        // Assign value if coin has CoinPickup
+        // Set coin type on the CoinPickup component
         var cp = inst.GetComponent<CoinPickup>();
         if (cp != null)
         {
-            // Reflection set (private serialized field 'value')
-            var fi = typeof(CoinPickup).GetField("value", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (fi != null) fi.SetValue(cp, chosenValue);
+            cp.SetCoinType(coinData.coinType);
         }
 
         if (verboseDebug)
         {
-            Debug.DrawLine(origin, hit.point, Color.yellow, 1.5f);
+            Debug.DrawLine(origin, hit.point, coinData.primaryColor, 1.5f);
             Debug.DrawRay(hit.point, up, Color.green, 1.5f);
         }
+    }
+
+    /// <summary>
+    /// Select coin data based on combined weights (base weight + distance curve + global scale).
+    /// Returns the CoinDataSO for the selected type.
+    /// </summary>
+    private CoinDataSO SelectCoinData(float normalizedDistance)
+    {
+        if (CoinDatabase.Instance == null) return null;
+
+        // Calculate weights for each enabled type
+        float totalWeight = 0f;
+        var weights = new List<(CoinDataSO data, float weight)>();
+
+        foreach (var ctw in coinTypeWeights)
+        {
+            if (!ctw.enabled) continue;
+
+            // Get coin data from database
+            var coinData = CoinDatabase.Get(ctw.coinType);
+            if (coinData == null || coinData.coinPrefab == null) continue;
+
+            // Get base weight from CoinDataSO
+            float baseWeight = coinData.spawnWeight;
+
+            // Apply distance curve
+            float distanceMultiplier = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(normalizedDistance) : 1f;
+
+            // Apply global scale
+            float finalWeight = Mathf.Max(0f, baseWeight * distanceMultiplier * ctw.globalScale);
+
+            if (finalWeight > 0f)
+            {
+                weights.Add((coinData, finalWeight));
+                totalWeight += finalWeight;
+            }
+        }
+
+        if (totalWeight <= 0f || weights.Count == 0)
+            return null;
+
+        // Weighted random selection
+        float pick = UnityEngine.Random.value * totalWeight;
+        float accumulated = 0f;
+
+        foreach (var (data, weight) in weights)
+        {
+            accumulated += weight;
+            if (pick <= accumulated)
+                return data;
+        }
+
+        return weights[weights.Count - 1].data;
     }
 
     private float ComputeSpawnChance(float distance)
@@ -21929,99 +24726,79 @@ public class TrackCoinSpawner : MonoBehaviour
         }
 
         float segStart = _cumLengths[idx];
-        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
-        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
-        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
+        float segLen = _cumLengths[idx + 1] - segStart;
+        float t = segLen > 0f ? (targetDistance - segStart) / segLen : 0f;
 
-        Vector3 a = _path[idx];
-        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
-        pos = Vector3.Lerp(a, b, t);
-        forward = (b - a).normalized;
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        forward = (_path[idx + 1] - _path[idx]).normalized;
     }
 
-    private float GetPlayerDistanceAlongTrack()
+    private void GenerateSmoothedPath(IReadOnlyList<Vector3> srcPoints, int subdiv, List<Vector3> output)
     {
-        if (_path.Count < 2 || _cumLengths == null) return 0f;
-        Vector3 p = playerTransform.position;
+        if (srcPoints == null || srcPoints.Count < 2) return;
 
-        int bestIndex = _lastClosestSegmentIndex;
-        float bestSqrDist = float.MaxValue;
-
-        for (int i = 0; i < _path.Count - 1; i++)
+        output.Add(srcPoints[0]);
+        for (int i = 0; i < srcPoints.Count - 1; i++)
         {
-            Vector3 a = _path[i];
-            Vector3 b = _path[i + 1];
-            Vector3 ab = b - a;
-            float abSqrMag = ab.sqrMagnitude;
-            if (abSqrMag < 1e-6f) continue;
+            Vector3 p0 = srcPoints[Mathf.Max(0, i - 1)];
+            Vector3 p1 = srcPoints[i];
+            Vector3 p2 = srcPoints[i + 1];
+            Vector3 p3 = srcPoints[Mathf.Min(srcPoints.Count - 1, i + 2)];
 
-            float t = Vector3.Dot(p - a, ab) / abSqrMag;
-            t = Mathf.Clamp01(t);
-            Vector3 proj = a + ab * t;
-            float sqrDist = (p - proj).sqrMagnitude;
-
-            if (sqrDist < bestSqrDist)
+            for (int s = 1; s <= subdiv; s++)
             {
-                bestSqrDist = sqrDist;
-                bestIndex = i;
+                float t = s / (float)subdiv;
+                output.Add(CatmullRom(p0, p1, p2, p3, t));
             }
         }
-
-        _lastClosestSegmentIndex = bestIndex;
-
-        Vector3 aa = _path[bestIndex];
-        Vector3 bb = _path[bestIndex + 1];
-        Vector3 ab2 = bb - aa;
-        float ab2Sqr = ab2.sqrMagnitude;
-        float segT = 0f;
-        float segLen = 0f;
-
-        if (ab2Sqr > 0.0001f)
-        {
-            segLen = Mathf.Sqrt(ab2Sqr);
-            segT = Mathf.Clamp01(Vector3.Dot(p - aa, ab2) / ab2Sqr);
-        }
-
-        float baseDist = _cumLengths[bestIndex];
-        return baseDist + segT * segLen;
     }
 
-    private void ClearAllCoins()
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
     {
-        foreach (var kvp in _coinsBySlot)
-            if (kvp.Value) Destroy(kvp.Value);
-        _coinsBySlot.Clear();
+        float t2 = t * t;
+        float t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
     }
 
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        if (!showWeightsGizmo || _path.Count < 2 || _totalLength <= 0f)
-            return;
+        if (!showWeightsGizmo || coinTypeWeights == null || coinTypeWeights.Count == 0) return;
+        if (CoinDatabase.Instance == null) return;
 
-        Gizmos.color = Color.white;
-        Vector3 basePos = _path.Count > 0 ? _path[0] : transform.position;
+        // Draw weight distribution along track
+        float gizmoHeight = 5f;
+        float gizmoWidth = 10f;
+        Vector3 basePos = transform.position + Vector3.up * 2f;
 
-        float step = 1f / Mathf.Max(1, gizmoSamples);
         for (int i = 0; i <= gizmoSamples; i++)
         {
-            float f = i * step;
-            float wb = bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(f) * bronzeGlobalScale : 0f;
-            float ws = silverWeightCurve != null ? silverWeightCurve.Evaluate(f) * silverGlobalScale : 0f;
-            float wg = goldWeightCurve != null ? goldWeightCurve.Evaluate(f) * goldGlobalScale : 0f;
-            float sum = wb + ws + wg + 0.0001f;
+            float f = i / (float)gizmoSamples;
+            float x = f * gizmoWidth;
 
-            float yOffset = 0.5f;
-            Vector3 bronzeP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wb / sum + yOffset);
-            Vector3 silverP = basePos + Vector3.right * (f * 10f) + Vector3.up * (ws / sum + yOffset);
-            Vector3 goldP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wg / sum + yOffset);
+            float yOffset = 0f;
+            foreach (var ctw in coinTypeWeights)
+            {
+                if (!ctw.enabled) continue;
 
-            Gizmos.color = new Color(0.8f, 0.5f, 0.2f, 0.9f);
-            Gizmos.DrawSphere(bronzeP, 0.06f);
-            Gizmos.color = new Color(0.75f, 0.75f, 0.75f, 0.9f);
-            Gizmos.DrawSphere(silverP, 0.06f);
-            Gizmos.color = new Color(0.95f, 0.85f, 0.15f, 0.9f);
-            Gizmos.DrawSphere(goldP, 0.06f);
+                var coinData = CoinDatabase.Get(ctw.coinType);
+                if (coinData == null) continue;
+
+                float baseWeight = coinData.spawnWeight;
+                float distMult = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(f) : 1f;
+                float w = Mathf.Max(0f, baseWeight * distMult * ctw.globalScale * 0.02f);
+
+                Gizmos.color = coinData.primaryColor;
+                Vector3 start = basePos + Vector3.right * x + Vector3.up * yOffset;
+                Vector3 end = start + Vector3.up * w;
+                Gizmos.DrawLine(start, end);
+                yOffset += w;
+            }
         }
     }
 #endif
@@ -24916,6 +27693,7 @@ public class RacingSkillUI : MonoBehaviour
     [SerializeField] private Transform contentParent;
     [SerializeField] private RacingSkillUIEntry entryPrefab;
     [SerializeField] private TMP_Text currencyText;
+    [SerializeField] private TMP_Text sprocketsText;
 
     [Header("Detail Panel")]
     [SerializeField] private RacingSkillDetailPanel detailPanel;
@@ -25003,19 +27781,22 @@ public class RacingSkillUI : MonoBehaviour
     {
         if (!mgr) return;
         mgr.OnCurrencyChanged += HandleCurrencyChanged;
+        mgr.OnSprocketsChanged += HandleSprocketsChanged;
         mgr.OnLevelChanged += HandleLevelChanged;
-        mgr.OnSkillRevealed += HandleSkillRevealed; // NEW
+        mgr.OnSkillRevealed += HandleSkillRevealed;
     }
 
     private void UnwireEvents()
     {
         if (!mgr) return;
         mgr.OnCurrencyChanged -= HandleCurrencyChanged;
+        mgr.OnSprocketsChanged -= HandleSprocketsChanged;
         mgr.OnLevelChanged -= HandleLevelChanged;
         mgr.OnSkillRevealed -= HandleSkillRevealed;
     }
 
     private void HandleCurrencyChanged(int _) => RefreshAll();
+    private void HandleSprocketsChanged(int _) => RefreshAll();
     private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
 
     private void HandleSkillRevealed(SkillDefinition def)
@@ -25086,7 +27867,10 @@ public class RacingSkillUI : MonoBehaviour
     private void RefreshCurrency()
     {
         if (currencyText && mgr)
-            currencyText.text = $"Currency: {mgr.Currency}";
+            currencyText.text = $"Coins: {mgr.Currency}";
+
+        if (sprocketsText && mgr)
+            sprocketsText.text = $"Sprockets: {mgr.Sprockets}";
     }
 
     private void ClearChildren()
@@ -25215,24 +27999,35 @@ public class RacingSkillUIEntry : MonoBehaviour
             return;
         }
 
+        // Show cost with currency type
+        int cost = mgr.GetNextLevelCostSmart(def.type);
+        string currencyName = mgr.GetCurrencyNameForSkill(def.type);
+        costText.text = $"{cost} {currencyName}";
 
-
-
+        // Color based on affordability
+        bool canAfford = mgr.CanAffordNextLevel(def.type);
+        costText.color = canAfford ? affordableColor : unaffordableColor;
     }
 
     public void ColorChange()
     {
-        int nextCost = mgr.GetNextLevelCost(def.type);
+        if (!def || mgr == null) return;
+
         int lvl = mgr.GetLevel(def.type);
         bool isMaxed = lvl >= def.maxLevel;
-        int currency = GetCurrency();
-        button.color = (currency >= nextCost) ? affordableColor : unaffordableColor;
-        Debug.Log($"Currency: {currency}, Next Cost: {nextCost}, Color: {button.color}");
 
         if (button)
         {
-            if (isMaxed) button.color = maxedColor;
-            else button.color = (GetCurrency() >= mgr.GetNextLevelCost(def.type)) ? affordableColor : unaffordableColor;
+            if (isMaxed)
+            {
+                button.color = maxedColor;
+            }
+            else
+            {
+                // Use smart affordability check
+                bool canAfford = mgr.CanAffordNextLevel(def.type);
+                button.color = canAfford ? affordableColor : unaffordableColor;
+            }
         }
     }
 
@@ -25241,9 +28036,10 @@ public class RacingSkillUIEntry : MonoBehaviour
         ColorChange();
     }
 
-    private int GetCurrency()
+    private int GetRelevantCurrency()
     {
-        return mgr != null ? mgr.Currency : 0;
+        if (mgr == null || def == null) return 0;
+        return def.usesSprockets ? mgr.Sprockets : mgr.Currency;
     }
 
     private string FormatEffect(SkillType type)
@@ -25307,7 +28103,7 @@ public class UIButtonSfx : MonoBehaviour, IPointerEnterHandler, IPointerClickHan
 ## Assets/Racing_Assets/Racing_Scripts/UIManager_Racing.cs
 
 ```csharp
-using TMPro; // ADD
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25315,37 +28111,68 @@ public class UIManager_Racing : MonoBehaviour
 {
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
+    [SerializeField] private TMP_Text fuelText;    // Shows "85 / 100" or "85%"
+    [SerializeField] private bool showFuelAsPercent = false;
 
     [Header("Car HP UI")]
     [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
+    [SerializeField] private TMP_Text hpText;      // Shows "75 / 100" or "75%"
+    [SerializeField] private bool showHPAsPercent = false;
 
     [Header("In-Run UI")]
-    [SerializeField] private TMP_Text runCoinsLiveText;   // e.g. top-left HUD text: "Coins: 0"
+    [SerializeField] private TMP_Text runCoinsLiveText;      // e.g. "Coins: 0"
+    [SerializeField] private TMP_Text runSprocketsLiveText;  // "Sprockets: 0"
 
-    // NEW: Run Complete UI
     [Header("Run Complete UI")]
     [SerializeField] private GameObject runCompleteRoot;
-    [SerializeField] private TMP_Text runCompleteTitle;     // optional (e.g., "Run Complete")
-    [SerializeField] private TMP_Text runDistanceText;      // e.g., "Distance: 123 m"
-    [SerializeField] private TMP_Text runCoinsText;         // e.g., "Coins: 184"
-    [SerializeField] private TMP_Text runRestartHintText;   // e.g., "Press R to restart"
+    [SerializeField] private TMP_Text runCompleteTitle;
+    [SerializeField] private TMP_Text runDistanceText;
+    [SerializeField] private TMP_Text runCoinsText;
+    [SerializeField] private TMP_Text runRestartHintText;
 
-    // NEW: breakdown texts
+    // Breakdown texts
     [SerializeField] private TMP_Text runDistanceCoinsText;
     [SerializeField] private TMP_Text runPickupCoinsText;
     [SerializeField] private TMP_Text runObstacleCoinsText;
+
+    // Sprocket breakdown
+    [SerializeField] private TMP_Text runSprocketsGainedText;    // "Sprockets Earned: +15"
+    [SerializeField] private TMP_Text runTotalSprocketsText;     // "Total Sprockets: 234"
+
+    // Total currency displays
+    [SerializeField] private TMP_Text runTotalCurrencyText;      // "Total Coins: 250"
+    [SerializeField] private TMP_Text totalCurrencyText;
+    [SerializeField] private TMP_Text totalSprocketsText;
 
     [Header("Crash Recovery Mash UI")]
     [SerializeField] private GameObject crashRecoveryRoot;      // Parent object to show/hide
     [SerializeField] private Button crashRecoveryButton;        // The button player mashes
     [SerializeField] private Image crashRecoveryFill;           // Progress bar fill
-    [SerializeField] private TMP_Text crashRecoveryText;        // "MASH TO RECOVER!" or click count
+    [SerializeField] private TMP_Text crashRecoveryText;        // "MASH! (x left)"
 
-    // NEW: show the *final* total currency from the skill tree
-    [SerializeField] private TMP_Text runTotalCurrencyText; // e.g. "Total Currency: 250"
+    [Header("Mash Gauge (Progress Bar)")]
+    [SerializeField] private Image mashGaugeFill;
+    [Tooltip("STATIC max target marker (98%). This must NOT be a 'recent best' marker.")]
+    [SerializeField] private Image mashGaugePeakMarker;
+    [SerializeField] private TMP_Text mashGaugePercentText;
+    [SerializeField] private GameObject mashGaugeMaxedIndicator;
+    [SerializeField] private Gradient mashGaugeGradient;
 
-    [SerializeField] private TMP_Text totalCurrencyText;
+    [Header("Gauge Threshold Markers")]
+    [Tooltip("Visual marker for 'good' threshold (e.g., 70%).")]
+    [SerializeField] private RectTransform gaugeGoodThresholdMarker;
 
+    [Tooltip("Visual marker for 'max' threshold (e.g., 98%).")]
+    [SerializeField] private RectTransform gaugeMaxThresholdMarker;
+
+    [Tooltip("STATIC container for the gauge (background/mask). DO NOT assign the Filled image.")]
+    [SerializeField] private RectTransform mashGaugeContainer;
+
+    [Tooltip("Optional: Text label for good threshold.")]
+    [SerializeField] private TMP_Text gaugeGoodLabel;
+
+    [Tooltip("Optional: Text label for max threshold.")]
+    [SerializeField] private TMP_Text gaugeMaxLabel;
 
     private CarController car;
 
@@ -25356,13 +28183,22 @@ public class UIManager_Racing : MonoBehaviour
     {
         car = carController;
         HideRunComplete();
+
+        // Place static threshold markers as soon as the car binds
+        UpdateThresholdMarkerPositions();
+    }
+
+    public void Awake()
+    {
+        InitializeMashGaugeGradient();
     }
 
     private void Start()
     {
         HideRunComplete();
         HideRunCoins();
-        HideCrashRecoveryUI();  // ADD THIS
+        HideCrashRecoveryUI();
+        HideTotalSprockets();
 
         // Bind crash recovery button
         if (crashRecoveryButton != null)
@@ -25376,22 +28212,43 @@ public class UIManager_Racing : MonoBehaviour
     {
         if (car == null) return;
 
+        // Fuel bar
         if (fuelFillImage != null)
             fuelFillImage.fillAmount = car.FuelPercent;
 
+        // Fuel text
+        if (fuelText != null)
+        {
+            if (showFuelAsPercent)
+                fuelText.text = $"Fuel - {car.FuelPercent * 100}%";
+            else
+                fuelText.text = $"Fuel - {Mathf.Round(car.CurrentFuel * 10f) * .1f} / {car.MaxFuel}";
+        }
+
+        // HP bar
         if (hpFillImage != null)
             hpFillImage.fillAmount = car.HPPercent;
+
+        // HP text
+        if (hpText != null)
+        {
+            if (showHPAsPercent)
+                hpText.text = $"Health - {car.HPPercent * 100}%";
+            else
+                hpText.text = $"Health - {Mathf.Round(car.CurrentHP * 10f) * .1f} / {car.MaxHP}";
+        }
 
         UpdateCrashRecoveryUI();
     }
 
-    // NEW API: show/hide "Run Complete"
     public void ShowRunComplete(
         int distanceMeters,
         int distanceCoins,
         int pickupCoins,
         int obstacleCoins,
-        int totalCurrency)
+        int totalCurrency,
+        int sprocketsGained = 0,
+        int totalSprockets = 0)
     {
         int totalThisRun = distanceCoins + pickupCoins + obstacleCoins;
 
@@ -25407,11 +28264,25 @@ public class UIManager_Racing : MonoBehaviour
         if (runObstacleCoinsText)
             runObstacleCoinsText.text = $"Obstacle Coins: {obstacleCoins}";
 
+        if (runCoinsText)
+            runCoinsText.text = $"Coins This Run: {totalThisRun}";
 
         if (runTotalCurrencyText)
         {
             runTotalCurrencyText.gameObject.SetActive(true);
-            runTotalCurrencyText.text = $"Total Currency: {totalCurrency}";
+            runTotalCurrencyText.text = $"Total Coins: {totalCurrency}";
+        }
+
+        if (runSprocketsGainedText)
+        {
+            runSprocketsGainedText.gameObject.SetActive(sprocketsGained > 0);
+            runSprocketsGainedText.text = $"Sprockets Earned: +{sprocketsGained}";
+        }
+
+        if (runTotalSprocketsText)
+        {
+            runTotalSprocketsText.gameObject.SetActive(true);
+            runTotalSprocketsText.text = $"Total Sprockets: {totalSprockets}";
         }
 
         if (runRestartHintText && string.IsNullOrEmpty(runRestartHintText.text))
@@ -25423,9 +28294,9 @@ public class UIManager_Racing : MonoBehaviour
         if (runCompleteRoot)
             runCompleteRoot.SetActive(true);
 
-        // Hide the in-run HUD coins on the summary screen
-        if (runCoinsLiveText)
-            runCoinsLiveText.gameObject.SetActive(false);
+        // Hide the in-run HUD on the summary screen
+        HideRunCoins();
+        HideRunSprockets();
     }
 
     public void UpdateRunCoins(int coinsThisRun)
@@ -25439,26 +28310,42 @@ public class UIManager_Racing : MonoBehaviour
         if (runCoinsLiveText)
             runCoinsLiveText.gameObject.SetActive(true);
 
+        ShowRunSprockets();
+
         HideTotalCoins();
+        HideTotalSprockets();
     }
 
     public void HideRunCoins()
     {
         if (runCoinsLiveText)
             runCoinsLiveText.gameObject.SetActive(false);
+
+        HideRunSprockets();
     }
 
     public void HideTotalCoins()
     {
         if (totalCurrencyText)
             totalCurrencyText.gameObject.SetActive(false);
+
+        HideTotalSprockets();
+    }
+
+    public void HideTotalSprockets()
+    {
+        if (totalSprocketsText)
+            totalSprocketsText.gameObject.SetActive(false);
     }
 
     public void HideRunComplete()
     {
-        if (runCompleteRoot) runCompleteRoot.SetActive(false);
-    }
+        if (runCompleteRoot)
+            runCompleteRoot.SetActive(false);
 
+        if (runSprocketsGainedText)
+            runSprocketsGainedText.gameObject.SetActive(false);
+    }
 
     // ============================================
     // CRASH RECOVERY MASH UI
@@ -25479,6 +28366,13 @@ public class UIManager_Racing : MonoBehaviour
 
             if (crashRecoveryRoot != null)
                 crashRecoveryRoot.SetActive(shouldShow);
+
+            if (shouldShow)
+            {
+                // Force layout ready THIS frame, then place markers immediately (no "first click")
+                Canvas.ForceUpdateCanvases();
+                UpdateThresholdMarkerPositions();
+            }
         }
 
         // Update progress if active
@@ -25489,6 +28383,162 @@ public class UIManager_Racing : MonoBehaviour
 
             if (crashRecoveryText != null)
                 crashRecoveryText.text = $"MASH! ({car.FlipMashClicksRemaining} left)";
+
+            UpdateMashGaugeVisuals();
+        }
+    }
+
+    /// <summary>
+    /// Places GOOD (70%) and MAX (98%) markers and also locks the "peak marker"
+    /// to MAX (98%) as a static target marker.
+    /// These markers NEVER move during gameplay.
+    /// </summary>
+    private void UpdateThresholdMarkerPositions()
+    {
+        if (car == null) return;
+
+        // mashGaugeContainer MUST be the full/static bar area (background/mask rect),
+        // not the Filled Image rect.
+        RectTransform containerRT = mashGaugeContainer;
+
+        // Safe fallback: parent of the fill is usually the stable container.
+        if (containerRT == null && mashGaugeFill != null)
+            containerRT = mashGaugeFill.rectTransform.parent as RectTransform;
+
+        if (containerRT == null) return;
+
+        float good = Mathf.Clamp01(car.GaugeGoodThreshold);
+        float max = Mathf.Clamp01(car.GaugeMaxThreshold);
+
+        SetupAndPlaceMarker(containerRT, gaugeGoodThresholdMarker, good);
+        SetupAndPlaceMarker(containerRT, gaugeMaxThresholdMarker, max);
+
+        // IMPORTANT: peak marker is a STATIC "max target" marker (same as max threshold)
+        if (mashGaugePeakMarker != null)
+            SetupAndPlaceMarker(containerRT, mashGaugePeakMarker.rectTransform, max);
+
+        if (gaugeGoodLabel != null) gaugeGoodLabel.text = $"{Mathf.RoundToInt(good * 100)}%";
+        if (gaugeMaxLabel != null) gaugeMaxLabel.text = $"{Mathf.RoundToInt(max * 100)}%";
+    }
+
+    /// <summary>
+    /// Anchor-based placement: Y is locked by anchors so it cannot "follow" the fill.
+    /// </summary>
+    private static void SetupAndPlaceMarker(RectTransform containerRT, RectTransform marker, float normalizedY)
+    {
+        if (containerRT == null || marker == null) return;
+
+        if (!marker.gameObject.activeSelf)
+            marker.gameObject.SetActive(true);
+
+        // Markers MUST live under the static container (never under the fill)
+        if (marker.parent != containerRT)
+            marker.SetParent(containerRT, worldPositionStays: false);
+
+        // Stretch across width, lock Y by anchors (this is the key)
+        marker.anchorMin = new Vector2(0f, normalizedY);
+        marker.anchorMax = new Vector2(1f, normalizedY);
+        marker.pivot = new Vector2(0.5f, 0.5f);
+
+        // No offset. The anchor IS the position.
+        marker.anchoredPosition = Vector2.zero;
+
+        // Width matches parent (sizeDelta.x ignored because we stretch)
+        Vector2 sd = marker.sizeDelta;
+        sd.x = 0f;
+        marker.sizeDelta = sd;
+    }
+
+    private void UpdateMashGaugeVisuals()
+    {
+        if (car == null) return;
+
+        float gaugeValue = car.MashGaugeValue;
+        bool isMaxed = car.MashGaugeMaxed;
+
+        float goodThreshold = car.GaugeGoodThreshold;
+        float maxThreshold = car.GaugeMaxThreshold;
+
+        // Update fill
+        if (mashGaugeFill != null)
+        {
+            mashGaugeFill.fillAmount = gaugeValue;
+
+            // Color based on tier
+            if (isMaxed || gaugeValue >= maxThreshold)
+            {
+                mashGaugeFill.color = Color.cyan;
+            }
+            else if (gaugeValue >= goodThreshold)
+            {
+                mashGaugeFill.color = mashGaugeGradient != null
+                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / Mathf.Max(0.0001f, (maxThreshold - goodThreshold)) * 0.3f)
+                    : Color.green;
+            }
+            else if (mashGaugeGradient != null)
+            {
+                mashGaugeFill.color = mashGaugeGradient.Evaluate((gaugeValue / Mathf.Max(0.0001f, goodThreshold)) * 0.7f);
+            }
+        }
+
+        // PEAK MARKER (STATIC MAX TARGET):
+        // Do not reposition it here. It is anchored once in UpdateThresholdMarkerPositions().
+        if (mashGaugePeakMarker != null && !mashGaugePeakMarker.gameObject.activeSelf)
+            mashGaugePeakMarker.gameObject.SetActive(true);
+
+        // Update percent text with tier indicator
+        if (mashGaugePercentText != null)
+        {
+            int percent = Mathf.RoundToInt(gaugeValue * 100);
+
+            if (isMaxed || gaugeValue >= maxThreshold)
+                mashGaugePercentText.text = $"{percent}% MAX!";
+            else if (gaugeValue >= goodThreshold)
+                mashGaugePercentText.text = $"{percent}% GOOD";
+            else
+                mashGaugePercentText.text = $"{percent}%";
+        }
+
+        // Maxed indicator
+        if (mashGaugeMaxedIndicator != null)
+            mashGaugeMaxedIndicator.SetActive(isMaxed);
+    }
+
+    public void UpdateRunSprockets(int sprocketsThisRun)
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.text = $"Sprockets: {sprocketsThisRun}";
+    }
+
+    public void ShowRunSprockets()
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.gameObject.SetActive(true);
+    }
+
+    public void HideRunSprockets()
+    {
+        if (runSprocketsLiveText)
+            runSprocketsLiveText.gameObject.SetActive(false);
+    }
+
+    private void InitializeMashGaugeGradient()
+    {
+        if (mashGaugeGradient == null || mashGaugeGradient.colorKeys.Length == 0)
+        {
+            mashGaugeGradient = new Gradient();
+            mashGaugeGradient.SetKeys(
+                new GradientColorKey[] {
+                    new GradientColorKey(Color.red, 0f),
+                    new GradientColorKey(Color.yellow, 0.5f),
+                    new GradientColorKey(Color.green, 0.85f),
+                    new GradientColorKey(Color.cyan, 1f)
+                },
+                new GradientAlphaKey[] {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(1f, 1f)
+                }
+            );
         }
     }
 
@@ -25504,8 +28554,8 @@ public class UIManager_Racing : MonoBehaviour
         if (crashRecoveryRoot != null)
             crashRecoveryRoot.SetActive(false);
     }
-
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/VintageTVController.cs
@@ -25692,85 +28742,7 @@ public class VintageTVController : MonoBehaviour
 
 ```
 
-## Assets/Racing_Assets/Racing_Scripts/WheelSkidSpawner.cs
-
-```csharp
-using UnityEngine;
-
-public class WheelSkidSpawner : MonoBehaviour
-{
-    [System.Serializable]
-    private class WheelData
-    {
-        public Transform point;          // where the wheel is
-        [HideInInspector] public Vector3 lastPos;
-        [HideInInspector] public bool hasLast;
-    }
-
-    [Header("Setup")]
-    [SerializeField] private WheelData[] wheels;
-    [SerializeField] private GameObject skidSegmentPrefab;
-    [SerializeField] private LayerMask roadLayer;
-    [SerializeField] private float rayLength = 2f;
-
-    [Header("Skid Settings")]
-    [SerializeField] private float minSegmentDistance = 0.2f;  // spacing between quads
-    [SerializeField] private float skidLifetime = 5f;
-
-    private void LateUpdate()
-    {
-        if (skidSegmentPrefab == null) return;
-
-        foreach (var w in wheels)
-        {
-            if (w.point == null) continue;
-
-            Vector3 origin = w.point.position;
-            Vector3 dir = Vector3.down;
-
-            if (Physics.Raycast(origin, dir, out RaycastHit hit, rayLength, roadLayer))
-            {
-                Vector3 contactPos = hit.point + hit.normal * 0.01f; // avoid z-fighting
-
-                if (!w.hasLast || Vector3.Distance(w.lastPos, contactPos) >= minSegmentDistance)
-                {
-                    SpawnSkidSegment(w, contactPos, hit.normal);
-                    w.lastPos = contactPos;
-                    w.hasLast = true;
-                }
-            }
-            else
-            {
-                w.hasLast = false;
-            }
-        }
-    }
-
-    private void SpawnSkidSegment(WheelData w, Vector3 position, Vector3 normal)
-    {
-        // Project the car's forward direction onto the road surface
-        Vector3 forwardOnPlane = Vector3.ProjectOnPlane(transform.forward, normal).normalized;
-
-        // Fallback if projection degenerates (e.g., straight up)
-        if (forwardOnPlane.sqrMagnitude < 0.0001f)
-            forwardOnPlane = Vector3.Cross(normal, transform.right);
-
-        Quaternion orient = Quaternion.LookRotation(normal, -forwardOnPlane);
-
-        GameObject seg = Instantiate(skidSegmentPrefab, position, orient);
-
-        // Optionally tweak lifetime
-        SkidMarkSegment sms = seg.GetComponent<SkidMarkSegment>();
-        if (sms != null)
-        {
-            sms.lifetime = skidLifetime;
-        }
-    }
-}
-
-```
-
-## Assets/Racing_Assets/VintageTVRendererFeature.cs
+## Assets/Racing_Assets/Racing_Scripts/VintageTVRendererFeature.cs
 
 ```csharp
 using UnityEngine;
@@ -25846,6 +28818,84 @@ public class VintageTVRendererFeature : ScriptableRendererFeature
         _pass.renderPassEvent = settings.passEvent;
         _pass.SetMaterial(settings.material); // <- critical: refresh the material reference
         renderer.EnqueuePass(_pass);
+    }
+}
+
+```
+
+## Assets/Racing_Assets/Racing_Scripts/WheelSkidSpawner.cs
+
+```csharp
+using UnityEngine;
+
+public class WheelSkidSpawner : MonoBehaviour
+{
+    [System.Serializable]
+    private class WheelData
+    {
+        public Transform point;          // where the wheel is
+        [HideInInspector] public Vector3 lastPos;
+        [HideInInspector] public bool hasLast;
+    }
+
+    [Header("Setup")]
+    [SerializeField] private WheelData[] wheels;
+    [SerializeField] private GameObject skidSegmentPrefab;
+    [SerializeField] private LayerMask roadLayer;
+    [SerializeField] private float rayLength = 2f;
+
+    [Header("Skid Settings")]
+    [SerializeField] private float minSegmentDistance = 0.2f;  // spacing between quads
+    [SerializeField] private float skidLifetime = 5f;
+
+    private void LateUpdate()
+    {
+        if (skidSegmentPrefab == null) return;
+
+        foreach (var w in wheels)
+        {
+            if (w.point == null) continue;
+
+            Vector3 origin = w.point.position;
+            Vector3 dir = Vector3.down;
+
+            if (Physics.Raycast(origin, dir, out RaycastHit hit, rayLength, roadLayer))
+            {
+                Vector3 contactPos = hit.point + hit.normal * 0.01f; // avoid z-fighting
+
+                if (!w.hasLast || Vector3.Distance(w.lastPos, contactPos) >= minSegmentDistance)
+                {
+                    SpawnSkidSegment(w, contactPos, hit.normal);
+                    w.lastPos = contactPos;
+                    w.hasLast = true;
+                }
+            }
+            else
+            {
+                w.hasLast = false;
+            }
+        }
+    }
+
+    private void SpawnSkidSegment(WheelData w, Vector3 position, Vector3 normal)
+    {
+        // Project the car's forward direction onto the road surface
+        Vector3 forwardOnPlane = Vector3.ProjectOnPlane(transform.forward, normal).normalized;
+
+        // Fallback if projection degenerates (e.g., straight up)
+        if (forwardOnPlane.sqrMagnitude < 0.0001f)
+            forwardOnPlane = Vector3.Cross(normal, transform.right);
+
+        Quaternion orient = Quaternion.LookRotation(normal, -forwardOnPlane);
+
+        GameObject seg = Instantiate(skidSegmentPrefab, position, orient);
+
+        // Optionally tweak lifetime
+        SkidMarkSegment sms = seg.GetComponent<SkidMarkSegment>();
+        if (sms != null)
+        {
+            sms.lifetime = skidLifetime;
+        }
     }
 }
 

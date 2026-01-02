@@ -10,6 +10,7 @@ public class RacingSkillUI : MonoBehaviour
     [SerializeField] private Transform contentParent;
     [SerializeField] private RacingSkillUIEntry entryPrefab;
     [SerializeField] private TMP_Text currencyText;
+    [SerializeField] private TMP_Text sprocketsText;
 
     [Header("Detail Panel")]
     [SerializeField] private RacingSkillDetailPanel detailPanel;
@@ -97,19 +98,22 @@ public class RacingSkillUI : MonoBehaviour
     {
         if (!mgr) return;
         mgr.OnCurrencyChanged += HandleCurrencyChanged;
+        mgr.OnSprocketsChanged += HandleSprocketsChanged;
         mgr.OnLevelChanged += HandleLevelChanged;
-        mgr.OnSkillRevealed += HandleSkillRevealed; // NEW
+        mgr.OnSkillRevealed += HandleSkillRevealed;
     }
 
     private void UnwireEvents()
     {
         if (!mgr) return;
         mgr.OnCurrencyChanged -= HandleCurrencyChanged;
+        mgr.OnSprocketsChanged -= HandleSprocketsChanged;
         mgr.OnLevelChanged -= HandleLevelChanged;
         mgr.OnSkillRevealed -= HandleSkillRevealed;
     }
 
     private void HandleCurrencyChanged(int _) => RefreshAll();
+    private void HandleSprocketsChanged(int _) => RefreshAll();
     private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
 
     private void HandleSkillRevealed(SkillDefinition def)
@@ -180,7 +184,10 @@ public class RacingSkillUI : MonoBehaviour
     private void RefreshCurrency()
     {
         if (currencyText && mgr)
-            currencyText.text = $"Currency: {mgr.Currency}";
+            currencyText.text = $"Coins: {mgr.Currency}";
+
+        if (sprocketsText && mgr)
+            sprocketsText.text = $"Sprockets: {mgr.Sprockets}";
     }
 
     private void ClearChildren()

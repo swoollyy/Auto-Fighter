@@ -14,63 +14,36 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 41
   displayName: Coin Spawn Rate
-  description: Increases spawn rate of coins
-  maxLevel: 5
+  description: Increases spawn rate of coins by .1
+  maxLevel: 10
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 1
-      value: 15
-      inSlope: 13.755206
-      outSlope: 13.755206
-      tangentMode: 0
+      value: 10
+      inSlope: 6.25
+      outSlope: 6.25
+      tangentMode: 34
       weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.12722823
-    - serializedVersion: 3
-      time: 2
-      value: 25
-      inSlope: 13.956207
-      outSlope: 13.956207
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
+      inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 3
-      value: 35
-      inSlope: 14.191658
-      outSlope: 14.191658
-      tangentMode: 0
+      time: 9
+      value: 60
+      inSlope: 6.25
+      outSlope: 6.25
+      tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 4
-      value: 45
-      inSlope: 14.191547
-      outSlope: 14.191547
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 5
-      value: 55
-      inSlope: 17.350285
-      outSlope: 17.350285
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.0958333
-      outWeight: 0.33333334
+      outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.05
+  perLevelAdd: 0.1
   uiPosition: {x: 0, y: 225}
   revealedAtStart: 0
   progressiveUnlocks:

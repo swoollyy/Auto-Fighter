@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -24,6 +25,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
+    [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -157,6 +159,7 @@ public class GameManager_Racing : MonoBehaviour
     private int _distanceCoinsThisRun = 0;
     private int _pickupCoinsThisRun = 0;
     private int _obstacleCoinsThisRun = 0;
+    private int _sprocketsThisRun;
 
     private bool _depositSoundPlayed = false;
 
@@ -385,6 +388,7 @@ public class GameManager_Racing : MonoBehaviour
         _distanceCoinsThisRun = 0;
         _pickupCoinsThisRun = 0;
         _obstacleCoinsThisRun = 0;
+        _sprocketsThisRun = 0;
 
         uiManager?.UpdateRunCoins(0);   // HUD shows 0 to start
         uiManager?.ShowRunCoins();
@@ -434,13 +438,17 @@ public class GameManager_Racing : MonoBehaviour
             _pickupCoinsThisRun +
             _obstacleCoinsThisRun;
 
+        int totalSprockets = mgr?.Sprockets ?? 0;
+
         // 4) Show breakdown + final total in the UI
         uiManager?.ShowRunComplete(
             distanceInt,
             _distanceCoinsThisRun,
             _pickupCoinsThisRun,
             _obstacleCoinsThisRun,
-            totalCoinsThisRun
+            totalCoinsThisRun,
+            _sprocketsThisRun,
+            totalSprockets
         );
         PlayRunCompleteCoinSound();
 
@@ -845,6 +853,15 @@ public class GameManager_Racing : MonoBehaviour
         }
     }
 
+    public void RegisterSprocketGain(int amount)
+    {
+        if (amount <= 0) return;
+        _sprocketsThisRun += amount;
+
+        // Update live UI
+        uiManager?.UpdateRunSprockets(_sprocketsThisRun);
+    }
+
     private void EnsureRefs()
     {
         if (cameraFollow == null) cameraFollow = FindObjectOfType<CameraFollow>(true);
@@ -897,6 +914,7 @@ public class GameManager_Racing : MonoBehaviour
         carController = carInstance.GetComponent<CarController>();
         crossObstacleDirector.SetCar(carController);
         thrownObstacleDirector.SetCar(carController);
+        iceScreenFlashDriver.SetCarController(carController);
 
         // NEW: reset distance tracking for the new run
         runDistanceMeters = 0f;

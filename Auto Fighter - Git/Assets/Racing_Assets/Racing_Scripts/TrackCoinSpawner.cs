@@ -2,67 +2,42 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Spawns coins along the track using the CoinType system.
+/// Each coin type uses its own prefab from CoinDataSO.
+/// Combines base spawn weights from CoinDatabase with distance-based weight curves.
+/// </summary>
 public class TrackCoinSpawner : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
 
-    [Header("Prefabs (Order: Bronze / Silver / Gold)")]
-    [SerializeField] private GameObject bronzePrefab;
-    [SerializeField] private GameObject silverPrefab;
-    [SerializeField] private GameObject goldPrefab;
-
-    [Header("Coin Values")]
-    [SerializeField] private int bronzeValue = 1;
-    [SerializeField] private int silverValue = 3;
-    [SerializeField] private int goldValue = 8;
-
-    [Header("Weight Curves (Track Fraction 0..1)")]
-    [Tooltip("Bronze starts high then fades out strongly by mid/end.")]
+    [Header("Coin Type Weights")]
+    [Tooltip("Configure which coin types can spawn and their distance-based weights.")]
     [SerializeField]
-    private AnimationCurve bronzeWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 1f),
-        new Keyframe(0.25f, 1f),
-        new Keyframe(0.45f, 0.6f),
-        new Keyframe(0.60f, 0.25f),
-        new Keyframe(0.75f, 0.12f),
-        new Keyframe(0.90f, 0.05f),
-        new Keyframe(1f, 0.03f)
-    );
+    private List<CoinTypeWeight> coinTypeWeights = new List<CoinTypeWeight>()
+    {
+        new CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, globalScale = 1.12f },
+        new CoinTypeWeight { coinType = CoinType.Silver, enabled = true, globalScale = 0.95f },
+        new CoinTypeWeight { coinType = CoinType.Gold, enabled = true, globalScale = 0.8f },
+        new CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, globalScale = 0.4f },
+        new CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, globalScale = 0.15f },
+        new CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, globalScale = 0.05f }
+    };
 
-    [Tooltip("Silver ramps up, dominates mid track, tapers near end.")]
-    [SerializeField]
-    private AnimationCurve silverWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(0.15f, 0.25f),
-        new Keyframe(0.30f, 0.9f),
-        new Keyframe(0.50f, 1.2f),
-        new Keyframe(0.65f, 1.1f),
-        new Keyframe(0.80f, 0.7f),
-        new Keyframe(1f, 0.4f)
-    );
+    [System.Serializable]
+    public class CoinTypeWeight
+    {
+        public CoinType coinType = CoinType.Bronze;
+        public bool enabled = true;
 
-    [Tooltip("Gold very rare early, increases late and becomes dominant.")]
-    [SerializeField]
-    private AnimationCurve goldWeightCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(0.25f, 0.05f),
-        new Keyframe(0.40f, 0.15f),
-        new Keyframe(0.55f, 0.25f),
-        new Keyframe(0.70f, 0.55f),
-        new Keyframe(0.85f, 1.2f),
-        new Keyframe(0.95f, 1.4f),
-        new Keyframe(1f, 1.5f)
-    );
+        [Tooltip("Multiplier applied to the base spawn weight from CoinDatabase.")]
+        public float globalScale = 1f;
 
-    [Header("Global Variant Tweaks")]
-    [SerializeField, Tooltip("Extra overall scaling applied to bronze weights.")]
-    private float bronzeGlobalScale = 1f;
-    [SerializeField, Tooltip("Extra overall scaling applied to silver weights.")]
-    private float silverGlobalScale = 1f;
-    [SerializeField, Tooltip("Extra overall scaling applied to gold weights.")]
-    private float goldGlobalScale = 1f;
+        [Tooltip("Distance-based weight curve (0 = track start, 1 = track end). Multiplies base weight.")]
+        public AnimationCurve distanceCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
+    }
 
     [Header("Spawn Layout")]
     [SerializeField, Min(0.1f)] private float coinSpacing = 6f;
@@ -172,103 +147,111 @@ public class TrackCoinSpawner : MonoBehaviour
         _totalLength = length;
     }
 
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        int n = raw.Count;
-        if (n < 2)
-        {
-            outList.AddRange(raw);
-            return;
-        }
-        outList.Add(raw[0]);
-        for (int i = 0; i < n - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        float t2 = t * t;
-        float t3 = t2 * t;
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
-    }
-
     private void SetupSlots()
     {
-        if (_totalLength <= 0f || coinSpacing <= 0f)
-        {
-            _maxSlotIndex = 0;
-            return;
-        }
-        _maxSlotIndex = Mathf.FloorToInt(_totalLength / coinSpacing);
+        _maxSlotIndex = coinSpacing > 0f ? Mathf.CeilToInt(_totalLength / coinSpacing) : 0;
+    }
+
+    private void ClearAllCoins()
+    {
+        foreach (var kvp in _coinsBySlot)
+            if (kvp.Value) Destroy(kvp.Value);
+        _coinsBySlot.Clear();
     }
 
     private void PreSpawnInitialCoins()
     {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
-        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.FloorToInt(endDist / coinSpacing);
+        if (_path.Count < 2 || coinSpacing <= 0f) return;
 
-        for (int slot = 0; slot <= endSlot; slot++)
+        float playerDist = GetPlayerDistance();
+        float aheadLimit = Mathf.Min(playerDist + initialPreSpawnDistance, _totalLength);
+
+        for (float d = playerDist; d < aheadLimit; d += coinSpacing)
         {
-            if (_coinsBySlot.Count >= maxActiveCoins) break;
-            float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist, true);
+            int slot = Mathf.FloorToInt(d / coinSpacing);
+            if (!_coinsBySlot.ContainsKey(slot))
+                SpawnCoinAtSlot(slot, d);
         }
     }
 
     private void StreamCoins()
     {
-        if (_totalLength <= 0f || _maxSlotIndex <= 0) return;
+        if (_path.Count < 2 || coinSpacing <= 0f) return;
 
-        float playerDist = GetPlayerDistanceAlongTrack();
-        float despawnStart = Mathf.Clamp(playerDist - despawnBehindDistance, 0f, _totalLength);
+        float playerDist = GetPlayerDistance();
+        float minD = playerDist + minSpawnDistanceAhead;
+        float maxD = Mathf.Min(playerDist + maxSpawnDistanceAhead, _totalLength);
 
+        // Spawn ahead
+        for (float d = minD; d < maxD; d += coinSpacing)
+        {
+            int slot = Mathf.FloorToInt(d / coinSpacing);
+            if (slot < 0 || slot > _maxSlotIndex) continue;
+            if (_coinsBySlot.ContainsKey(slot)) continue;
+            if (_coinsBySlot.Count >= maxActiveCoins) break;
+
+            SpawnCoinAtSlot(slot, d);
+        }
+
+        // Despawn behind
+        float despawnThreshold = playerDist - despawnBehindDistance;
         _toRemove.Clear();
         foreach (var kvp in _coinsBySlot)
         {
             float slotDist = kvp.Key * coinSpacing;
-            if (slotDist < despawnStart)
+            if (slotDist < despawnThreshold)
             {
                 if (kvp.Value) Destroy(kvp.Value);
                 _toRemove.Add(kvp.Key);
             }
         }
-        for (int i = 0; i < _toRemove.Count; i++)
-            _coinsBySlot.Remove(_toRemove[i]);
-
-        float spanStart = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spanEnd = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spanStart / coinSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spanEnd / coinSpacing), 0, _maxSlotIndex);
-
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            if (_coinsBySlot.ContainsKey(slot)) continue;
-            if (_coinsBySlot.Count >= maxActiveCoins) break;
-            float dist = slot * coinSpacing;
-            TrySpawnCoinAtDistance(slot, dist, false);
-        }
+        foreach (var k in _toRemove)
+            _coinsBySlot.Remove(k);
     }
 
-    private void TrySpawnCoinAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
+    private float GetPlayerDistance()
+    {
+        if (_path.Count < 2 || playerTransform == null) return 0f;
+
+        Vector3 playerPos = playerTransform.position;
+        float bestDist = float.MaxValue;
+        int bestIdx = _lastClosestSegmentIndex;
+
+        // Search around last known position
+        int searchStart = Mathf.Max(0, _lastClosestSegmentIndex - 5);
+        int searchEnd = Mathf.Min(_path.Count - 1, _lastClosestSegmentIndex + 20);
+
+        for (int i = searchStart; i < searchEnd; i++)
+        {
+            float d = PointSegmentDistanceSqr(playerPos, _path[i], _path[i + 1]);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+        _lastClosestSegmentIndex = bestIdx;
+
+        // Project onto segment
+        Vector3 a = _path[bestIdx];
+        Vector3 b = _path[bestIdx + 1];
+        Vector3 ab = b - a;
+        float segLen = ab.magnitude;
+        if (segLen < 0.001f) return _cumLengths[bestIdx];
+
+        float t = Mathf.Clamp01(Vector3.Dot(playerPos - a, ab) / (segLen * segLen));
+        return _cumLengths[bestIdx] + t * segLen;
+    }
+
+    private static float PointSegmentDistanceSqr(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude);
+        Vector3 proj = a + t * ab;
+        return (p - proj).sqrMagnitude;
+    }
+
+    private void SpawnCoinAtSlot(int slotIndex, float distanceAlongTrack)
     {
         float jitter = distanceJitter > 0f ? UnityEngine.Random.Range(-distanceJitter, distanceJitter) : 0f;
         float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
@@ -277,38 +260,17 @@ public class TrackCoinSpawner : MonoBehaviour
         if (UnityEngine.Random.value > spawnChance)
             return;
 
-        // Compute normalized distance
+        // Compute normalized distance (0 = start, 1 = end)
         float norm = _totalLength > 0f ? dist / _totalLength : 0f;
 
-        // Variant weights
-        float wBronze = Mathf.Max(0f, bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(norm) * bronzeGlobalScale : 0f);
-        float wSilver = Mathf.Max(0f, silverWeightCurve != null ? silverWeightCurve.Evaluate(norm) * silverGlobalScale : 0f);
-        float wGold = Mathf.Max(0f, goldWeightCurve != null ? goldWeightCurve.Evaluate(norm) * goldGlobalScale : 0f);
-
-        float total = wBronze + wSilver + wGold;
-        if (total <= 0f) return;
-
-        float pick = UnityEngine.Random.value * total;
-        GameObject chosen = null;
-        int chosenValue = 1;
-
-        if (pick <= wBronze)
+        // Select coin type and get its data
+        CoinDataSO coinData = SelectCoinData(norm);
+        if (coinData == null || coinData.coinPrefab == null)
         {
-            chosen = bronzePrefab;
-            chosenValue = bronzeValue;
+            if (verboseDebug)
+                Debug.LogWarning($"[TrackCoinSpawner] No prefab for selected coin type at slot {slotIndex}");
+            return;
         }
-        else if (pick <= wBronze + wSilver)
-        {
-            chosen = silverPrefab;
-            chosenValue = silverValue;
-        }
-        else
-        {
-            chosen = goldPrefab;
-            chosenValue = goldValue;
-        }
-
-        if (!chosen) return;
 
         SampleAlongPath(dist, out var centerPos, out var forward);
 
@@ -343,23 +305,75 @@ public class TrackCoinSpawner : MonoBehaviour
         Transform parent = transform;
         Vector3 spawnPos = hit.point + up * coinHeightOffset;
 
-        GameObject inst = Instantiate(chosen, spawnPos, rot, parent);
+        // Instantiate the correct prefab for this coin type
+        GameObject inst = Instantiate(coinData.coinPrefab, spawnPos, rot, parent);
         _coinsBySlot[slotIndex] = inst;
 
-        // Assign value if coin has CoinPickup
+        // Set coin type on the CoinPickup component
         var cp = inst.GetComponent<CoinPickup>();
         if (cp != null)
         {
-            // Reflection set (private serialized field 'value')
-            var fi = typeof(CoinPickup).GetField("value", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (fi != null) fi.SetValue(cp, chosenValue);
+            cp.SetCoinType(coinData.coinType);
         }
 
         if (verboseDebug)
         {
-            Debug.DrawLine(origin, hit.point, Color.yellow, 1.5f);
+            Debug.DrawLine(origin, hit.point, coinData.primaryColor, 1.5f);
             Debug.DrawRay(hit.point, up, Color.green, 1.5f);
         }
+    }
+
+    /// <summary>
+    /// Select coin data based on combined weights (base weight + distance curve + global scale).
+    /// Returns the CoinDataSO for the selected type.
+    /// </summary>
+    private CoinDataSO SelectCoinData(float normalizedDistance)
+    {
+        if (CoinDatabase.Instance == null) return null;
+
+        // Calculate weights for each enabled type
+        float totalWeight = 0f;
+        var weights = new List<(CoinDataSO data, float weight)>();
+
+        foreach (var ctw in coinTypeWeights)
+        {
+            if (!ctw.enabled) continue;
+
+            // Get coin data from database
+            var coinData = CoinDatabase.Get(ctw.coinType);
+            if (coinData == null || coinData.coinPrefab == null) continue;
+
+            // Get base weight from CoinDataSO
+            float baseWeight = coinData.spawnWeight;
+
+            // Apply distance curve
+            float distanceMultiplier = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(normalizedDistance) : 1f;
+
+            // Apply global scale
+            float finalWeight = Mathf.Max(0f, baseWeight * distanceMultiplier * ctw.globalScale);
+
+            if (finalWeight > 0f)
+            {
+                weights.Add((coinData, finalWeight));
+                totalWeight += finalWeight;
+            }
+        }
+
+        if (totalWeight <= 0f || weights.Count == 0)
+            return null;
+
+        // Weighted random selection
+        float pick = UnityEngine.Random.value * totalWeight;
+        float accumulated = 0f;
+
+        foreach (var (data, weight) in weights)
+        {
+            accumulated += weight;
+            if (pick <= accumulated)
+                return data;
+        }
+
+        return weights[weights.Count - 1].data;
     }
 
     private float ComputeSpawnChance(float distance)
@@ -402,99 +416,79 @@ public class TrackCoinSpawner : MonoBehaviour
         }
 
         float segStart = _cumLengths[idx];
-        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
-        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
-        float t = Mathf.Clamp01((targetDistance - segStart) / segLen);
+        float segLen = _cumLengths[idx + 1] - segStart;
+        float t = segLen > 0f ? (targetDistance - segStart) / segLen : 0f;
 
-        Vector3 a = _path[idx];
-        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
-        pos = Vector3.Lerp(a, b, t);
-        forward = (b - a).normalized;
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        forward = (_path[idx + 1] - _path[idx]).normalized;
     }
 
-    private float GetPlayerDistanceAlongTrack()
+    private void GenerateSmoothedPath(IReadOnlyList<Vector3> srcPoints, int subdiv, List<Vector3> output)
     {
-        if (_path.Count < 2 || _cumLengths == null) return 0f;
-        Vector3 p = playerTransform.position;
+        if (srcPoints == null || srcPoints.Count < 2) return;
 
-        int bestIndex = _lastClosestSegmentIndex;
-        float bestSqrDist = float.MaxValue;
-
-        for (int i = 0; i < _path.Count - 1; i++)
+        output.Add(srcPoints[0]);
+        for (int i = 0; i < srcPoints.Count - 1; i++)
         {
-            Vector3 a = _path[i];
-            Vector3 b = _path[i + 1];
-            Vector3 ab = b - a;
-            float abSqrMag = ab.sqrMagnitude;
-            if (abSqrMag < 1e-6f) continue;
+            Vector3 p0 = srcPoints[Mathf.Max(0, i - 1)];
+            Vector3 p1 = srcPoints[i];
+            Vector3 p2 = srcPoints[i + 1];
+            Vector3 p3 = srcPoints[Mathf.Min(srcPoints.Count - 1, i + 2)];
 
-            float t = Vector3.Dot(p - a, ab) / abSqrMag;
-            t = Mathf.Clamp01(t);
-            Vector3 proj = a + ab * t;
-            float sqrDist = (p - proj).sqrMagnitude;
-
-            if (sqrDist < bestSqrDist)
+            for (int s = 1; s <= subdiv; s++)
             {
-                bestSqrDist = sqrDist;
-                bestIndex = i;
+                float t = s / (float)subdiv;
+                output.Add(CatmullRom(p0, p1, p2, p3, t));
             }
         }
-
-        _lastClosestSegmentIndex = bestIndex;
-
-        Vector3 aa = _path[bestIndex];
-        Vector3 bb = _path[bestIndex + 1];
-        Vector3 ab2 = bb - aa;
-        float ab2Sqr = ab2.sqrMagnitude;
-        float segT = 0f;
-        float segLen = 0f;
-
-        if (ab2Sqr > 0.0001f)
-        {
-            segLen = Mathf.Sqrt(ab2Sqr);
-            segT = Mathf.Clamp01(Vector3.Dot(p - aa, ab2) / ab2Sqr);
-        }
-
-        float baseDist = _cumLengths[bestIndex];
-        return baseDist + segT * segLen;
     }
 
-    private void ClearAllCoins()
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
     {
-        foreach (var kvp in _coinsBySlot)
-            if (kvp.Value) Destroy(kvp.Value);
-        _coinsBySlot.Clear();
+        float t2 = t * t;
+        float t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
     }
 
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        if (!showWeightsGizmo || _path.Count < 2 || _totalLength <= 0f)
-            return;
+        if (!showWeightsGizmo || coinTypeWeights == null || coinTypeWeights.Count == 0) return;
+        if (CoinDatabase.Instance == null) return;
 
-        Gizmos.color = Color.white;
-        Vector3 basePos = _path.Count > 0 ? _path[0] : transform.position;
+        // Draw weight distribution along track
+        float gizmoHeight = 5f;
+        float gizmoWidth = 10f;
+        Vector3 basePos = transform.position + Vector3.up * 2f;
 
-        float step = 1f / Mathf.Max(1, gizmoSamples);
         for (int i = 0; i <= gizmoSamples; i++)
         {
-            float f = i * step;
-            float wb = bronzeWeightCurve != null ? bronzeWeightCurve.Evaluate(f) * bronzeGlobalScale : 0f;
-            float ws = silverWeightCurve != null ? silverWeightCurve.Evaluate(f) * silverGlobalScale : 0f;
-            float wg = goldWeightCurve != null ? goldWeightCurve.Evaluate(f) * goldGlobalScale : 0f;
-            float sum = wb + ws + wg + 0.0001f;
+            float f = i / (float)gizmoSamples;
+            float x = f * gizmoWidth;
 
-            float yOffset = 0.5f;
-            Vector3 bronzeP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wb / sum + yOffset);
-            Vector3 silverP = basePos + Vector3.right * (f * 10f) + Vector3.up * (ws / sum + yOffset);
-            Vector3 goldP = basePos + Vector3.right * (f * 10f) + Vector3.up * (wg / sum + yOffset);
+            float yOffset = 0f;
+            foreach (var ctw in coinTypeWeights)
+            {
+                if (!ctw.enabled) continue;
 
-            Gizmos.color = new Color(0.8f, 0.5f, 0.2f, 0.9f);
-            Gizmos.DrawSphere(bronzeP, 0.06f);
-            Gizmos.color = new Color(0.75f, 0.75f, 0.75f, 0.9f);
-            Gizmos.DrawSphere(silverP, 0.06f);
-            Gizmos.color = new Color(0.95f, 0.85f, 0.15f, 0.9f);
-            Gizmos.DrawSphere(goldP, 0.06f);
+                var coinData = CoinDatabase.Get(ctw.coinType);
+                if (coinData == null) continue;
+
+                float baseWeight = coinData.spawnWeight;
+                float distMult = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(f) : 1f;
+                float w = Mathf.Max(0f, baseWeight * distMult * ctw.globalScale * 0.02f);
+
+                Gizmos.color = coinData.primaryColor;
+                Vector3 start = basePos + Vector3.right * x + Vector3.up * yOffset;
+                Vector3 end = start + Vector3.up * w;
+                Gizmos.DrawLine(start, end);
+                yOffset += w;
+            }
         }
     }
 #endif

@@ -1,60 +1,103 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
-[RequireComponent(typeof(Collider))]
+/// <summary>
+/// Coin pickup that uses the centralized CoinType system.
+/// All visuals, sounds, and values are determined by the coin type.
+/// </summary>
 public class CoinPickup : MonoBehaviour
 {
-    [Header("Coin Value")]
-    [SerializeField] private int value = 1;
+    [Header("Coin Type")]
+    [Tooltip("The type of coin - determines value, color, sounds, etc.")]
+    [SerializeField] private CoinType coinType = CoinType.Bronze;
 
-    [Header("Simple Visuals")]
-    [SerializeField] private float rotateSpeed = 90f; // optional little spin
+    [Header("Override Settings (Optional)")]
+    [Tooltip("If assigned, uses this data instead of looking up from CoinDatabase.")]
+    [SerializeField] private CoinDataSO overrideCoinData;
 
-    [Header("FX")]
-    [Tooltip("Optional VFX prefab to spawn when the coin is collected.")]
-    [SerializeField] private GameObject coinPickupVFX;
-    [Tooltip("Lifetime (seconds) for the spawned VFX when instantiated or returned to pool.")]
-    [SerializeField] private float coinPickupVFXLifetime = 2f;
+    [Header("Shared VFX (Fallback)")]
+    [Tooltip("VFX prefab to use if coin data doesn't specify one.")]
+    [SerializeField] private GameObject fallbackVFX;
+    [SerializeField] private float fallbackVFXLifetime = 2f;
 
-    [Header("VFX Color Mapping")]
-    [Tooltip("Map coin values to VFX colors. The system will try an exact match first; if none found it will use the highest mapped value <= coin value.")]
-    [SerializeField]
-    private VFXColorEntry[] vfxColorEntries =
+    // Runtime
+    private CoinDataSO _coinData;
+    private float _bobTimer;
+    private Vector3 _startPos;
+    private Transform _visualChild;
+
+    // Cached camera reference for screen shake
+    private static CameraFollow _cameraFollow;
+
+    public CoinType Type => coinType;
+    public CoinDataSO CoinData => _coinData;
+
+    private void Awake()
     {
-        // default entries: 1 = bronze, 2 = silver, 3 = gold
-        new VFXColorEntry { coinValue = 1, color = new Color(205f/255f, 127f/255f, 50f/255f, 1f) }, // bronze
-        new VFXColorEntry { coinValue = 2, color = new Color(192f/255f, 192f/255f, 192f/255f, 1f) }, // silver
-        new VFXColorEntry { coinValue = 3, color = new Color(1f, 215f/255f, 0f, 1f) } // gold
-    };
+        // Cache coin data
+        RefreshCoinData();
 
-    [SerializeField] private AudioClip[] coinCollectClips = new AudioClip[2]; // assign two coin sounds
-    [SerializeField, Range(0f, 0.25f)] private float coinPitchVariance = 0.06f;
-    [SerializeField, Range(0f, 1f)] private float coinCollectVolume = 1f;
+        _startPos = transform.position;
 
+        // Try to get visual child for rotation
+        if (transform.childCount > 0)
+            _visualChild = transform.GetChild(0);
 
-
-    [System.Serializable]
-    private class VFXColorEntry
-    {
-        public int coinValue = 1;
-        public Color color = Color.white;
+        // Cache camera follow for screen shake
+        if (_cameraFollow == null)
+            _cameraFollow = FindObjectOfType<CameraFollow>();
     }
 
-    private void Reset()
+    private void Start()
     {
-        // Make sure collider is trigger by default
+        // Ensure collider is trigger
         var col = GetComponent<Collider>();
         if (col != null)
             col.isTrigger = true;
     }
 
+    /// <summary>
+    /// Refresh coin data from database or override.
+    /// Call this if you change coinType at runtime.
+    /// </summary>
+    public void RefreshCoinData()
+    {
+        if (overrideCoinData != null)
+        {
+            _coinData = overrideCoinData;
+        }
+        else if (CoinDatabase.Instance != null)
+        {
+            _coinData = CoinDatabase.Instance.GetCoinData(coinType);
+        }
+    }
+
+    /// <summary>
+    /// Set the coin type at runtime.
+    /// </summary>
+    public void SetCoinType(CoinType type)
+    {
+        coinType = type;
+        RefreshCoinData();
+    }
+
     private void Update()
     {
-        // Optional spinning so it's more readable in world
-        if (rotateSpeed != 0f)
+        if (_coinData == null) return;
+
+        // Rotation
+        if (_coinData.rotateSpeed != 0f && _visualChild != null)
         {
-            
-            transform.GetChild(0).transform.Rotate(0f, rotateSpeed * Time.deltaTime, 0f, Space.World);
+            _visualChild.Rotate(0f, _coinData.rotateSpeed * Time.deltaTime, 0f, Space.World);
+        }
+
+        // Bobbing
+        if (_coinData.bobAmplitude > 0f)
+        {
+            _bobTimer += Time.deltaTime * _coinData.bobSpeed;
+            float yOffset = Mathf.Sin(_bobTimer) * _coinData.bobAmplitude;
+            transform.position = _startPos + Vector3.up * yOffset;
         }
     }
 
@@ -63,241 +106,243 @@ public class CoinPickup : MonoBehaviour
         if (!other.TryGetComponent<CarController>(out var car))
             return;
 
-        var mgr = RacingSkillTreeManager.Instance;
-        int finalValue = value;
+        // Ensure we have coin data
+        if (_coinData == null)
+            RefreshCoinData();
 
+        // Calculate final value
+        int baseValue = _coinData?.baseValue ?? 1;
+        int finalValue = baseValue;
+
+        var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null)
         {
+            // Add skill bonus
             int baseAdd = mgr.GetCoinBaseAdd();
             if (baseAdd > 0)
                 finalValue += baseAdd;
-        }
 
-        // NEW: play coin SFX (random selection + slight pitch variance)
-        PlayRandomCoinSfx(transform.position);
-
-        // NEW: double-value chance skill
-        if (mgr != null)
-        {
+            // Double chance
             float dblChance = mgr.GetCoinDoubleChance();
-            if (dblChance > 0f && Random.value < dblChance)
+            if (dblChance > 0f && UnityEngine.Random.value < dblChance)
                 finalValue *= 2;
+
+            // Add currency
             mgr.AddCurrency(finalValue);
         }
-        else
-        {
-            // Fallback
-            RacingSkillTreeManager.Instance?.AddCurrency(finalValue);
-        }
 
+        // Register with game manager
         if (GameManager_Racing.Instance != null)
         {
             GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
         }
 
-        // Spawn VFX at the collision/closest point before destroying the coin
+        // Get spawn position for effects
         Vector3 spawnPos = transform.position;
-        // try to use the collider's closest contact point as a nicer VFX origin
         try
         {
             spawnPos = other.ClosestPoint(transform.position);
         }
-        catch { /* ignore and use transform.position */ }
+        catch { /* use transform.position */ }
 
-        // Pass the finalValue so the VFX color matches the collected coin value
-        SpawnPickupVFX(spawnPos, finalValue);
+        // === EFFECTS ===
 
+        // Screen Flash (uses secondary color)
+        if (_coinData != null && _coinData.enableScreenFlash && ScreenFlashManager.Instance != null)
+        {
+            ScreenFlashManager.Instance.Flash(
+                _coinData.secondaryColor,  // Use secondary color for flash
+                _coinData.flashIntensity,
+                _coinData.flashDuration,
+                _coinData.flashInnerRadius
+            );
+        }
+
+        // Screen Shake
+        if (_coinData != null && _coinData.enableScreenShake)
+        {
+            TriggerScreenShake();
+        }
+
+        // Popup Text (primary color for text, secondary for outline)
+        if (RacingPopups.IsReady && _coinData != null)
+        {
+            // Use the CoinGain popup with primary color
+            // The popup system will use secondary color for outline if configured
+            RacingPopups.SpawnCoin(
+                finalValue,
+                spawnPos + Vector3.up * 0.5f,
+                _coinData.primaryColor,
+                _coinData.secondaryColor
+            );
+        }
+        else if (RacingPopups.IsReady)
+        {
+            // Fallback
+            RacingPopups.Spawn(
+                RacingPopupType.CoinGain,
+                finalValue,
+                spawnPos + Vector3.up * 0.5f,
+                Color.yellow
+            );
+        }
+
+        // Sound
+        PlayCollectSound(spawnPos);
+
+        // VFX
+        SpawnVFX(spawnPos);
+
+        // Destroy
         Destroy(gameObject);
     }
 
-    // Add helper methods (inside the same class)
-    private void PlayRandomCoinSfx(Vector3 worldPos)
+    private void TriggerScreenShake()
     {
-        if (coinCollectClips == null || coinCollectClips.Length == 0) return;
+        if (_coinData == null) return;
 
-        // pick a non-null clip
-        AudioClip clip = null;
-        for (int i = 0; i < 8; i++) // try a few times (in case some array entries are null)
+        // Try to find camera follow if not cached
+        if (_cameraFollow == null)
+            _cameraFollow = FindObjectOfType<CameraFollow>();
+
+        if (_cameraFollow != null)
         {
-            var candidate = coinCollectClips[Random.Range(0, coinCollectClips.Length)];
+            _cameraFollow.StartShake(
+                _coinData.shakeDuration,
+                _coinData.shakeStrength,
+                _coinData.shakeVibrato,
+                _coinData.shakeRandomness
+            );
+        }
+    }
+
+    private void PlayCollectSound(Vector3 position)
+    {
+        if (_coinData == null) return;
+        if (_coinData.collectSounds == null || _coinData.collectSounds.Length == 0) return;
+
+        // Pick random sound
+        AudioClip clip = null;
+        for (int i = 0; i < 8; i++)
+        {
+            var candidate = _coinData.collectSounds[UnityEngine.Random.Range(0, _coinData.collectSounds.Length)];
             if (candidate != null) { clip = candidate; break; }
         }
         if (clip == null) return;
 
-        float pitch = 1f + UnityEngine.Random.Range(-coinPitchVariance, coinPitchVariance);
-        PlayClipAtPointWithPitch(clip, worldPos, coinCollectVolume, pitch);
+        // Calculate pitch
+        float pitch = _coinData.basePitch + UnityEngine.Random.Range(-_coinData.pitchVariance, _coinData.pitchVariance);
+
+        // Play
+        PlayClipAtPointWithPitch(clip, position, _coinData.collectVolume, pitch);
     }
 
-    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume = 1f, float pitch = 1f)
+    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume, float pitch)
     {
         if (clip == null) return;
-        GameObject go = new GameObject("SFX_OneShot");
+
+        GameObject go = new GameObject("CoinSFX");
         go.transform.position = pos;
+
         var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f; // 3D
+        src.spatialBlend = 1f;
         src.clip = clip;
         src.volume = Mathf.Clamp01(volume);
         src.pitch = Mathf.Max(0.01f, pitch);
         src.Play();
+
         Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
     }
 
-    // Spawns the assigned VFX prefab. Uses ProjectilePool when available, otherwise Instantiate.
-    // Keeps a fallback lifetime destroy for safety.
-    private void SpawnPickupVFX(Vector3 worldPos, int coinValue)
+    private void SpawnVFX(Vector3 position)
     {
-        if (coinPickupVFX == null) return;
+        // Determine which VFX to use
+        GameObject vfxPrefab = _coinData?.vfxPrefab ?? fallbackVFX;
+        if (vfxPrefab == null) return;
 
-        // get color for this coin value
-        Color col = GetColorForValue(coinValue);
+        float lifetime = _coinData?.vfxLifetime ?? fallbackVFXLifetime;
+        float scale = _coinData?.vfxScale ?? 1f;
+        Color color = _coinData?.primaryColor ?? Color.white;
 
-        // Desired rotation: -90° X, 0° Y, 0° Z
-        Quaternion desiredRot = Quaternion.Euler(-90f, 0f, 0f);
+        Quaternion rotation = Quaternion.Euler(-90f, 0f, 0f);
 
-        // Try using ProjectilePool (preferred). Pool returns inactive instances ready to position.
+        // Try pool first
         try
         {
             if (ProjectilePool.Instance != null)
             {
-                GameObject inst = ProjectilePool.Instance.Get(coinPickupVFX);
+                GameObject inst = ProjectilePool.Instance.Get(vfxPrefab);
                 if (inst != null)
                 {
-                    inst.transform.position = worldPos;
-                    inst.transform.rotation = desiredRot; // apply correct Euler rotation
-                    ApplyVFXColor(inst, col); // apply color before activation
+                    inst.transform.position = position;
+                    inst.transform.rotation = rotation;
+                    inst.transform.localScale = Vector3.one * scale;
+                    ApplyVFXColor(inst, color);
                     inst.SetActive(true);
-                    // Schedule return to pool
-                    StartCoroutine(ReturnPooledVFXLater(coinPickupVFX, inst, Mathf.Max(0.01f, coinPickupVFXLifetime)));
+                    StartCoroutine(ReturnPooledVFX(vfxPrefab, inst, lifetime));
                     return;
                 }
             }
         }
-        catch
-        {
-            // ignore pool errors and fallback to Instantiate
-        }
+        catch { /* fallback to instantiate */ }
 
-        // Fallback: instantiate and destroy after lifetime, with correct rotation and color
-        var go = Instantiate(coinPickupVFX, worldPos, desiredRot);
-        ApplyVFXColor(go, col);
-        Destroy(go, Mathf.Max(0.01f, coinPickupVFXLifetime));
+        // Fallback: instantiate
+        var go = Instantiate(vfxPrefab, position, rotation);
+        go.transform.localScale = Vector3.one * scale;
+        ApplyVFXColor(go, color);
+        Destroy(go, lifetime);
     }
 
-    private IEnumerator ReturnPooledVFXLater(GameObject prefab, GameObject instance, float delay)
+    private IEnumerator ReturnPooledVFX(GameObject prefab, GameObject instance, float delay)
     {
         yield return new WaitForSeconds(delay);
         if (instance != null && prefab != null && ProjectilePool.Instance != null)
             ProjectilePool.Instance.Return(prefab, instance);
     }
 
-    // Finds the best color entry for the given coin value.
-    // Strategy: exact match; else highest entry.coinValue <= value; else fallback to first entry or white.
-    private Color GetColorForValue(int coinValue)
+    private void ApplyVFXColor(GameObject vfxRoot, Color color)
     {
-        if (vfxColorEntries == null || vfxColorEntries.Length == 0)
-            return Color.white;
+        if (vfxRoot == null) return;
 
-        // Try exact match
-        for (int i = 0; i < vfxColorEntries.Length; i++)
+        // Apply to all particle systems
+        var particles = vfxRoot.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (var ps in particles)
         {
-            if (vfxColorEntries[i].coinValue == coinValue)
-                return vfxColorEntries[i].color;
+            var main = ps.main;
+            main.startColor = color;
         }
 
-        // Find highest <= coinValue
-        VFXColorEntry best = null;
-        for (int i = 0; i < vfxColorEntries.Length; i++)
+        // Apply to renderers with _Color property
+        var renderers = vfxRoot.GetComponentsInChildren<Renderer>(true);
+        foreach (var rend in renderers)
         {
-            if (vfxColorEntries[i].coinValue <= coinValue)
-            {
-                if (best == null || vfxColorEntries[i].coinValue > best.coinValue)
-                    best = vfxColorEntries[i];
-            }
+            if (rend.material.HasProperty("_Color"))
+                rend.material.color = color;
+            if (rend.material.HasProperty("_TintColor"))
+                rend.material.SetColor("_TintColor", color);
         }
-
-        if (best != null) return best.color;
-
-        // fallback to first entry
-        return vfxColorEntries[0].color;
     }
 
-    // Try to apply color to a VFX instance. Covers common cases:
-    // - ParticleSystem.main.startColor (applies to all child ParticleSystems)
-    // - Material color properties ("_BaseColor", "_Color", "_TintColor")
-    // - VisualEffect via reflection (attempts SetVector4("Color", color))
-    private void ApplyVFXColor(GameObject go, Color col)
+#if UNITY_EDITOR
+    private void OnValidate()
     {
-        if (go == null) return;
-
-        // 1) ParticleSystems
-        var systems = go.GetComponentsInChildren<ParticleSystem>(true);
-        if (systems != null && systems.Length > 0)
-        {
-            foreach (var ps in systems)
-            {
-                var main = ps.main;
-                main.startColor = col;
-            }
-            return;
-        }
-
-        // 2) Renderer materials
-        var renderers = go.GetComponentsInChildren<Renderer>(true);
-        if (renderers != null && renderers.Length > 0)
-        {
-            foreach (var r in renderers)
-            {
-                // Use sharedMaterials to avoid creating garbage if not necessary;
-                // but copying material arrays can instantiate instance materials which is OK for VFX.
-                var mats = r.materials;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    var mat = mats[i];
-                    if (mat == null) continue;
-                    if (mat.HasProperty("_BaseColor"))
-                        mat.SetColor("_BaseColor", col);
-                    else if (mat.HasProperty("_Color"))
-                        mat.SetColor("_Color", col);
-                    else if (mat.HasProperty("_TintColor"))
-                        mat.SetColor("_TintColor", col);
-                    // else: can't set color generically for this material
-                }
-            }
-            // don't return here — renderer coloring is often sufficient, but also try VFX
-        }
-
-        // 3) Try VisualEffect (VFX Graph) via reflection to avoid hard compile dependency
-        var veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, Unity.VisualEffectGraph");
-        if (veType == null)
-        {
-            // Some Unity versions use another assembly name; try fallback
-            veType = System.Type.GetType("UnityEngine.VFX.VisualEffect, UnityEngine.VFX");
-        }
-
-        if (veType != null)
-        {
-            var ves = go.GetComponentsInChildren(veType, true);
-            foreach (var ve in ves)
-            {
-                // Try common parameter names
-                var setVector4 = veType.GetMethod("SetVector4", new[] { typeof(string), typeof(Vector4) });
-                if (setVector4 != null)
-                {
-                    // Try "Color" and "color"
-                    setVector4.Invoke(ve, new object[] { "Color", (Vector4)col });
-                    setVector4.Invoke(ve, new object[] { "color", (Vector4)col });
-                }
-                else
-                {
-                    // Try SetVector3
-                    var setVector3 = veType.GetMethod("SetVector3", new[] { typeof(string), typeof(Vector3) });
-                    if (setVector3 != null)
-                    {
-                        setVector3.Invoke(ve, new object[] { "Color", (Color32)col });
-                        setVector3.Invoke(ve, new object[] { "color", (Color32)col });
-                    }
-                }
-            }
-        }
+        // Auto-refresh in editor when type changes
+        if (Application.isPlaying && CoinDatabase.Instance != null)
+            RefreshCoinData();
     }
+
+    private void OnDrawGizmosSelected()
+    {
+        // Show coin type color in editor
+        if (CoinDatabase.Instance != null)
+        {
+            Gizmos.color = CoinDatabase.GetCoinColor(coinType);
+        }
+        else
+        {
+            Gizmos.color = Color.yellow;
+        }
+        Gizmos.DrawWireSphere(transform.position, 0.5f);
+    }
+#endif
 }

@@ -916,6 +916,27 @@ MonoBehaviour:
   iceSteerRampDownRate: 1.83
   iceSteerMinFactor: 0.755
   iceSteerFlipPenalty: 0.35
+  coastLowDecelPerSecond: 0.81
+  coastHighDecelPerSecond: 5.55
+  coastHighSpeedFraction: 1
+  useExponentialCoast: 0
+  coastDampingPerSecond: 4.48
+  coastDecelFactor: 0.74
+  brakeForwardFactor: 0.7
+  reverseAccelFactor: 1.06
+  brakeToReverseSpeed: 0.5
+  maxBrakeDecelPerSecond: 1
+  maxReverseAccelPerSecond: 5.06
+  baseSteeringDamp: 8
+  enableSteerTraction: 1
+  steerTractionReorientRate: 3.71
+  steerRollingAccel: 2.25
+  minSpeedForSteerTraction: 0.1
+  lateralFrictionWhileSteering: 2.46
+  steerTractionBlendIn: 8.21
+  steerTractionBlendOut: 7.1
+  steerRollingAccelCoastMultiplier: 0.441
+  applySteerRollingAccelOnIce: 0
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 2.15
@@ -923,14 +944,14 @@ MonoBehaviour:
   driftBuildRate: 0.68
   driftReleaseRate: 16
   driftSideForce: 0.35
-  driftSpeedDecayPerSecond: 0.06
+  driftSpeedDecayPerSecond: 0.12
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
   lockToDriftPeakSpeed: 1
   driftBrakeDecayPerSecond: 0.001
   requireDirectionalInputForDriftCharge: 0
-  driftNeutralDrainRate: 2.07
+  driftNeutralDrainRate: 2.6
   driftNeutralFullResetDelay: 1.78
   resetDriftChargeOnSteerFlip: 1
   steerFlipRetainedCharge: 0.055
@@ -938,7 +959,7 @@ MonoBehaviour:
   minChargeForFlipReset: 0
   steerFlipRebuildDelay: 0
   allowDriftGlideWithoutSteer: 1
-  driftGlideDecayPerSecond: 0.03
+  driftGlideDecayPerSecond: 0.15
   iceFrictionTransitionSpeed: 3
   iceHandlingTransitionSpeed: 4
   iceLateralSlideForce: 0.1
@@ -961,7 +982,7 @@ MonoBehaviour:
   crashLayers:
     serializedVersion: 2
     m_Bits: 788480
-  minImpactSpeed: 2.5
+  minImpactSpeed: 1.6
   maxImpactSpeed: 20
   minCrashDuration: 1.08
   maxCrashDuration: 2.13
@@ -969,9 +990,19 @@ MonoBehaviour:
   torquePerUnitSpeed: 18.8
   crashDragMultiplier: 1
   crashAngularDrag: 1
-  crashYawTorqueMultiplier: 7.6
-  crashRollTorqueMultiplier: 5.49
-  crashPitchTorqueMultiplier: 5.26
+  enablePopupText: 1
+  popupVerticalOffset: 0.25
+  minHPDamageForPopup: 0.1
+  minFuelLossForPopup: 0.1
+  minFuelGainForPopup: 0.1
+  enableMashScreenShake: 1
+  mashShakeDuration: 0.08
+  mashShakeStrength: 0.15
+  mashShakeVibrato: 10
+  mashShakeRandomness: 0.5
+  crashYawTorqueMultiplier: 10.58
+  crashRollTorqueMultiplier: 7.47
+  crashPitchTorqueMultiplier: 9.17
   reorientDuration: 0.25
   groundedDurationRequired: 0.5
   groundCheckDistance: 0.3
@@ -983,7 +1014,7 @@ MonoBehaviour:
   maxHP: 100
   hpCrashDamageAtSeverity1: 100
   baseHpRegenPerSecond: 0
-  performanceAtZeroHP: 0.831
+  performanceAtZeroHP: 0.92
   degradeStartHPFraction: 0.422
   enableDamageMalfunction: 1
   maxMalfunctionChancePerSecond: 0.098
@@ -992,7 +1023,7 @@ MonoBehaviour:
   fuelLossAtSeverity1: 50
   minHpLossPerCrash: 20
   minFuelLossPerCrash: 10
-  crashDamageCooldown: 0.75
+  crashDamageCooldown: 0.35
   crashImpactVFX: {fileID: 208115153821778408, guid: fd8c411fa565e1c479a780420a1f5983, type: 3}
   crashImpactVFXLifetime: 0.4
   damageSmokeVFX: {fileID: 3246868859361284785}
@@ -1005,6 +1036,8 @@ MonoBehaviour:
   smokeColorAtZeroHP: {r: 0.3773585, g: 0.3773585, b: 0.3773585, a: 1}
   invertSmokeColorLerp: 0
   requireBoostUnlock: 1
+  boostFlashSpeedThreshold: 2
+  boostFlashCooldown: 0.3
   boostKey: 32
   boostForce: 30
   boostSustainAcceleration: 30
@@ -1110,6 +1143,36 @@ MonoBehaviour:
   mashFuelSpeedBonusMax: 2
   mashMaxSpeedThreshold: 0.1
   mashMinSpeedThreshold: 0.8
+  enableMashProgressGauge: 1
+  gaugeDrainRateBase: 0.12
+  gaugeDrainRatePerCrash: 0.06
+  gaugeDrainRateMax: 0.86
+  gaugeFillPerClick: 0.05
+  gaugeFillSpeedBonus: 2
+  gaugeGoodThreshold: 0.7
+  gaugeMaxThreshold: 0.98
+  gaugeMultiplierAtZero: 0.5
+  gaugeMultiplierAtGood: 1.5
+  gaugeMultiplierAtMax: 2
+  mashDrainsHealth: 1
+  mashHealthDrainAtMinSeverity: 2
+  mashHealthDrainAtMaxSeverity: 12
+  mashHealthDrainPerCrash: 0.5
+  mashHealthDrainCap: 50
+  mashFuelDrainAtMinSeverity: 2
+  mashFuelDrainAtMaxSeverity: 12
+  mashFuelDrainPerCrash: 0.25
+  mashFuelDrainCap: 30
+  gaugeDrainAtMinSeverity: 0.08
+  gaugeDrainAtMaxSeverity: 0.25
+  gaugeDrainPerCrash: 0.02
+  gaugeDrainCap: 0.75
+  enableSprocketRewards: 1
+  sprocketBasePercent: 0.2
+  sprocketGaugeBonusMax: 1.5
+  sprocketMaxedBonusMultiplier: 1.25
+  sprocketMinReward: 5
+  sprocketMaxReward: 5000000
   flipUprightLift: 0.2
   deathExplodeUseSpatial: 1
   deathExplodeSpatialBlend: 1
@@ -1122,32 +1185,11 @@ MonoBehaviour:
   deathExplodeSfxCooldown: 0.08
   skipSpeedClampWhileAirborne: 1
   enableLandingCarrySpeed: 1
-  landingExcessBleedPerSecond: 4.3
+  landingExcessBleedPerSecond: 0.55
   landingNoClampGraceSeconds: 0.85
   grassFuelUseMultiplier: 1.5
   offDefaultFraction: 0
   grassFraction: 0
-  coastLowDecelPerSecond: 0.81
-  coastHighDecelPerSecond: 5.55
-  coastHighSpeedFraction: 1
-  useExponentialCoast: 0
-  coastDampingPerSecond: 4.48
-  coastDecelFactor: 0.74
-  brakeForwardFactor: 0.7
-  reverseAccelFactor: 1.06
-  brakeToReverseSpeed: 0.5
-  maxBrakeDecelPerSecond: 1
-  maxReverseAccelPerSecond: 5.06
-  baseSteeringDamp: 8
-  enableSteerTraction: 1
-  steerTractionReorientRate: 2.55
-  steerRollingAccel: 2.25
-  minSpeedForSteerTraction: 0.1
-  lateralFrictionWhileSteering: 2.36
-  steerTractionBlendIn: 8.21
-  steerTractionBlendOut: 7.1
-  steerRollingAccelCoastMultiplier: 0.441
-  applySteerRollingAccelOnIce: 0
   enableCloseCallNearMisses: 1
   closeCallDistance: 0.45
   closeCallMinSpeed: 2.88

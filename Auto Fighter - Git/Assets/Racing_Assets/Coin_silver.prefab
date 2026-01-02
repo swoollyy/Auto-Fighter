@@ -120,22 +120,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f36b8894563c10e4181f30f5f7983051, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  value: 3
-  rotateSpeed: 45
-  coinPickupVFX: {fileID: 2555973337420423339, guid: 0850a83c8e6a95249993ea22538bb2fa, type: 3}
-  coinPickupVFXLifetime: 1
-  vfxColorEntries:
-  - coinValue: 1
-    color: {r: 0.8039216, g: 0.49803922, b: 0.19607843, a: 1}
-  - coinValue: 3
-    color: {r: 0.7529412, g: 0.7529412, b: 0.7529412, a: 1}
-  - coinValue: 6
-    color: {r: 1, g: 0.84313726, b: 0, a: 1}
-  coinCollectClips:
-  - {fileID: 8300000, guid: e83beeb4e706265469d4db4c674b30ab, type: 3}
-  - {fileID: 8300000, guid: 9633fbbc1cd9cca46bbdc14e18d7d305, type: 3}
-  coinPitchVariance: 0.06
-  coinCollectVolume: 1
+  coinType: 1
+  overrideCoinData: {fileID: 0}
+  fallbackVFX: {fileID: 0}
+  fallbackVFXLifetime: 2
 --- !u!1 &6620855368489193760
 GameObject:
   m_ObjectHideFlags: 0

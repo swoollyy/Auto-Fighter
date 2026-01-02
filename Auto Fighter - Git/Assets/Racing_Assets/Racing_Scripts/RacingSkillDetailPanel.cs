@@ -170,7 +170,10 @@ public class RacingSkillDetailPanel : MonoBehaviour
     private void OnBuyClicked()
     {
         if (mgr == null || def == null) return;
-        bool purchased = mgr.TryPurchase(def.type);
+
+        // Use smart purchase that checks usesSprockets flag
+        bool purchased = mgr.TryPurchaseSmart(def.type);
+
         if (purchased)
         {
             // Play UI purchase SFXs if available
@@ -178,7 +181,7 @@ public class RacingSkillDetailPanel : MonoBehaviour
             if (sfx != null)
             {
                 sfx.PlayPurchaseSkill();
-                sfx.PlayPurchaseCurrency(); // user said currency sound may be played along with purchase
+                sfx.PlayPurchaseCurrency();
             }
             Refresh();
         }
@@ -193,50 +196,206 @@ public class RacingSkillDetailPanel : MonoBehaviour
         if (nameText) nameText.text = def.displayName;
         if (descText) descText.text = def.description;
         if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
-        if (effectText) effectText.text = $"Effect: {FormatEffect(def.type)}";
+        if (effectText) effectText.text = FormatEffect(def.type);
 
+        // Cost display with currency type
         if (costText)
         {
-            costText.text = (lvl >= def.maxLevel) ? "Maxed" : $"Cost: {mgr.GetNextLevelCost(def.type)}";
+            if (lvl >= def.maxLevel)
+            {
+                costText.text = "Maxed";
+            }
+            else
+            {
+                int cost = mgr.GetNextLevelCostSmart(def.type);
+                string currencyName = mgr.GetCurrencyNameForSkill(def.type);
+                costText.text = $"Cost: {cost} {currencyName}";
+            }
         }
 
+        // Buy button - check correct currency
         if (buyButton)
         {
-            bool canBuy = false;
-            if (lvl < def.maxLevel)
-            {
-                int cost = mgr.GetNextLevelCost(def.type);
-                canBuy = cost > 0 && mgr.Currency >= cost;
-            }
+            bool canBuy = mgr.CanAffordNextLevel(def.type);
             buyButton.interactable = canBuy;
         }
     }
 
+    /// <summary>
+    /// Formats the effect text showing: CurrentStat + Upgrade -> NewStat
+    /// Example: "100 + 15 -> 115" for Max Fuel
+    /// </summary>
     private string FormatEffect(SkillType type)
     {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr == null) return "x1";
+        if (mgr == null || def == null) return "---";
+
+        int currentLevel = mgr.GetLevel(def.type);
+        int nextLevel = currentLevel + 1;
+        bool isMaxed = currentLevel >= def.maxLevel;
+
+        // Get the actual current stat and projected stat after upgrade
+        float currentStat = GetCurrentStatValue(def.type);
+        float nextStat = isMaxed ? currentStat : GetStatValueAtLevel(def.type, nextLevel);
+        float upgradeAmount = nextStat - currentStat;
+
+        // Format output
+        if (isMaxed)
+        {
+            return $"{currentStat:0.##} (MAX)";
+        }
+
+        string sign = upgradeAmount >= 0 ? "+" : "";
+        return $"{currentStat:0.##} {sign}{upgradeAmount:0.##} -> {nextStat:0.##}";
+    }
+
+    /// <summary>
+    /// Gets the current actual stat value for a skill type.
+    /// </summary>
+    private float GetCurrentStatValue(SkillType type)
+    {
+        // Try to get CarController for base stats
+        var car = FindObjectOfType<CarController>();
 
         switch (type)
         {
-            case SkillType.Acceleration: return $"x{mgr.GetAccelerationMultiplier():0.##}";
-            case SkillType.MaxSpeed: return $"x{mgr.GetMaxSpeedMultiplier():0.##}";
-            case SkillType.FuelEfficiency: return $"x{mgr.GetFuelEfficiencyMultiplier():0.##}";
-            case SkillType.SteeringResponsiveness: return $"x{mgr.GetSteeringMultiplier():0.##}";
+            // === CORE STATS (read from car's base values) ===
+            case SkillType.Acceleration:
+            case SkillType.Acceleration_Add:
+            case SkillType.Acceleration_Mul:
+                float baseAccel = car != null ? car.BaseAcceleration : 10f;
+                return mgr.ApplyStatChain(baseAccel, SkillType.Acceleration_Add, SkillType.Acceleration_Mul);
+
+            case SkillType.MaxSpeed:
+            case SkillType.MaxSpeed_Add:
+            case SkillType.MaxSpeed_Mul:
+                float baseSpeed = car != null ? car.BaseMaxSpeed : 20f;
+                return mgr.ApplyStatChain(baseSpeed, SkillType.MaxSpeed_Add, SkillType.MaxSpeed_Mul);
+
+            case SkillType.MaxFuel_Add:
+            case SkillType.MaxFuel_Mul:
+                float baseFuel = car != null ? car.BaseMaxFuel : 100f;
+                return mgr.ApplyStatChain(baseFuel, SkillType.MaxFuel_Add, SkillType.MaxFuel_Mul);
+
+            case SkillType.MaxHP_Add:
+            case SkillType.MaxHP_Mul:
+                float baseHP = car != null ? car.BaseMaxHP : 100f;
+                return mgr.ApplyStatChain(baseHP, SkillType.MaxHP_Add, SkillType.MaxHP_Mul);
+
+            case SkillType.TurnSpeed_Add:
+            case SkillType.TurnSpeed_Mul:
+                float baseTurn = car != null ? car.BaseTurnSpeed : 100f;
+                return mgr.ApplyStatChain(baseTurn, SkillType.TurnSpeed_Add, SkillType.TurnSpeed_Mul);
+
+            case SkillType.DrivingFuelUse_Add:
+            case SkillType.DrivingFuelUse_Mul:
+                float baseDriving = car != null ? car.BaseDrivingFuelUse : 2f;
+                return mgr.ApplyStatChain(baseDriving, SkillType.DrivingFuelUse_Add, SkillType.DrivingFuelUse_Mul);
+
+            case SkillType.HPRegen_Add:
+            case SkillType.HPRegen_Mul:
+                float baseRegen = car != null ? car.BaseHPRegen : 0f;
+                return mgr.ApplyStatChain(baseRegen, SkillType.HPRegen_Add, SkillType.HPRegen_Mul);
+
+            // === BOOST STATS ===
+            case SkillType.BoostForce_Add:
+            case SkillType.BoostForce_Mul:
+                float baseBoost = car != null ? car.BaseBoostForce : 50f;
+                return mgr.ApplyStatChain(baseBoost, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+
+            case SkillType.BoostDuration_Add:
+            case SkillType.BoostDuration_Mul:
+                float baseDur = car != null ? car.BaseBoostDuration : 1f;
+                return mgr.ApplyStatChain(baseDur, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+
+            case SkillType.BoostCooldown_Add:
+            case SkillType.BoostCooldown_Mul:
+                float baseCD = car != null ? car.BaseBoostCooldown : 3f;
+                return mgr.ApplyStatChain(baseCD, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+
+            case SkillType.BoostFuelCost_Add:
+            case SkillType.BoostFuelCost_Mul:
+                float baseCost = car != null ? car.BaseBoostFuelCost : 10f;
+                return mgr.ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+
+            // === MASH SKILLS ===
+            case SkillType.MashClicksPerClick_Add:
+            case SkillType.MashClicksPerClick_Mul:
+                float baseClicks = car != null ? car.BaseClicksPerClick : 1f;
+                return mgr.ApplyStatChain(baseClicks, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul);
+
+            case SkillType.MashPassiveClickRate_Add:
+            case SkillType.MashPassiveClickRate_Mul:
+                float baseRate = car != null ? car.BasePassiveClickRate : 0f;
+                return mgr.ApplyStatChain(baseRate, SkillType.MashPassiveClickRate_Add, SkillType.MashPassiveClickRate_Mul);
+
+            case SkillType.MashPassiveClickStrength_Add:
+            case SkillType.MashPassiveClickStrength_Mul:
+                float baseStrength = car != null ? car.BasePassiveClickStrength : 1f;
+                return mgr.ApplyStatChain(baseStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul);
+
+            case SkillType.MashFuelPerClick_Add:
+            case SkillType.MashFuelPerClick_Mul:
+                float baseMashFuel = car != null ? car.BaseMashFuelPerClick : 0.3f;
+                return mgr.ApplyStatChain(baseMashFuel, SkillType.MashFuelPerClick_Add, SkillType.MashFuelPerClick_Mul);
+
+            // === PERCENTAGE/CHANCE STATS ===
             case SkillType.CoinSpawnRate_Add:
             case SkillType.CoinSpawnRate_Mul:
-                return $"SpawnRate x{mgr.GetCoinSpawnRateMultiplier():0.##}";
+                return mgr.GetCoinSpawnRateMultiplier() * 100f; // Show as percentage
+
             case SkillType.CoinDoubleChance_Add:
             case SkillType.CoinDoubleChance_Mul:
-                return $"Double Chance {(mgr.GetCoinDoubleChance() * 100f):0.#}%";
+                return mgr.GetCoinDoubleChance() * 100f; // Show as percentage
+
+            // === UNLOCK SKILLS (just show level) ===
+            case SkillType.BoostUnlock:
+            case SkillType.DriftUnlock:
+            case SkillType.TurretUnlock:
+            case SkillType.ForcefieldUnlock:
+            case SkillType.FuelPickupUnlock:
+            case SkillType.HPPickupUnlock:
+                return mgr.GetLevel(type);
+
+            // === DEFAULT: Use raw skill value ===
             default:
-                return "x1";
+                return def.GetValueAtLevel(mgr.GetLevel(def.type));
         }
     }
-}
 
-public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
-{
-    public Action onClicked;
-    public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
+    /// <summary>
+    /// Gets what the stat value WOULD be at a specific skill level.
+    /// </summary>
+    private float GetStatValueAtLevel(SkillType type, int level)
+    {
+        // Temporarily calculate what the stat would be at the given level
+        float currentSkillValue = def.GetValueAtLevel(mgr.GetLevel(def.type));
+        float nextSkillValue = def.GetValueAtLevel(level);
+        float skillDelta = nextSkillValue - currentSkillValue;
+
+        // Get current stat and add the delta
+        float currentStat = GetCurrentStatValue(type);
+
+        // For multiplicative skills, we need to calculate differently
+        if (def.mode == SkillApplicationMode.Multiplicative)
+        {
+            // Current stat already has current multiplier applied
+            // We need to apply the ratio of new/old multiplier
+            if (currentSkillValue > 0.001f)
+            {
+                return currentStat * (nextSkillValue / currentSkillValue);
+            }
+            return currentStat + skillDelta;
+        }
+        else
+        {
+            // Additive: just add the delta
+            return currentStat + skillDelta;
+        }
+    }
+
+    public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
+    {
+        public Action onClicked;
+        public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
+    }
 }

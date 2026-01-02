@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
+  m_Name: Sprocket_Collect
+  m_EditorClassIdentifier: 
+  popupType: 12
+  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  fontMaterial: {fileID: 0}
+  spriteAsset: {fileID: 11400000, guid: 0248a313a4fb855488b1f02e2bbe463c, type: 2}
+  baseFontSize: 6
+  textColor: {r: 0, g: 0.46924734, b: 1, a: 1}
+  prefix: '+ '
+  suffix: '     <sprite index=0> Sprockets'
+  numberFormat: 0
+  enableOutline: 1
+  outlineWidth: 0.106
+  outlineColor: {r: 0.7037427, g: 0.6297538, b: 5.3403134, a: 1}
+  outlineIntensity: 7.75
+  faceDilate: 0.05
+  horizontalOffset: 0.5
+  verticalOffset: 0
+  horizontalDrift: 0
+  fixedRotationZ: 0
+  duration: 1.25
+  fadeInFraction: 0.059
+  fadeOutFraction: 0.142
+  useUnscaledTime: 1
+  riseDistance: 1.5
+  riseEase: 9
+  popFromScale: 0.2
+  popToScale: 0.8
+  endScale: 0
+  popDelay: 0.06
+  popDurationFraction: 0.51
+  popEase: 27
+  enableTiltShake: 1
+  tiltShakeAngle: 17.2
+  tiltShakeDurationFraction: 0.2
+  enableValueScaling: 1
+  minValueForScale: 1
+  maxValueForScale: 2
+  minScaleMultiplier: 0.8
+  maxScaleMultiplier: 1.5
+  useLogScale: 0
+  sortingLayerName: UI
+  sortingOrder: 1000
+  spawnSound: {fileID: 0}
+  soundVolume: 0.5

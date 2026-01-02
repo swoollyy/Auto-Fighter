@@ -36,7 +36,68 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float iceSteerMinFactor = 0.15f; // starting steering on ice
     [SerializeField, Range(0f, 1f)] private float iceSteerFlipPenalty = 0.35f;
 
+    [Header("Arcade Coasting")]
+    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
+    private float coastLowDecelPerSecond = 1.2f;
+    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
+    private float coastHighDecelPerSecond = 3.5f;
+    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
+    private float coastHighSpeedFraction = 0.8f;
+    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
+    private bool useExponentialCoast = false;
+    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
+    private float coastDampingPerSecond = 2.0f;
 
+    [Header("Arcade Movement Tuning")]
+    [SerializeField] private float coastDecelFactor = 0.1f;
+    [SerializeField] private float brakeForwardFactor = 0.7f;
+    [SerializeField] private float reverseAccelFactor = 0.8f;
+    [SerializeField] private float brakeToReverseSpeed = 0.5f;
+
+    // NEW: caps so braking can’t be insanely hard at low max speeds
+    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
+    private float maxBrakeDecelPerSecond = 5f;
+    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
+    private float maxReverseAccelPerSecond = 4f;
+
+    [SerializeField] private float baseSteeringDamp = 1f;
+    private float currentSteeringDamp;
+
+
+    // ─────────────────────────────────────────────
+    // NEW: Steering traction while coasting (no throttle/brake, no drift)
+    // ─────────────────────────────────────────────
+    [Header("Steer Rolling Traction")]
+    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
+    private bool enableSteerTraction = true;
+    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
+    private float steerTractionReorientRate = 6f;
+    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
+    private float steerRollingAccel = 2.25f;
+    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
+    private float minSpeedForSteerTraction = 0.1f;
+    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
+    private float lateralFrictionWhileSteering = 3.5f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
+    private float steerTractionBlendIn = 10f;
+
+    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
+    private float steerTractionBlendOut = 14f;
+
+    private float _steerTractionBlend = 0f;
+
+    [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
+    private float steerRollingAccelCoastMultiplier = 1f;
+
+    [SerializeField, Tooltip("If true, steerRollingAccel is also applied on ice. If false, coasting-steer won't add forward push on ice.")]
+    private bool applySteerRollingAccelOnIce = false;
+
+    private bool _inputsSuppressedThisFrame = false;
+
+    // NEW: split suppression so steering is never fully blocked by malfunction
+    private bool _suppressThrottleBrakeThisFrame = false;
+    private bool _suppressSteeringThisFrame = false;
 
     [Header("Drift Unlock")]
     [SerializeField] private bool requireDriftUnlock = true; // if true, drift only works after skill unlocked
@@ -168,6 +229,13 @@ public class CarController : MonoBehaviour
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
 
+    [Header("Mash Screen Shake")]
+    [SerializeField] private bool enableMashScreenShake = true;
+    [SerializeField] private float mashShakeDuration = 0.08f;
+    [SerializeField] private float mashShakeStrength = 0.15f;
+    [SerializeField] private int mashShakeVibrato = 10;
+    [SerializeField] private float mashShakeRandomness = 0.5f;
+
     [Header("Crash Spin Tuning")]
     [SerializeField] private float crashYawTorqueMultiplier = 1f;
     [SerializeField] private float crashRollTorqueMultiplier = 0.6f;
@@ -255,6 +323,12 @@ public class CarController : MonoBehaviour
     [Header("Boost Unlock")]
     [SerializeField] private bool requireBoostUnlock = true;
     private bool boostUnlocked;
+
+    [Header("Boost Screen Flash")]
+    [SerializeField] private float boostFlashSpeedThreshold = 2f; // Flash when speed multiplier exceeds this
+    [SerializeField] private float boostFlashCooldown = 0.3f; // Prevent spam
+    private bool _wasOnBoost;
+    private float _lastBoostFlashTime;
 
     [Header("Boost")]
     [SerializeField] private KeyCode boostKey = KeyCode.Space;
@@ -450,6 +524,129 @@ public class CarController : MonoBehaviour
 
     [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
     private float mashMinSpeedThreshold = 0.5f;
+
+    [Header("Mash Progress Gauge")]
+    [Tooltip("Enable the progress gauge that drains over time during mashing.")]
+    [SerializeField] private bool enableMashProgressGauge = true;
+
+    [Tooltip("Base drain rate per second (0-1 range). Increases with each crash.")]
+    [SerializeField, Range(0.05f, 0.5f)] private float gaugeDrainRateBase = 0.12f;
+
+    [Tooltip("Additional drain rate added per crash (makes it harder each time).")]
+    [SerializeField, Range(0f, 0.1f)] private float gaugeDrainRatePerCrash = 0.015f;
+
+    [Tooltip("Maximum drain rate cap.")]
+    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainRateMax = 0.4f;
+
+    [Tooltip("How much each click fills the gauge (0-1 range).")]
+    [SerializeField, Range(0.01f, 0.2f)] private float gaugeFillPerClick = 0.05f;
+
+    [Tooltip("Bonus fill multiplier at max mash speed.")]
+    [SerializeField, Range(1f, 3f)] private float gaugeFillSpeedBonus = 1.5f;
+
+    [Header("Mash Gauge Reward Tiers")]
+    [Tooltip("Gauge threshold for 'good' tier bonus (0-1). Marker line will show here.")]
+    [SerializeField, Range(0.5f, 0.9f)] private float gaugeGoodThreshold = 0.70f;
+
+    [Tooltip("Gauge threshold for 'max' tier bonus (0-1). Marker line will show here.")]
+    [SerializeField, Range(0.9f, 1f)] private float gaugeMaxThreshold = 0.98f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge is at 0%.")]
+    [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.5f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'good' threshold.")]
+    [SerializeField, Range(1f, 2f)] private float gaugeMultiplierAtGood = 1.5f;
+
+    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'max' threshold.")]
+    [SerializeField, Range(1.5f, 3f)] private float gaugeMultiplierAtMax = 2.5f;
+
+    [Header("Mash Resource Drain")]
+    [Tooltip("If true, drain health during mash recovery.")]
+    [SerializeField] private bool mashDrainsHealth = true;
+
+    [Tooltip("If true, drain fuel during mash recovery.")]
+    [SerializeField] private bool mashDrainsFuel = true;
+
+    [Header("Mash Health Drain (Severity-Based)")]
+    [Tooltip("Health drain per second at minimum severity (light tap).")]
+    [SerializeField, Range(0f, 10f)] private float mashHealthDrainAtMinSeverity = 2f;
+
+    [Tooltip("Health drain per second at maximum severity (huge crash).")]
+    [SerializeField, Range(1f, 30f)] private float mashHealthDrainAtMaxSeverity = 12f;
+
+    [Tooltip("Additional health drain per crash count (stacks with severity).")]
+    [SerializeField, Range(0f, 3f)] private float mashHealthDrainPerCrash = 0.5f;
+
+    [Tooltip("Absolute maximum health drain per second cap.")]
+    [SerializeField, Range(1f, 50f)] private float mashHealthDrainCap = 20f;
+
+    [Header("Mash Fuel Drain (Severity-Based)")]
+    [Tooltip("Fuel drain per second at minimum severity (light tap).")]
+    [SerializeField, Range(0f, 5f)] private float mashFuelDrainAtMinSeverity = 1f;
+
+    [Tooltip("Fuel drain per second at maximum severity (huge crash).")]
+    [SerializeField, Range(1f, 15f)] private float mashFuelDrainAtMaxSeverity = 6f;
+
+    [Tooltip("Additional fuel drain per crash count (stacks with severity).")]
+    [SerializeField, Range(0f, 1f)] private float mashFuelDrainPerCrash = 0.2f;
+
+    [Tooltip("Absolute maximum fuel drain per second cap.")]
+    [SerializeField, Range(1f, 20f)] private float mashFuelDrainCap = 10f;
+
+    [Header("Mash Gauge Drain (Severity-Based)")]
+    [Tooltip("Gauge drain per second at minimum severity.")]
+    [SerializeField, Range(0.05f, 0.3f)] private float gaugeDrainAtMinSeverity = 0.08f;
+
+    [Tooltip("Gauge drain per second at maximum severity.")]
+    [SerializeField, Range(0.1f, 0.6f)] private float gaugeDrainAtMaxSeverity = 0.25f;
+
+    [Tooltip("Additional gauge drain per crash count.")]
+    [SerializeField, Range(0f, 0.05f)] private float gaugeDrainPerCrash = 0.01f;
+
+    [Tooltip("Absolute maximum gauge drain per second cap.")]
+    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainCap = 0.5f;
+
+    // Public properties for UI to position threshold markers
+    public float GaugeGoodThreshold => gaugeGoodThreshold;
+    public float GaugeMaxThreshold => gaugeMaxThreshold;
+
+    [Header("Sprocket Rewards")]
+    [Tooltip("Enable sprocket currency rewards from mash minigame.")]
+    [SerializeField] private bool enableSprocketRewards = true;
+
+    [Tooltip("Base percentage of total clicks converted to sprockets.")]
+    [SerializeField, Range(0.05f, 0.5f)] private float sprocketBasePercent = 0.2f;
+
+    [Tooltip("Bonus sprocket multiplier at max gauge fill (stacks with base).")]
+    [SerializeField, Range(1f, 3f)] private float sprocketGaugeBonusMax = 2f;
+
+    [Tooltip("Extra sprocket multiplier when gauge was maxed.")]
+    [SerializeField, Range(1f, 2f)] private float sprocketMaxedBonusMultiplier = 1.25f;
+
+    [Tooltip("Minimum sprockets awarded (even if calculations result in 0).")]
+    [SerializeField, Min(0)] private int sprocketMinReward = 1;
+
+    [Tooltip("Maximum sprockets per mash session (prevents exploits).")]
+    [SerializeField, Min(1)] private int sprocketMaxReward = 50;
+
+    // Runtime gauge state
+    private float _mashGaugeValue;           // 0 to 1
+    private float _mashGaugePeakValue;       // highest value reached this session
+    private int _totalMashClicksThisSession; // total clicks for sprocket calculation
+    private bool _gaugeMaxedThisSession;     // did player max out the gauge?
+    private float _totalFuelGainedThisSession;   // track for end popup
+    private int _totalSprocketsThisSession;      // track for end popup
+
+    // Public properties for UI
+    public float MashGaugeValue => _mashGaugeValue;
+    public float MashGaugePeakValue => _mashGaugePeakValue;
+    public bool MashGaugeMaxed => _gaugeMaxedThisSession;
+    public int TotalMashClicksThisSession => _totalMashClicksThisSession;
+    public float TotalFuelGainedThisSession => _totalFuelGainedThisSession;
+    public int TotalSprocketsThisSession => _totalSprocketsThisSession;
+
+
+
 
     // Small lift to avoid sticking into ground when you snap upright.
     [SerializeField, Min(0f)] private float flipUprightLift = 0.20f;
@@ -662,68 +859,7 @@ public class CarController : MonoBehaviour
     private SkillApplicationMode fuelMode;
     private float fuelValue;
 
-    [Header("Arcade Coasting")]
-    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
-    private float coastLowDecelPerSecond = 1.2f;
-    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
-    private float coastHighDecelPerSecond = 3.5f;
-    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
-    private float coastHighSpeedFraction = 0.8f;
-    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
-    private bool useExponentialCoast = false;
-    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
-    private float coastDampingPerSecond = 2.0f;
 
-    [Header("Arcade Movement Tuning")]
-    [SerializeField] private float coastDecelFactor = 0.1f;
-    [SerializeField] private float brakeForwardFactor = 0.7f;
-    [SerializeField] private float reverseAccelFactor = 0.8f;
-    [SerializeField] private float brakeToReverseSpeed = 0.5f;
-
-    // NEW: caps so braking can’t be insanely hard at low max speeds
-    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
-    private float maxBrakeDecelPerSecond = 5f;
-    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
-    private float maxReverseAccelPerSecond = 4f;
-
-    [SerializeField] private float baseSteeringDamp = 1f;
-    private float currentSteeringDamp;
-
-
-    // ─────────────────────────────────────────────
-    // NEW: Steering traction while coasting (no throttle/brake, no drift)
-    // ─────────────────────────────────────────────
-    [Header("Steer Rolling Traction")]
-    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
-    private bool enableSteerTraction = true;
-    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
-    private float steerTractionReorientRate = 6f;
-    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
-    private float steerRollingAccel = 2.25f;
-    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
-    private float minSpeedForSteerTraction = 0.1f;
-    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
-    private float lateralFrictionWhileSteering = 3.5f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
-    private float steerTractionBlendIn = 10f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
-    private float steerTractionBlendOut = 14f;
-
-    private float _steerTractionBlend = 0f;
-
-    [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
-    private float steerRollingAccelCoastMultiplier = 1f;
-
-    [SerializeField, Tooltip("If true, steerRollingAccel is also applied on ice. If false, coasting-steer won't add forward push on ice.")]
-    private bool applySteerRollingAccelOnIce = false;
-
-    private bool _inputsSuppressedThisFrame = false;
-
-    // NEW: split suppression so steering is never fully blocked by malfunction
-    private bool _suppressThrottleBrakeThisFrame = false;
-    private bool _suppressSteeringThisFrame = false;
 
     // ------------------------------------------------------------------------
     // NEW: global near-miss / close-call detection for ALL obstacles
@@ -1001,6 +1137,50 @@ public class CarController : MonoBehaviour
                 return;
             }
 
+            if (enableMashProgressGauge && _flipMashActive)
+            {
+                float severity = _lastCrashSeverity; // 0 to 1
+
+                // === GAUGE DRAIN (severity + crash count) ===
+                float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
+                float crashBonus = _crashCount * gaugeDrainPerCrash;
+                float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
+                _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * Time.deltaTime);
+
+                if (mashDrainsHealth)
+                {
+                    float baseHealthDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, severity);
+                    float healthCrashBonus = _crashCount * mashHealthDrainPerCrash;
+                    float finalHealthDrain = Mathf.Min(baseHealthDrain + healthCrashBonus, mashHealthDrainCap);
+
+                    currentHP -= finalHealthDrain * Time.deltaTime;
+
+                    if (currentHP <= 0f)
+                    {
+                        currentHP = 0f;
+                        _flipMashActive = false;
+                        isOutOfHP = true;
+                    }
+                }
+
+                // FUEL DRAIN (separate - not else!)
+                if (mashDrainsFuel)
+                {
+                    float baseFuelDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, severity);
+                    float fuelCrashBonus = _crashCount * mashFuelDrainPerCrash;
+                    float finalFuelDrain = Mathf.Min(baseFuelDrain + fuelCrashBonus, mashFuelDrainCap);
+
+                    currentFuel -= finalFuelDrain * Time.deltaTime;
+
+                    if (currentFuel <= 0f)
+                    {
+                        currentFuel = 0f;
+                        _flipMashActive = false;
+                        isOutOfFuel = true;
+                    }
+                }
+            }
+
             // IMPORTANT: Keep sampling ground even during recovery (fixes ice sticking)
             SampleGroundAndUpdateMultipliers();
 
@@ -1011,27 +1191,38 @@ public class CarController : MonoBehaviour
             if (effectivePassiveClickRate > 0f)
             {
                 _passiveClickTimer += Time.fixedDeltaTime;
-                float passiveInterval = 1f / effectivePassiveClickRate;
+                var skillMgr = RacingSkillTreeManager.Instance;
+                bool passiveUnlocked = skillMgr != null && skillMgr.IsPassiveMashUnlocked;
 
-                while (_passiveClickTimer >= passiveInterval)
+                if (passiveUnlocked && effectivePassiveClickRate > 0f)
                 {
-                    _passiveClickTimer -= passiveInterval;
+                    _passiveClickTimer += Time.fixedDeltaTime;
+                    float passiveInterval = 1f / effectivePassiveClickRate;
 
-                    // Add passive clicks
-                    _flipMashClicks += effectivePassiveClickStrength;
-
-                    // Optional: Apply partial fuel reward for passive clicks
-                    float passiveFuelReward = effectiveFuelPerClick * 0.5f; // Half reward for passive
-                    if (passiveFuelReward > 0f && maxFuel > 0f)
+                    while (_passiveClickTimer >= passiveInterval)
                     {
-                        currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
-                    }
+                        _passiveClickTimer -= passiveInterval;
 
-                    // Check if recovery complete
-                    if (_flipMashClicks >= _flipMashClicksNeeded)
-                    {
-                        EndFlipMashRecoveryAndUpright();
-                        return;
+                        // Award passive clicks
+                        _flipMashClicks += effectivePassiveClickStrength;
+
+                        // Give partial fuel for passive clicks
+                        float passiveFuelReward = effectiveFuelPerClick * 0.5f;
+                        if (passiveFuelReward > 0f && maxFuel > 0f)
+                        {
+                            float before = currentFuel;
+                            currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                            float actual = currentFuel - before;
+
+                            if (actual > 0.01f)
+                                TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
+                        }
+
+                        if (_flipMashClicks >= _flipMashClicksNeeded)
+                        {
+                            EndFlipMashRecoveryAndUpright();
+                            break;
+                        }
                     }
                 }
             }
@@ -1162,8 +1353,6 @@ public class CarController : MonoBehaviour
                 rb.velocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
 
-                // Prevent any further rotation changes from code or physics
-                rb.freezeRotation = true;
             }
 
             // Kill any pending reorientation
@@ -1185,6 +1374,8 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
+
+        CheckBoostFlash();
 
         // NEW: periodic near-miss sweep to detect close calls against ANY obstacle layers (uses crashLayers)
         // Throttle frequency to _closeCallSweepInterval to avoid expensive queries every fixed frame.
@@ -2235,6 +2426,10 @@ public class CarController : MonoBehaviour
                     currentFuel = Mathf.Max(0f, currentFuel - shortfall);
                 }
 
+                float actualFuelLoss = fuelBefore - currentFuel;
+                if (actualFuelLoss >= minFuelLossForPopup)
+                    TrySpawnPopup(RacingPopupType.FuelLoss, actualFuelLoss);
+
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
 
@@ -2627,6 +2822,12 @@ public class CarController : MonoBehaviour
     private void ConsumeFuel(float amount)
     {
         if (isOutOfFuel || maxFuel <= 0f) return;
+
+        // Skip fuel consumption during mash IF we're draining health instead
+        if (_flipMashActive && mashDrainsHealth) return;
+
+        // If draining fuel during mash, that's handled in the Update loop, not here
+        if (_flipMashActive && !mashDrainsHealth) return;
 
         if (!_flipMashActive)
         {
@@ -3356,11 +3557,21 @@ public class CarController : MonoBehaviour
     mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
 ));
 
-            effectivePassiveClickRate = mgr.ApplyStatChain(
-                basePassiveClickRate,
-                SkillType.MashPassiveClickRate_Add,
-                SkillType.MashPassiveClickRate_Mul
-            );
+            if (mgr.IsPassiveMashUnlocked)
+            {
+                // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
+                // Then rate skills modify it further
+                float baseRate = basePassiveClickRate > 0f ? basePassiveClickRate : 0.5f; // Default if base is 0
+                effectivePassiveClickRate = mgr.ApplyStatChain(
+                    baseRate,
+                    SkillType.MashPassiveClickRate_Add,
+                    SkillType.MashPassiveClickRate_Mul
+                );
+            }
+            else
+            {
+                effectivePassiveClickRate = 0f; // Locked - no passive clicks
+            }
 
             effectivePassiveClickStrength = Mathf.Max(1, Mathf.RoundToInt(
                 mgr.ApplyStatChain(basePassiveClickStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul)
@@ -3530,6 +3741,26 @@ public class CarController : MonoBehaviour
         return Mathf.Abs(pitch) > 1.0f || Mathf.Abs(roll) > 1.0f;
     }
 
+    // === BOOST PAD SCREEN FLASH ===
+    private void CheckBoostFlash()
+    {
+        if (baseMaxSpeed <= 0f) return;
+
+        float speedMultiplier = currentMaxSpeed / baseMaxSpeed;
+        bool isOnBoost = speedMultiplier >= boostFlashSpeedThreshold;
+
+        // Flash when ENTERING boost (not every frame)
+        if (isOnBoost && !_wasOnBoost)
+        {
+            if (Time.time - _lastBoostFlashTime >= boostFlashCooldown)
+            {
+                ScreenFlashManager.Boost();
+                _lastBoostFlashTime = Time.time;
+            }
+        }
+
+        _wasOnBoost = isOnBoost;
+    }
 
 
     public void ApplyTemporaryHandlingBoost(float multiplier, float duration)
@@ -3564,9 +3795,21 @@ public class CarController : MonoBehaviour
             return;
         }
 
+        _totalMashClicksThisSession++;
+
         // Calculate mash speed (time since last click)
         float timeSinceLastMash = Time.time - _lastMashTime;
         _lastMashTime = Time.time;
+
+        ScreenFlashManager.Mash();
+
+        var cameraFollow = Camera.main.GetComponent<CameraFollow>();
+
+        // Screen shake for mash
+        if (enableMashScreenShake && cameraFollow != null)
+        {
+            cameraFollow.StartShake(mashShakeDuration, mashShakeStrength, mashShakeVibrato, mashShakeRandomness);
+        }
 
         // Convert to 0-1 speed rating (faster = higher)
         _currentMashSpeed = CalculateMashSpeedRating(timeSinceLastMash);
@@ -3574,6 +3817,11 @@ public class CarController : MonoBehaviour
 
         // Apply rewards
         ApplyMashRewards(_currentMashSpeed);
+
+        if (enableMashProgressGauge)
+        {
+            UpdateMashGauge(_currentMashSpeed);
+        }
 
         _flipMashClicks += effectiveClicksPerClick;
 
@@ -3599,6 +3847,14 @@ public class CarController : MonoBehaviour
         RacingPopups.Spawn(type, value, GetPopupPosition());
     }
 
+    private void TrySpawnPopupRandomScreen(RacingPopupType type, float value)
+    {
+        if (!enablePopupText) return;
+        if (!RacingPopups.IsReady) return;
+
+        RacingPopups.MashFuelRandom(value);
+    }
+
     private float CalculateMashSpeedRating(float timeBetweenClicks)
     {
         // Clamp between thresholds
@@ -3613,24 +3869,50 @@ public class CarController : MonoBehaviour
 
     private void ApplyMashRewards(float speedRating)
     {
-        // === FUEL REWARD ===
-        float fuelMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
-        float fuelReward = effectiveFuelPerClick * fuelMultiplier;
+        // Calculate tiered gauge multiplier
+        float gaugeMultiplier = CalculateGaugeMultiplier(_mashGaugeValue);
 
-        Debug.Log($"[Flip Mash] Speed Rating: {speedRating:F2}, Fuel Reward: {fuelReward:F2}");
+        // === FUEL REWARD ===
+        float speedMultiplier = Mathf.Lerp(1f, mashFuelSpeedBonusMax, speedRating);
+        float fuelReward = effectiveFuelPerClick * speedMultiplier * gaugeMultiplier;
 
         if (fuelReward > 0f && maxFuel > 0f)
         {
+            float before = currentFuel;
             currentFuel = Mathf.Min(currentFuel + fuelReward, maxFuel);
+            float actual = currentFuel - before;
+
+            if (actual > 0f)
+            {
+                _totalFuelGainedThisSession += actual;
+
+                // Show fuel gain popup
+                TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
+            }
         }
 
-        // === FUTURE EXPANSION HOOKS ===
-        // Uncomment and implement as needed:
+        Debug.Log($"[Flip Mash] Speed: {speedRating:F2}, Gauge: {_mashGaugeValue:F2}, Tier Multiplier: {gaugeMultiplier:F2}, Fuel: {fuelReward:F2}");
+    }
 
-        // ApplyMashBoostReward(speedRating);
-        // ApplyMashCoinReward(speedRating);
-        // ApplyMashScoreReward(speedRating);
-        // ApplyMashComboReward(speedRating);
+    private float CalculateGaugeMultiplier(float gaugeValue)
+    {
+        if (gaugeValue >= gaugeMaxThreshold)
+        {
+            // At or above max threshold - full max multiplier
+            return gaugeMultiplierAtMax;
+        }
+        else if (gaugeValue >= gaugeGoodThreshold)
+        {
+            // Between good and max - lerp between good and max multipliers
+            float t = Mathf.InverseLerp(gaugeGoodThreshold, gaugeMaxThreshold, gaugeValue);
+            return Mathf.Lerp(gaugeMultiplierAtGood, gaugeMultiplierAtMax, t);
+        }
+        else
+        {
+            // Below good threshold - lerp between zero and good multipliers
+            float t = Mathf.InverseLerp(0f, gaugeGoodThreshold, gaugeValue);
+            return Mathf.Lerp(gaugeMultiplierAtZero, gaugeMultiplierAtGood, t);
+        }
     }
 
     // ============================================
@@ -3658,12 +3940,26 @@ public class CarController : MonoBehaviour
     {
         if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
 
+        // Show summary popup for fuel gained this session
+        if (_totalFuelGainedThisSession > 0.1f && RacingPopups.IsReady)
+        {
+            // Could show a "Total Fuel: +X" popup here if desired
+        }
+
+        // Award sprockets based on performance
+        if (enableSprocketRewards)
+        {
+            AwardMashSprockets();
+        }
+
+        // REMOVED: The old gauge-based fuel curve reward
+        // The fuel is now gained per-click with gauge multiplier instead
+
         _flipMashActive = false;
 
         // Only do upright reorientation if we were actually flipped
         if (_isFlippedDuringRecovery)
         {
-            // Start the same reorientation flow you use after crashes.
             _isReorienting = true;
             _reorientElapsed = 0f;
             _reorientStartRot = transform.rotation;
@@ -3671,7 +3967,6 @@ public class CarController : MonoBehaviour
             Vector3 euler = transform.eulerAngles;
             _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
 
-            // Optional: tiny lift to prevent sticking into ground when snapping upright
             if (rb != null)
                 rb.position += Vector3.up * flipUprightLift;
         }
@@ -3733,6 +4028,31 @@ public class CarController : MonoBehaviour
         driftUnlocked = (mgr != null && mgr.GetLevel(SkillType.DriftUnlock) > 0);
     }
 
+    private void UpdateMashGauge(float speedRating)
+    {
+        // Calculate fill amount with speed bonus
+        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating);
+
+        // Add to gauge
+        _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
+
+        // Track peak
+        if (_mashGaugeValue > _mashGaugePeakValue)
+            _mashGaugePeakValue = _mashGaugeValue;
+
+        // Check for max gauge (using threshold, not 100%)
+        if (_mashGaugeValue >= gaugeMaxThreshold && !_gaugeMaxedThisSession)
+        {
+            _gaugeMaxedThisSession = true;
+
+            // Visual/audio feedback for reaching max tier
+            ScreenFlashManager.Instance?.Flash(Color.cyan, 1.5f, 0.3f, 0.3f);
+
+            // Future skill hook: maxGaugeRefillsFuel
+            // if (maxGaugeRefillsFuel) { ... }
+        }
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if (rb == null)
@@ -3761,6 +4081,9 @@ public class CarController : MonoBehaviour
         Debug.Log($"Impact Speed: {impactSpeed}");
 
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
+
+
+        ScreenFlashManager.Damage();
 
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
@@ -3819,6 +4142,48 @@ public class CarController : MonoBehaviour
         }
 
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
+    }
+
+    /// <summary>
+    /// Get the current health drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentMashHealthDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * mashHealthDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, mashHealthDrainCap);
+        }
+    }
+
+    /// <summary>
+    /// Get the current fuel drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentMashFuelDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * mashFuelDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, mashFuelDrainCap);
+        }
+    }
+
+    /// <summary>
+    /// Get the current gauge drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentGaugeDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * gaugeDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+        }
     }
 
     // Add helper inside the class
@@ -3889,6 +4254,50 @@ public class CarController : MonoBehaviour
         Destroy(go, deathExplodeClip.length / Mathf.Max(0.01f, src.pitch));
     }
 
+    private void AwardMashSprockets()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        // Base reward: percentage of total clicks
+        float baseReward = _totalMashClicksThisSession * sprocketBasePercent;
+
+        // Bonus based on gauge peak using tier system
+        float gaugeBonus = CalculateGaugeMultiplier(_mashGaugePeakValue);
+
+        // Extra bonus if gauge reached max tier
+        if (_gaugeMaxedThisSession)
+            gaugeBonus *= sprocketMaxedBonusMultiplier;
+
+        // Calculate final amount
+        int sprocketReward = Mathf.RoundToInt(baseReward * gaugeBonus);
+
+        // Clamp to min/max
+        sprocketReward = Mathf.Clamp(sprocketReward, sprocketMinReward, sprocketMaxReward);
+
+        // Track for summary
+        _totalSprocketsThisSession = sprocketReward;
+
+        // Award sprockets
+        if (sprocketReward > 0)
+        {
+            mgr.AddSprockets(sprocketReward);
+
+            // Notify game manager for UI tracking
+            GameManager_Racing.Instance?.RegisterSprocketGain(sprocketReward);
+
+            // Show sprocket popup
+            if (RacingPopups.IsReady)
+            {
+                RacingPopups.Spawn(RacingPopupType.SprocketGain, sprocketReward, GetPopupPosition());
+            }
+
+            // Screen flash for sprocket reward
+            ScreenFlashManager.Sprocket(sprocketReward);
+
+            Debug.Log($"[Mash Complete] Clicks: {_totalMashClicksThisSession}, Peak Gauge: {_mashGaugePeakValue:P0}, Maxed: {_gaugeMaxedThisSession}, Sprockets: {sprocketReward}");
+        }
+    }
 
     private void OnTriggerEnter(Collider other)
     {
@@ -4112,6 +4521,13 @@ public class CarController : MonoBehaviour
         if (IsDeadForMashRecovery) return;
         if (!enableFlipRecoveryMash) return;
 
+        _mashGaugeValue = 0f;
+        _mashGaugePeakValue = 0f;
+        _gaugeMaxedThisSession = false;
+        _totalMashClicksThisSession = 0;
+        _totalFuelGainedThisSession = 0f;
+        _totalSprocketsThisSession = 0;
+
         _flipMashActive = true;
         _isReorienting = false;
         _isFlippedDuringRecovery = isFlipped;
@@ -4315,8 +4731,13 @@ public class CarController : MonoBehaviour
         if (maxFuel <= 0f || amount <= 0f) return 0f;
         float before = currentFuel;
         currentFuel = Mathf.Min(maxFuel, currentFuel + amount);
-        if (currentFuel > 0f) isOutOfFuel = false; // allow driving again if we refueled
-        return Mathf.Max(0f, currentFuel - before);
+        if (currentFuel > 0f) isOutOfFuel = false;
+
+        float actual = currentFuel - before;
+        if (actual >= minFuelLossForPopup)
+            TrySpawnPopup(RacingPopupType.FuelGain, actual);
+
+        return Mathf.Max(0f, actual);
     }
 
     public float AddHP(float amount)
@@ -4324,7 +4745,14 @@ public class CarController : MonoBehaviour
         if (maxHP <= 0f || amount <= 0f) return 0f;
         float before = currentHP;
         currentHP = Mathf.Min(maxHP, currentHP + amount);
-        return Mathf.Max(0f, currentHP - before);
+
+        ScreenFlashManager.Heal();
+
+        float actual = currentHP - before;
+        if (actual >= minHPDamageForPopup)
+            TrySpawnPopup(RacingPopupType.HPGain, actual);
+
+        return Mathf.Max(0f, actual);
     }
 
     private void UpdateDamageVFXImmediate()
@@ -4389,6 +4817,8 @@ public class CarController : MonoBehaviour
     public float CurrentFuel => currentFuel;
     public float MaxFuel => maxFuel;
 
+    public bool IsOnIceSurface => _onIceSurface;
+
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;
     public float GrassFraction => grassFraction;
@@ -4396,4 +4826,22 @@ public class CarController : MonoBehaviour
     public float CurrentHP => currentHP;
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
+
+
+    public float BaseAcceleration => baseAcceleration;
+    public float BaseMaxSpeed => baseMaxSpeed;
+    public float BaseMaxFuel => baseMaxFuel;
+    public float BaseMaxHP => baseMaxHP;
+    public float BaseTurnSpeed => baseTurnSpeed;
+    public float BaseDrivingFuelUse => baseFuelUseFullThrottle;
+    public float BaseHPRegen => baseHpRegenPerSecond;
+    public float BaseBoostForce => baseBoostForce;
+    public float BaseBoostDuration => baseBoostDuration;
+    public float BaseBoostCooldown => baseBoostCooldown;
+    public float BaseBoostFuelCost => baseBoostFuelCost;
+    public float BaseClicksPerClick => baseClicksPerClick;
+    public float BasePassiveClickRate => basePassiveClickRate;
+    public float BasePassiveClickStrength => basePassiveClickStrength;
+    public float BaseMashFuelPerClick => mashBaseFuelPerClick;
+
 }

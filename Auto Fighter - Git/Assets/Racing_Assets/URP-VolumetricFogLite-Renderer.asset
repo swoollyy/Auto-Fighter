@@ -71,7 +71,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7a01d188a26328b4b920cdfdfa2d0def, type: 3}
   m_Name: VolumetricFogRendererFeatureLite
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   renderInSceneView: 1
   renderPassEvent: 500
   settings:

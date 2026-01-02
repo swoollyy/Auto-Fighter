@@ -32,6 +32,19 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("If true this skill is visible from the start of a new run.")]
     public bool revealedAtStart = false;
 
+    [Tooltip("If true, this skill is revealed when player earns their first sprocket.")]
+    public bool revealOnFirstSprocket = false;
+
+    [Header("Sprocket Currency (for Crash-Related Skills)")]
+    [Tooltip("If true, this skill uses Sprockets instead of Coins.")]
+    public bool usesSprockets = false;
+
+    [Tooltip("Base sprocket cost for level 1.")]
+    [Min(1)] public int baseSprocketCost = 5;
+
+    [Tooltip("Sprocket cost increase per level.")]
+    [Min(0)] public int sprocketCostPerLevel = 3;
+
     [System.Serializable]
     public class ProgressiveUnlock
     {
@@ -50,6 +63,16 @@ public class SkillDefinition : ScriptableObject
         if (costCurve != null && costCurve.keys.Length > 0)
             return Mathf.Max(1, Mathf.RoundToInt(costCurve.Evaluate(nextLevel)));
         return flatCost;
+    }
+
+    /// <summary>
+    /// Get the sprocket cost for a specific level.
+    /// Uses linear scaling: baseSprocketCost + (level-1) * sprocketCostPerLevel
+    /// </summary>
+    public int GetSprocketCostForLevel(int nextLevel)
+    {
+        if (nextLevel <= 0) nextLevel = 1;
+        return baseSprocketCost + (nextLevel - 1) * sprocketCostPerLevel;
     }
 
     /// <summary>

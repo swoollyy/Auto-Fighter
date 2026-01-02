@@ -18,14 +18,32 @@ MonoBehaviour:
   maxLevel: 40
   costCurve:
     serializedVersion: 2
-    m_Curve: []
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 5
+      outSlope: 5
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 5
+      inSlope: 5
+      outSlope: 5
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  flatCost: 10
+  flatCost: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 5
-  uiPosition: {x: 1000, y: 1000}
-  revealedAtStart: 0
+  uiPosition: {x: 75, y: -75}
+  revealedAtStart: 1
   progressiveUnlocks: []

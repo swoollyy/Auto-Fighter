@@ -18,6 +18,8 @@ public class RacingSkillTreeManager : MonoBehaviour
     [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
     [SerializeField] private bool revealAllSkillsAtStart = true;
 
+
+
     /// <summary>
     /// Master toggle to enable/disable all skill effects at runtime.
     /// </summary>
@@ -29,6 +31,18 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     [Header("Economy")]
     [SerializeField] private int playerCurrency = 0;
+
+    [Header("Sprockets Currency")]
+    [SerializeField] private int playerSprockets = 0;
+
+    private const string SprocketsKey = "Racing_Sprockets";
+
+    private bool _hasEverEarnedSprockets = false;
+    private const string FirstSprocketKey = "Racing_HasEarnedSprockets";
+
+    public event Action OnFirstSprocketEarned;
+
+    public event Action<int> OnSprocketsChanged;
 
     public event Action<int> OnCurrencyChanged;
     public event Action<SkillType, int> OnLevelChanged;
@@ -63,6 +77,14 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
 
+        playerSprockets = PlayerPrefs.GetInt(SprocketsKey, playerSprockets);
+
+        _hasEverEarnedSprockets = PlayerPrefs.GetInt(FirstSprocketKey, 0) == 1;
+
+        // If player already has sprockets, they've earned them before
+        if (playerSprockets > 0)
+            _hasEverEarnedSprockets = true;
+
         _revealedSkills.Clear();
         foreach (var def in skills)
         {
@@ -70,10 +92,18 @@ public class RacingSkillTreeManager : MonoBehaviour
 
             // Reveal if master toggle is on OR individual skill has revealedAtStart
             if (revealAllSkillsAtStart || def.revealedAtStart)
+            {
                 RevealSkill(def);
+            }
+            // Also reveal first-sprocket skills if player has earned sprockets before
+            else if (def.revealOnFirstSprocket && _hasEverEarnedSprockets)
+            {
+                RevealSkill(def);
+            }
         }
 
         OnCurrencyChanged?.Invoke(playerCurrency);
+        OnSprocketsChanged?.Invoke(playerSprockets);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, GetLevel(t));
     }
@@ -327,6 +357,161 @@ public class RacingSkillTreeManager : MonoBehaviour
         return Mathf.Max(0.01f, v);
     }
 
+
+    /// <summary>
+    /// Current sprockets balance.
+    /// </summary>
+    public int Sprockets => playerSprockets;
+
+    private void SaveSprockets()
+    {
+        PlayerPrefs.SetInt(SprocketsKey, playerSprockets);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Add sprockets to player balance.
+    /// </summary>
+    public void AddSprockets(int amount)
+    {
+        if (amount <= 0) return;
+
+        bool wasFirstSprocket = !_hasEverEarnedSprockets && playerSprockets == 0;
+
+        playerSprockets += amount;
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+
+        // Check for first sprocket ever earned
+        if (wasFirstSprocket)
+        {
+            _hasEverEarnedSprockets = true;
+            PlayerPrefs.SetInt(FirstSprocketKey, 1);
+            PlayerPrefs.Save();
+
+            // Reveal skills marked for first-sprocket reveal
+            RevealFirstSprocketSkills();
+            OnFirstSprocketEarned?.Invoke();
+
+            Debug.Log("[SkillTreeManager] First sprocket earned! Revealing sprocket skills.");
+        }
+    }
+
+    private void RevealFirstSprocketSkills()
+    {
+        foreach (var def in skills)
+        {
+            if (def == null) continue;
+            if (def.revealOnFirstSprocket && !IsSkillRevealed(def.type))
+            {
+                RevealSkill(def);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remove sprockets from player balance.
+    /// </summary>
+    public void RemoveSprockets(int amount)
+    {
+        if (amount <= 0) return;
+        playerSprockets = Mathf.Max(0, playerSprockets - amount);
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+    }
+
+    /// <summary>
+    /// Check if player can afford a sprocket cost.
+    /// </summary>
+    public bool CanAffordSprockets(int cost) => playerSprockets >= cost;
+
+
+    /// <summary>
+    /// Try to purchase a skill using sprockets instead of coins.
+    /// </summary>
+    public bool TryPurchaseWithSprockets(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        // Use sprocket cost (you can add a separate field to SkillDefinition for this)
+        int cost = def.GetSprocketCostForLevel(nextLevel);
+        if (playerSprockets < cost) return false;
+
+        if (_state.Increment(type, def.maxLevel))
+        {
+            playerSprockets -= cost;
+            SaveSprockets();
+            _state.Save();
+            int newLvl = GetLevel(type);
+            OnSprocketsChanged?.Invoke(playerSprockets);
+            OnLevelChanged?.Invoke(type, newLvl);
+            EvaluateProgressiveUnlocks(def, newLvl);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Smart purchase that automatically uses the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public bool TryPurchaseSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+
+        if (def.usesSprockets)
+            return TryPurchaseWithSprockets(type);
+        else
+            return TryPurchase(type);
+    }
+
+    /// <summary>
+    /// Get the next level cost in the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public int GetNextLevelCostSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return 0;
+
+        if (def.usesSprockets)
+            return def.GetSprocketCostForLevel(nextLevel);
+        else
+            return def.GetCostForLevel(nextLevel);
+    }
+
+    /// <summary>
+    /// Check if player can afford the next level of a skill (checks correct currency).
+    /// </summary>
+    public bool CanAffordNextLevel(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        if (def.usesSprockets)
+        {
+            int cost = def.GetSprocketCostForLevel(nextLevel);
+            return playerSprockets >= cost;
+        }
+        else
+        {
+            int cost = def.GetCostForLevel(nextLevel);
+            return playerCurrency >= cost;
+        }
+    }
+
+    /// <summary>
+    /// Get the currency name for display based on skill's usesSprockets flag.
+    /// </summary>
+    public string GetCurrencyNameForSkill(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return "Coins";
+        return def.usesSprockets ? "Sprockets" : "Coins";
+    }
+
+
     // ------------------------------------------------------------------------
     // Master Skill Control
     // ------------------------------------------------------------------------
@@ -376,8 +561,15 @@ public class RacingSkillTreeManager : MonoBehaviour
         }
 
         OnSkillsReset?.Invoke();
+        _hasEverEarnedSprockets = false;
+        PlayerPrefs.DeleteKey(FirstSprocketKey);
+        playerSprockets = 0;
+        PlayerPrefs.DeleteKey(SprocketsKey);
+        OnSprocketsChanged?.Invoke(playerSprockets);
     }
 
+    public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
+    public bool HasEverEarnedSprockets => _hasEverEarnedSprockets;
     public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
     public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
     public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);

@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
+  m_Name: Mash_Fuel_Gain_PopupStyle
+  m_EditorClassIdentifier: 
+  popupType: 5
+  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  fontMaterial: {fileID: 0}
+  spriteAsset: {fileID: 11400000, guid: a1fa73e741729494ea5237932d007a92, type: 2}
+  baseFontSize: 6
+  textColor: {r: 0, g: 0.47852492, b: 1, a: 1}
+  prefix: +
+  suffix: '     <sprite index=0> Fuel'
+  numberFormat: 0.#
+  enableOutline: 1
+  outlineWidth: 0.25
+  outlineColor: {r: 0, g: 0.36426687, b: 1, a: 1}
+  outlineIntensity: 8
+  faceDilate: 0.05
+  horizontalOffset: 0.5
+  verticalOffset: 0
+  horizontalDrift: 0
+  fixedRotationZ: 0
+  duration: 1.25
+  fadeInFraction: 0.064
+  fadeOutFraction: 0.1
+  useUnscaledTime: 1
+  riseDistance: 1.5
+  riseEase: 9
+  popFromScale: 0.2
+  popToScale: 1.2
+  endScale: 0
+  popDelay: 0.06
+  popDurationFraction: 0.51
+  popEase: 27
+  enableTiltShake: 1
+  tiltShakeAngle: 8
+  tiltShakeDurationFraction: 0.2
+  enableValueScaling: 1
+  minValueForScale: 1
+  maxValueForScale: 2
+  minScaleMultiplier: 0.6
+  maxScaleMultiplier: 2
+  useLogScale: 0
+  sortingLayerName: UI
+  sortingOrder: 1000
+  spawnSound: {fileID: 0}
+  soundVolume: 0.5

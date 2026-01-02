@@ -27,7 +27,7 @@ MonoBehaviour:
   mode: 0
   baseValue: 0
   perLevelAdd: 0.05
-  uiPosition: {x: 0, y: -375}
+  uiPosition: {x: 150, y: -75}
   revealedAtStart: 0
   progressiveUnlocks:
   - requiredLevel: 1

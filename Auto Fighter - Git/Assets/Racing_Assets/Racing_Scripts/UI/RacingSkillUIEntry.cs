@@ -69,24 +69,35 @@ public class RacingSkillUIEntry : MonoBehaviour
             return;
         }
 
+        // Show cost with currency type
+        int cost = mgr.GetNextLevelCostSmart(def.type);
+        string currencyName = mgr.GetCurrencyNameForSkill(def.type);
+        costText.text = $"{cost} {currencyName}";
 
-
-
+        // Color based on affordability
+        bool canAfford = mgr.CanAffordNextLevel(def.type);
+        costText.color = canAfford ? affordableColor : unaffordableColor;
     }
 
     public void ColorChange()
     {
-        int nextCost = mgr.GetNextLevelCost(def.type);
+        if (!def || mgr == null) return;
+
         int lvl = mgr.GetLevel(def.type);
         bool isMaxed = lvl >= def.maxLevel;
-        int currency = GetCurrency();
-        button.color = (currency >= nextCost) ? affordableColor : unaffordableColor;
-        Debug.Log($"Currency: {currency}, Next Cost: {nextCost}, Color: {button.color}");
 
         if (button)
         {
-            if (isMaxed) button.color = maxedColor;
-            else button.color = (GetCurrency() >= mgr.GetNextLevelCost(def.type)) ? affordableColor : unaffordableColor;
+            if (isMaxed)
+            {
+                button.color = maxedColor;
+            }
+            else
+            {
+                // Use smart affordability check
+                bool canAfford = mgr.CanAffordNextLevel(def.type);
+                button.color = canAfford ? affordableColor : unaffordableColor;
+            }
         }
     }
 
@@ -95,9 +106,10 @@ public class RacingSkillUIEntry : MonoBehaviour
         ColorChange();
     }
 
-    private int GetCurrency()
+    private int GetRelevantCurrency()
     {
-        return mgr != null ? mgr.Currency : 0;
+        if (mgr == null || def == null) return 0;
+        return def.usesSprockets ? mgr.Sprockets : mgr.Currency;
     }
 
     private string FormatEffect(SkillType type)

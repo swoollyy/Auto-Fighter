@@ -15,22 +15,22 @@ MonoBehaviour:
   type: 43
   displayName: Double Value
   description: Chance to give double value of a coin!
-  maxLevel: 5
+  maxLevel: 10
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 10
-      outSlope: 10
+      inSlope: 5
+      outSlope: 5
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 1
-      value: 10
+      value: 5
       inSlope: 4.6743765
       outSlope: 4.6743765
       tangentMode: 0
@@ -39,7 +39,16 @@ MonoBehaviour:
       outWeight: 0.16145834
     - serializedVersion: 3
       time: 5
-      value: 30
+      value: 25
+      inSlope: 5
+      outSlope: 5
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 10
+      value: 50
       inSlope: 5
       outSlope: 5
       tangentMode: 34
