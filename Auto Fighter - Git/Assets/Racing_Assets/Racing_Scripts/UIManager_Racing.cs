@@ -349,44 +349,50 @@ public class UIManager_Racing : MonoBehaviour
         if (car == null) return;
 
         float gaugeValue = car.MashGaugeValue;
-        bool isMaxed = car.MashGaugeMaxed;
+        float peakValue = car.MashGaugePeakValue;
+        bool hasMaxedThisSession = car.MashGaugeMaxed;  // For indicator glow/bonus tracking only
 
         float goodThreshold = car.GaugeGoodThreshold;
         float maxThreshold = car.GaugeMaxThreshold;
+
+        // Check if CURRENTLY at max (not just "ever reached max")
+        bool isCurrentlyAtMax = gaugeValue >= maxThreshold;
 
         // Update fill
         if (mashGaugeFill != null)
         {
             mashGaugeFill.fillAmount = gaugeValue;
 
-            // Color based on tier
-            if (isMaxed || gaugeValue >= maxThreshold)
+            // Color based on CURRENT tier (not session flag)
+            if (isCurrentlyAtMax)
             {
+                // Currently at max tier - cyan/gold
                 mashGaugeFill.color = Color.cyan;
             }
             else if (gaugeValue >= goodThreshold)
             {
+                // Good tier - use gradient in upper range
                 mashGaugeFill.color = mashGaugeGradient != null
-                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / Mathf.Max(0.0001f, (maxThreshold - goodThreshold)) * 0.3f)
+                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / (maxThreshold - goodThreshold) * 0.3f)
                     : Color.green;
             }
             else if (mashGaugeGradient != null)
             {
-                mashGaugeFill.color = mashGaugeGradient.Evaluate((gaugeValue / Mathf.Max(0.0001f, goodThreshold)) * 0.7f);
+                // Below good - use gradient normally
+                mashGaugeFill.color = mashGaugeGradient.Evaluate(gaugeValue / goodThreshold * 0.7f);
             }
         }
 
-        // PEAK MARKER (STATIC MAX TARGET):
-        // Do not reposition it here. It is anchored once in UpdateThresholdMarkerPositions().
+        // PEAK MARKER (unchanged)
         if (mashGaugePeakMarker != null && !mashGaugePeakMarker.gameObject.activeSelf)
             mashGaugePeakMarker.gameObject.SetActive(true);
 
-        // Update percent text with tier indicator
+        // Update percent text with tier indicator - USE CURRENT VALUE, NOT SESSION FLAG
         if (mashGaugePercentText != null)
         {
             int percent = Mathf.RoundToInt(gaugeValue * 100);
 
-            if (isMaxed || gaugeValue >= maxThreshold)
+            if (isCurrentlyAtMax)  // Changed from: if (isMaxed || gaugeValue >= maxThreshold)
                 mashGaugePercentText.text = $"{percent}% MAX!";
             else if (gaugeValue >= goodThreshold)
                 mashGaugePercentText.text = $"{percent}% GOOD";
@@ -394,9 +400,16 @@ public class UIManager_Racing : MonoBehaviour
                 mashGaugePercentText.text = $"{percent}%";
         }
 
-        // Maxed indicator
+        // Maxed indicator - can still use session flag for persistent glow effect
+        // OR change to current value if you want it to turn off when gauge drops
         if (mashGaugeMaxedIndicator != null)
-            mashGaugeMaxedIndicator.SetActive(isMaxed);
+        {
+            // Option 1: Stays on once maxed (shows "you hit max at some point!")
+            // mashGaugeMaxedIndicator.SetActive(hasMaxedThisSession);
+
+            // Option 2: Only on when currently at max (turns off when gauge drops)
+            mashGaugeMaxedIndicator.SetActive(isCurrentlyAtMax);
+        }
     }
 
     public void UpdateRunSprockets(int sprocketsThisRun)

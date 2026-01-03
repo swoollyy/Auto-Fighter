@@ -3,20 +3,32 @@
   "WorkspaceRootPath": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\racing_assets\\racing_scripts\\carcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\carcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\uimanager_racing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\uimanager_racing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\racing_assets\\racing_scripts\\groundsurface.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\groundsurface.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|c:\\users\\kylef\\onedrive\\documents\\github\\auto-fighter\\auto fighter - git\\assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\racing_assets\\racing_scripts\\gamemanager_racing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\gamemanager_racing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\racing_assets\\racing_scripts\\trackobstaclebounceback.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\racing_assets\\racing_scripts\\trackcoinspawner.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -61,10 +73,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\idamagenumbersystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\idamagenumbersystem.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|solutionrelative:assets\\scripts\\pinball.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{3E91378D-078D-9A56-14AB-BF47C9710941}|Assembly-CSharp.csproj|C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\assets\\scripts\\ipowerup.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -150,37 +158,86 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "TrackObstacleBounceBack.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
-              "ViewState": "AgIAACoBAAAAAAAAAAAgwD8BAABEAAAAAAAAAA==",
+              "DocumentIndex": 1,
+              "Title": "UIManager_Racing.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UIManager_Racing.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\UIManager_Racing.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UIManager_Racing.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\UIManager_Racing.cs",
+              "ViewState": "AgIAADwAAAAAAAAAAAAIwEgAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-12-19T22:18:56.677Z",
+              "WhenOpened": "2025-12-30T23:13:20.842Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "CarController.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
-              "ViewState": "AgIAAOEJAAAAAAAAAAAcwBAKAAAAAAAAAAAAAA==",
+              "DocumentIndex": 2,
+              "Title": "GroundSurface.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GroundSurface.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\GroundSurface.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GroundSurface.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\GroundSurface.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-20T22:44:44.12Z",
+              "WhenOpened": "2025-12-30T22:35:56.816Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 4,
+              "Title": "GameManager_Racing.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
+              "ViewState": "AgIAAJUAAAAAAAAAAAAcwKYAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-20T21:28:20.563Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "ALL_SCRIPTS_BUNDLE.md",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
+              "RelativeDocumentMoniker": "Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
+              "RelativeToolTip": "Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAABHAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2025-11-13T22:33:56.568Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 15,
+              "Title": "BluePad.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BluePad.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\BluePad.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BluePad.cs",
+              "RelativeToolTip": "Assets\\Scripts\\BluePad.cs",
+              "ViewState": "AgIAAOIAAAAAAAAAAAAowA8BAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-13T23:12:41.853Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "Pinball.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Pinball.cs",
+              "RelativeDocumentMoniker": "Assets\\Scripts\\Pinball.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Pinball.cs",
+              "RelativeToolTip": "Assets\\Scripts\\Pinball.cs",
+              "ViewState": "AgIAADMBAAAAAAAAAABRwDYBAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-09-30T20:23:59.49Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
               "Title": "TrackCoinSpawner.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackCoinSpawner.cs",
               "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\TrackCoinSpawner.cs",
@@ -192,7 +249,56 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "CarController.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\CarController.cs",
+              "ViewState": "AgIAABYRAAAAAAAAAAAcwCcRAABKAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-20T22:44:44.12Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "SkillDefinition.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
+              "ViewState": "AgIAACEAAAAAAAAAAAA3wEkAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-20T21:41:49.134Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "RacingSkillTreeManager.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
+              "ViewState": "AgIAALEAAAAAAAAAAAAkwLkAAABjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-20T21:42:22.546Z"
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 8,
+              "Title": "RacingSkillUI.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
+              "ViewState": "AgIAAK4AAAAAAAAAAAAcwNgAAAAdAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-20T21:43:02.079Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
               "Title": "RacingSkillUIEntry.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUIEntry.cs",
               "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUIEntry.cs",
@@ -205,79 +311,18 @@
             {
               "$type": "Document",
               "DocumentIndex": 5,
-              "Title": "RacingSkillUI.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\UI\\RacingSkillUI.cs",
-              "ViewState": "AgIAAK4AAAAAAAAAAAAcwNgAAAAdAAAAAAAAAA==",
+              "Title": "TrackObstacleBounceBack.cs",
+              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\TrackObstacleBounceBack.cs",
+              "ViewState": "AgIAACoBAAAAAAAAAAAgwD8BAAAjAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-20T21:43:02.079Z"
+              "WhenOpened": "2025-12-19T22:18:56.677Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
-              "Title": "RacingSkillTreeManager.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\RacingSkillTreeManager.cs",
-              "ViewState": "AgIAALEAAAAAAAAAAAAkwLkAAABjAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-20T21:42:22.546Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 6,
-              "Title": "SkillDefinition.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\SkillDefinition.cs",
-              "ViewState": "AgIAACEAAAAAAAAAAAA3wEkAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-20T21:41:49.134Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "GameManager_Racing.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
-              "RelativeDocumentMoniker": "Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
-              "RelativeToolTip": "Assets\\Racing_Assets\\Racing_Scripts\\GameManager_Racing.cs",
-              "ViewState": "AgIAAAYAAAAAAAAAAAAAAB4AAABDAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-20T21:28:20.563Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 2,
-              "Title": "ALL_SCRIPTS_BUNDLE.md",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
-              "RelativeDocumentMoniker": "Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
-              "RelativeToolTip": "Assets\\ProjectMap\\SourceDump\\ALL_SCRIPTS_BUNDLE.md",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAABHAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
-              "WhenOpened": "2025-11-13T22:33:56.568Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 12,
-              "Title": "BluePad.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BluePad.cs",
-              "RelativeDocumentMoniker": "Assets\\Scripts\\BluePad.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BluePad.cs",
-              "RelativeToolTip": "Assets\\Scripts\\BluePad.cs",
-              "ViewState": "AgIAAOIAAAAAAAAAAAAowA8BAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-13T23:12:41.853Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 13,
               "Title": "CollectAllXPPowerup.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\CollectAllXPPowerup.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\CollectAllXPPowerup.cs",
@@ -289,7 +334,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 17,
+              "DocumentIndex": 19,
               "Title": "PowerupSystem.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PowerupSystem.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PowerupSystem.cs",
@@ -301,7 +346,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 16,
+              "DocumentIndex": 18,
               "Title": "IPowerup.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IPowerup.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\IPowerup.cs",
@@ -313,19 +358,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 15,
-              "Title": "Pinball.cs",
-              "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Pinball.cs",
-              "RelativeDocumentMoniker": "Assets\\Scripts\\Pinball.cs",
-              "ToolTip": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Pinball.cs",
-              "RelativeToolTip": "Assets\\Scripts\\Pinball.cs",
-              "ViewState": "AgIAAFMEAAAAAAAAAAAqwGYEAAAxAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-09-30T20:23:59.49Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 14,
               "Title": "Ball.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Ball.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Ball.cs",
@@ -337,7 +370,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 12,
               "Title": "BallElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallElementalState.cs",
@@ -349,7 +382,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 14,
+              "DocumentIndex": 17,
               "Title": "IDamageNumberSystem.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IDamageNumberSystem.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\IDamageNumberSystem.cs",
@@ -361,7 +394,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 16,
               "Title": "TweenDamageNumberSystem.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\TweenDamageNumberSystem.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\TweenDamageNumberSystem.cs",
@@ -373,7 +406,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 18,
+              "DocumentIndex": 20,
               "Title": "Bumper.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Bumper.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Bumper.cs",
@@ -385,7 +418,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 20,
+              "DocumentIndex": 22,
               "Title": "PinballFlipper.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PinballFlipper.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PinballFlipper.cs",
@@ -397,7 +430,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 19,
+              "DocumentIndex": 21,
               "Title": "BumperElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BumperElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BumperElementalState.cs",
@@ -409,7 +442,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 21,
+              "DocumentIndex": 23,
               "Title": "IRunContext.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\IRunContext.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\IRunContext.cs",
@@ -421,7 +454,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 22,
+              "DocumentIndex": 24,
               "Title": "FirePaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\FirePaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\FirePaddleRewardSO.cs",
@@ -433,7 +466,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 23,
+              "DocumentIndex": 25,
               "Title": "RewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\RewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\RewardSO.cs",
@@ -445,7 +478,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 24,
+              "DocumentIndex": 26,
               "Title": "EndGame.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\EndGame.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\EndGame.cs",
@@ -457,7 +490,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 26,
+              "DocumentIndex": 28,
               "Title": "ElectricPaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\ElectricPaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\ElectricPaddleRewardSO.cs",
@@ -469,7 +502,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 25,
+              "DocumentIndex": 27,
               "Title": "BallDuplicateRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\BallDuplicateRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\BallDuplicateRewardSO.cs",
@@ -481,7 +514,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 27,
+              "DocumentIndex": 29,
               "Title": "PaddleElementalState.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleElementalState.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleElementalState.cs",
@@ -493,7 +526,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 28,
+              "DocumentIndex": 30,
               "Title": "BumperElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BumperElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BumperElements.cs",
@@ -505,7 +538,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 29,
+              "DocumentIndex": 31,
               "Title": "PaddleElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleElements.cs",
@@ -517,7 +550,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 30,
+              "DocumentIndex": 32,
               "Title": "PaddleEffectData.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PaddleEffectData.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PaddleEffectData.cs",
@@ -529,7 +562,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 31,
+              "DocumentIndex": 33,
               "Title": "BallElements.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallElements.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallElements.cs",
@@ -541,7 +574,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 33,
+              "DocumentIndex": 35,
               "Title": "PinballUIM.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\PinballUIM.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\PinballUIM.cs",
@@ -553,7 +586,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 32,
+              "DocumentIndex": 34,
               "Title": "WaterPaddleRewardSO.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\Level Up Rewards\\WaterPaddleRewardSO.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\Level Up Rewards\\WaterPaddleRewardSO.cs",
@@ -565,7 +598,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 34,
+              "DocumentIndex": 36,
               "Title": "BallXPBar.cs",
               "DocumentMoniker": "C:\\Users\\kylef\\OneDrive\\Documents\\GitHub\\Auto-Fighter\\Auto Fighter - Git\\Assets\\Scripts\\BallXPBar.cs",
               "RelativeDocumentMoniker": "Assets\\Scripts\\BallXPBar.cs",

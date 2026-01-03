@@ -25,6 +25,8 @@ public enum RacingPopupType
     ComboText,          // Combo counter
     MultiplierText,     // Score multiplier
     
+    Crash,
+
     // Near Miss / Close Call
     NearMiss,           // Close call with obstacle
     SprocketGain,

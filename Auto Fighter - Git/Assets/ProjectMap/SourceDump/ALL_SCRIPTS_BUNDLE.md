@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2026-01-02T16:20:34.2012256Z (UTC)
+- Generated: 2026-01-02T23:33:42.7264355Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 211
 
@@ -4724,26 +4724,50 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(1.5f, 3f)] private float gaugeMultiplierAtMax = 2.5f;
 
     [Header("Mash Resource Drain")]
-    [Tooltip("If true, drain health during mash. If false, drain fuel.")]
+    [Tooltip("If true, drain health during mash recovery.")]
     [SerializeField] private bool mashDrainsHealth = true;
 
-    [Tooltip("Health lost per second while in mash state (if mashDrainsHealth=true).")]
-    [SerializeField, Range(0f, 20f)] private float mashHealthDrainPerSecond = 5f;
+    [Tooltip("If true, drain fuel during mash recovery.")]
+    [SerializeField] private bool mashDrainsFuel = true;
 
-    [Tooltip("Additional health drain per crash (stacks).")]
-    [SerializeField, Range(0f, 5f)] private float mashHealthDrainPerCrash = 0.5f;
+    [Header("Mash Health Drain (Severity-Based)")]
+    [Tooltip("Health drain per second at minimum severity (light tap).")]
+    [SerializeField, Range(0f, 10f)] private float mashHealthDrainAtMinSeverity = 2f;
 
-    [Tooltip("Maximum health drain per second cap.")]
-    [SerializeField, Range(1f, 50f)] private float mashHealthDrainMax = 15f;
+    [Tooltip("Health drain per second at maximum severity (huge crash).")]
+    [SerializeField, Range(1f, 30f)] private float mashHealthDrainAtMaxSeverity = 12f;
 
-    [Tooltip("Fuel lost per second while in mash state (if mashDrainsHealth=false).")]
-    [SerializeField, Range(0f, 10f)] private float mashFuelDrainPerSecond = 2f;
+    [Tooltip("Additional health drain per crash count (stacks with severity).")]
+    [SerializeField, Range(0f, 3f)] private float mashHealthDrainPerCrash = 0.5f;
 
-    [Tooltip("Additional fuel drain per crash (stacks).")]
-    [SerializeField, Range(0f, 2f)] private float mashFuelDrainPerCrash = 0.25f;
+    [Tooltip("Absolute maximum health drain per second cap.")]
+    [SerializeField, Range(1f, 50f)] private float mashHealthDrainCap = 20f;
 
-    [Tooltip("Maximum fuel drain per second cap.")]
-    [SerializeField, Range(1f, 20f)] private float mashFuelDrainMax = 8f;
+    [Header("Mash Fuel Drain (Severity-Based)")]
+    [Tooltip("Fuel drain per second at minimum severity (light tap).")]
+    [SerializeField, Range(0f, 5f)] private float mashFuelDrainAtMinSeverity = 1f;
+
+    [Tooltip("Fuel drain per second at maximum severity (huge crash).")]
+    [SerializeField, Range(1f, 15f)] private float mashFuelDrainAtMaxSeverity = 6f;
+
+    [Tooltip("Additional fuel drain per crash count (stacks with severity).")]
+    [SerializeField, Range(0f, 1f)] private float mashFuelDrainPerCrash = 0.2f;
+
+    [Tooltip("Absolute maximum fuel drain per second cap.")]
+    [SerializeField, Range(1f, 20f)] private float mashFuelDrainCap = 10f;
+
+    [Header("Mash Gauge Drain (Severity-Based)")]
+    [Tooltip("Gauge drain per second at minimum severity.")]
+    [SerializeField, Range(0.05f, 0.3f)] private float gaugeDrainAtMinSeverity = 0.08f;
+
+    [Tooltip("Gauge drain per second at maximum severity.")]
+    [SerializeField, Range(0.1f, 0.6f)] private float gaugeDrainAtMaxSeverity = 0.25f;
+
+    [Tooltip("Additional gauge drain per crash count.")]
+    [SerializeField, Range(0f, 0.05f)] private float gaugeDrainPerCrash = 0.01f;
+
+    [Tooltip("Absolute maximum gauge drain per second cap.")]
+    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainCap = 0.5f;
 
     // Public properties for UI to position threshold markers
     public float GaugeGoodThreshold => gaugeGoodThreshold;
@@ -5278,16 +5302,21 @@ public class CarController : MonoBehaviour
 
             if (enableMashProgressGauge && _flipMashActive)
             {
-                // Drain gauge over time (difficulty scales with crash count)
-                float drainRate = Mathf.Min(gaugeDrainRateBase + (_crashCount * gaugeDrainRatePerCrash), gaugeDrainRateMax);
-                _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - drainRate * Time.deltaTime);
+                float severity = _lastCrashSeverity; // 0 to 1
 
-                // Drain resource based on toggle
+                // === GAUGE DRAIN (severity + crash count) ===
+                float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
+                float crashBonus = _crashCount * gaugeDrainPerCrash;
+                float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
+                _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * Time.deltaTime);
+
                 if (mashDrainsHealth)
                 {
-                    // Drain HEALTH
-                    float healthDrain = Mathf.Min(mashHealthDrainPerSecond + (_crashCount * mashHealthDrainPerCrash), mashHealthDrainMax);
-                    currentHP -= healthDrain * Time.deltaTime;
+                    float baseHealthDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, severity);
+                    float healthCrashBonus = _crashCount * mashHealthDrainPerCrash;
+                    float finalHealthDrain = Mathf.Min(baseHealthDrain + healthCrashBonus, mashHealthDrainCap);
+
+                    currentHP -= finalHealthDrain * Time.deltaTime;
 
                     if (currentHP <= 0f)
                     {
@@ -5296,11 +5325,15 @@ public class CarController : MonoBehaviour
                         isOutOfHP = true;
                     }
                 }
-                else
+
+                // FUEL DRAIN (separate - not else!)
+                if (mashDrainsFuel)
                 {
-                    // Drain FUEL
-                    float fuelDrain = Mathf.Min(mashFuelDrainPerSecond + (_crashCount * mashFuelDrainPerCrash), mashFuelDrainMax);
-                    currentFuel -= fuelDrain * Time.deltaTime;
+                    float baseFuelDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, severity);
+                    float fuelCrashBonus = _crashCount * mashFuelDrainPerCrash;
+                    float finalFuelDrain = Mathf.Min(baseFuelDrain + fuelCrashBonus, mashFuelDrainCap);
+
+                    currentFuel -= finalFuelDrain * Time.deltaTime;
 
                     if (currentFuel <= 0f)
                     {
@@ -5321,32 +5354,38 @@ public class CarController : MonoBehaviour
             if (effectivePassiveClickRate > 0f)
             {
                 _passiveClickTimer += Time.fixedDeltaTime;
-                float passiveInterval = 1f / effectivePassiveClickRate;
+                var skillMgr = RacingSkillTreeManager.Instance;
+                bool passiveUnlocked = skillMgr != null && skillMgr.IsPassiveMashUnlocked;
 
-                while (_passiveClickTimer >= passiveInterval)
+                if (passiveUnlocked && effectivePassiveClickRate > 0f)
                 {
-                    _passiveClickTimer -= passiveInterval;
+                    _passiveClickTimer += Time.fixedDeltaTime;
+                    float passiveInterval = 1f / effectivePassiveClickRate;
 
-                    // Add passive clicks
-                    _flipMashClicks += effectivePassiveClickStrength;
-
-                    // Optional: Apply partial fuel reward for passive clicks
-                    float passiveFuelReward = effectiveFuelPerClick * 0.5f; // Half reward for passive
-                    if (passiveFuelReward > 0f && maxFuel > 0f)
+                    while (_passiveClickTimer >= passiveInterval)
                     {
-                        float before = currentFuel;
-                        currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
-                        float actual = currentFuel - before;
+                        _passiveClickTimer -= passiveInterval;
 
-                        if (actual > 0f)
-                            TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
-                    }
+                        // Award passive clicks
+                        _flipMashClicks += effectivePassiveClickStrength;
 
-                    // Check if recovery complete
-                    if (_flipMashClicks >= _flipMashClicksNeeded)
-                    {
-                        EndFlipMashRecoveryAndUpright();
-                        return;
+                        // Give partial fuel for passive clicks
+                        float passiveFuelReward = effectiveFuelPerClick * 0.5f;
+                        if (passiveFuelReward > 0f && maxFuel > 0f)
+                        {
+                            float before = currentFuel;
+                            currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                            float actual = currentFuel - before;
+
+                            if (actual > 0.01f)
+                                TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
+                        }
+
+                        if (_flipMashClicks >= _flipMashClicksNeeded)
+                        {
+                            EndFlipMashRecoveryAndUpright();
+                            break;
+                        }
                     }
                 }
             }
@@ -7681,11 +7720,21 @@ public class CarController : MonoBehaviour
     mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
 ));
 
-            effectivePassiveClickRate = mgr.ApplyStatChain(
-                basePassiveClickRate,
-                SkillType.MashPassiveClickRate_Add,
-                SkillType.MashPassiveClickRate_Mul
-            );
+            if (mgr.IsPassiveMashUnlocked)
+            {
+                // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
+                // Then rate skills modify it further
+                float baseRate = basePassiveClickRate > 0f ? basePassiveClickRate : 0.5f; // Default if base is 0
+                effectivePassiveClickRate = mgr.ApplyStatChain(
+                    baseRate,
+                    SkillType.MashPassiveClickRate_Add,
+                    SkillType.MashPassiveClickRate_Mul
+                );
+            }
+            else
+            {
+                effectivePassiveClickRate = 0f; // Locked - no passive clicks
+            }
 
             effectivePassiveClickStrength = Mathf.Max(1, Mathf.RoundToInt(
                 mgr.ApplyStatChain(basePassiveClickStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul)
@@ -8256,6 +8305,48 @@ public class CarController : MonoBehaviour
         }
 
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
+    }
+
+    /// <summary>
+    /// Get the current health drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentMashHealthDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * mashHealthDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, mashHealthDrainCap);
+        }
+    }
+
+    /// <summary>
+    /// Get the current fuel drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentMashFuelDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * mashFuelDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, mashFuelDrainCap);
+        }
+    }
+
+    /// <summary>
+    /// Get the current gauge drain rate based on last crash severity and crash count.
+    /// </summary>
+    public float CurrentGaugeDrainRate
+    {
+        get
+        {
+            if (!_flipMashActive) return 0f;
+            float baseDrain = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, _lastCrashSeverity);
+            float crashBonus = _crashCount * gaugeDrainPerCrash;
+            return Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+        }
     }
 
     // Add helper inside the class
@@ -8899,6 +8990,7 @@ public class CarController : MonoBehaviour
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
 
+    public bool IsGaugeCurrentlyAtMax => _mashGaugeValue >= gaugeMaxThreshold;
 
     public float BaseAcceleration => baseAcceleration;
     public float BaseMaxSpeed => baseMaxSpeed;
@@ -20179,6 +20271,11 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     private const string SprocketsKey = "Racing_Sprockets";
 
+    private bool _hasEverEarnedSprockets = false;
+    private const string FirstSprocketKey = "Racing_HasEarnedSprockets";
+
+    public event Action OnFirstSprocketEarned;
+
     public event Action<int> OnSprocketsChanged;
 
     public event Action<int> OnCurrencyChanged;
@@ -20216,6 +20313,12 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         playerSprockets = PlayerPrefs.GetInt(SprocketsKey, playerSprockets);
 
+        _hasEverEarnedSprockets = PlayerPrefs.GetInt(FirstSprocketKey, 0) == 1;
+
+        // If player already has sprockets, they've earned them before
+        if (playerSprockets > 0)
+            _hasEverEarnedSprockets = true;
+
         _revealedSkills.Clear();
         foreach (var def in skills)
         {
@@ -20223,7 +20326,14 @@ public class RacingSkillTreeManager : MonoBehaviour
 
             // Reveal if master toggle is on OR individual skill has revealedAtStart
             if (revealAllSkillsAtStart || def.revealedAtStart)
+            {
                 RevealSkill(def);
+            }
+            // Also reveal first-sprocket skills if player has earned sprockets before
+            else if (def.revealOnFirstSprocket && _hasEverEarnedSprockets)
+            {
+                RevealSkill(def);
+            }
         }
 
         OnCurrencyChanged?.Invoke(playerCurrency);
@@ -20499,9 +20609,38 @@ public class RacingSkillTreeManager : MonoBehaviour
     public void AddSprockets(int amount)
     {
         if (amount <= 0) return;
+
+        bool wasFirstSprocket = !_hasEverEarnedSprockets && playerSprockets == 0;
+
         playerSprockets += amount;
         SaveSprockets();
         OnSprocketsChanged?.Invoke(playerSprockets);
+
+        // Check for first sprocket ever earned
+        if (wasFirstSprocket)
+        {
+            _hasEverEarnedSprockets = true;
+            PlayerPrefs.SetInt(FirstSprocketKey, 1);
+            PlayerPrefs.Save();
+
+            // Reveal skills marked for first-sprocket reveal
+            RevealFirstSprocketSkills();
+            OnFirstSprocketEarned?.Invoke();
+
+            Debug.Log("[SkillTreeManager] First sprocket earned! Revealing sprocket skills.");
+        }
+    }
+
+    private void RevealFirstSprocketSkills()
+    {
+        foreach (var def in skills)
+        {
+            if (def == null) continue;
+            if (def.revealOnFirstSprocket && !IsSkillRevealed(def.type))
+            {
+                RevealSkill(def);
+            }
+        }
     }
 
     /// <summary>
@@ -20656,11 +20795,15 @@ public class RacingSkillTreeManager : MonoBehaviour
         }
 
         OnSkillsReset?.Invoke();
+        _hasEverEarnedSprockets = false;
+        PlayerPrefs.DeleteKey(FirstSprocketKey);
         playerSprockets = 0;
         PlayerPrefs.DeleteKey(SprocketsKey);
         OnSprocketsChanged?.Invoke(playerSprockets);
     }
 
+    public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
+    public bool HasEverEarnedSprockets => _hasEverEarnedSprockets;
     public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
     public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
     public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
@@ -22273,6 +22416,9 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("If true this skill is visible from the start of a new run.")]
     public bool revealedAtStart = false;
 
+    [Tooltip("If true, this skill is revealed when player earns their first sprocket.")]
+    public bool revealOnFirstSprocket = false;
+
     [Header("Sprocket Currency (for Crash-Related Skills)")]
     [Tooltip("If true, this skill uses Sprockets instead of Coins.")]
     public bool usesSprockets = false;
@@ -22649,6 +22795,8 @@ public enum SkillType
     // ------------------------------------------------------------------------
     MashClicksPerClick_Add = 4600,      // Each button press counts as multiple clicks
     MashClicksPerClick_Mul = 4601,
+
+    MashPassiveUnlock = 4605,
 
     MashPassiveClickRate_Add = 4610,    // Auto-clicks per second (passive)
     MashPassiveClickRate_Mul = 4611,
@@ -28454,44 +28602,50 @@ public class UIManager_Racing : MonoBehaviour
         if (car == null) return;
 
         float gaugeValue = car.MashGaugeValue;
-        bool isMaxed = car.MashGaugeMaxed;
+        float peakValue = car.MashGaugePeakValue;
+        bool hasMaxedThisSession = car.MashGaugeMaxed;  // For indicator glow/bonus tracking only
 
         float goodThreshold = car.GaugeGoodThreshold;
         float maxThreshold = car.GaugeMaxThreshold;
+
+        // Check if CURRENTLY at max (not just "ever reached max")
+        bool isCurrentlyAtMax = gaugeValue >= maxThreshold;
 
         // Update fill
         if (mashGaugeFill != null)
         {
             mashGaugeFill.fillAmount = gaugeValue;
 
-            // Color based on tier
-            if (isMaxed || gaugeValue >= maxThreshold)
+            // Color based on CURRENT tier (not session flag)
+            if (isCurrentlyAtMax)
             {
+                // Currently at max tier - cyan/gold
                 mashGaugeFill.color = Color.cyan;
             }
             else if (gaugeValue >= goodThreshold)
             {
+                // Good tier - use gradient in upper range
                 mashGaugeFill.color = mashGaugeGradient != null
-                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / Mathf.Max(0.0001f, (maxThreshold - goodThreshold)) * 0.3f)
+                    ? mashGaugeGradient.Evaluate(0.7f + (gaugeValue - goodThreshold) / (maxThreshold - goodThreshold) * 0.3f)
                     : Color.green;
             }
             else if (mashGaugeGradient != null)
             {
-                mashGaugeFill.color = mashGaugeGradient.Evaluate((gaugeValue / Mathf.Max(0.0001f, goodThreshold)) * 0.7f);
+                // Below good - use gradient normally
+                mashGaugeFill.color = mashGaugeGradient.Evaluate(gaugeValue / goodThreshold * 0.7f);
             }
         }
 
-        // PEAK MARKER (STATIC MAX TARGET):
-        // Do not reposition it here. It is anchored once in UpdateThresholdMarkerPositions().
+        // PEAK MARKER (unchanged)
         if (mashGaugePeakMarker != null && !mashGaugePeakMarker.gameObject.activeSelf)
             mashGaugePeakMarker.gameObject.SetActive(true);
 
-        // Update percent text with tier indicator
+        // Update percent text with tier indicator - USE CURRENT VALUE, NOT SESSION FLAG
         if (mashGaugePercentText != null)
         {
             int percent = Mathf.RoundToInt(gaugeValue * 100);
 
-            if (isMaxed || gaugeValue >= maxThreshold)
+            if (isCurrentlyAtMax)  // Changed from: if (isMaxed || gaugeValue >= maxThreshold)
                 mashGaugePercentText.text = $"{percent}% MAX!";
             else if (gaugeValue >= goodThreshold)
                 mashGaugePercentText.text = $"{percent}% GOOD";
@@ -28499,9 +28653,16 @@ public class UIManager_Racing : MonoBehaviour
                 mashGaugePercentText.text = $"{percent}%";
         }
 
-        // Maxed indicator
+        // Maxed indicator - can still use session flag for persistent glow effect
+        // OR change to current value if you want it to turn off when gauge drops
         if (mashGaugeMaxedIndicator != null)
-            mashGaugeMaxedIndicator.SetActive(isMaxed);
+        {
+            // Option 1: Stays on once maxed (shows "you hit max at some point!")
+            // mashGaugeMaxedIndicator.SetActive(hasMaxedThisSession);
+
+            // Option 2: Only on when currently at max (turns off when gauge drops)
+            mashGaugeMaxedIndicator.SetActive(isCurrentlyAtMax);
+        }
     }
 
     public void UpdateRunSprockets(int sprocketsThisRun)

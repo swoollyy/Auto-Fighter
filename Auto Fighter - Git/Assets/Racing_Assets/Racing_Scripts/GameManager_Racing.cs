@@ -639,6 +639,13 @@ public class GameManager_Racing : MonoBehaviour
     {
         if (!enabled) return;
 
+        if (RacingPopups.IsReady)
+        {
+            // Spawn at the close call position (slightly above)
+            Vector3 popupPos = pos + Vector3.up * 1.5f;
+            RacingPopups.CloseCall(closestDistance, popupPos);
+        }
+
         // Play a small PPS burst (chromatic + lens) centered on event
         var postFX = FindObjectOfType<ForcefieldPostFXController>();
         if (postFX != null)

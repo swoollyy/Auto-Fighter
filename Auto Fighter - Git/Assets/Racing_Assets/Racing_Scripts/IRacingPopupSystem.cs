@@ -66,6 +66,38 @@ public static class RacingPopups
         System?.Spawn(type, value, position, color);
     }
 
+    /// <summary>
+    /// Spawn a crash popup with severity-based text.
+    /// </summary>
+    public static void Crash(float severity, Vector3 position)
+    {
+        string text;
+        if (severity >= 0.8f)
+            text = "MASSIVE CRASH!";
+        else if (severity >= 0.5f)
+            text = "CRASH!";
+        else
+            text = "BUMP!";
+
+        Spawn(RacingPopupType.Crash, text, position);
+    }
+
+    /// <summary>
+    /// Spawn a close call popup with distance-based text.
+    /// </summary>
+    public static void CloseCall(float distance, Vector3 position)
+    {
+        string text;
+        if (distance <= 0.5f)
+            text = "INSANE DODGE!";
+        else if (distance <= 1.5f)
+            text = "CLOSE CALL!";
+        else
+            text = "NEAR MISS!";
+
+        Spawn(RacingPopupType.NearMiss, text, position);
+    }
+
     // === SHORTCUT METHODS FOR COMMON POPUPS ===
 
     public static void HPDamage(float amount, Vector3 position)
@@ -79,6 +111,9 @@ public static class RacingPopups
 
     public static void FuelGain(float amount, Vector3 position)
         => Spawn(RacingPopupType.FuelGain, amount, position);
+
+    public static void Crash(Vector3 position)
+    => Spawn(RacingPopupType.Crash, "CRASH!", position);
 
     public static void CoinGain(int amount, Vector3 position)
         => Spawn(RacingPopupType.CoinGain, amount, position);

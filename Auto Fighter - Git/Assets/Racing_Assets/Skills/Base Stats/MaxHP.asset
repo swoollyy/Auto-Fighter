@@ -20,19 +20,19 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 5
-      outSlope: 5
+      time: 1
+      value: 5
+      inSlope: 2.5
+      outSlope: 2.5
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 1
-      value: 5
-      inSlope: 5
-      outSlope: 5
+      time: 39
+      value: 100
+      inSlope: 2.5
+      outSlope: 2.5
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -46,4 +46,8 @@ MonoBehaviour:
   perLevelAdd: 5
   uiPosition: {x: 75, y: -75}
   revealedAtStart: 1
+  revealOnFirstSprocket: 0
+  usesSprockets: 0
+  baseSprocketCost: 5
+  sprocketCostPerLevel: 3
   progressiveUnlocks: []

@@ -2433,6 +2433,12 @@ public class CarController : MonoBehaviour
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
             }
 
+            if (RacingPopups.IsReady)
+            {
+                // Spawn crash popup with severity-based text
+                RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
+            }
+
             bool lethalFromThisCrash =
     (hpBefore > 0f && currentHP <= 0f) ||
     (fuelBefore > 0f && currentFuel <= 0f);
@@ -4827,6 +4833,7 @@ public class CarController : MonoBehaviour
     public float MaxHP => maxHP;
     public float HPPercent => maxHP > 0f ? currentHP / maxHP : 0f;
 
+    public bool IsGaugeCurrentlyAtMax => _mashGaugeValue >= gaugeMaxThreshold;
 
     public float BaseAcceleration => baseAcceleration;
     public float BaseMaxSpeed => baseMaxSpeed;

@@ -80,6 +80,7 @@
     <Compile Include="Assets\Scripts\Level Up Rewards\ScoreMultiplierRewardSO.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\EnvMapAnimator.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossTrackObstacle.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingPopupType.cs" />
     <Compile Include="Assets\Scripts\RewardCategory.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireTrailController.cs" />
     <Compile Include="Assets\Scripts\Druid.cs" />
@@ -111,6 +112,7 @@
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshSpawner.cs" />
     <Compile Include="Assets\Scripts\CombatSystem.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CoinType.cs" />
     <Compile Include="Assets\Scripts\DynamicPadManager.cs" />
     <Compile Include="Assets\Scripts\GrenadeController.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark02.cs" />
@@ -122,9 +124,11 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\NPCCarSpawner.cs" />
     <Compile Include="Assets\Scripts\XPNumberStyleSO.cs" />
     <Compile Include="Assets\Scripts\Mage.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingPopupStyleSO.cs" />
     <Compile Include="Assets\Scripts\GreenPad.cs" />
     <Compile Include="Assets\Scripts\PortalWarpRewardRuntime.cs" />
     <Compile Include="Assets\Scripts\PadLightFX.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ScreenFlashManager.cs" />
     <Compile Include="Assets\Scripts\BallUIEntry.cs" />
     <Compile Include="Assets\Scripts\Brawler.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />
@@ -156,6 +160,7 @@
     <Compile Include="Assets\Scripts\Level Up Rewards\BallDuplicateRewardSO.cs" />
     <Compile Include="Assets\Scripts\BumperElementalState.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\IcePath.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CoinDatabase.cs" />
     <Compile Include="Assets\Scripts\RewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\FogPulseColorDriver.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarForcefield.cs" />
@@ -172,7 +177,6 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GameManager_Racing.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackDistanceMeter.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldVisualPulse.cs" />
-    <Compile Include="Assets\Racing_Assets\VintageTVRendererFeature.cs" />
     <Compile Include="Assets\Scripts\IPowerup.cs" />
     <Compile Include="Assets\Scripts\Assassin.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TurretUnlockBinding.cs" />
@@ -186,12 +190,14 @@
     <Compile Include="Assets\BumperAnimScript.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_PhoneNumberValidator.cs" />
     <Compile Include="Assets\Scripts\CollectAllXPPowerup.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\MashGaugeUI.cs" />
     <Compile Include="Assets\Scripts\XPFormula.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\DamageRewardSO.cs" />
     <Compile Include="Assets\Scripts\PortalWarpController.cs" />
     <Compile Include="Assets\Scripts\BaseCharacter.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexJitter.cs" />
     <Compile Include="Assets\Scripts\IRunContext.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\IRacingPopupSystem.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\HPPickup.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextConsoleSimulator.cs" />
     <Compile Include="Assets\Scripts\PinballMusic.cs" />
@@ -199,6 +205,7 @@
     <Compile Include="Assets\Scripts\CharacterUI.cs" />
     <Compile Include="Assets\Scripts\PaddleElementalState.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ShuttleTrackObstacle.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingPopupSystem.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventCheck.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_UiFrameRateCounter.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker1.cs" />
@@ -211,7 +218,9 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingCurrencyCheat.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleSpawner.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker.cs" />
+    <Compile Include="Assets\IcePathScreenFlashDriver.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUIEntry.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CoinDataSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarController.cs" />
     <Compile Include="Assets\Scripts\BumperElements.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_B.cs" />
@@ -238,6 +247,7 @@
     <Compile Include="Assets\Scripts\PaddleEffectData.cs" />
     <Compile Include="Assets\Scripts\Item.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ThrownObstacle.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\VintageTVRendererFeature.cs" />
     <Compile Include="Assets\Scripts\TimeScaleHub.cs" />
     <Compile Include="Assets\Scripts\DamageNumberStyleSO.cs" />
     <Compile Include="Assets\Scripts\GrenadeRewardRuntime.cs" />
@@ -277,6 +287,7 @@
     <None Include="Assets\TextMesh Pro\Shaders\TMPro_Surface.cginc" />
     <None Include="Assets\ProjectMap\scripts-bundle.txt" />
     <None Include="Assets\TextMesh Pro\Resources\LineBreaking Following Characters.txt" />
+    <None Include="Assets\Racing_Assets\EdgeGlow.shader" />
     <None Include="Assets\Racing_Assets\RoadFX\SkidRoadSurface_Reset.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />

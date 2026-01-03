@@ -30,7 +30,7 @@ MonoBehaviour:
   verticalOffset: 0
   horizontalDrift: 0
   fixedRotationZ: 0
-  duration: 1.25
+  duration: 0.85
   fadeInFraction: 0.064
   fadeOutFraction: 0.1
   useUnscaledTime: 1
@@ -40,16 +40,16 @@ MonoBehaviour:
   popToScale: 1.2
   endScale: 0
   popDelay: 0.06
-  popDurationFraction: 0.51
+  popDurationFraction: 0.4
   popEase: 27
   enableTiltShake: 1
   tiltShakeAngle: 8
   tiltShakeDurationFraction: 0.2
   enableValueScaling: 1
   minValueForScale: 1
-  maxValueForScale: 2
-  minScaleMultiplier: 0.6
-  maxScaleMultiplier: 2
+  maxValueForScale: 100
+  minScaleMultiplier: 0.5
+  maxScaleMultiplier: 1.2
   useLogScale: 0
   sortingLayerName: UI
   sortingOrder: 1000
