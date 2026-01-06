@@ -2,7 +2,7 @@ using UnityEngine;
 using DG.Tweening;
 
 [DisallowMultipleComponent]
-public class RacingObstacle : MonoBehaviour, IDamageable
+public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 {
     [Header("Obstacle Settings")]
     [SerializeField] private bool destructible = true;
@@ -21,6 +21,9 @@ public class RacingObstacle : MonoBehaviour, IDamageable
 
     private float _currentHealth;
 
+    // Track if destroyed by turret to skip coin reward
+    private bool _destroyedByTurret = false;
+
     // Cooldown store per other obstacle
     private System.Collections.Generic.Dictionary<int, float> _lastImpactDamageTime = new System.Collections.Generic.Dictionary<int, float>();
 
@@ -29,6 +32,10 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         _currentHealth = maxHealth;
     }
 
+    /// <summary>
+    /// Legacy damage interface - used by non-turret sources (forcefield, etc).
+    /// Awards COINS when destroyed.
+    /// </summary>
     public void ApplyDamage(float amount)
     {
         if (!destructible) return;
@@ -37,7 +44,36 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         transform.DOPunchScale(Vector3.one * scaleOnHit, scalePunchTime);
 
         if (_currentHealth <= 0f)
+        {
+            _destroyedByTurret = false;
             HandleDestroyed();
+        }
+    }
+
+    /// <summary>
+    /// Turret damage interface - used by RacingBullet.
+    /// Does NOT award coins (bullet handles sprocket rewards).
+    /// </summary>
+    public bool ApplyTurretDamage(float amount, out int sprocketReward)
+    {
+        sprocketReward = rewardCurrency; // Use same value as coin reward
+
+        if (!destructible)
+        {
+            return false;
+        }
+
+        _currentHealth -= amount;
+        transform.DOPunchScale(Vector3.one * scaleOnHit, scalePunchTime);
+
+        if (_currentHealth <= 0f)
+        {
+            _destroyedByTurret = true;
+            HandleDestroyed();
+            return true; // Was killed
+        }
+
+        return false; // Survived
     }
 
     private void HandleDestroyed()
@@ -45,13 +81,18 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         if (destroyVFX)
             Instantiate(destroyVFX, transform.position, destroyVFX.transform.rotation);
 
-        // Award currency globally
-        RacingSkillTreeManager.Instance?.AddCurrency(rewardCurrency);
-
-        // Notify GameManager for breakdown tracking
-        if (GameManager_Racing.Instance != null)
+        // Only award coins if NOT destroyed by turret
+        // (turret kills award sprockets via RacingBullet)
+        if (!_destroyedByTurret)
         {
-            GameManager_Racing.Instance.RegisterObstacleReward(rewardCurrency);
+            // Award currency globally
+            RacingSkillTreeManager.Instance?.AddCurrency(rewardCurrency);
+
+            // Notify GameManager for breakdown tracking
+            if (GameManager_Racing.Instance != null)
+            {
+                GameManager_Racing.Instance.RegisterObstacleReward(rewardCurrency);
+            }
         }
 
         Destroy(gameObject);
@@ -98,7 +139,7 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         // Damage amount from skill (base is 1.0)
         float dmg = mgr.GetForcefieldImpactDamageAmount(1f);
 
-        // Apply damage to both
+        // Apply damage to both (as non-turret damage, so coins are awarded)
         this.ApplyDamage(dmg);
         otherObstacle.ApplyDamage(dmg);
     }

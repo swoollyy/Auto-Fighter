@@ -136,7 +136,18 @@
     MashFuelPerClick_Mul = 4631,
 
     MaxHP_Add = 4700,
-    MaxHP_Mul = 4701
+    MaxHP_Mul = 4701,
+
+    CloseCallCoins_Add = 4800,              // Coins earned per close call (also acts as unlock)
+    CloseCallCoins_Mul = 4801,
+
+    CloseCallSpeedBoostUnlock = 4810,       // Unlock speed boost on close call
+
+    CloseCallSpeedBoostDuration_Add = 4820, // Duration of speed boost
+    CloseCallSpeedBoostDuration_Mul = 4821,
+
+    CloseCallInvincibility_Add = 4830,      // Invincibility duration (also acts as unlock)
+    CloseCallInvincibility_Mul = 4831,
 }
 
 

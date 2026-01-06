@@ -21,20 +21,26 @@ MonoBehaviour:
   prefix: '-'
   suffix: '     <sprite index=0> HP'
   numberFormat: 0.#
+  useRandomText: 0
+  randomTexts: []
   enableOutline: 1
   outlineWidth: 0.25
   outlineColor: {r: 3.6283674, g: 59.169815, b: 0, a: 1}
-  outlineIntensity: 8
+  outlineIntensity: 1.5
   faceDilate: 0.05
-  horizontalOffset: -0.5
+  horizontalOffset: 0
   verticalOffset: 0
-  horizontalDrift: 0
-  fixedRotationZ: 45
+  horizontalDrift: 1.25
+  verticalDrift: 0.85
+  fixedRotationZ: 0
+  useRandomRotation: 0
+  randomRotationMin: -40
+  randomRotationMax: 40
   duration: 0.85
   fadeInFraction: 0.064
   fadeOutFraction: 0.1
   useUnscaledTime: 1
-  riseDistance: 1.5
+  riseDistance: 0
   riseEase: 9
   popFromScale: 0.2
   popToScale: 1.2

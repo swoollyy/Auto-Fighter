@@ -421,7 +421,11 @@ public class UIManager_Racing : MonoBehaviour
     public void ShowRunSprockets()
     {
         if (runSprocketsLiveText)
-            runSprocketsLiveText.gameObject.SetActive(true);
+        {
+            var mgr = RacingSkillTreeManager.Instance;
+            bool show = mgr != null && (mgr.HasEverEarnedSprockets || mgr.Sprockets > 0);
+            runSprocketsLiveText.gameObject.SetActive(show);
+        }
     }
 
     public void HideRunSprockets()

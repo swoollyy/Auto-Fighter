@@ -46,4 +46,11 @@ MonoBehaviour:
   perLevelAdd: 0.1
   uiPosition: {x: 150, y: 225}
   revealedAtStart: 0
-  progressiveUnlocks: []
+  revealOnFirstSprocket: 0
+  usesSprockets: 0
+  baseSprocketCost: 5
+  sprocketCostPerLevel: 3
+  progressiveUnlocks:
+  - requiredLevel: 3
+    unlocks:
+    - {fileID: 11400000, guid: 7aa8ab5729b47804e8f760302ba10e4d, type: 2}

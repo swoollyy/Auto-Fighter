@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2026-01-02T23:33:42.7264355Z (UTC)
+- Generated: 2026-01-06T05:54:50.2228801Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 211
+- Files: 215
 
 ## Assets/BumperAnimScript.cs
 
@@ -1086,46 +1086,6 @@ public class FireVelocityFeeder : MonoBehaviour
         if (sendAngular) _mpb.SetVector("_AngVelWS", _angSmoothed);
         _rend.SetPropertyBlock(_mpb, materialIndex);
     }
-}
-
-```
-
-## Assets/IcePathScreenFlashDriver.cs
-
-```csharp
-using UnityEngine;
-
-[DisallowMultipleComponent]
-public class IcePathScreenFlashDriver : MonoBehaviour
-{
-    [Header("Refs")]
-    [SerializeField] private CarController car;
-    [SerializeField] private ScreenFlashManager flash;
-
-    private bool _lastIce;
-
-    private void Awake()
-    {
-        if (!flash) flash = ScreenFlashManager.Instance;
-    }
-
-    private void Update()
-    {
-        if (!flash || !car) return;
-
-        bool onIce = car.IsOnIceSurface;
-        if (onIce == _lastIce) return;
-
-        _lastIce = onIce;
-        flash.SetIcePersistent(onIce);
-    }
-
-
-    public void SetCarController(CarController car)
-    {
-        this.car = car;
-    }
-
 }
 
 ```
@@ -4181,6 +4141,25 @@ public class CarController : MonoBehaviour
     [SerializeField] private float minSpeedToSteer = 0.6f; // tweak in Inspector
     [SerializeField] private bool allowSteerWhenTryingToMove = true; // W/S lets you steer even if speed is tiny
 
+    private readonly Dictionary<int, float> _perColliderCrashTime = new Dictionary<int, float>();
+    [SerializeField, Tooltip("Minimum seconds between crashes from the same collider.")]
+    private float perColliderCrashCooldown = 0.5f;
+
+    // Reference to forcefield for protection checks
+    private CarForcefield _forcefield;
+
+    [Header("Mash Gauge Skill Scaling")]
+    [Tooltip("How much to scale drain per point of effective clicks above base. E.g., 0.15 means +15% drain per extra click power.")]
+    [SerializeField, Range(0f, 0.5f)] private float drainScalePerClickPower = 0.12f;
+
+    [Tooltip("How much to scale drain per point of passive click strength above base. Usually lower since passive is already gated.")]
+    [SerializeField, Range(0f, 0.3f)] private float drainScalePerPassiveStrength = 0.08f;
+
+    [Tooltip("Maximum drain multiplier from skill scaling (prevents it from becoming impossible).")]
+    [SerializeField, Range(1f, 5f)] private float maxSkillDrainMultiplier = 3f;
+
+    [Tooltip("Minimum drain multiplier (floor, in case player somehow has negative bonuses).")]
+    [SerializeField, Range(0.5f, 1f)] private float minSkillDrainMultiplier = 1f;
 
     [Header("Steering Feel")]
     [SerializeField] private float lowSpeedSteerMultiplier = 1.2f;
@@ -4210,6 +4189,20 @@ public class CarController : MonoBehaviour
     private bool useExponentialCoast = false;
     [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
     private float coastDampingPerSecond = 2.0f;
+
+
+    [Header("Flip Mash Rewards")]
+    [SerializeField, Tooltip("Base fuel recovered per click.")]
+    private float mashBaseFuelPerClick = 0.3f;
+
+    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
+    private float mashFuelSpeedBonusMax = 2f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
+    private float mashMaxSpeedThreshold = 0.1f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
+    private float mashMinSpeedThreshold = 0.5f;
 
     [Header("Arcade Movement Tuning")]
     [SerializeField] private float coastDecelFactor = 0.1f;
@@ -4288,7 +4281,41 @@ public class CarController : MonoBehaviour
     [SerializeField, Tooltip("Per-second speed decay while drifting and holding S. Lower = softer, preserves ice feel.")]
     private float driftBrakeDecayPerSecond = 0.6f;
 
+    [Header("Close Call Speed Boost (Skill-Based)")]
+    [Tooltip("Base duration of speed boost when close call skill is unlocked.")]
+    [SerializeField] private float closeCallBoostBaseDuration = 0.8f;
 
+    [Tooltip("Force applied during close call boost.")]
+    [SerializeField] private float closeCallBoostForce = 40f;
+
+    [Tooltip("How the boost force is applied.")]
+    [SerializeField] private ForceMode closeCallBoostForceMode = ForceMode.VelocityChange;
+
+    [Tooltip("Maximum speed multiplier during close call boost.")]
+    [SerializeField] private float closeCallBoostMaxSpeedMult = 2f;
+
+    [Header("Close Call Invincibility (Skill-Based)")]
+    [Tooltip("Visual effect color tint during invincibility.")]
+    [SerializeField] private Color closeCallInvincibilityTint = new Color(0.5f, 0.8f, 1f, 0.5f);
+
+    [Header("Close Call Visuals")]
+    [SerializeField] private Color closeCallTintColor = new Color(0.3f, 0.6f, 1f, 1f);
+    [SerializeField] private float closeCallTintStrength = 0.6f; // 0–1
+
+    private Renderer[] _renderers;
+    private MaterialPropertyBlock _mpb;
+
+    // Cache original colors per renderer
+    private Dictionary<Renderer, Color> _originalColors = new Dictionary<Renderer, Color>();
+
+    [Tooltip("Lateral force applied to obstacles when hit during invincibility.")]
+    [SerializeField] private float invincibilityBumpForceAway = 15f;
+
+    [Tooltip("Upward force applied to obstacles when hit during invincibility.")]
+    [SerializeField] private float invincibilityBumpForceUp = 8f;
+
+    [Tooltip("Torque applied to obstacles for spin effect.")]
+    [SerializeField] private float invincibilityBumpTorque = 5f;
 
     [Header("Drift Neutral Behavior")]
     [Tooltip("Require a non-zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
@@ -4317,6 +4344,19 @@ public class CarController : MonoBehaviour
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
     [Tooltip("Per-second decay while gliding (very small to keep speed).")]
     [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
+
+    [Header("Close-Call Near-Miss (global)")]
+    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
+    private bool enableCloseCallNearMisses = true;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
+    private float closeCallDistance = 3.5f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
+    private float closeCallMinSpeed = 4f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
+    private float closeCallCooldown = 1.0f;
+
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
+    private float closeCallRootCooldown = 3.0f;
 
     [Header("Ice Surface Transition")]
     [Tooltip("How fast friction lerps to/from ice values (higher = faster transition).")]
@@ -4388,6 +4428,10 @@ public class CarController : MonoBehaviour
 
     [Tooltip("Minimum fuel gain to show popup.")]
     [SerializeField] private float minFuelGainForPopup = 0.5f;
+
+    [Header("Mash Fuel Popup (Random Screen Spawn)")]
+    [SerializeField] private Vector2 mashFuelPopupHorizontalRange = new Vector2(-1.2f, 1.2f);
+    [SerializeField] private Vector2 mashFuelPopupVerticalRange = new Vector2(-0.6f, 0.6f);
 
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
@@ -4675,18 +4719,6 @@ public class CarController : MonoBehaviour
     private float _passiveClickTimer;
 
 
-    [Header("Flip Mash Rewards")]
-    [SerializeField, Tooltip("Base fuel recovered per click.")]
-    private float mashBaseFuelPerClick = 0.3f;
-
-    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
-    private float mashFuelSpeedBonusMax = 2f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
-    private float mashMaxSpeedThreshold = 0.1f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
-    private float mashMinSpeedThreshold = 0.5f;
 
     [Header("Mash Progress Gauge")]
     [Tooltip("Enable the progress gauge that drains over time during mashing.")]
@@ -4955,7 +4987,7 @@ public class CarController : MonoBehaviour
     private float _originalDynamicFriction;
     private float _originalStaticFriction;
 
-    private bool IsCrashInvulnerable => _inCrash || _isReorienting;
+    private bool IsCrashInvulnerable => _isReorienting;
 
     private bool _inCrash;
     private float _crashTimer;
@@ -5023,23 +5055,16 @@ public class CarController : MonoBehaviour
     private float fuelValue;
 
 
+    private float _skillDrainMultiplier = 1f;
 
-    // ------------------------------------------------------------------------
-    // NEW: global near-miss / close-call detection for ALL obstacles
-    // Triggers the same close-call slowmo/postfx used by thrown projectiles.
-    // ------------------------------------------------------------------------
-    [Header("Close-Call Near-Miss (global)")]
-    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
-    private bool enableCloseCallNearMisses = true;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
-    private float closeCallDistance = 3.5f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
-    private float closeCallMinSpeed = 4f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
-    private float closeCallCooldown = 1.0f;
 
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
-    private float closeCallRootCooldown = 3.0f;
+
+    // Runtime state
+    private bool _closeCallInvincible;
+    private float _closeCallInvincibilityEndTime;
+    private float _closeCallInvincibilityDuration;
+    private bool _closeCallBoosting;
+    private float _closeCallBoostEndTime;
 
     [Header("Crash Sound Effects")]
     [SerializeField] private AudioClip crashClipDefault;
@@ -5161,6 +5186,18 @@ public class CarController : MonoBehaviour
             }
         }
 
+        _renderers = GetComponentsInChildren<Renderer>(true);
+        _mpb = new MaterialPropertyBlock();
+
+        _originalColors.Clear();
+        foreach (var r in _renderers)
+        {
+            if (r.sharedMaterial != null && r.sharedMaterial.HasProperty("_Color"))
+            {
+                _originalColors[r] = r.sharedMaterial.color;
+            }
+        }
+
         _currentIceDynamicFriction = 1f;
         _currentIceStaticFriction = 1f;
         _currentIceHandling = 1f;
@@ -5251,7 +5288,7 @@ public class CarController : MonoBehaviour
         if (currentHP <= 0f && !isOutOfHP)
         {
             isOutOfHP = true;
-
+            ForceStopCloseCallEffects();
             // Hard stop boost immediately
             _isBoosting = false;
             _isPostBoost = false;
@@ -5282,6 +5319,19 @@ public class CarController : MonoBehaviour
     {
         float dt = Time.fixedDeltaTime;
 
+        if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
+        {
+            _closeCallInvincible = false;
+            ClearCloseCallTint();
+            ScreenFlashManager.StopInvincibility(); // optional now
+        }
+
+        if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+        {
+            _closeCallBoosting = false;
+        }
+
+
         if (_flipMashActive)
         {
             // If HP hits 0, you're dead: no mash, no flatten.
@@ -5300,6 +5350,18 @@ public class CarController : MonoBehaviour
                 return;
             }
 
+            if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
+            {
+                _closeCallInvincible = false;
+                ScreenFlashManager.StopInvincibility(); // Stop the continuous pulse
+            }
+
+            if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+            {
+                _closeCallBoosting = false;
+            }
+
+
             if (enableMashProgressGauge && _flipMashActive)
             {
                 float severity = _lastCrashSeverity; // 0 to 1
@@ -5308,6 +5370,7 @@ public class CarController : MonoBehaviour
                 float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
                 float crashBonus = _crashCount * gaugeDrainPerCrash;
                 float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
+                finalGaugeDrain *= _skillDrainMultiplier;
                 _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * Time.deltaTime);
 
                 if (mashDrainsHealth)
@@ -5452,25 +5515,23 @@ public class CarController : MonoBehaviour
 
                 if (rb != null)
                 {
-                    if (!WillStartMashRecoveryNow())
-                    {
-                        rb.freezeRotation = true;
-                    }
-                    else
-                    {
-                        // During mash recovery we stay fully physical (no artificial freezing)
-                        rb.freezeRotation = false;
-                    }
-
                     rb.drag = _baseDrag;
                     rb.angularDrag = _baseAngularDrag;
                     rb.angularVelocity = Vector3.zero;
                 }
 
+                _isBoosting = false;
+                _isPostBoost = false;
+                _postBoostTimer = 0f;
+                _activeBoostMaxMult = 1f;
+                _currentBoostMaxSpeed = 0f;
+                _closeCallBoosting = false;
+                _landingExcessSpeed = 0f; 
+
                 if (IsDeadForAutoUpright)
                 {
-                    rb.freezeRotation = true;
                     // your end-run behavior
+                    ForceStopCloseCallEffects();
                     return;
                 }
 
@@ -5495,7 +5556,6 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    rb.freezeRotation = true;
                     rb.angularVelocity = Vector3.zero;
                 }
 
@@ -5593,7 +5653,6 @@ public class CarController : MonoBehaviour
         _isReorienting = true;
         _reorientElapsed = 0f;
 
-        rb.freezeRotation = true;
         rb.angularVelocity = Vector3.zero;
 
         _reorientStartRot = transform.rotation;
@@ -5995,6 +6054,11 @@ public class CarController : MonoBehaviour
         float normalCap = effectiveMaxSpeed;
         float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
+        if (_closeCallBoosting)
+        {
+            maxMult = Mathf.Max(maxMult, closeCallBoostMaxSpeedMult);
+        }
+
         float boostedCap = normalCap * maxMult;
 
         if (_isPostBoost && postBoostSlowdownDuration > 0f)
@@ -6003,7 +6067,7 @@ public class CarController : MonoBehaviour
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
 
-        return _isBoosting ? boostedCap : normalCap;
+        return (_isBoosting || _closeCallBoosting) ? boostedCap : normalCap;
     }
 
     private void ClearBoostOverride()
@@ -6080,6 +6144,8 @@ public class CarController : MonoBehaviour
 
             _boostRequested = false;
             _boostOverrideActive = false;
+
+
 
             _inputsSuppressedThisFrame = true;
             _suppressThrottleBrakeThisFrame = true;
@@ -6307,8 +6373,7 @@ public class CarController : MonoBehaviour
 
         _driftWasActiveLastFrame = isDrifting;
 
-        // NEW: Glide logic (ice feel) – if holding drift with no directional charge but above speed threshold.
-        if (allowDriftGlideWithoutSteer)
+        if (allowDriftGlideWithoutSteer && driftUnlocked)
         {
             bool canGlide = driftButtonHeld && !isDrifting && speed >= driftMinSpeed;
             if (canGlide)
@@ -6449,6 +6514,29 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        if (_isBoosting)
+        {
+            _isBoosting = false;
+            _boostTimer = 0f;
+        }
+
+        // Clear boost override
+        ClearBoostOverride();
+
+        // Clear close-call boost
+        if (_closeCallBoosting)
+        {
+            _closeCallBoosting = false;
+        }
+
+        // Reset post-boost state
+        _isPostBoost = false;
+        _postBoostTimer = 0f;
+
+        // Clear any active boost max speed multiplier
+        _activeBoostMaxMult = 1f;
+        _currentBoostMaxSpeed = 0f;
+
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
         _crashKilledDriftHeldBoost = true;
         // NEW: also prevent drift-held boost from “arming” during crash sequences
@@ -6478,8 +6566,8 @@ public class CarController : MonoBehaviour
 
         float severityContribution = _lastCrashSeverity;
 
-            if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
-            if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
+        if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
+        if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
 
         _crashSeveritySum += severityContribution;
 
@@ -6594,6 +6682,12 @@ public class CarController : MonoBehaviour
                     TrySpawnPopup(RacingPopupType.FuelLoss, actualFuelLoss);
 
                 Debug.Log($"[CarController] Crash fuel loss applied (sev={sev01ForDamage:F2}). Fuel={currentFuel}/{maxFuel}");
+            }
+
+            if (RacingPopups.IsReady)
+            {
+                // Spawn crash popup with severity-based text
+                RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
             }
 
             bool lethalFromThisCrash =
@@ -7720,7 +7814,32 @@ public class CarController : MonoBehaviour
     mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
 ));
 
-            if (mgr.IsPassiveMashUnlocked)
+            int extraClickPower = effectiveClicksPerClick - baseClicksPerClick;
+            float clickDrainBonus = extraClickPower * drainScalePerClickPower;
+
+            // How much extra passive strength above base
+            int extraPassiveStrength = effectivePassiveClickStrength - basePassiveClickStrength;
+            float passiveDrainBonus = extraPassiveStrength * drainScalePerPassiveStrength;
+
+            // Also factor in passive click RATE if unlocked (more clicks/sec = more fill = more drain needed)
+            float passiveRateBonus = 0f;
+            if (mgr.IsPassiveMashUnlocked && effectivePassiveClickRate > 0f)
+            {
+                // Every 1.0 clicks/sec above base adds some drain
+                float extraRate = effectivePassiveClickRate - (basePassiveClickRate > 0f ? basePassiveClickRate : 0.5f);
+                passiveRateBonus = Mathf.Max(0f, extraRate) * drainScalePerPassiveStrength;
+            }
+
+            // Combine all bonuses
+            _skillDrainMultiplier = 1f + clickDrainBonus + passiveDrainBonus + passiveRateBonus;
+
+            // Clamp to reasonable range
+            _skillDrainMultiplier = Mathf.Clamp(_skillDrainMultiplier, minSkillDrainMultiplier, maxSkillDrainMultiplier);
+
+            Debug.Log($"[MashGauge] Skill drain multiplier: {_skillDrainMultiplier:F2} " +
+                      $"(clickPower: +{extraClickPower}, passiveStr: +{extraPassiveStrength}, passiveRate: {effectivePassiveClickRate:F1})");
+
+        if (mgr.IsPassiveMashUnlocked)
             {
                 // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
                 // Then rate skills modify it further
@@ -8015,7 +8134,7 @@ public class CarController : MonoBehaviour
         if (!enablePopupText) return;
         if (!RacingPopups.IsReady) return;
 
-        RacingPopups.MashFuelRandom(value);
+        RacingPopups.SpawnRandomScreen(type, value, mashFuelPopupHorizontalRange, mashFuelPopupVerticalRange);
     }
 
     private float CalculateMashSpeedRating(float timeBetweenClicks)
@@ -8099,6 +8218,82 @@ public class CarController : MonoBehaviour
     
     */
 
+    public bool IsCloseCallInvincible => _closeCallInvincible && Time.time < _closeCallInvincibilityEndTime;
+
+    /// <summary>
+    /// The total duration of the current/last invincibility window.
+    /// </summary>
+    public float CloseCallInvincibilityDuration => _closeCallInvincibilityDuration;
+
+    /// <summary>
+    /// Time remaining on close call invincibility (0 if not active).
+    /// </summary>
+    public float CloseCallInvincibilityRemaining => IsCloseCallInvincible
+        ? Mathf.Max(0f, _closeCallInvincibilityEndTime - Time.time)
+        : 0f;
+
+    /// <summary>
+    /// Apply close call rewards (called by GameManager when close call occurs).
+    /// </summary>
+    public void OnCloseCall(Vector3 obstaclePosition, float distance)
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        // === SPEED BOOST ===
+        if (mgr.IsCloseCallSpeedBoostUnlocked)
+        {
+            float duration = mgr.GetCloseCallSpeedBoostDuration(closeCallBoostBaseDuration);
+            if (duration > 0f)
+            {
+                ApplyCloseCallSpeedBoost(duration);
+            }
+        }
+
+        // === INVINCIBILITY ===
+        float invincDuration = mgr.GetCloseCallInvincibilityDuration();
+        if (invincDuration > 0f)
+        {
+            ApplyCloseCallInvincibility(invincDuration);
+        }
+    }
+
+    /// <summary>
+    /// Apply a short speed boost from close call.
+    /// </summary>
+    private void ApplyCloseCallSpeedBoost(float duration)
+    {
+        _closeCallBoosting = true;
+        _closeCallBoostEndTime = Time.time + duration;
+
+        // Force is applied continuously in FixedUpdate while _closeCallBoosting is true
+        // This creates a smooth, sustained push feel with raised speed cap
+        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x");
+    }
+
+    /// <summary>
+    /// Apply invincibility from close call.
+    /// </summary>
+    private void ApplyCloseCallInvincibility(float duration)
+    {
+        _closeCallInvincible = true;
+        ApplyCloseCallTint();
+        _closeCallInvincibilityDuration = duration;
+        _closeCallInvincibilityEndTime = Time.time + duration;
+
+        // Start continuous screen flash for invincibility duration
+        ScreenFlashManager.Invincibility(duration);
+
+        // Show "INVINCIBLE!" popup at car position
+        if (RacingPopups.IsReady)
+        {
+            Vector3 popupPos = transform.position + Vector3.up * 2.5f;
+            RacingPopups.Invincible(popupPos);
+        }
+
+        Debug.Log($"[CloseCall] Invincibility applied for {duration:F2}s");
+    }
+
     private void EndFlipMashRecoveryAndUpright()
     {
         if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
@@ -8134,6 +8329,35 @@ public class CarController : MonoBehaviour
                 rb.position += Vector3.up * flipUprightLift;
         }
         _isFlippedDuringRecovery = false;
+    }
+
+    private void ApplyCloseCallTint()
+    {
+        foreach (var r in _renderers)
+        {
+            if (!_originalColors.TryGetValue(r, out var baseColor))
+                continue;
+
+            r.GetPropertyBlock(_mpb);
+
+            Color tinted = Color.Lerp(baseColor, closeCallTintColor, closeCallTintStrength);
+            _mpb.SetColor("_EmissionColor", closeCallTintColor * 2.5f);
+
+            r.SetPropertyBlock(_mpb);
+        }
+    }
+
+    private void ClearCloseCallTint()
+    {
+        foreach (var r in _renderers)
+        {
+            if (!_originalColors.TryGetValue(r, out var baseColor))
+                continue;
+
+            r.GetPropertyBlock(_mpb);
+            _mpb.SetColor("_EmissionColor", closeCallTintColor * 2.5f);
+            r.SetPropertyBlock(_mpb);
+        }
     }
 
 
@@ -8193,8 +8417,8 @@ public class CarController : MonoBehaviour
 
     private void UpdateMashGauge(float speedRating)
     {
-        // Calculate fill amount with speed bonus
-        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating);
+        // Calculate fill amount with speed bonus AND clicks-per-click multiplier
+        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating) * effectiveClicksPerClick;
 
         // Add to gauge
         _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
@@ -8210,10 +8434,75 @@ public class CarController : MonoBehaviour
 
             // Visual/audio feedback for reaching max tier
             ScreenFlashManager.Instance?.Flash(Color.cyan, 1.5f, 0.3f, 0.3f);
-
-            // Future skill hook: maxGaugeRefillsFuel
-            // if (maxGaugeRefillsFuel) { ... }
         }
+    }
+
+    /// <summary>
+    /// Bump an obstacle up and away when hit during close call invincibility.
+    /// </summary>
+    private void BumpObstacleAway(Collision collision)
+    {
+        // Try to get rigidbody on the obstacle
+        Rigidbody obstacleRb = collision.collider.attachedRigidbody;
+        if (obstacleRb == null)
+        {
+            // No rigidbody - try to get one from parent
+            obstacleRb = collision.collider.GetComponentInParent<Rigidbody>();
+        }
+
+        if (obstacleRb == null || obstacleRb.isKinematic)
+        {
+            // Can't bump static/kinematic objects, just ignore
+            return;
+        }
+
+        // Calculate bump direction based on collision
+        Vector3 bumpDir;
+        Vector3 contactPoint = transform.position;
+
+        if (collision.contactCount > 0)
+        {
+            var contact = collision.GetContact(0);
+            contactPoint = contact.point;
+            // Direction FROM car TO obstacle (push it away)
+            bumpDir = (collision.transform.position - transform.position).normalized;
+        }
+        else
+        {
+            // Fallback: push in direction from car to obstacle
+            bumpDir = (collision.transform.position - transform.position).normalized;
+        }
+
+        // Ensure lateral direction (zero out Y, then re-normalize)
+        Vector3 lateralDir = new Vector3(bumpDir.x, 0f, bumpDir.z);
+        if (lateralDir.sqrMagnitude > 0.001f)
+        {
+            lateralDir.Normalize();
+        }
+        else
+        {
+            // Fallback to car's forward if no clear lateral direction
+            lateralDir = transform.forward;
+        }
+
+        // Calculate forces
+        Vector3 awayForce = lateralDir * invincibilityBumpForceAway;
+        Vector3 upForce = Vector3.up * invincibilityBumpForceUp;
+        Vector3 totalForce = awayForce + upForce;
+
+        // Apply impulse to obstacle
+        obstacleRb.AddForce(totalForce, ForceMode.VelocityChange);
+
+        // Add some spin for visual flair
+        if (invincibilityBumpTorque > 0f)
+        {
+            Vector3 torqueAxis = Vector3.Cross(Vector3.up, lateralDir); // Perpendicular to push direction
+            obstacleRb.AddTorque(torqueAxis * invincibilityBumpTorque, ForceMode.VelocityChange);
+        }
+
+        // Optional: Play a sound or VFX
+        // PlayBumpSound(contactPoint);
+        // SpawnBumpVFX(contactPoint);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -8225,32 +8514,83 @@ public class CarController : MonoBehaviour
         if (IsCrashInvulnerable)
             return;
 
-        // --- NEW: skip crash logic if obstacle has active forcefield immunity ---
-        var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
-        if (immunity != null && immunity.IsImmune) return;
+        if (_isReorienting)
+            return;
+
+        // === NEW: FORCEFIELD PROTECTION CHECK ===
+        // If the forcefield is armed and this collider is on obstacle layers,
+        // the forcefield should handle it - don't process as crash
+        if (_forcefield != null && _forcefield.IsArmed)
+        {
+            if (((1 << collision.gameObject.layer) & crashLayers) != 0)
+            {
+                // Let forcefield handle this - it will intercept via its trigger
+                // This prevents the collision from also triggering crash logic
+                Debug.Log($"[CarController] Collision ignored - forcefield is armed and will handle {collision.gameObject.name}");
+                return;
+            }
+        }
+
+        // === NEW: PER-COLLIDER CRASH COOLDOWN ===
+        int colliderId = collision.collider.GetInstanceID();
+        if (_perColliderCrashTime.TryGetValue(colliderId, out float lastCrashTime))
+        {
+            if (Time.time - lastCrashTime < perColliderCrashCooldown)
+            {
+                Debug.Log($"[CarController] Collision ignored - same collider cooldown ({collision.collider.name})");
+                return;
+            }
+        }
+
+        bool duringMashRecovery = _flipMashActive;
+        bool duringCrashState = _inCrash;
+
+        float impactSpeed = collision.relativeVelocity.magnitude;
+
+        if (impactSpeed < minImpactSpeed)
+            return;
 
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
             return;
 
-        float impactSpeed = collision.relativeVelocity.magnitude;
+        if (IsCloseCallInvincible)
+        {
+            // Bump the obstacle away
+            BumpObstacleAway(collision);
+            ScreenFlashManager.InvincibilityImpact();
+            var camController = Camera.main?.GetComponent<CameraFollow>();
+            camController?.StartShake(0.15f, 0.15f, 3, 0.15f);
 
+            if (RacingPopups.IsReady)
+            {
+                Vector3 impactPos = collision.contactCount > 0
+                    ? collision.GetContact(0).point + Vector3.up * 1.5f
+                    : transform.position + Vector3.up * 2f;
+                RacingPopups.Crash(impactPos);
+            }
 
-
-        if (impactSpeed < minImpactSpeed)
+            Debug.Log("[CloseCall] Invincibility blocked crash - bumped obstacle away!");
             return;
+        }
+
+        // --- skip crash logic if obstacle has active forcefield immunity ---
+        var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
+        if (immunity != null && immunity.IsImmune) return;
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
 
         Debug.Log($"Impact Speed: {impactSpeed}");
 
-        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
 
+        // If we're in mash recovery and damage window is open, add debt instead of restarting
+        bool wasMashing = _flipMashActive;
 
         ScreenFlashManager.Damage();
 
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
-            gm.OnCarCrash(impactSpeed, severity); // skip currency penalties if still in cooldown
+            gm.OnCarCrash(impactSpeed, severity);
 
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
@@ -8272,15 +8612,12 @@ public class CarController : MonoBehaviour
             hitDir = (transform.position - collision.transform.position).normalized;
         }
 
-        // NOW shuttle calc (uses correct normal)
         var shuttle = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
         if (shuttle != null && rb != null)
         {
             Vector3 rel = rb.velocity - shuttle.GetWorldVelocity();
             impactSpeed = Mathf.Abs(Vector3.Dot(rel, contactNormal));
         }
-
-
 
         var otherCol = collision.collider;
         var cross = otherCol.GetComponentInParent<CrossTrackObstacle>();
@@ -8293,18 +8630,77 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
         }
 
+        // === Track per-root AND per-collider ===
         int rootId = collision.collider.transform.root.GetInstanceID();
         _recentCrashRootTime[rootId] = Time.time;
+        _perColliderCrashTime[colliderId] = Time.time;  // NEW: per-collider tracking
         _closeCallTracking.Remove(rootId);
 
-
-        // Spawn crash/explode VFX at the contact point (only when damage window open)
         if (damageWindowOpen)
         {
             SpawnCrashImpactVFX(contactPoint, contactNormal);
         }
 
+        // If we were mashing, add debt and apply damage but DON'T restart crash state
+        if (wasMashing && damageWindowOpen)
+        {
+            // Store new severity for drain calculations
+            _lastCrashSeverity = Mathf.Max(_lastCrashSeverity, severity);
+            _crashCount++;
+            _crashSeveritySum += severity;
+
+            // Apply damage directly
+            if (hpCrashDamageAtSeverity1 > 0f)
+            {
+                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * severity);
+                hpLoss = Mathf.Min(hpLoss, currentHP);
+                currentHP = Mathf.Max(0f, currentHP - hpLoss);
+
+                if (hpLoss >= minHPDamageForPopup)
+                    TrySpawnPopup(RacingPopupType.HPDamage, hpLoss);
+            }
+
+            if (fuelLossAtSeverity1 > 0f)
+            {
+                float fuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * severity);
+                float before = currentFuel;
+                ConsumeFuel(fuelLoss);
+                float actual = before - currentFuel;
+
+                if (actual >= minFuelLossForPopup)
+                    TrySpawnPopup(RacingPopupType.FuelLoss, actual);
+            }
+
+            // Add mash debt
+            AddMashDebtFromNewCrash(NeedsFlipRecovery());
+
+            // Show crash popup
+            if (RacingPopups.IsReady)
+                RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
+
+            // Reset cooldown
+            _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+
+            // Apply some knockback without full crash state
+            if (rb != null)
+            {
+                Vector3 knockDir = hitDir;
+                knockDir.y += 0.2f;
+                knockDir.Normalize();
+                rb.AddForce(knockDir * impulseMag * 0.5f, ForceMode.VelocityChange);
+            }
+
+            return; // Don't trigger full crash state
+        }
+
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
+    }
+
+    private void ForceStopCloseCallEffects()
+    {
+        _closeCallBoosting = false;
+        _closeCallInvincible = false;
+        ScreenFlashManager.StopInvincibility();
     }
 
     /// <summary>
@@ -8345,7 +8741,8 @@ public class CarController : MonoBehaviour
             if (!_flipMashActive) return 0f;
             float baseDrain = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, _lastCrashSeverity);
             float crashBonus = _crashCount * gaugeDrainPerCrash;
-            return Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+            float drain = Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+            return drain * _skillDrainMultiplier;  // Include skill scaling
         }
     }
 
@@ -8482,6 +8879,8 @@ public class CarController : MonoBehaviour
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
             return;
 
+
+
         // (rest of existing crash logic unchanged)
         float impactSpeed = 0f;
         Rigidbody otherRb = other.attachedRigidbody;
@@ -8492,6 +8891,27 @@ public class CarController : MonoBehaviour
 
         if (impactSpeed < minImpactSpeed)
             return;
+
+        if (_forcefield != null && _forcefield.IsArmed)
+        {
+            if (((1 << other.gameObject.layer) & crashLayers) != 0)
+            {
+                Debug.Log($"[CarController] Trigger ignored - forcefield is armed and will handle {other.name}");
+                return;
+            }
+        }
+
+        // === NEW: PER-COLLIDER CRASH COOLDOWN ===
+        int colliderId = other.GetInstanceID();
+        if (_perColliderCrashTime.TryGetValue(colliderId, out float lastCrashTime))
+        {
+            if (Time.time - lastCrashTime < perColliderCrashCooldown)
+            {
+                Debug.Log($"[CarController] Trigger ignored - same collider cooldown ({other.name})");
+                return;
+            }
+        }
+
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
@@ -8518,6 +8938,7 @@ public class CarController : MonoBehaviour
 
         int rootId = other.transform.root.GetInstanceID();
         _recentCrashRootTime[rootId] = Time.time;
+        _perColliderCrashTime[colliderId] = Time.time;
         _closeCallTracking.Remove(rootId);
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
@@ -8564,7 +8985,6 @@ public class CarController : MonoBehaviour
             {
                 rb.angularVelocity = Vector3.zero;
                 rb.rotation = transform.rotation;
-                rb.freezeRotation = true;
                 rb.drag = _baseDrag;
                 rb.angularDrag = _baseAngularDrag;
             }
@@ -10878,6 +11298,119 @@ public enum CoinType
 
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/CreatureType.cs
+
+```csharp
+/// <summary>
+/// Defines the behavioral type of a track creature.
+/// </summary>
+public enum CreatureBehaviorType
+{
+    /// <summary>
+    /// Wanders randomly on the track. Does not react to the player.
+    /// Rewards coins when hit.
+    /// </summary>
+    Passive,
+
+    /// <summary>
+    /// Wanders until player approaches, then flees away from the player.
+    /// Builds up scurry speed when fleeing. Can run off-road.
+    /// </summary>
+    Scared,
+
+    /// <summary>
+    /// Detects player from a distance and charges toward them.
+    /// Causes a crash on collision. Can move off-track to intercept.
+    /// </summary>
+    Aggressive
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/CreatureTypeConfig.cs
+
+```csharp
+using UnityEngine;
+
+/// <summary>
+/// Configuration for a type of track creature.
+/// Similar to ObstacleType and NPCCarType for consistent spawner patterns.
+/// </summary>
+[System.Serializable]
+public class CreatureTypeConfig
+{
+    [Header("Identity")]
+    [Tooltip("Name for your sanity in the inspector.")]
+    public string id;
+
+    [Tooltip("The creature prefab to spawn.")]
+    public GameObject prefab;
+
+    [Tooltip("The behavioral type of this creature.")]
+    public CreatureBehaviorType behaviorType = CreatureBehaviorType.Passive;
+
+    [Header("Spawn Weight")]
+    [Tooltip("Relative spawn weight compared to other creature types.")]
+    [Min(0f)] public float baseWeight = 1f;
+
+    [Header("Distance Band (normalized 0-1 along track)")]
+    [Tooltip("Normalized distance along track where this creature starts appearing.")]
+    [Range(0f, 1f)] public float startAtNormalizedDist = 0f;
+
+    [Tooltip("Normalized distance where this creature reaches full spawn weight.")]
+    [Range(0f, 1f)] public float fullWeightNormalizedDist = 0.2f;
+
+    [Tooltip("Normalized distance where this creature stops appearing.")]
+    [Range(0f, 1f)] public float stopAtNormalizedDist = 1f;
+
+    [Header("Placement Tweaks")]
+    [Tooltip("Extra height offset for placement (useful for flying creatures).")]
+    public float extraHeightOffset = 0f;
+
+    [Tooltip("Shrink usable lateral width if needed.")]
+    public float extraLateralPadding = 0f;
+
+    [Header("Coin Reward")]
+    [Tooltip("Coins awarded when this creature is killed (by car or turret).")]
+    [Min(0)] public int coinReward = 1;
+
+    [Header("Behavior Tuning - Passive")]
+    [Tooltip("How fast the passive creature wanders.")]
+    [Min(0f)] public float passiveWanderSpeed = 2f;
+
+    [Tooltip("How often the passive creature changes direction.")]
+    [Min(0.1f)] public float passiveDirectionChangeInterval = 1.5f;
+
+    [Header("Behavior Tuning - Scared")]
+    [Tooltip("Detection radius for the scared creature to notice the player.")]
+    [Min(0f)] public float scaredDetectionRadius = 15f;
+
+    [Tooltip("Base flee speed when first startled.")]
+    [Min(0f)] public float scaredBaseFleeSpeed = 4f;
+
+    [Tooltip("Maximum flee speed after scurry buildup.")]
+    [Min(0f)] public float scaredMaxFleeSpeed = 12f;
+
+    [Tooltip("How quickly the flee speed builds up (speed per second).")]
+    [Min(0f)] public float scaredSpeedBuildupRate = 3f;
+
+    [Tooltip("How far off-road the scared creature can run.")]
+    [Min(0f)] public float scaredMaxOffRoadDistance = 3f;
+
+    [Header("Behavior Tuning - Aggressive")]
+    [Tooltip("Detection radius for the aggressive creature to spot the player.")]
+    [Min(0f)] public float aggressiveDetectionRadius = 25f;
+
+    [Tooltip("Charge speed toward the player.")]
+    [Min(0f)] public float aggressiveChargeSpeed = 10f;
+
+    [Tooltip("How far off-track the aggressive creature can go to intercept.")]
+    [Min(0f)] public float aggressiveMaxOffTrackDistance = 4f;
+
+    [Tooltip("Crash severity caused on collision (0-1).")]
+    [Range(0f, 1f)] public float aggressiveImpactDamage = 0.5f;
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/CrossObstacleDirector.cs
 
 ```csharp
@@ -12958,6 +13491,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private IcePathSpawner icePathSpawner;
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
+    [SerializeField] private TrackCreatureSpawner creatureSpawner;
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -13571,6 +14105,49 @@ public class GameManager_Racing : MonoBehaviour
     {
         if (!enabled) return;
 
+        var mgr = RacingSkillTreeManager.Instance;
+
+        // === CLOSE CALL COINS (Skill) ===
+        if (mgr != null)
+        {
+            int coins = mgr.GetCloseCallCoins();
+            if (coins > 0)
+            {
+                // Award coins
+                mgr.AddCurrency(coins);
+                _pickupCoinsThisRun += coins; // Track for run summary
+
+                // Update live UI
+                int totalCoins = _distanceCoinsThisRun + _pickupCoinsThisRun + _obstacleCoinsThisRun;
+                uiManager?.UpdateRunCoins(totalCoins);
+
+                // Spawn coin popup
+                if (RacingPopups.IsReady)
+                {
+                    Vector3 popupPos = pos + Vector3.up * 2f;
+                    RacingPopups.Spawn(RacingPopupType.CoinGain, coins, popupPos);
+                }
+
+                Debug.Log($"[CloseCall] Awarded {coins} coins!");
+            }
+        }
+
+        // === NOTIFY CAR FOR BOOST/INVINCIBILITY ===
+        var car = ActiveCar;
+        if (car != null)
+        {
+            car.OnCloseCall(pos, closestDistance);
+        }
+
+        // === EXISTING CLOSE CALL EFFECTS ===
+
+        // Spawn popup
+        if (RacingPopups.IsReady)
+        {
+            Vector3 popupPos = pos + Vector3.up * 1.5f;
+            RacingPopups.CloseCall(closestDistance, popupPos);
+        }
+
         // Play a small PPS burst (chromatic + lens) centered on event
         var postFX = FindObjectOfType<ForcefieldPostFXController>();
         if (postFX != null)
@@ -13580,7 +14157,7 @@ public class GameManager_Racing : MonoBehaviour
             postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
         }
 
-        // NEW: play close-call SFX (2D or attach to camera so it sounds consistent)
+        // Play close-call SFX
         if (closeCallClip != null)
         {
             Play2DClip(closeCallClip, closeCallVolume);
@@ -13600,11 +14177,10 @@ public class GameManager_Racing : MonoBehaviour
             cameraFollow.ZoomPulse(closeCallZoomDeltaFOV, closeCallZoomDuration);
         }
 
-        // Temporarily boost car handling/turn speed
-        var active = ActiveCar;
-        if (active != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
+        // Temporarily boost car handling/turn speed (existing feature)
+        if (car != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
         {
-            active.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
+            car.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
         }
     }
 
@@ -13835,6 +14411,7 @@ public class GameManager_Racing : MonoBehaviour
         icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
+        creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -14251,6 +14828,46 @@ public class IcePath : MonoBehaviour
     /// </summary>
     public GroundSurface Surface => _surface;
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/IcePathScreenFlashDriver.cs
+
+```csharp
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class IcePathScreenFlashDriver : MonoBehaviour
+{
+    [Header("Refs")]
+    [SerializeField] private CarController car;
+    [SerializeField] private ScreenFlashManager flash;
+
+    private bool _lastIce;
+
+    private void Awake()
+    {
+        if (!flash) flash = ScreenFlashManager.Instance;
+    }
+
+    private void Update()
+    {
+        if (!flash || !car) return;
+
+        bool onIce = car.IsOnIceSurface;
+        if (onIce == _lastIce) return;
+
+        _lastIce = onIce;
+        flash.SetIcePersistent(onIce);
+    }
+
+
+    public void SetCarController(CarController car)
+    {
+        this.car = car;
+    }
+
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/IcePathSpawner.cs
@@ -15003,6 +15620,52 @@ public static class RacingPopups
         System?.Spawn(type, value, position, color);
     }
 
+
+
+    // === CRASH / IMPACT POPUPS ===
+
+    /// <summary>
+    /// Spawn a crash popup. Uses random text from the Crash style asset.
+    /// Pass 0 for value to trigger random text selection from the style.
+    /// </summary>
+    public static void Crash(Vector3 position)
+        => Spawn(RacingPopupType.Crash, 0f, position);
+
+    /// <summary>
+    /// Spawn a crash popup with custom text override.
+    /// </summary>
+    public static void Crash(string text, Vector3 position)
+        => Spawn(RacingPopupType.Crash, text, position);
+
+
+    public static void Crash(float severity, Vector3 position)
+=> Spawn(RacingPopupType.Crash, severity, position);
+    // === INVINCIBILITY POPUPS ===
+
+    /// <summary>
+    /// Spawn "INVINCIBLE!" popup when invincibility activates.
+    /// </summary>
+    public static void Invincible(Vector3 position)
+        => Spawn(RacingPopupType.Invincible, "INVINCIBLE!", position);
+
+    // === CLOSE CALL / NEAR MISS ===
+
+    /// <summary>
+    /// Spawn a close call popup with distance-based text.
+    /// </summary>
+    public static void CloseCall(float distance, Vector3 position)
+    {
+        string text;
+        if (distance <= .15f)
+            text = "INSANE DODGE!";
+        else if (distance <= .3f)
+            text = "CLOSE CALL!";
+        else
+            text = "NEAR MISS!";
+
+        Spawn(RacingPopupType.NearMiss, text, position);
+    }
+
     // === SHORTCUT METHODS FOR COMMON POPUPS ===
 
     public static void HPDamage(float amount, Vector3 position)
@@ -15039,7 +15702,7 @@ public static class RacingPopups
         => SpawnRandomScreen(RacingPopupType.MashFuelReward, amount, new Vector2(-3f, 3f), new Vector2(-1.5f, 1.5f));
 
     public static void SprocketGain(int amount, Vector3 position)
-    => Spawn(RacingPopupType.SprocketGain, amount, position);
+        => Spawn(RacingPopupType.SprocketGain, amount, position);
 
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.
@@ -18576,11 +19239,12 @@ public class ProjectilePool : MonoBehaviour
 using UnityEngine;
 
 /// <summary>
-/// Rigidbody-driven bullet:
+/// Physics-driven projectile spawned by CarTurretController.
 /// - Applies an initial forward impulse / velocity
 /// - Optional gravity drop (enable on the Rigidbody)
 /// - Tracks lifetime and max travel distance
-/// - Uses trigger collider for simple overlap damage (same logic as before)
+/// - Uses trigger collider for simple overlap damage
+/// - Awards SPROCKETS (not coins) when destroying targets
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -18602,6 +19266,24 @@ public class RacingBullet : MonoBehaviour
 
     [Header("Hit Filtering")]
     [SerializeField] private LayerMask hitLayers = ~0;  // what we can damage
+
+    [Header("Sprocket Rewards")]
+    [Tooltip("Base sprockets awarded when this bullet destroys a target.")]
+    [SerializeField] private int baseSprocketReward = 1;
+
+    [Header("Hit Effects")]
+    [Tooltip("VFX spawned on hit.")]
+    [SerializeField] private GameObject hitVFX;
+    [Tooltip("Lifetime of hit VFX.")]
+    [SerializeField] private float hitVFXLifetime = 2f;
+    [Tooltip("Sound played on hit.")]
+    [SerializeField] private AudioClip hitSound;
+    [SerializeField, Range(0f, 1f)] private float hitSoundVolume = 0.8f;
+
+    [Header("Kill Effects")]
+    [Tooltip("Sound played when bullet destroys a target.")]
+    [SerializeField] private AudioClip killSound;
+    [SerializeField, Range(0f, 1f)] private float killSoundVolume = 1f;
 
     private Collider _ownerCollider;
     private Vector3 _startPos;
@@ -18704,20 +19386,126 @@ public class RacingBullet : MonoBehaviour
 
     private void HandleHit(Collider other, Vector3 hitPoint)
     {
-        var dmg = other.GetComponent<IDamageable>() ?? other.GetComponentInParent<IDamageable>();
+        // Check if target is damageable
+        var dmg = other.GetComponent<ITurretDamageable>() ?? other.GetComponentInParent<ITurretDamageable>();
+
         if (dmg != null)
         {
-            dmg.ApplyDamage(damage);
+            // Use new turret-specific interface that returns kill status and reward
+            bool killed = dmg.ApplyTurretDamage(damage, out int sprocketReward);
+
+            if (killed)
+            {
+                // Award sprockets for the kill
+                AwardSprockets(sprocketReward > 0 ? sprocketReward : baseSprocketReward, hitPoint);
+                PlayKillEffects(hitPoint);
+            }
+            else
+            {
+                PlayHitEffects(hitPoint);
+            }
+        }
+        else
+        {
+            // Fallback: try legacy IDamageable
+            var legacyDmg = other.GetComponent<IDamageable>() ?? other.GetComponentInParent<IDamageable>();
+            if (legacyDmg != null)
+            {
+                legacyDmg.ApplyDamage(damage);
+
+                // For legacy targets, just award base sprockets and assume kill
+                // (since we can't know if it died)
+                AwardSprockets(baseSprocketReward, hitPoint);
+            }
+
+            PlayHitEffects(hitPoint);
         }
 
-        // TODO: spawn hit VFX / sound at hitPoint
-
         Destroy(gameObject);
+    }
+
+    /// <summary>
+    /// Awards sprockets to the player with full FX.
+    /// </summary>
+    private void AwardSprockets(int amount, Vector3 position)
+    {
+        if (amount <= 0) return;
+
+        // Register with GameManager
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+        {
+            gm.RegisterSprocketGain(amount);
+        }
+
+        // Add to player's sprockets
+        var skillMgr = RacingSkillTreeManager.Instance;
+        if (skillMgr != null)
+        {
+            skillMgr.AddSprockets(amount);
+        }
+
+        // Show popup
+        if (RacingPopups.IsReady)
+        {
+            RacingPopups.SprocketGain(amount, position + Vector3.up * 0.5f);
+        }
+
+        // Screen flash
+        ScreenFlashManager.Sprocket(amount);
+    }
+
+    private void PlayHitEffects(Vector3 position)
+    {
+        // Spawn hit VFX
+        if (hitVFX != null)
+        {
+            var vfx = Instantiate(hitVFX, position, Quaternion.identity);
+            Destroy(vfx, hitVFXLifetime);
+        }
+
+        // Play hit sound
+        if (hitSound != null)
+        {
+            AudioSource.PlayClipAtPoint(hitSound, position, hitSoundVolume);
+        }
+    }
+
+    private void PlayKillEffects(Vector3 position)
+    {
+        // Spawn hit VFX (same as regular hit)
+        if (hitVFX != null)
+        {
+            var vfx = Instantiate(hitVFX, position, Quaternion.identity);
+            Destroy(vfx, hitVFXLifetime);
+        }
+
+        // Play kill sound (or fall back to hit sound)
+        AudioClip clip = killSound != null ? killSound : hitSound;
+        if (clip != null)
+        {
+            AudioSource.PlayClipAtPoint(clip, position, killSoundVolume);
+        }
     }
 }
 
 /// <summary>
-/// Simple damage interface for anything the turret can shoot.
+/// Enhanced damage interface for turret targets.
+/// Returns whether the target was killed and the sprocket reward amount.
+/// </summary>
+public interface ITurretDamageable
+{
+    /// <summary>
+    /// Apply damage from turret. Returns true if this damage killed the target.
+    /// </summary>
+    /// <param name="amount">Damage amount</param>
+    /// <param name="sprocketReward">Out: sprocket reward for killing this target (0 to use bullet default)</param>
+    /// <returns>True if target was destroyed by this damage</returns>
+    bool ApplyTurretDamage(float amount, out int sprocketReward);
+}
+
+/// <summary>
+/// Simple damage interface for anything the turret can shoot (legacy support).
 /// </summary>
 public interface IDamageable
 {
@@ -18750,7 +19538,7 @@ using UnityEngine;
 using DG.Tweening;
 
 [DisallowMultipleComponent]
-public class RacingObstacle : MonoBehaviour, IDamageable
+public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 {
     [Header("Obstacle Settings")]
     [SerializeField] private bool destructible = true;
@@ -18769,6 +19557,9 @@ public class RacingObstacle : MonoBehaviour, IDamageable
 
     private float _currentHealth;
 
+    // Track if destroyed by turret to skip coin reward
+    private bool _destroyedByTurret = false;
+
     // Cooldown store per other obstacle
     private System.Collections.Generic.Dictionary<int, float> _lastImpactDamageTime = new System.Collections.Generic.Dictionary<int, float>();
 
@@ -18777,6 +19568,10 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         _currentHealth = maxHealth;
     }
 
+    /// <summary>
+    /// Legacy damage interface - used by non-turret sources (forcefield, etc).
+    /// Awards COINS when destroyed.
+    /// </summary>
     public void ApplyDamage(float amount)
     {
         if (!destructible) return;
@@ -18785,7 +19580,36 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         transform.DOPunchScale(Vector3.one * scaleOnHit, scalePunchTime);
 
         if (_currentHealth <= 0f)
+        {
+            _destroyedByTurret = false;
             HandleDestroyed();
+        }
+    }
+
+    /// <summary>
+    /// Turret damage interface - used by RacingBullet.
+    /// Does NOT award coins (bullet handles sprocket rewards).
+    /// </summary>
+    public bool ApplyTurretDamage(float amount, out int sprocketReward)
+    {
+        sprocketReward = rewardCurrency; // Use same value as coin reward
+
+        if (!destructible)
+        {
+            return false;
+        }
+
+        _currentHealth -= amount;
+        transform.DOPunchScale(Vector3.one * scaleOnHit, scalePunchTime);
+
+        if (_currentHealth <= 0f)
+        {
+            _destroyedByTurret = true;
+            HandleDestroyed();
+            return true; // Was killed
+        }
+
+        return false; // Survived
     }
 
     private void HandleDestroyed()
@@ -18793,13 +19617,18 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         if (destroyVFX)
             Instantiate(destroyVFX, transform.position, destroyVFX.transform.rotation);
 
-        // Award currency globally
-        RacingSkillTreeManager.Instance?.AddCurrency(rewardCurrency);
-
-        // Notify GameManager for breakdown tracking
-        if (GameManager_Racing.Instance != null)
+        // Only award coins if NOT destroyed by turret
+        // (turret kills award sprockets via RacingBullet)
+        if (!_destroyedByTurret)
         {
-            GameManager_Racing.Instance.RegisterObstacleReward(rewardCurrency);
+            // Award currency globally
+            RacingSkillTreeManager.Instance?.AddCurrency(rewardCurrency);
+
+            // Notify GameManager for breakdown tracking
+            if (GameManager_Racing.Instance != null)
+            {
+                GameManager_Racing.Instance.RegisterObstacleReward(rewardCurrency);
+            }
         }
 
         Destroy(gameObject);
@@ -18846,7 +19675,7 @@ public class RacingObstacle : MonoBehaviour, IDamageable
         // Damage amount from skill (base is 1.0)
         float dmg = mgr.GetForcefieldImpactDamageAmount(1f);
 
-        // Apply damage to both
+        // Apply damage to both (as non-turret damage, so coins are awarded)
         this.ApplyDamage(dmg);
         otherObstacle.ApplyDamage(dmg);
     }
@@ -18897,6 +19726,13 @@ public class RacingPopupStyleSO : ScriptableObject
     [Tooltip("Format string for the number (e.g., '0', '0.#', '0.00').")]
     public string numberFormat = "0";
 
+    [Header("Random Text Options")]
+    [Tooltip("If true and randomTexts has entries, picks a random text instead of using prefix/value/suffix.")]
+    public bool useRandomText = false;
+
+    [Tooltip("List of random texts to choose from (e.g., 'WAPOW!', 'KABLAM!', 'POW!').")]
+    public string[] randomTexts = new string[0];
+
     [Header("Outline")]
     public bool enableOutline = true;
 
@@ -18925,9 +19761,21 @@ public class RacingPopupStyleSO : ScriptableObject
     [Tooltip("Additional random horizontal drift on top of fixed offset.")]
     public float horizontalDrift = 0f;
 
-    [Header("Fixed Rotation (Comic Style)")]
+    [Tooltip("Additional random vertical drift on top of fixed offset.")]
+    public float verticalDrift = 0f;
+
+    [Header("Random Rotation (Comic Style)")]
     [Tooltip("Fixed Z rotation angle. Use for /\\ pyramid effect. Negative = tilt right (/), Positive = tilt left (\\).")]
     public float fixedRotationZ = 0f;
+
+    [Tooltip("If true, picks a random rotation within the range below instead of using fixedRotationZ.")]
+    public bool useRandomRotation = false;
+
+    [Tooltip("Min random rotation angle (used if useRandomRotation is true).")]
+    public float randomRotationMin = -15f;
+
+    [Tooltip("Max random rotation angle (used if useRandomRotation is true).")]
+    public float randomRotationMax = 15f;
 
     [Header("Timing")]
     [Tooltip("Total duration the popup is visible.")]
@@ -19038,18 +19886,40 @@ public class RacingPopupStyleSO : ScriptableObject
 
     /// <summary>
     /// Format the display text for a given value.
+    /// If useRandomText is enabled and randomTexts has entries, returns a random text instead.
     /// </summary>
     public string FormatText(float value)
     {
+        if (useRandomText && randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
         return $"{prefix}{value.ToString(numberFormat)}{suffix}";
     }
 
     /// <summary>
     /// Format the display text for a given integer value.
+    /// If useRandomText is enabled and randomTexts has entries, returns a random text instead.
     /// </summary>
     public string FormatText(int value)
     {
+        if (useRandomText && randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
         return $"{prefix}{value}{suffix}";
+    }
+
+    /// <summary>
+    /// Get a random text from the randomTexts array (or empty string if none).
+    /// </summary>
+    public string GetRandomText()
+    {
+        if (randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
+        return prefix + suffix;
     }
 
     /// <summary>
@@ -19057,8 +19927,21 @@ public class RacingPopupStyleSO : ScriptableObject
     /// </summary>
     public Vector3 GetPositionOffset()
     {
-        float randomDrift = horizontalDrift > 0 ? UnityEngine.Random.Range(-horizontalDrift, horizontalDrift) : 0f;
-        return new Vector3(horizontalOffset + randomDrift, verticalOffset, 0f);
+        float randomH = horizontalDrift > 0 ? UnityEngine.Random.Range(-horizontalDrift, horizontalDrift) : 0f;
+        float randomV = verticalDrift > 0 ? UnityEngine.Random.Range(-verticalDrift, verticalDrift) : 0f;
+        return new Vector3(horizontalOffset + randomH, verticalOffset + randomV, 0f);
+    }
+
+    /// <summary>
+    /// Get the rotation Z angle, either fixed or random based on settings.
+    /// </summary>
+    public float GetRotationZ()
+    {
+        if (useRandomRotation)
+        {
+            return UnityEngine.Random.Range(randomRotationMin, randomRotationMax);
+        }
+        return fixedRotationZ;
     }
 }
 ```
@@ -19097,6 +19980,13 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
     [Header("Styles")]
     [Tooltip("List of styles for each popup type. Order doesn't matter.")]
     [SerializeField] private List<RacingPopupStyleSO> styles = new();
+
+    [Header("Random Screen Spawn - Anti Overlap")]
+    [SerializeField] private int randomScreenMaxAttempts = 8;
+    [SerializeField] private float randomScreenMinSeparation = 0.6f; // in the same units as your offset ranges
+    [SerializeField] private float randomScreenMemorySeconds = 0.35f;
+
+    private readonly List<(Vector3 offset, float time)> _recentRandomScreenOffsets = new();
 
     [Header("Default Style (fallback)")]
     [SerializeField] private TMP_FontAsset defaultFont;
@@ -19282,18 +20172,60 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         SpawnInternal(type, value, null, worldPosition, colorOverride, scaleOverride);
     }
 
-    /// <summary>
-    /// Spawn at random screen position (for mash rewards, etc.)
-    /// </summary>
     public void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange)
     {
-        Vector3 randomOffset = new Vector3(
-            UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
-            UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
-            0f
-        );
-        SpawnInternal(type, value, null, randomOffset, null, null, true);
+        float now = Time.time;
+
+        // purge old entries
+        for (int i = _recentRandomScreenOffsets.Count - 1; i >= 0; i--)
+        {
+            if (now - _recentRandomScreenOffsets[i].time > randomScreenMemorySeconds)
+                _recentRandomScreenOffsets.RemoveAt(i);
+        }
+
+        Vector3 chosen = Vector3.zero;
+        bool found = false;
+
+        for (int attempt = 0; attempt < Mathf.Max(1, randomScreenMaxAttempts); attempt++)
+        {
+            Vector3 candidate = new Vector3(
+                UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
+                UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
+                0f
+            );
+
+            bool overlaps = false;
+            for (int i = 0; i < _recentRandomScreenOffsets.Count; i++)
+            {
+                if (Vector3.Distance(candidate, _recentRandomScreenOffsets[i].offset) < randomScreenMinSeparation)
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+
+            if (!overlaps)
+            {
+                chosen = candidate;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            // fallback: just take one (better than spawning nothing)
+            chosen = new Vector3(
+                UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
+                UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
+                0f
+            );
+        }
+
+        _recentRandomScreenOffsets.Add((chosen, now));
+        SpawnInternal(type, value, null, chosen, null, null, true);
     }
+
 
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.
@@ -19401,7 +20333,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         float popDelay = style?.popDelay ?? defaultPopDelay;
         float popDurFrac = style?.popDurationFraction ?? defaultPopDurationFraction;
         var popEase = style?.popEase ?? Ease.OutBack;
-        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+        float fixedRotZ = style?.GetRotationZ() ?? 0f;
 
         var seq = DOTween.Sequence().SetTarget(go.transform);
         if (style?.useUnscaledTime ?? true)
@@ -19496,6 +20428,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         tmp.UpdateMeshPadding();
         tmp.SetMaterialDirty();
     }
+
     private void SpawnInternal(RacingPopupType type, float value, string customText, Vector3 worldPosition, Color? colorOverride, float? scaleOverride, bool useRandomScreenPos = false)
     {
         var go = _pool.Get();
@@ -19532,13 +20465,14 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         // Apply outline
         ApplyOutline(tmp, style);
 
-        // Set text
+        // Set text - supports random text selection via FormatText
         if (!string.IsNullOrEmpty(customText))
         {
             tmp.text = customText;
         }
         else if (style != null)
         {
+            // FormatText now handles random text selection if useRandomText is enabled
             tmp.text = style.FormatText(value);
         }
         else
@@ -19574,10 +20508,8 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
             }
         }
 
-
-
-        // === FIXED ROTATION (Comic Style /\ ) ===
-        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+        // === ROTATION - Now supports random rotation via GetRotationZ() ===
+        float fixedRotZ = style?.GetRotationZ() ?? 0f;
 
         // === POSITION WITH OFFSET (Comic Style) ===
         Vector3 positionOffset = style?.GetPositionOffset() ?? Vector3.zero;
@@ -19778,6 +20710,13 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         Spawn(RacingPopupType.HPDamage, 30f, pos);
         Spawn(RacingPopupType.FuelLoss, 12f, pos);
     }
+
+    [ContextMenu("Test Crash Popup")]
+    private void TestCrash()
+    {
+        if (!Application.isPlaying) return;
+        Spawn(RacingPopupType.Crash, 0f, transform.position + Vector3.up * 2f);
+    }
 #endif
 }
 ```
@@ -19794,1117 +20733,40 @@ public enum RacingPopupType
     // Damage / Loss
     HPDamage,           // HP lost from crash
     FuelLoss,           // Fuel lost from crash
-    
+
     // Gains / Recovery
     HPGain,             // HP recovered (pickup, regen)
     FuelGain,           // Fuel recovered (pickup, mash reward)
     CoinGain,           // Coins collected
-    
+
     // Mash Recovery specific
     MashFuelReward,     // Fuel gained per mash click
     MashClickBonus,     // Multi-click bonus display
-    
+
     // Boost / Speed
     BoostActivate,      // Boost activated
     SpeedBonus,         // Speed bonus text
-    
+
     // Combo / Multiplier
     ComboText,          // Combo counter
     MultiplierText,     // Score multiplier
-    
+
+    // Collision / Impact (covers crash, invincibility bump, etc.)
+    Crash,              // Cartoony impact text - "WAPOW!", "KABLAM!", "CRASH!", etc.
+
+    // Invincibility
+    Invincible,         // "INVINCIBLE!" when invincibility activates
+
     // Near Miss / Close Call
     NearMiss,           // Close call with obstacle
+
+    // Currency
     SprocketGain,
+
     // Generic
     Generic,            // Generic popup (white, neutral)
     Warning,            // Warning text (orange/yellow)
     Critical            // Critical/important (red, large)
-}
-
-```
-
-## Assets/Racing_Assets/Racing_Scripts/RacingSkillDetailPanel.cs
-
-```csharp
-using System;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.EventSystems;
-
-public class RacingSkillDetailPanel : MonoBehaviour
-{
-    [Header("Root / Backdrop")]
-    [SerializeField] private GameObject root;          // Stays active (overall panel parent / skill tree layer)
-    [SerializeField] private GameObject backdrop;      // Clickable area to dismiss ONLY the info
-    [SerializeField] private GameObject infoContainer; // NEW: the actual skill info box (card)
-    [SerializeField] private Button closeButton;       // Legacy (optional) � no longer used
-
-    [Header("Text Fields")]
-    [SerializeField] private TMP_Text nameText;
-    [SerializeField] private TMP_Text descText;
-    [SerializeField] private TMP_Text levelText;
-    [SerializeField] private TMP_Text effectText;
-    [SerializeField] private TMP_Text costText;
-
-    [Header("Actions")]
-    [SerializeField] private Button buyButton;
-
-    private RacingSkillTreeManager mgr;
-    private SkillDefinition def;
-    private bool wired;
-
-    public event Action OnHidden; // Fired when infoContainer is hidden (selection cleared)
-
-    public bool IsInfoVisible => infoContainer != null && infoContainer.activeSelf;
-    public GameObject InfoContainer => infoContainer != null ? infoContainer : null;
-
-    public void Init(RacingSkillTreeManager manager) => mgr = manager;
-
-    void Awake()
-    {
-        if (!mgr) mgr = RacingSkillTreeManager.Instance;
-
-        // Remove the full-screen "big button" behaviour that blocks clicks.
-        // Instead, we make the visual backdrop inert (non-raycast) and install a global click catcher
-        // on the skill tree root so clicks that land outside the info box will hide it while allowing
-        // clicks on other skill buttons to still register.
-        WireStaticBackdrop();
-
-        // Ensure root stays active so backdrop can always catch clicks (if desired).
-        if (root && !root.activeSelf) root.SetActive(true);
-        if (infoContainer && infoContainer.activeSelf) { /* ok */ }
-
-        // Ensure a RacingUISoundManager exists on the UI root (auto-create if missing)
-        var sfxMgr = FindObjectOfType<RacingUISoundManager>();
-        if (sfxMgr == null && root != null)
-        {
-            // Add manager to root so inspector-exposed clips can be assigned by designer
-            sfxMgr = root.AddComponent<RacingUISoundManager>();
-        }
-
-        // Attach global click catcher to the root so we can detect clicks anywhere (without blocking raycasts).
-        if (root != null)
-        {
-            var catcher = root.GetComponent<SkillTreeGlobalClickCatcher>();
-            if (catcher == null) catcher = root.AddComponent<SkillTreeGlobalClickCatcher>();
-            catcher.Init(this);
-        }
-    }
-
-    private void WireStaticBackdrop()
-    {
-        if (backdrop == null) return;
-
-        // If it's an Image (UI panel) make it visual-only (no raycast target) so it doesn't block clicks.
-        var img = backdrop.GetComponent<UnityEngine.UI.Image>();
-        if (img != null)
-        {
-            img.raycastTarget = false;
-        }
-
-        // If there's a Button component, remove its listeners so it won't swallow clicks.
-        var btn = backdrop.GetComponent<Button>();
-        if (btn != null)
-        {
-            btn.onClick.RemoveAllListeners();
-            // remove the Button component entirely to avoid accidental blocking in editor
-            DestroyImmediate(btn);
-        }
-
-        // Remove any legacy BackdropClickCatcher that relied on the backdrop receiving events.
-        var oldCatcher = backdrop.GetComponent<BackdropClickCatcher>();
-        if (oldCatcher != null)
-            DestroyImmediate(oldCatcher);
-
-        // Keep the backdrop GameObject as a visual only.
-    }
-
-    /// <summary>
-    /// Show (or update) the skill info for a given definition.
-    /// </summary>
-    public void Show(SkillDefinition definition)
-    {
-        def = definition;
-        if (!def || mgr == null) return;
-
-        if (root && !root.activeSelf) root.SetActive(true);
-        if (infoContainer && !infoContainer.activeSelf) infoContainer.SetActive(true);
-
-        if (!wired) WireLiveEvents();
-        Refresh();
-    }
-
-    /// <summary>
-    /// Hides only the infoContainer (skill detail content), keeps root active.
-    /// </summary>
-    public void HideInfo()
-    {
-        if (infoContainer) infoContainer.SetActive(false);
-        UnwireLiveEvents();
-        def = null;
-        OnHidden?.Invoke();
-    }
-
-    /// <summary>
-    /// Legacy full hide if ever needed elsewhere (not used by backdrop now).
-    /// </summary>
-    public void Hide()
-    {
-        if (infoContainer) infoContainer.SetActive(false);
-        if (root) root.SetActive(false);
-        UnwireLiveEvents();
-        def = null;
-        OnHidden?.Invoke();
-    }
-
-    /// <summary>
-    /// Immediate full hide (same as Hide, bypassing transitions).
-    /// </summary>
-    public void HideImmediate()
-    {
-        if (infoContainer) infoContainer.SetActive(false);
-        if (root) root.SetActive(false);
-        UnwireLiveEvents();
-        def = null;
-        OnHidden?.Invoke();
-    }
-
-    private void WireLiveEvents()
-    {
-        if (wired || mgr == null) return;
-        mgr.OnCurrencyChanged += HandleCurrencyChanged;
-        mgr.OnLevelChanged += HandleLevelChanged;
-        if (buyButton)
-        {
-            buyButton.onClick.RemoveAllListeners();
-            buyButton.onClick.AddListener(OnBuyClicked);
-        }
-        wired = true;
-    }
-
-    private void UnwireLiveEvents()
-    {
-        if (!wired || mgr == null) return;
-        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
-        mgr.OnLevelChanged -= HandleLevelChanged;
-        if (buyButton) buyButton.onClick.RemoveAllListeners();
-        wired = false;
-    }
-
-    private void HandleCurrencyChanged(int _) => Refresh();
-    private void HandleLevelChanged(SkillType _, int __) => Refresh();
-
-    private void OnBuyClicked()
-    {
-        if (mgr == null || def == null) return;
-
-        // Use smart purchase that checks usesSprockets flag
-        bool purchased = mgr.TryPurchaseSmart(def.type);
-
-        if (purchased)
-        {
-            // Play UI purchase SFXs if available
-            var sfx = FindObjectOfType<RacingUISoundManager>();
-            if (sfx != null)
-            {
-                sfx.PlayPurchaseSkill();
-                sfx.PlayPurchaseCurrency();
-            }
-            Refresh();
-        }
-    }
-
-    private void Refresh()
-    {
-        if (def == null || mgr == null || infoContainer == null || !infoContainer.activeSelf)
-            return;
-
-        int lvl = mgr.GetLevel(def.type);
-        if (nameText) nameText.text = def.displayName;
-        if (descText) descText.text = def.description;
-        if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
-        if (effectText) effectText.text = FormatEffect(def.type);
-
-        // Cost display with currency type
-        if (costText)
-        {
-            if (lvl >= def.maxLevel)
-            {
-                costText.text = "Maxed";
-            }
-            else
-            {
-                int cost = mgr.GetNextLevelCostSmart(def.type);
-                string currencyName = mgr.GetCurrencyNameForSkill(def.type);
-                costText.text = $"Cost: {cost} {currencyName}";
-            }
-        }
-
-        // Buy button - check correct currency
-        if (buyButton)
-        {
-            bool canBuy = mgr.CanAffordNextLevel(def.type);
-            buyButton.interactable = canBuy;
-        }
-    }
-
-    /// <summary>
-    /// Formats the effect text showing: CurrentStat + Upgrade -> NewStat
-    /// Example: "100 + 15 -> 115" for Max Fuel
-    /// </summary>
-    private string FormatEffect(SkillType type)
-    {
-        if (mgr == null || def == null) return "---";
-
-        int currentLevel = mgr.GetLevel(def.type);
-        int nextLevel = currentLevel + 1;
-        bool isMaxed = currentLevel >= def.maxLevel;
-
-        // Get the actual current stat and projected stat after upgrade
-        float currentStat = GetCurrentStatValue(def.type);
-        float nextStat = isMaxed ? currentStat : GetStatValueAtLevel(def.type, nextLevel);
-        float upgradeAmount = nextStat - currentStat;
-
-        // Format output
-        if (isMaxed)
-        {
-            return $"{currentStat:0.##} (MAX)";
-        }
-
-        string sign = upgradeAmount >= 0 ? "+" : "";
-        return $"{currentStat:0.##} {sign}{upgradeAmount:0.##} -> {nextStat:0.##}";
-    }
-
-    /// <summary>
-    /// Gets the current actual stat value for a skill type.
-    /// </summary>
-    private float GetCurrentStatValue(SkillType type)
-    {
-        // Try to get CarController for base stats
-        var car = FindObjectOfType<CarController>();
-
-        switch (type)
-        {
-            // === CORE STATS (read from car's base values) ===
-            case SkillType.Acceleration:
-            case SkillType.Acceleration_Add:
-            case SkillType.Acceleration_Mul:
-                float baseAccel = car != null ? car.BaseAcceleration : 10f;
-                return mgr.ApplyStatChain(baseAccel, SkillType.Acceleration_Add, SkillType.Acceleration_Mul);
-
-            case SkillType.MaxSpeed:
-            case SkillType.MaxSpeed_Add:
-            case SkillType.MaxSpeed_Mul:
-                float baseSpeed = car != null ? car.BaseMaxSpeed : 20f;
-                return mgr.ApplyStatChain(baseSpeed, SkillType.MaxSpeed_Add, SkillType.MaxSpeed_Mul);
-
-            case SkillType.MaxFuel_Add:
-            case SkillType.MaxFuel_Mul:
-                float baseFuel = car != null ? car.BaseMaxFuel : 100f;
-                return mgr.ApplyStatChain(baseFuel, SkillType.MaxFuel_Add, SkillType.MaxFuel_Mul);
-
-            case SkillType.MaxHP_Add:
-            case SkillType.MaxHP_Mul:
-                float baseHP = car != null ? car.BaseMaxHP : 100f;
-                return mgr.ApplyStatChain(baseHP, SkillType.MaxHP_Add, SkillType.MaxHP_Mul);
-
-            case SkillType.TurnSpeed_Add:
-            case SkillType.TurnSpeed_Mul:
-                float baseTurn = car != null ? car.BaseTurnSpeed : 100f;
-                return mgr.ApplyStatChain(baseTurn, SkillType.TurnSpeed_Add, SkillType.TurnSpeed_Mul);
-
-            case SkillType.DrivingFuelUse_Add:
-            case SkillType.DrivingFuelUse_Mul:
-                float baseDriving = car != null ? car.BaseDrivingFuelUse : 2f;
-                return mgr.ApplyStatChain(baseDriving, SkillType.DrivingFuelUse_Add, SkillType.DrivingFuelUse_Mul);
-
-            case SkillType.HPRegen_Add:
-            case SkillType.HPRegen_Mul:
-                float baseRegen = car != null ? car.BaseHPRegen : 0f;
-                return mgr.ApplyStatChain(baseRegen, SkillType.HPRegen_Add, SkillType.HPRegen_Mul);
-
-            // === BOOST STATS ===
-            case SkillType.BoostForce_Add:
-            case SkillType.BoostForce_Mul:
-                float baseBoost = car != null ? car.BaseBoostForce : 50f;
-                return mgr.ApplyStatChain(baseBoost, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
-
-            case SkillType.BoostDuration_Add:
-            case SkillType.BoostDuration_Mul:
-                float baseDur = car != null ? car.BaseBoostDuration : 1f;
-                return mgr.ApplyStatChain(baseDur, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
-
-            case SkillType.BoostCooldown_Add:
-            case SkillType.BoostCooldown_Mul:
-                float baseCD = car != null ? car.BaseBoostCooldown : 3f;
-                return mgr.ApplyStatChain(baseCD, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
-
-            case SkillType.BoostFuelCost_Add:
-            case SkillType.BoostFuelCost_Mul:
-                float baseCost = car != null ? car.BaseBoostFuelCost : 10f;
-                return mgr.ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
-
-            // === MASH SKILLS ===
-            case SkillType.MashClicksPerClick_Add:
-            case SkillType.MashClicksPerClick_Mul:
-                float baseClicks = car != null ? car.BaseClicksPerClick : 1f;
-                return mgr.ApplyStatChain(baseClicks, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul);
-
-            case SkillType.MashPassiveClickRate_Add:
-            case SkillType.MashPassiveClickRate_Mul:
-                float baseRate = car != null ? car.BasePassiveClickRate : 0f;
-                return mgr.ApplyStatChain(baseRate, SkillType.MashPassiveClickRate_Add, SkillType.MashPassiveClickRate_Mul);
-
-            case SkillType.MashPassiveClickStrength_Add:
-            case SkillType.MashPassiveClickStrength_Mul:
-                float baseStrength = car != null ? car.BasePassiveClickStrength : 1f;
-                return mgr.ApplyStatChain(baseStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul);
-
-            case SkillType.MashFuelPerClick_Add:
-            case SkillType.MashFuelPerClick_Mul:
-                float baseMashFuel = car != null ? car.BaseMashFuelPerClick : 0.3f;
-                return mgr.ApplyStatChain(baseMashFuel, SkillType.MashFuelPerClick_Add, SkillType.MashFuelPerClick_Mul);
-
-            // === PERCENTAGE/CHANCE STATS ===
-            case SkillType.CoinSpawnRate_Add:
-            case SkillType.CoinSpawnRate_Mul:
-                return mgr.GetCoinSpawnRateMultiplier() * 100f; // Show as percentage
-
-            case SkillType.CoinDoubleChance_Add:
-            case SkillType.CoinDoubleChance_Mul:
-                return mgr.GetCoinDoubleChance() * 100f; // Show as percentage
-
-            // === UNLOCK SKILLS (just show level) ===
-            case SkillType.BoostUnlock:
-            case SkillType.DriftUnlock:
-            case SkillType.TurretUnlock:
-            case SkillType.ForcefieldUnlock:
-            case SkillType.FuelPickupUnlock:
-            case SkillType.HPPickupUnlock:
-                return mgr.GetLevel(type);
-
-            // === DEFAULT: Use raw skill value ===
-            default:
-                return def.GetValueAtLevel(mgr.GetLevel(def.type));
-        }
-    }
-
-    /// <summary>
-    /// Gets what the stat value WOULD be at a specific skill level.
-    /// </summary>
-    private float GetStatValueAtLevel(SkillType type, int level)
-    {
-        // Temporarily calculate what the stat would be at the given level
-        float currentSkillValue = def.GetValueAtLevel(mgr.GetLevel(def.type));
-        float nextSkillValue = def.GetValueAtLevel(level);
-        float skillDelta = nextSkillValue - currentSkillValue;
-
-        // Get current stat and add the delta
-        float currentStat = GetCurrentStatValue(type);
-
-        // For multiplicative skills, we need to calculate differently
-        if (def.mode == SkillApplicationMode.Multiplicative)
-        {
-            // Current stat already has current multiplier applied
-            // We need to apply the ratio of new/old multiplier
-            if (currentSkillValue > 0.001f)
-            {
-                return currentStat * (nextSkillValue / currentSkillValue);
-            }
-            return currentStat + skillDelta;
-        }
-        else
-        {
-            // Additive: just add the delta
-            return currentStat + skillDelta;
-        }
-    }
-
-    public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
-    {
-        public Action onClicked;
-        public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
-    }
-}
-```
-
-## Assets/Racing_Assets/Racing_Scripts/RacingSkillTreeManager.cs
-
-```csharp
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-
-[DefaultExecutionOrder(-100)]
-public class RacingSkillTreeManager : MonoBehaviour
-{
-    public static RacingSkillTreeManager Instance { get; private set; }
-
-    [Header("Load")]
-    public List<SkillDefinition> skills = new();
-
-    [Header("Master Control")]
-    [Tooltip("If disabled, all skills return level 0 and have no effect.")]
-    [SerializeField] private bool skillsEnabled = true;
-
-    [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
-    [SerializeField] private bool revealAllSkillsAtStart = true;
-
-
-
-    /// <summary>
-    /// Master toggle to enable/disable all skill effects at runtime.
-    /// </summary>
-    public bool SkillsEnabled
-    {
-        get => skillsEnabled;
-        set => skillsEnabled = value;
-    }
-
-    [Header("Economy")]
-    [SerializeField] private int playerCurrency = 0;
-
-    [Header("Sprockets Currency")]
-    [SerializeField] private int playerSprockets = 0;
-
-    private const string SprocketsKey = "Racing_Sprockets";
-
-    private bool _hasEverEarnedSprockets = false;
-    private const string FirstSprocketKey = "Racing_HasEarnedSprockets";
-
-    public event Action OnFirstSprocketEarned;
-
-    public event Action<int> OnSprocketsChanged;
-
-    public event Action<int> OnCurrencyChanged;
-    public event Action<SkillType, int> OnLevelChanged;
-    public event Action OnSkillsReset;
-    public event Action<SkillDefinition> OnSkillRevealed;
-
-    private SkillTreeState _state;
-    private readonly Dictionary<SkillType, SkillDefinition> _map = new();
-    private readonly HashSet<SkillType> _revealedSkills = new();
-
-    private const string CurrencyKey = "Racing_Currency";
-
-    void Awake()
-    {
-        if (Instance && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        Instance = this;
-        DontDestroyOnLoad(gameObject);
-
-        _map.Clear();
-        foreach (var def in skills)
-        {
-            if (def && !_map.ContainsKey(def.type))
-                _map[def.type] = def;
-        }
-
-        _state = new SkillTreeState();
-        ClearAllData(); // TEMP (remove if you want persistence)
-
-        playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
-
-        playerSprockets = PlayerPrefs.GetInt(SprocketsKey, playerSprockets);
-
-        _hasEverEarnedSprockets = PlayerPrefs.GetInt(FirstSprocketKey, 0) == 1;
-
-        // If player already has sprockets, they've earned them before
-        if (playerSprockets > 0)
-            _hasEverEarnedSprockets = true;
-
-        _revealedSkills.Clear();
-        foreach (var def in skills)
-        {
-            if (def == null) continue;
-
-            // Reveal if master toggle is on OR individual skill has revealedAtStart
-            if (revealAllSkillsAtStart || def.revealedAtStart)
-            {
-                RevealSkill(def);
-            }
-            // Also reveal first-sprocket skills if player has earned sprockets before
-            else if (def.revealOnFirstSprocket && _hasEverEarnedSprockets)
-            {
-                RevealSkill(def);
-            }
-        }
-
-        OnCurrencyChanged?.Invoke(playerCurrency);
-        OnSprocketsChanged?.Invoke(playerSprockets);
-        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
-            OnLevelChanged?.Invoke(t, GetLevel(t));
-    }
-
-    private void RevealSkill(SkillDefinition def)
-    {
-        if (!def) return;
-        if (_revealedSkills.Add(def.type))
-            OnSkillRevealed?.Invoke(def);
-    }
-
-    public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
-    public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
-
-    public int Currency => playerCurrency;
-    private void SaveCurrency()
-    {
-        PlayerPrefs.SetInt(CurrencyKey, playerCurrency);
-        PlayerPrefs.Save();
-    }
-    public void AddCurrency(int amount)
-    {
-        if (amount <= 0) return;
-        playerCurrency += amount;
-        SaveCurrency();
-        OnCurrencyChanged?.Invoke(playerCurrency);
-    }
-    public void RemoveCurrency(int amount)
-    {
-        if (amount <= 0) return;
-        playerCurrency = Mathf.Max(0, playerCurrency - amount);
-        SaveCurrency();
-        OnCurrencyChanged?.Invoke(playerCurrency);
-    }
-
-    public int GetNextLevelCost(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
-        int nextLevel = GetLevel(type) + 1;
-        if (nextLevel > def.maxLevel) return 0;
-        return def.GetCostForLevel(nextLevel);
-    }
-
-    public SkillDefinition GetDefinition(SkillType type)
-    {
-        _map.TryGetValue(type, out var def);
-        return def;
-    }
-
-    public IReadOnlyList<SkillDefinition> AllSkills => skills;
-    public int GetLevel(SkillType t) => skillsEnabled ? _state.GetLevel(t) : 0;
-
-    public bool TryPurchase(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return false;
-        int nextLevel = GetLevel(type) + 1;
-        if (nextLevel > def.maxLevel) return false;
-        int cost = def.GetCostForLevel(nextLevel);
-        if (playerCurrency < cost) return false;
-
-        if (_state.Increment(type, def.maxLevel))
-        {
-            playerCurrency -= cost;
-            SaveCurrency();
-            _state.Save();
-            int newLvl = GetLevel(type);
-            OnCurrencyChanged?.Invoke(playerCurrency);
-            OnLevelChanged?.Invoke(type, newLvl);
-            EvaluateProgressiveUnlocks(def, newLvl);
-            return true;
-        }
-        return false;
-    }
-
-    private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
-    {
-        if (!def) return;
-        foreach (var unlocked in def.GetUnlocksForLevel(newLevel))
-            RevealSkill(unlocked);
-    }
-
-    public float GetRawEffectValue(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def))
-            return 0f;
-        int lvl = GetLevel(type);
-        if (lvl <= 0)
-            return def.mode == SkillApplicationMode.Multiplicative ? 1f : 0f;
-        return def.GetValueAtLevel(lvl);
-    }
-
-    public SkillApplicationMode GetEffectMode(SkillType type)
-    {
-        if (_map.TryGetValue(type, out var def))
-            return def.mode;
-        return SkillApplicationMode.Additive;
-    }
-
-    public float GetDisplayMultiplier(SkillType type)
-    {
-        var mode = GetEffectMode(type);
-        var v = GetRawEffectValue(type);
-        return mode == SkillApplicationMode.Multiplicative ? v : (1f + v);
-    }
-
-    public float ApplyStat(SkillType type, float baseValue)
-    {
-        if (!_map.TryGetValue(type, out var def))
-            return baseValue;
-        int lvl = GetLevel(type);
-        if (lvl <= 0) return baseValue;
-        float v = def.GetValueAtLevel(lvl);
-        if (def.mode == SkillApplicationMode.Multiplicative)
-            return baseValue * Mathf.Max(0f, v);
-        return baseValue + v;
-    }
-
-    // Add these helpers anywhere in the class body
-    public float GetFuelPickupSpawnRateMultiplier()
-    {
-        // 1.0 baseline, then apply add/mul chain, clamped >= 0
-        float baseVal = 1f;
-        baseVal = ApplyStatChain(baseVal, SkillType.FuelPickupSpawnRate_Add, SkillType.FuelPickupSpawnRate_Mul);
-        return Mathf.Max(0f, baseVal);
-    }
-
-    public float GetFuelPickupAmount(float baseAmount = 15f)
-    {
-        // Start at baseAmount (default 15), then apply add/mul chain
-        float v = ApplyStatChain(baseAmount, SkillType.FuelPickupAmount_Add, SkillType.FuelPickupAmount_Mul);
-        return Mathf.Max(0f, v);
-    }
-
-    public bool IsFuelPickupUnlocked()
-    {
-        return GetLevel(SkillType.FuelPickupUnlock) > 0;
-    }
-
-    public float GetHPPickupSpawnRateMultiplier()
-    {
-        float baseVal = 1f;
-        baseVal = ApplyStatChain(baseVal, SkillType.HPPickupSpawnRate_Add, SkillType.HPPickupSpawnRate_Mul);
-        return Mathf.Max(0f, baseVal);
-    }
-
-    public float GetHPPickupAmount(float baseAmount = 20f)
-    {
-        float v = ApplyStatChain(baseAmount, SkillType.HPPickupAmount_Add, SkillType.HPPickupAmount_Mul);
-        return Mathf.Max(0f, v);
-    }
-
-    public bool IsHPPickupUnlocked()
-    {
-        return GetLevel(SkillType.HPPickupUnlock) > 0;
-    }
-
-    public float ApplyStatChain(float baseValue, params SkillType[] types)
-    {
-        // If skills disabled, return base value unchanged
-        if (!skillsEnabled) return baseValue;
-
-        float val = baseValue;
-        if (types == null) return val;
-        for (int i = 0; i < types.Length; i++)
-            val = ApplyStat(types[i], val);
-        return val;
-    }
-
-    public float GetCoinSpawnRateMultiplier()
-    {
-        // Effective probability scaling; clamp to [0, +inf) then caller clamps to [0,1]
-        float baseVal = 1f;
-        baseVal = ApplyStatChain(baseVal, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
-        return Mathf.Max(0f, baseVal);
-    }
-
-    // NEW: feature flag for obstacle-on-obstacle impact damage
-    public bool IsForcefieldImpactDamageUnlocked()
-    {
-        return GetLevel(SkillType.ForcefieldImpactDamageUnlock) > 0;
-    }
-
-    // NEW: damage amount (base 1.0f scaled by add/mul chain)
-    public float GetForcefieldImpactDamageAmount(float baseAmount = 1f)
-    {
-        float v = ApplyStatChain(baseAmount, SkillType.ForcefieldImpactDamage_Add, SkillType.ForcefieldImpactDamage_Mul);
-        return Mathf.Max(0f, v);
-    }
-
-    public float GetCoinDoubleChance()
-    {
-        // Starts at 0; additive levels add raw probability, multiplicative levels scale it.
-        float chance = ApplyStatChain(
-            0f,
-            SkillType.CoinDoubleChance_Add,
-            SkillType.CoinDoubleChance_Mul
-        );
-        return Mathf.Clamp01(chance);
-    }
-
-    // ------------------------------------------------------------------------
-    // NEW: Drift‑Held Boost helpers
-    // ------------------------------------------------------------------------
-    public bool IsDriftHeldBoostUnlocked()
-    {
-        return GetLevel(SkillType.DriftHeldBoostUnlock) > 0;
-    }
-
-    public float GetDriftHeldBoostForceScaled(float baseForce)
-    {
-        return ApplyStatChain(baseForce, SkillType.DriftHeldBoostForce_Add, SkillType.DriftHeldBoostForce_Mul);
-    }
-
-    public float GetDriftHeldBoostDurationScaled(float baseDuration)
-    {
-        return ApplyStatChain(baseDuration, SkillType.DriftHeldBoostDuration_Add, SkillType.DriftHeldBoostDuration_Mul);
-    }
-
-    public float GetDriftHeldBoostMaxSpeedMultScaled(float baseMaxMult)
-    {
-        return ApplyStatChain(baseMaxMult, SkillType.DriftHeldBoostMaxSpeedMult_Add, SkillType.DriftHeldBoostMaxSpeedMult_Mul);
-    }
-
-    // ------------------------------------------------------------------------
-    // NEW: Distance coins per meter
-    // ------------------------------------------------------------------------
-    public float GetDistanceCoinsPerMeter(float baseCoinsPerMeter)
-    {
-        float v = ApplyStatChain(baseCoinsPerMeter, SkillType.DistanceCoinsPerMeter_Add, SkillType.DistanceCoinsPerMeter_Mul);
-        return Mathf.Max(0f, v);
-    }
-
-
-    // ------------------------------------------------------------------------
-    // NEW: Coin base value additive helper
-    // Returns integer amount to add to each coin's configured value (default base 0)
-    // ------------------------------------------------------------------------
-    public int GetCoinBaseAdd()
-    {
-        // start from 0 (no base add); apply add/mul chain (mul on 0 is neutral, but kept for symmetry)
-        float v = ApplyStatChain(0f, SkillType.CoinBase_Add, SkillType.CoinBase_Mul);
-        return Mathf.RoundToInt(Mathf.Max(0f, v));
-    }
-
-    // ------------------------------------------------------------------------
-    // NEW: Drift‑held boost cooldown helper (returns seconds)
-    // ------------------------------------------------------------------------
-    public float GetDriftHeldBoostCooldownScaled(float baseCooldown)
-    {
-        float v = ApplyStatChain(baseCooldown, SkillType.DriftHeldBoostCooldown_Add, SkillType.DriftHeldBoostCooldown_Mul);
-        return Mathf.Max(0.01f, v);
-    }
-
-
-    /// <summary>
-    /// Current sprockets balance.
-    /// </summary>
-    public int Sprockets => playerSprockets;
-
-    private void SaveSprockets()
-    {
-        PlayerPrefs.SetInt(SprocketsKey, playerSprockets);
-        PlayerPrefs.Save();
-    }
-
-    /// <summary>
-    /// Add sprockets to player balance.
-    /// </summary>
-    public void AddSprockets(int amount)
-    {
-        if (amount <= 0) return;
-
-        bool wasFirstSprocket = !_hasEverEarnedSprockets && playerSprockets == 0;
-
-        playerSprockets += amount;
-        SaveSprockets();
-        OnSprocketsChanged?.Invoke(playerSprockets);
-
-        // Check for first sprocket ever earned
-        if (wasFirstSprocket)
-        {
-            _hasEverEarnedSprockets = true;
-            PlayerPrefs.SetInt(FirstSprocketKey, 1);
-            PlayerPrefs.Save();
-
-            // Reveal skills marked for first-sprocket reveal
-            RevealFirstSprocketSkills();
-            OnFirstSprocketEarned?.Invoke();
-
-            Debug.Log("[SkillTreeManager] First sprocket earned! Revealing sprocket skills.");
-        }
-    }
-
-    private void RevealFirstSprocketSkills()
-    {
-        foreach (var def in skills)
-        {
-            if (def == null) continue;
-            if (def.revealOnFirstSprocket && !IsSkillRevealed(def.type))
-            {
-                RevealSkill(def);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Remove sprockets from player balance.
-    /// </summary>
-    public void RemoveSprockets(int amount)
-    {
-        if (amount <= 0) return;
-        playerSprockets = Mathf.Max(0, playerSprockets - amount);
-        SaveSprockets();
-        OnSprocketsChanged?.Invoke(playerSprockets);
-    }
-
-    /// <summary>
-    /// Check if player can afford a sprocket cost.
-    /// </summary>
-    public bool CanAffordSprockets(int cost) => playerSprockets >= cost;
-
-
-    /// <summary>
-    /// Try to purchase a skill using sprockets instead of coins.
-    /// </summary>
-    public bool TryPurchaseWithSprockets(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return false;
-        int nextLevel = GetLevel(type) + 1;
-        if (nextLevel > def.maxLevel) return false;
-
-        // Use sprocket cost (you can add a separate field to SkillDefinition for this)
-        int cost = def.GetSprocketCostForLevel(nextLevel);
-        if (playerSprockets < cost) return false;
-
-        if (_state.Increment(type, def.maxLevel))
-        {
-            playerSprockets -= cost;
-            SaveSprockets();
-            _state.Save();
-            int newLvl = GetLevel(type);
-            OnSprocketsChanged?.Invoke(playerSprockets);
-            OnLevelChanged?.Invoke(type, newLvl);
-            EvaluateProgressiveUnlocks(def, newLvl);
-            return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Smart purchase that automatically uses the correct currency based on skill's usesSprockets flag.
-    /// </summary>
-    public bool TryPurchaseSmart(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return false;
-
-        if (def.usesSprockets)
-            return TryPurchaseWithSprockets(type);
-        else
-            return TryPurchase(type);
-    }
-
-    /// <summary>
-    /// Get the next level cost in the correct currency based on skill's usesSprockets flag.
-    /// </summary>
-    public int GetNextLevelCostSmart(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
-        int nextLevel = GetLevel(type) + 1;
-        if (nextLevel > def.maxLevel) return 0;
-
-        if (def.usesSprockets)
-            return def.GetSprocketCostForLevel(nextLevel);
-        else
-            return def.GetCostForLevel(nextLevel);
-    }
-
-    /// <summary>
-    /// Check if player can afford the next level of a skill (checks correct currency).
-    /// </summary>
-    public bool CanAffordNextLevel(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return false;
-        int nextLevel = GetLevel(type) + 1;
-        if (nextLevel > def.maxLevel) return false;
-
-        if (def.usesSprockets)
-        {
-            int cost = def.GetSprocketCostForLevel(nextLevel);
-            return playerSprockets >= cost;
-        }
-        else
-        {
-            int cost = def.GetCostForLevel(nextLevel);
-            return playerCurrency >= cost;
-        }
-    }
-
-    /// <summary>
-    /// Get the currency name for display based on skill's usesSprockets flag.
-    /// </summary>
-    public string GetCurrencyNameForSkill(SkillType type)
-    {
-        if (!_map.TryGetValue(type, out var def)) return "Coins";
-        return def.usesSprockets ? "Sprockets" : "Coins";
-    }
-
-
-    // ------------------------------------------------------------------------
-    // Master Skill Control
-    // ------------------------------------------------------------------------
-
-    /// <summary>
-    /// Enable all skill effects.
-    /// </summary>
-    public void EnableAllSkills()
-    {
-        skillsEnabled = true;
-        Debug.Log("[SkillTreeManager] All skills ENABLED");
-    }
-
-    /// <summary>
-    /// Disable all skill effects (skills return to level 0 behavior).
-    /// </summary>
-    public void DisableAllSkills()
-    {
-        skillsEnabled = false;
-        Debug.Log("[SkillTreeManager] All skills DISABLED");
-    }
-
-    /// <summary>
-    /// Toggle skill effects on/off.
-    /// </summary>
-    public void ToggleSkills()
-    {
-        skillsEnabled = !skillsEnabled;
-        Debug.Log($"[SkillTreeManager] Skills {(skillsEnabled ? "ENABLED" : "DISABLED")}");
-    }
-
-    public void ClearAllData()
-    {
-        _state.ClearPersistent();
-        playerCurrency = 0;
-        SaveCurrency();
-        OnCurrencyChanged?.Invoke(playerCurrency);
-        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
-            OnLevelChanged?.Invoke(t, 0);
-
-        _revealedSkills.Clear();
-        foreach (var def in skills)
-        {
-            if (def == null) continue;
-            if (revealAllSkillsAtStart || def.revealedAtStart)
-                RevealSkill(def);
-        }
-
-        OnSkillsReset?.Invoke();
-        _hasEverEarnedSprockets = false;
-        PlayerPrefs.DeleteKey(FirstSprocketKey);
-        playerSprockets = 0;
-        PlayerPrefs.DeleteKey(SprocketsKey);
-        OnSprocketsChanged?.Invoke(playerSprockets);
-    }
-
-    public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
-    public bool HasEverEarnedSprockets => _hasEverEarnedSprockets;
-    public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
-    public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
-    public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
-    public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
-    public bool IsBoostUnlocked() => GetLevel(SkillType.BoostUnlock) > 0;
-    public float GetBoostForceScaled(float baseForce) =>
-        ApplyStatChain(baseForce, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
-    public float GetBoostDurationScaled(float baseDuration) =>
-        ApplyStatChain(baseDuration, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
-    public float GetBoostMaxSpeedMultScaled(float baseMult) =>
-        ApplyStatChain(baseMult, SkillType.BoostMaxSpeedMult_Add, SkillType.BoostMaxSpeedMult_Mul);
-    public float GetBoostCooldownScaled(float baseCooldown) =>
-        ApplyStatChain(baseCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
-    public float GetBoostFuelCostScaled(float baseCost) =>
-        ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
-}
-```
-
-## Assets/Racing_Assets/Racing_Scripts/RacingUISoundManager.cs
-
-```csharp
-using UnityEngine;
-using System.Collections;
-
-[DisallowMultipleComponent]
-public class RacingUISoundManager : MonoBehaviour
-{
-    public static RacingUISoundManager Instance { get; private set; }
-
-    [Header("UI SFX (assign in inspector)")]
-    [SerializeField] private AudioClip buttonHoverClip;
-    [SerializeField] private AudioClip buttonSelectClip;
-    [SerializeField] private AudioClip buttonDeselectClip;
-    [SerializeField] private AudioClip purchaseSkillClip;
-    [SerializeField] private AudioClip purchaseCurrencyClip;
-
-    [Header("Volumes")]
-    [Range(0f, 1f)][SerializeField] private float hoverVolume = 0.7f;
-    [Range(0f, 1f)][SerializeField] private float selectVolume = 0.9f;
-    [Range(0f, 1f)][SerializeField] private float purchaseVolume = 1f;
-    [Range(0f, 1f)][SerializeField] private float currencyVolume = 1f;
-
-    private Transform _sfxRoot;
-
-    void Awake()
-    {
-        if (Instance && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-
-        // Create a small parent so created SFX objects are organized under the UI root
-        _sfxRoot = new GameObject("SFX_UI_Root").transform;
-        _sfxRoot.SetParent(transform, false);
-    }
-
-    public void PlayHover()
-    {
-        Play2DClip(buttonHoverClip, hoverVolume);
-    }
-
-    public void PlaySelect()
-    {
-        Play2DClip(buttonSelectClip, selectVolume);
-    }
-
-    public void PlayDeselect()
-    {
-        Play2DClip(buttonDeselectClip, selectVolume * 0.8f);
-    }
-
-    public void PlayPurchaseSkill()
-    {
-        Play2DClip(purchaseSkillClip, purchaseVolume);
-    }
-
-    public void PlayPurchaseCurrency()
-    {
-        Play2DClip(purchaseCurrencyClip, currencyVolume);
-    }
-
-    private void Play2DClip(AudioClip clip, float volume = 1f)
-    {
-        if (clip == null) return;
-        StartCoroutine(SpawnAndPlay(clip, Mathf.Clamp01(volume)));
-    }
-
-    private IEnumerator SpawnAndPlay(AudioClip clip, float volume)
-    {
-        var go = new GameObject("SFX_UI_" + (clip ? clip.name : "null"));
-        go.transform.SetParent(_sfxRoot, false);
-        var src = go.AddComponent<AudioSource>();
-        src.clip = clip;
-        src.playOnAwake = false;
-        src.loop = false;
-        src.spatialBlend = 0f; // 2D UI
-        src.volume = volume;
-        src.dopplerLevel = 0f;
-        src.Play();
-        float t = clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch));
-        yield return new WaitForSeconds(t);
-        if (go) Destroy(go);
-    }
 }
 ```
 
@@ -20918,6 +20780,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Manages screen flash/edge glow effects for game events.
 /// Integrates with CoinDatabase for coin-specific flashes.
+/// Supports continuous pulsing flash for invincibility.
 /// </summary>
 public class ScreenFlashManager : MonoBehaviour
 {
@@ -20983,6 +20846,19 @@ public class ScreenFlashManager : MonoBehaviour
     [SerializeField] private float sprocketDuration = 0.3f;
     [SerializeField] private float sprocketInnerRadius = 0.35f;
 
+    [Header("Preset: Invincibility (Continuous)")]
+    [SerializeField] private Color invincibilityColor = new Color(0.7f, 0.85f, 1f, 1f);
+    [SerializeField] private float invincibilityIntensityLow = 0.3f;
+    [SerializeField] private float invincibilityIntensityHigh = 0.8f;
+    [SerializeField] private float invincibilityInnerRadius = 0.5f;
+    [SerializeField] private float invincibilityPulseSpeed = 3f;
+
+    [Header("Preset: Invincibility Impact")]
+    [SerializeField] private Color invincibilityImpactColor = Color.white;
+    [SerializeField] private float invincibilityImpactIntensity = 2f;
+    [SerializeField] private float invincibilityImpactDuration = 0.15f;
+    [SerializeField] private float invincibilityImpactInnerRadius = 0.2f;
+
     // Material property IDs
     private static readonly int ColorID = Shader.PropertyToID("_Color");
     private static readonly int IntensityID = Shader.PropertyToID("_Intensity");
@@ -20993,6 +20869,15 @@ public class ScreenFlashManager : MonoBehaviour
     private Material _instanceMaterial;
     private Tween _currentTween;
     private float _currentIntensity;
+
+    // Persistent flash state
+    private bool _icePersistentActive;
+    private Tween _iceTween;
+
+    // Continuous invincibility flash state
+    private bool _invincibilityActive;
+    private float _invincibilityEndTime;
+    private Tween _invincibilityTween;
 
     void Awake()
     {
@@ -21012,6 +20897,15 @@ public class ScreenFlashManager : MonoBehaviour
         if (_instanceMaterial) Destroy(_instanceMaterial);
     }
 
+    void Update()
+    {
+        // Check if invincibility has expired
+        if (_invincibilityActive && Time.unscaledTime >= _invincibilityEndTime)
+        {
+            StopInvincibilityFlash();
+        }
+    }
+
     private void SetupMaterial()
     {
         if (edgeGlowMaterial == null)
@@ -21029,10 +20923,6 @@ public class ScreenFlashManager : MonoBehaviour
         }
     }
 
-
-    private bool _icePersistentActive;
-    private Tween _iceTween;
-
     private bool IsFlashingNow()
     {
         return _currentTween != null && _currentTween.IsActive() && _currentIntensity > 0.001f;
@@ -21048,10 +20938,16 @@ public class ScreenFlashManager : MonoBehaviour
 
     private void RestorePersistentIfNeeded()
     {
-        if (_icePersistentActive)
+        // Priority: Invincibility > Ice
+        if (_invincibilityActive)
+        {
+            StartInvincibilityPulse();
+        }
+        else if (_icePersistentActive)
+        {
             SetIcePersistent(true);
+        }
     }
-
 
     // === CORE FLASH METHODS ===
 
@@ -21063,6 +20959,7 @@ public class ScreenFlashManager : MonoBehaviour
         if (_instanceMaterial == null) return;
 
         _currentTween?.Kill();
+        _invincibilityTween?.Kill(); // Pause invincibility pulse during flash
 
         _instanceMaterial.SetColor(ColorID, color);
         _instanceMaterial.SetFloat(InnerRadiusID, innerRadius);
@@ -21080,6 +20977,7 @@ public class ScreenFlashManager : MonoBehaviour
             duration * 0.3f
         )
         .SetEase(Ease.OutQuad)
+        .SetUpdate(true)
         .OnComplete(() => {
             _currentTween = DOTween.To(
                 () => _currentIntensity,
@@ -21091,6 +20989,7 @@ public class ScreenFlashManager : MonoBehaviour
                 duration * 0.7f
             )
             .SetEase(Ease.InQuad)
+            .SetUpdate(true)
             .OnComplete(RestorePersistentIfNeeded);
         });
     }
@@ -21102,8 +21001,10 @@ public class ScreenFlashManager : MonoBehaviour
         _icePersistentActive = active;
         _iceTween?.Kill();
 
+        // Don't override invincibility flash
+        if (_invincibilityActive) return;
+
         // If a one-shot flash is currently playing, let it finish.
-        // We'll restore ice in RestorePersistentIfNeeded().
         if (IsFlashingNow())
             return;
 
@@ -21122,7 +21023,7 @@ public class ScreenFlashManager : MonoBehaviour
                 },
                 icePersistentIntensity,
                 iceFadeIn
-            ).SetEase(Ease.OutQuad);
+            ).SetEase(Ease.OutQuad).SetUpdate(true);
         }
         else
         {
@@ -21135,10 +21036,9 @@ public class ScreenFlashManager : MonoBehaviour
                 },
                 0f,
                 iceFadeOut
-            ).SetEase(Ease.OutQuad);
+            ).SetEase(Ease.OutQuad).SetUpdate(true);
         }
     }
-
 
     /// <summary>
     /// Additive flash that stacks with current intensity (for rapid events).
@@ -21166,7 +21066,118 @@ public class ScreenFlashManager : MonoBehaviour
             duration
         )
         .SetEase(Ease.OutQuad)
+        .SetUpdate(true)
         .OnComplete(RestorePersistentIfNeeded);
+    }
+
+    // === INVINCIBILITY CONTINUOUS FLASH ===
+
+    /// <summary>
+    /// Start continuous pulsing flash for invincibility.
+    /// </summary>
+    public void StartInvincibilityFlash(float duration)
+    {
+        _invincibilityActive = true;
+        _invincibilityEndTime = Time.unscaledTime + duration;
+
+        // Stop any other persistent effects
+        _iceTween?.Kill();
+        _currentTween?.Kill();
+
+        StartInvincibilityPulse();
+    }
+
+    private void StartInvincibilityPulse()
+    {
+        if (!_invincibilityActive || _instanceMaterial == null) return;
+
+        _invincibilityTween?.Kill();
+
+        // Set material properties
+        _instanceMaterial.SetColor(ColorID, invincibilityColor);
+        _instanceMaterial.SetFloat(InnerRadiusID, invincibilityInnerRadius);
+        _instanceMaterial.SetFloat(OuterRadiusID, defaultOuterRadius);
+        _instanceMaterial.SetFloat(SoftnessID, defaultSoftness);
+
+        float pulseDuration = 1f / Mathf.Max(0.1f, invincibilityPulseSpeed);
+
+        // Pulse from low to high
+        _invincibilityTween = DOTween.To(
+            () => _currentIntensity,
+            x => {
+                _currentIntensity = x;
+                _instanceMaterial.SetFloat(IntensityID, x);
+            },
+            invincibilityIntensityHigh,
+            pulseDuration * 0.5f
+        )
+        .SetEase(Ease.InOutSine)
+        .SetUpdate(true)
+        .OnComplete(() => {
+            if (!_invincibilityActive) return;
+
+            // Pulse from high to low
+            _invincibilityTween = DOTween.To(
+                () => _currentIntensity,
+                x => {
+                    _currentIntensity = x;
+                    _instanceMaterial.SetFloat(IntensityID, x);
+                },
+                invincibilityIntensityLow,
+                pulseDuration * 0.5f
+            )
+            .SetEase(Ease.InOutSine)
+            .SetUpdate(true)
+            .OnComplete(() => {
+                // Continue pulsing if still active
+                if (_invincibilityActive && Time.unscaledTime < _invincibilityEndTime)
+                {
+                    StartInvincibilityPulse();
+                }
+                else
+                {
+                    StopInvincibilityFlash();
+                }
+            });
+        });
+    }
+
+    /// <summary>
+    /// Stop invincibility flash and fade out.
+    /// </summary>
+    public void StopInvincibilityFlash()
+    {
+        _invincibilityActive = false;
+        _invincibilityTween?.Kill();
+
+        // Fade out
+        if (_instanceMaterial != null)
+        {
+            DOTween.To(
+                () => _currentIntensity,
+                x => {
+                    _currentIntensity = x;
+                    _instanceMaterial?.SetFloat(IntensityID, x);
+                },
+                0f,
+                0.2f
+            ).SetEase(Ease.OutQuad).SetUpdate(true).OnComplete(() => {
+                // Check if ice should be restored
+                if (_icePersistentActive)
+                    SetIcePersistent(true);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Flash for invincibility impact (quick burst, then resumes pulse).
+    /// </summary>
+    public void FlashInvincibilityImpact()
+    {
+        // Quick bright flash
+        Flash(invincibilityImpactColor, invincibilityImpactIntensity, invincibilityImpactDuration, invincibilityImpactInnerRadius);
+
+        // RestorePersistentIfNeeded will restart the pulse after the flash completes
     }
 
     // === PRESET METHODS ===
@@ -21273,6 +21284,7 @@ public class ScreenFlashManager : MonoBehaviour
             case ScreenFlashType.Boost: FlashBoost(); break;
             case ScreenFlashType.LevelUp: FlashLevelUp(); break;
             case ScreenFlashType.Sprocket: FlashSprocket(); break;
+            case ScreenFlashType.Invincibility: StartInvincibilityFlash(1f); break;
         }
     }
 
@@ -21291,6 +21303,11 @@ public class ScreenFlashManager : MonoBehaviour
     public static void LevelUp() => Instance?.FlashLevelUp();
     public static void Sprocket() => Instance?.FlashSprocket();
     public static void Sprocket(int amount) => Instance?.FlashSprocket(amount);
+
+    // Invincibility
+    public static void Invincibility(float duration) => Instance?.StartInvincibilityFlash(duration);
+    public static void InvincibilityImpact() => Instance?.FlashInvincibilityImpact();
+    public static void StopInvincibility() => Instance?.StopInvincibilityFlash();
 }
 
 public enum ScreenFlashType
@@ -21301,7 +21318,8 @@ public enum ScreenFlashType
     FuelGain,
     Boost,
     LevelUp,
-    Sprocket
+    Sprocket,
+    Invincibility
 }
 ```
 
@@ -22808,7 +22826,18 @@ public enum SkillType
     MashFuelPerClick_Mul = 4631,
 
     MaxHP_Add = 4700,
-    MaxHP_Mul = 4701
+    MaxHP_Mul = 4701,
+
+    CloseCallCoins_Add = 4800,              // Coins earned per close call (also acts as unlock)
+    CloseCallCoins_Mul = 4801,
+
+    CloseCallSpeedBoostUnlock = 4810,       // Unlock speed boost on close call
+
+    CloseCallSpeedBoostDuration_Add = 4820, // Duration of speed boost
+    CloseCallSpeedBoostDuration_Mul = 4821,
+
+    CloseCallInvincibility_Add = 4830,      // Invincibility duration (also acts as unlock)
+    CloseCallInvincibility_Mul = 4831,
 }
 
 
@@ -24950,6 +24979,1712 @@ public class TrackCoinSpawner : MonoBehaviour
         }
     }
 #endif
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackCreature.cs
+
+```csharp
+using System;
+using System.Collections;
+using UnityEngine;
+
+using Random = UnityEngine.Random;
+
+/// <summary>
+/// Creature behavior states.
+/// </summary>
+public enum CreatureState
+{
+    Idle,
+    Wandering,
+    Fleeing,
+    Charging,
+    Dead
+}
+
+/// <summary>
+/// How the creature was killed - affects reward type.
+/// </summary>
+public enum CreatureKillSource
+{
+    Car,        // Run over by player - rewards coins
+    Turret,     // Shot by turret - rewards sprockets
+    Other       // Any other source - rewards coins
+}
+
+/// <summary>
+/// Base behavior component for track creatures.
+/// Handles movement, player detection, and behavior state machine.
+/// Supports Passive (dumb wandering), Scared (flees from player), and Aggressive (charges player) behaviors.
+/// 
+/// COLLISION NOTES:
+/// - All creatures use TRIGGER colliders to avoid disrupting car physics
+/// - Passive/Scared: Car drives through them, they die, give coins
+/// - Aggressive: Car drives through, triggers crash via code, then dies
+/// 
+/// REWARD SYSTEM:
+/// - Killed by CAR → Coins (handled here)
+/// - Killed by TURRET → Sprockets (handled by RacingBullet)
+/// </summary>
+public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
+{
+    #region Inspector Overrides (Optional)
+
+    [Header("Optional Overrides")]
+    [Tooltip("If assigned, uses this instead of auto-finding.")]
+    [SerializeField] private Collider hitCollider;
+
+    [Tooltip("Visual root to animate/rotate separately from physics.")]
+    [SerializeField] private Transform visualRoot;
+
+    [Tooltip("Layer mask for ground raycasting.")]
+    [SerializeField] private LayerMask groundLayer = ~0;
+
+    [Header("Ground Snapping")]
+    [SerializeField] private float groundRayHeight = 2f;
+    [SerializeField] private float groundRayDistance = 5f;
+    [SerializeField] private float groundOffset = 0.05f;
+    [SerializeField] private float groundSnapSpeed = 15f;
+
+    [Header("Rotation")]
+    [SerializeField] private float rotationSpeed = 10f;
+    [SerializeField] private bool alignToGround = true;
+
+    [Header("Animation (Optional)")]
+    [SerializeField] private Animator animator;
+    [SerializeField] private string speedParam = "Speed";
+    [SerializeField] private string runningParam = "IsRunning";
+    [SerializeField] private string deadParam = "IsDead";
+
+    [Header("Audio (Optional)")]
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip idleSound;
+    [SerializeField] private AudioClip runSound;
+    [SerializeField] private AudioClip deathSound;
+    [SerializeField] private AudioClip aggroSound;
+
+    [Header("Kill Audio")]
+    [Tooltip("Sound played when killed by turret.")]
+    [SerializeField] private AudioClip turretKillSound;
+    [Tooltip("Sound played when killed by car.")]
+    [SerializeField] private AudioClip carKillSound;
+    [SerializeField, Range(0f, 1f)] private float killSoundVolume = 1f;
+
+    [Header("Effects (Optional)")]
+    [SerializeField] private GameObject deathEffectPrefab;
+    [SerializeField] private Transform coinSpawnPoint;
+
+    [Header("Debug")]
+    [SerializeField] private bool showDebugGizmos = false;
+
+    #endregion
+
+    #region References & Config
+
+    protected TrackCreatureSpawner spawner;
+    protected Transform playerTransform;
+    protected CreatureTypeConfig config;
+    protected ProceduralTrackGenerator trackGenerator;
+
+    #endregion
+
+    #region State
+
+    // Core state
+    protected CreatureState currentState = CreatureState.Idle;
+    protected CreatureBehaviorType behaviorType;
+    protected bool isInitialized = false;
+    protected bool isDead = false;
+
+    // Kill tracking
+    protected CreatureKillSource killSource = CreatureKillSource.Car;
+    protected float currentHealth = 100f;
+
+    // Track position
+    protected float currentDistanceAlongTrack;
+    protected float currentLateralOffset;
+    protected float targetLateralOffset;
+
+    // Movement
+    protected Vector3 currentVelocity;
+    protected float currentSpeed;
+    protected float currentFleeSpeed; // For scared creatures - builds up over time
+
+    // Wander state
+    protected float wanderTimer;
+    protected float wanderDirectionX; // -1 to 1 lateral direction
+    protected float wanderDirectionZ; // -1 to 1 forward/back direction
+    protected float nextWanderChangeTime;
+
+    // Detection state
+    protected bool playerDetected = false;
+    protected float playerDistance;
+    protected Vector3 playerDirection;
+
+    // Ground state
+    protected bool isGrounded = true;
+    protected Vector3 groundNormal = Vector3.up;
+    protected float currentGroundY;
+
+    // Cached colliders
+    private Collider[] _allColliders;
+
+    #endregion
+
+    #region Properties
+
+    public CreatureState CurrentState => currentState;
+    public bool IsDead => isDead;
+    public CreatureBehaviorType BehaviorType => behaviorType;
+    public float DistanceToPlayer => playerDistance;
+
+    #endregion
+
+    #region Initialization
+
+    /// <summary>
+    /// Initialize the creature with spawner reference and config.
+    /// Called by TrackCreatureSpawner after instantiation.
+    /// </summary>
+    public virtual void Initialize(TrackCreatureSpawner spawnerRef, Transform player, CreatureTypeConfig creatureConfig, float distanceAlongTrack)
+    {
+        spawner = spawnerRef;
+        playerTransform = player;
+        config = creatureConfig;
+        currentDistanceAlongTrack = distanceAlongTrack;
+        behaviorType = creatureConfig.behaviorType;
+        trackGenerator = spawner.GetTrackGenerator();
+
+        // Set health (creatures die in one hit from turret, but this allows for future expansion)
+        currentHealth = 1f;
+
+        // Initialize lateral offset based on current position
+        InitializeLateralOffset();
+
+        // Initialize wander state
+        ResetWanderDirection();
+
+        // Initialize flee speed
+        currentFleeSpeed = config.scaredBaseFleeSpeed;
+
+        // IMPORTANT: Make all colliders triggers to avoid physics disruption
+        SetupColliders();
+
+        // Set initial state based on behavior type
+        switch (behaviorType)
+        {
+            case CreatureBehaviorType.Passive:
+                SetState(CreatureState.Wandering);
+                break;
+            case CreatureBehaviorType.Scared:
+            case CreatureBehaviorType.Aggressive:
+                SetState(CreatureState.Idle);
+                break;
+        }
+
+        isInitialized = true;
+    }
+
+    /// <summary>
+    /// Sets up all colliders as triggers to prevent physics disruption.
+    /// Creatures detect the car via OnTriggerEnter instead of OnCollisionEnter.
+    /// </summary>
+    private void SetupColliders()
+    {
+        _allColliders = GetComponentsInChildren<Collider>(true);
+
+        foreach (var col in _allColliders)
+        {
+            if (col != null)
+            {
+                // Make all colliders triggers - this prevents physics knockback on the car
+                col.isTrigger = true;
+            }
+        }
+
+        // Also disable any Rigidbody physics that could cause issues
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true; // Creatures move via code, not physics
+        }
+    }
+
+    private void InitializeLateralOffset()
+    {
+        if (spawner == null || trackGenerator == null) return;
+
+        // Get current path position
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+
+        // Calculate lateral offset from path center
+        Vector3 toCreature = transform.position - pathPos;
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+        currentLateralOffset = Vector3.Dot(toCreature, right);
+        targetLateralOffset = currentLateralOffset;
+    }
+
+    #endregion
+
+    #region IDamageable / ITurretDamageable Implementation
+
+    /// <summary>
+    /// Legacy damage interface - used by non-turret sources.
+    /// Awards COINS when killed.
+    /// </summary>
+    public void ApplyDamage(float amount)
+    {
+        if (isDead) return;
+
+        currentHealth -= amount;
+
+        if (currentHealth <= 0f)
+        {
+            // Mark as non-turret kill for coin reward
+            killSource = CreatureKillSource.Other;
+            Die();
+        }
+    }
+
+    /// <summary>
+    /// Turret damage interface - used by RacingBullet.
+    /// Does NOT award anything here (bullet handles sprocket rewards).
+    /// </summary>
+    public bool ApplyTurretDamage(float amount, out int sprocketReward)
+    {
+        sprocketReward = config != null ? config.coinReward : 1; // Use same value
+
+        if (isDead)
+        {
+            return false;
+        }
+
+        currentHealth -= amount;
+
+        if (currentHealth <= 0f)
+        {
+            // Mark as turret kill - NO reward given here (bullet handles it)
+            killSource = CreatureKillSource.Turret;
+            Die();
+            return true; // Was killed
+        }
+
+        return false; // Survived
+    }
+
+    #endregion
+
+    #region Unity Lifecycle
+
+    protected virtual void Update()
+    {
+        if (!isInitialized || isDead) return;
+
+        float dt = Time.deltaTime;
+
+        // Update player detection
+        UpdatePlayerDetection();
+
+        // Update state machine
+        UpdateStateMachine(dt);
+
+        // Update movement
+        UpdateMovement(dt);
+
+        // Update ground snapping
+        UpdateGroundSnap(dt);
+
+        // Update rotation
+        UpdateRotation(dt);
+
+        // Update animation
+        UpdateAnimation();
+    }
+
+    /// <summary>
+    /// All creatures use trigger detection to avoid physics disruption.
+    /// </summary>
+    protected virtual void OnTriggerEnter(Collider other)
+    {
+        if (isDead) return;
+
+        // Check if hit by player car
+        if (IsPlayerCollider(other))
+        {
+            OnHitByPlayer(other);
+        }
+    }
+
+    #endregion
+
+    #region State Machine
+
+    protected virtual void UpdateStateMachine(float dt)
+    {
+        switch (behaviorType)
+        {
+            case CreatureBehaviorType.Passive:
+                UpdatePassiveBehavior(dt);
+                break;
+            case CreatureBehaviorType.Scared:
+                UpdateScaredBehavior(dt);
+                break;
+            case CreatureBehaviorType.Aggressive:
+                UpdateAggressiveBehavior(dt);
+                break;
+        }
+    }
+
+    protected void SetState(CreatureState newState)
+    {
+        if (currentState == newState) return;
+
+        // Exit current state
+        OnExitState(currentState);
+
+        CreatureState oldState = currentState;
+        currentState = newState;
+
+        // Enter new state
+        OnEnterState(newState, oldState);
+    }
+
+    protected virtual void OnEnterState(CreatureState state, CreatureState previousState)
+    {
+        switch (state)
+        {
+            case CreatureState.Idle:
+                currentSpeed = 0f;
+                break;
+
+            case CreatureState.Wandering:
+                ResetWanderDirection();
+                break;
+
+            case CreatureState.Fleeing:
+                currentFleeSpeed = config.scaredBaseFleeSpeed;
+                PlaySound(runSound);
+                break;
+
+            case CreatureState.Charging:
+                PlaySound(aggroSound);
+                break;
+
+            case CreatureState.Dead:
+                OnDeath();
+                break;
+        }
+    }
+
+    protected virtual void OnExitState(CreatureState state)
+    {
+        // Clean up state-specific stuff if needed
+    }
+
+    #endregion
+
+    #region Behavior Updates
+
+    /// <summary>
+    /// Passive behavior: Wanders randomly, never reacts to player.
+    /// </summary>
+    protected virtual void UpdatePassiveBehavior(float dt)
+    {
+        // Always wandering
+        if (currentState != CreatureState.Wandering && currentState != CreatureState.Dead)
+        {
+            SetState(CreatureState.Wandering);
+        }
+
+        UpdateWandering(dt);
+    }
+
+    /// <summary>
+    /// Scared behavior: Wanders until player gets close, then flees.
+    /// </summary>
+    protected virtual void UpdateScaredBehavior(float dt)
+    {
+        switch (currentState)
+        {
+            case CreatureState.Idle:
+            case CreatureState.Wandering:
+                // Check for player detection
+                if (playerDetected && playerDistance < config.scaredDetectionRadius)
+                {
+                    SetState(CreatureState.Fleeing);
+                }
+                else
+                {
+                    // Wander casually
+                    if (currentState != CreatureState.Wandering)
+                        SetState(CreatureState.Wandering);
+                    UpdateWandering(dt);
+                }
+                break;
+
+            case CreatureState.Fleeing:
+                UpdateFleeing(dt);
+
+                // Keep fleeing as long as player is somewhat close
+                // (don't stop fleeing just because player got a bit further)
+                if (playerDistance > config.scaredDetectionRadius * 2f)
+                {
+                    // Player is far enough, go back to wandering
+                    SetState(CreatureState.Wandering);
+                    currentFleeSpeed = config.scaredBaseFleeSpeed;
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Aggressive behavior: Idles until player is detected, then charges.
+    /// </summary>
+    protected virtual void UpdateAggressiveBehavior(float dt)
+    {
+        switch (currentState)
+        {
+            case CreatureState.Idle:
+            case CreatureState.Wandering:
+                // Check for player detection
+                if (playerDetected && playerDistance < config.aggressiveDetectionRadius)
+                {
+                    SetState(CreatureState.Charging);
+                }
+                else
+                {
+                    // Idle or slow wander
+                    if (currentState != CreatureState.Idle)
+                        SetState(CreatureState.Idle);
+                }
+                break;
+
+            case CreatureState.Charging:
+                UpdateCharging(dt);
+
+                // If player gets too far, give up (optional)
+                if (playerDistance > config.aggressiveDetectionRadius * 1.5f)
+                {
+                    SetState(CreatureState.Idle);
+                }
+                break;
+        }
+    }
+
+    #endregion
+
+    #region Movement Behaviors
+
+    protected virtual void UpdateWandering(float dt)
+    {
+        // Update wander timer and potentially change direction
+        wanderTimer += dt;
+        if (wanderTimer >= nextWanderChangeTime)
+        {
+            ResetWanderDirection();
+        }
+
+        // Calculate target speed
+        float targetSpeed = config.passiveWanderSpeed;
+        currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, targetSpeed * 2f * dt);
+
+        // Move along track (forward/backward based on wanderDirectionZ)
+        float trackMovement = currentSpeed * wanderDirectionZ * dt;
+        currentDistanceAlongTrack += trackMovement;
+
+        // Clamp to track bounds
+        float totalLength = spawner.GetTotalLength();
+        currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
+
+        // Update lateral offset
+        float halfWidth = GetRoadHalfWidth();
+        float maxLateral = halfWidth * 0.8f; // Stay mostly on road
+        targetLateralOffset += wanderDirectionX * config.passiveWanderSpeed * 0.5f * dt;
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+
+        // Smooth lateral movement
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, config.passiveWanderSpeed * dt);
+    }
+
+    protected virtual void UpdateFleeing(float dt)
+    {
+        // Build up flee speed over time (scurry effect)
+        currentFleeSpeed = Mathf.MoveTowards(
+            currentFleeSpeed,
+            config.scaredMaxFleeSpeed,
+            config.scaredSpeedBuildupRate * dt
+        );
+
+        currentSpeed = currentFleeSpeed;
+
+        // Calculate flee direction (away from player)
+        Vector3 fleeDirection = GetFleeDirection();
+
+        // Convert flee direction to track movement
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        // Determine if we should run forward or backward along track
+        float forwardDot = Vector3.Dot(fleeDirection, flatForward);
+        float trackDirection = forwardDot >= 0 ? 1f : -1f;
+
+        // Move along track
+        float trackMovement = currentSpeed * trackDirection * dt;
+        currentDistanceAlongTrack += trackMovement;
+
+        // Clamp to track bounds
+        float totalLength = spawner.GetTotalLength();
+        currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
+
+        // Lateral movement - run away from player laterally
+        float lateralDot = Vector3.Dot(fleeDirection, right);
+        float lateralMovement = currentSpeed * lateralDot * dt;
+
+        // Can run off-road when fleeing
+        float maxOffRoad = config.scaredMaxOffRoadDistance;
+        float halfWidth = GetRoadHalfWidth();
+        float maxLateral = halfWidth + maxOffRoad;
+
+        targetLateralOffset += lateralMovement;
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, currentSpeed * dt);
+    }
+
+    protected virtual void UpdateCharging(float dt)
+    {
+        currentSpeed = config.aggressiveChargeSpeed;
+
+        if (playerTransform == null) return;
+
+        // Get direction toward player
+        Vector3 toPlayer = playerTransform.position - transform.position;
+        toPlayer.y = 0f;
+
+        if (toPlayer.sqrMagnitude < 0.01f) return;
+
+        Vector3 chargeDirection = toPlayer.normalized;
+
+        // Get track info
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        // Move along track toward player
+        float forwardDot = Vector3.Dot(chargeDirection, flatForward);
+        float trackDirection = forwardDot >= 0 ? 1f : -1f;
+
+        // Weight movement toward player
+        float trackMovement = currentSpeed * Mathf.Abs(forwardDot) * trackDirection * dt;
+        currentDistanceAlongTrack += trackMovement;
+
+        // Clamp to track bounds
+        float totalLength = spawner.GetTotalLength();
+        currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
+
+        // Lateral movement toward player
+        float lateralDot = Vector3.Dot(chargeDirection, right);
+        float lateralMovement = currentSpeed * lateralDot * dt;
+
+        // Can move off-track to intercept
+        float maxOffTrack = config.aggressiveMaxOffTrackDistance;
+        float halfWidth = GetRoadHalfWidth();
+        float maxLateral = halfWidth + maxOffTrack;
+
+        targetLateralOffset += lateralMovement;
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, currentSpeed * 1.5f * dt);
+    }
+
+    #endregion
+
+    #region Movement Core
+
+    protected virtual void UpdateMovement(float dt)
+    {
+        if (spawner == null) return;
+
+        // Sample path at current distance
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+
+        // Calculate target position
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        Vector3 targetPos = pathPos + right * currentLateralOffset;
+
+        // Keep current Y for now (ground snap handles Y)
+        targetPos.y = transform.position.y;
+
+        // Move toward target position
+        float moveSpeed = Mathf.Max(currentSpeed, 5f); // Minimum speed for responsiveness
+        transform.position = Vector3.MoveTowards(transform.position, targetPos, moveSpeed * dt);
+
+        // Calculate velocity for animation
+        currentVelocity = (targetPos - transform.position) / Mathf.Max(dt, 0.001f);
+    }
+
+    protected virtual void UpdateGroundSnap(float dt)
+    {
+        Vector3 rayOrigin = transform.position + Vector3.up * groundRayHeight;
+
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, groundRayHeight + groundRayDistance, groundLayer, QueryTriggerInteraction.Ignore))
+        {
+            isGrounded = true;
+            groundNormal = hit.normal;
+            currentGroundY = hit.point.y + groundOffset;
+
+            // Smoothly snap to ground
+            Vector3 pos = transform.position;
+            pos.y = Mathf.Lerp(pos.y, currentGroundY, groundSnapSpeed * dt);
+            transform.position = pos;
+        }
+        else
+        {
+            isGrounded = false;
+            // Apply simple gravity if not grounded
+            Vector3 pos = transform.position;
+            pos.y -= 9.8f * dt;
+            transform.position = pos;
+        }
+    }
+
+    protected virtual void UpdateRotation(float dt)
+    {
+        // Determine facing direction based on state
+        Vector3 lookDirection = Vector3.zero;
+
+        switch (currentState)
+        {
+            case CreatureState.Wandering:
+                // Face movement direction
+                spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 pathFwd);
+                lookDirection = pathFwd * wanderDirectionZ;
+                break;
+
+            case CreatureState.Fleeing:
+                lookDirection = GetFleeDirection();
+                break;
+
+            case CreatureState.Charging:
+                if (playerTransform != null)
+                {
+                    lookDirection = (playerTransform.position - transform.position);
+                }
+                break;
+
+            case CreatureState.Idle:
+            default:
+                // Keep current rotation
+                return;
+        }
+
+        lookDirection.y = 0f;
+        if (lookDirection.sqrMagnitude < 0.01f) return;
+        lookDirection.Normalize();
+
+        // Calculate target rotation
+        Quaternion targetRot;
+        if (alignToGround && isGrounded)
+        {
+            Vector3 forward = Vector3.ProjectOnPlane(lookDirection, groundNormal).normalized;
+            if (forward.sqrMagnitude > 0.01f)
+            {
+                targetRot = Quaternion.LookRotation(forward, groundNormal);
+            }
+            else
+            {
+                targetRot = Quaternion.LookRotation(lookDirection, Vector3.up);
+            }
+        }
+        else
+        {
+            targetRot = Quaternion.LookRotation(lookDirection, Vector3.up);
+        }
+
+        // Apply rotation to visual root or transform
+        Transform rotTarget = visualRoot != null ? visualRoot : transform;
+        rotTarget.rotation = Quaternion.Slerp(rotTarget.rotation, targetRot, rotationSpeed * dt);
+    }
+
+    #endregion
+
+    #region Player Detection
+
+    protected virtual void UpdatePlayerDetection()
+    {
+        if (playerTransform == null)
+        {
+            playerDetected = false;
+            playerDistance = float.MaxValue;
+            return;
+        }
+
+        Vector3 toPlayer = playerTransform.position - transform.position;
+        playerDistance = toPlayer.magnitude;
+        playerDirection = playerDistance > 0.01f ? toPlayer / playerDistance : Vector3.zero;
+        playerDetected = true;
+    }
+
+    protected Vector3 GetFleeDirection()
+    {
+        if (!playerDetected || playerTransform == null)
+        {
+            // Default: run forward along track
+            spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
+            return fwd;
+        }
+
+        // Run directly away from player
+        Vector3 fleeDir = transform.position - playerTransform.position;
+        fleeDir.y = 0f;
+
+        if (fleeDir.sqrMagnitude < 0.01f)
+        {
+            // Player is exactly on us, pick a random direction
+            fleeDir = Random.insideUnitCircle.normalized;
+            fleeDir = new Vector3(fleeDir.x, 0f, fleeDir.y);
+        }
+
+        return fleeDir.normalized;
+    }
+
+    protected bool IsPlayerCollider(Collider col)
+    {
+        if (col == null) return false;
+
+        // Check for player tag
+        if (col.CompareTag("Player")) return true;
+
+        // Check for CarController (the main player car component in this game)
+        if (col.GetComponentInParent<CarController>() != null) return true;
+
+        return false;
+    }
+
+    #endregion
+
+    #region Hit & Death
+
+    /// <summary>
+    /// Called when the player car enters this creature's trigger.
+    /// Handles differently based on behavior type.
+    /// </summary>
+    protected virtual void OnHitByPlayer(Collider playerCollider)
+    {
+        if (isDead) return;
+
+        // Mark as car kill for coin reward
+        killSource = CreatureKillSource.Car;
+
+        // Aggressive creatures cause crash BEFORE dying
+        if (behaviorType == CreatureBehaviorType.Aggressive)
+        {
+            CausePlayerCrash(playerCollider);
+        }
+
+        // ALL creatures die and give rewards when hit
+        Die();
+    }
+
+    /// <summary>
+    /// Causes the player to crash via code (not physics).
+    /// Uses ApplyExternalCrashDamage so all crash FX/penalties apply.
+    /// </summary>
+    protected virtual void CausePlayerCrash(Collider playerCollider)
+    {
+        // Try to find CarController and trigger crash
+        var carController = playerCollider.GetComponentInParent<CarController>();
+        if (carController != null)
+        {
+            // Calculate hit direction from creature to car
+            Vector3 hitDirection = (carController.transform.position - transform.position).normalized;
+
+            // Use the car's current speed as impact speed, or a minimum
+            Rigidbody carRb = carController.GetComponent<Rigidbody>();
+            float impactSpeed = carRb != null ? carRb.velocity.magnitude : 10f;
+            impactSpeed = Mathf.Max(impactSpeed, 8f); // Minimum impact for creature attacks
+
+            // Contact point is the creature's position
+            Vector3 contactPoint = transform.position;
+
+            // Severity based on config (0-1)
+            float severity = Mathf.Clamp01(config.aggressiveImpactDamage);
+
+            // Call the proper crash method - this handles all FX, damage, etc.
+            carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+        }
+    }
+
+    /// <summary>
+    /// Kill this creature. Can be called externally (e.g., by turret projectiles via IDamageable).
+    /// </summary>
+    public virtual void Die()
+    {
+        if (isDead) return;
+
+        isDead = true;
+        SetState(CreatureState.Dead);
+    }
+
+    protected virtual void OnDeath()
+    {
+        Vector3 effectPos = coinSpawnPoint != null ? coinSpawnPoint.position : transform.position;
+
+        // Play appropriate death sound based on kill source
+        PlayKillSound();
+
+        // Spawn death effect
+        if (deathEffectPrefab != null)
+        {
+            Instantiate(deathEffectPrefab, transform.position, Quaternion.identity);
+        }
+
+        // Only award coins if NOT killed by turret
+        // (turret kills award sprockets via RacingBullet)
+        if (killSource != CreatureKillSource.Turret)
+        {
+            SpawnCoinReward(effectPos);
+        }
+
+        // Update animation
+        if (animator != null && !string.IsNullOrEmpty(deadParam))
+        {
+            animator.SetBool(deadParam, true);
+        }
+
+        // Remove from spawner tracking
+        if (spawner != null)
+        {
+            spawner.RemoveCreature(gameObject);
+        }
+
+        // Destroy after a short delay (allows death animation/effects)
+        Destroy(gameObject, 0.5f);
+    }
+
+    /// <summary>
+    /// Plays the appropriate kill sound based on how the creature died.
+    /// </summary>
+    protected virtual void PlayKillSound()
+    {
+        AudioClip clipToPlay = killSource == CreatureKillSource.Turret ? turretKillSound : carKillSound;
+
+        // Fall back to general death sound if specific sound not set
+        if (clipToPlay == null)
+            clipToPlay = deathSound;
+
+        if (clipToPlay != null)
+        {
+            AudioSource.PlayClipAtPoint(clipToPlay, transform.position, killSoundVolume);
+        }
+    }
+
+    /// <summary>
+    /// Awards COINS when killed by car.
+    /// </summary>
+    protected virtual void SpawnCoinReward(Vector3 position)
+    {
+        int rewardAmount = config.coinReward;
+        if (rewardAmount <= 0) return;
+
+        // Register the coins with GameManager_Racing
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+        {
+            gm.RegisterObstacleReward(rewardAmount);
+        }
+
+        // Add to player currency via skill tree manager
+        var skillMgr = RacingSkillTreeManager.Instance;
+        if (skillMgr != null)
+        {
+            skillMgr.AddCurrency(rewardAmount);
+        }
+
+        // Show coin popup
+        if (RacingPopups.IsReady)
+        {
+            Color textColor = rewardAmount >= 5 ? new Color(1f, 0.84f, 0f) : Color.yellow;
+            Color outlineColor = rewardAmount >= 5 ? new Color(0.8f, 0.5f, 0f) : new Color(0.6f, 0.4f, 0f);
+            RacingPopups.SpawnCoin(rewardAmount, position + Vector3.up * 0.5f, textColor, outlineColor);
+        }
+    }
+
+    #endregion
+
+    #region Wander Helpers
+
+    protected void ResetWanderDirection()
+    {
+        wanderTimer = 0f;
+        nextWanderChangeTime = config.passiveDirectionChangeInterval * Random.Range(0.7f, 1.3f);
+
+        // Random lateral direction
+        wanderDirectionX = Random.Range(-1f, 1f);
+
+        // Random forward/back, but bias toward forward
+        wanderDirectionZ = Random.Range(-0.3f, 1f);
+
+        // Normalize so we don't get weird speeds at diagonals
+        if (Mathf.Abs(wanderDirectionX) > 0.01f || Mathf.Abs(wanderDirectionZ) > 0.01f)
+        {
+            float mag = Mathf.Sqrt(wanderDirectionX * wanderDirectionX + wanderDirectionZ * wanderDirectionZ);
+            wanderDirectionX /= mag;
+            wanderDirectionZ /= mag;
+        }
+        else
+        {
+            wanderDirectionZ = 1f;
+        }
+    }
+
+    #endregion
+
+    #region Helpers
+
+    protected float GetRoadHalfWidth()
+    {
+        if (trackGenerator != null)
+        {
+            return trackGenerator.RoadWidth * 0.5f;
+        }
+        return 2f; // Fallback (half of 4-unit wide track)
+    }
+
+    protected void PlaySound(AudioClip clip)
+    {
+        if (audioSource != null && clip != null)
+        {
+            audioSource.PlayOneShot(clip);
+        }
+    }
+
+    #endregion
+
+    #region Animation
+
+    protected virtual void UpdateAnimation()
+    {
+        if (animator == null) return;
+
+        float speed = currentSpeed;
+
+        if (!string.IsNullOrEmpty(speedParam))
+        {
+            animator.SetFloat(speedParam, speed);
+        }
+
+        if (!string.IsNullOrEmpty(runningParam))
+        {
+            bool isRunning = speed > 0.5f && (currentState == CreatureState.Fleeing || currentState == CreatureState.Charging);
+            animator.SetBool(runningParam, isRunning);
+        }
+    }
+
+    #endregion
+
+    #region Debug
+
+    protected virtual void OnDrawGizmosSelected()
+    {
+        if (!showDebugGizmos) return;
+
+        // Draw detection radius
+        if (config != null)
+        {
+            switch (behaviorType)
+            {
+                case CreatureBehaviorType.Scared:
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawWireSphere(transform.position, config.scaredDetectionRadius);
+                    break;
+
+                case CreatureBehaviorType.Aggressive:
+                    Gizmos.color = Color.red;
+                    Gizmos.DrawWireSphere(transform.position, config.aggressiveDetectionRadius);
+                    break;
+            }
+        }
+
+        // Draw direction
+        Gizmos.color = Color.blue;
+        Gizmos.DrawRay(transform.position, transform.forward * 2f);
+
+        // Draw to player
+        if (playerTransform != null)
+        {
+            Gizmos.color = playerDetected ? Color.green : Color.gray;
+            Gizmos.DrawLine(transform.position, playerTransform.position);
+        }
+    }
+
+    #endregion
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackCreatureSpawner.cs
+
+```csharp
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+using Random = UnityEngine.Random;
+
+/// <summary>
+/// Spawns creatures along the procedural track.
+/// Mirrors TrackObstacleSpawner and NPCTrafficCarSpawner patterns for consistency.
+/// Supports passive, scared, and aggressive creature behaviors.
+/// </summary>
+public class TrackCreatureSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+    [SerializeField] private Transform creatureParent;
+
+    [Header("Spawn Mode")]
+    [Tooltip("If true, fills ahead of player on InitializeForRun.")]
+    [SerializeField] private bool preSpawnOnInitialize = true;
+
+    [Tooltip("If true, continues spawning ahead while driving.")]
+    [SerializeField] private bool streamSpawnDuringRun = true;
+
+    [Header("Creature Types")]
+    [SerializeField] private List<CreatureTypeConfig> creatureTypes = new List<CreatureTypeConfig>();
+
+    [Header("Path Sampling")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Header("Spawn Settings")]
+    [Tooltip("Ideal spacing between potential spawn slots (meters).")]
+    [SerializeField] private float creatureSpacing = 50f;
+
+    [SerializeField] private int maxActiveCreatures = 15;
+
+    [Tooltip("Minimum distance in front of the player where new creatures spawn.")]
+    [SerializeField] private float minSpawnDistanceAhead = 80f;
+
+    [Tooltip("Maximum distance in front of the player to spawn creatures.")]
+    [SerializeField] private float maxSpawnDistanceAhead = 200f;
+
+    [Header("Initial Pre-Spawn")]
+    [Tooltip("How far ahead (from start) we pre-fill creatures before the run begins.")]
+    [SerializeField] private float initialPreSpawnDistance = 150f;
+
+    [Header("Despawn")]
+    [Tooltip("Despawn creatures this far behind the player.")]
+    [SerializeField] private float despawnBehindDistance = 20f;
+
+    [Header("Randomization")]
+    [SerializeField] private float distanceJitter = 15f;
+
+    [Tooltip("Chance to spawn a creature at each slot.")]
+    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.5f;
+
+    [Tooltip("Spawn chance multiplier based on distance (0=start, 1=end).")]
+    [SerializeField] private AnimationCurve spawnChanceByDistance = AnimationCurve.Linear(0f, 0.3f, 1f, 1f);
+
+    [Header("Placement")]
+    [Tooltip("Fraction of road half-width used for lateral placement.")]
+    [SerializeField, Range(0f, 1f)] private float lateralFraction = 0.7f;
+
+    [SerializeField] private float edgeInnerMargin = 0.5f;
+
+    [Header("Raycast")]
+    [SerializeField] private LayerMask roadLayer;
+    [SerializeField] private float raycastStartHeight = 6f;
+    [SerializeField] private float raycastDownDistance = 20f;
+    [SerializeField] private float creatureHeightOffset = 0.1f;
+
+    [Header("Timing")]
+    [SerializeField] private float updateInterval = 0.4f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // -------- Internals --------
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+
+    private readonly Dictionary<int, GameObject> _creaturesBySlot = new();
+    private readonly List<int> _toRemove = new();
+    private int _maxSlotIndex;
+    private float _updateTimer;
+    private int _lastClosestIdx;
+
+    #region Unity Lifecycle
+
+    private void Update()
+    {
+        if (_path.Count < 2 || playerTransform == null || !HasAnyValidCreatureType())
+            return;
+
+        if (!streamSpawnDuringRun)
+            return;
+
+        _updateTimer += Time.deltaTime;
+        if (_updateTimer < updateInterval) return;
+
+        _updateTimer = 0f;
+        StreamCreatures();
+    }
+
+    #endregion
+
+    #region Public API
+
+    /// <summary>
+    /// Initialize the spawner for a new run. Call this when the race starts.
+    /// </summary>
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+
+        if (trackGenerator == null || playerTransform == null)
+        {
+            Debug.LogError($"[TrackCreatureSpawner] InitializeForRun missing refs. generator={generator}, player={player}");
+            return;
+        }
+
+        if (verboseDebug)
+            Debug.Log("[TrackCreatureSpawner] InitializeForRun: rebuilding path + slots.");
+
+        RebuildPath();
+        ClearCreatures();
+        SetupSlots();
+
+        if (preSpawnOnInitialize)
+            PreSpawnInitialWindow();
+
+        _updateTimer = 0f;
+    }
+
+    /// <summary>
+    /// Update the player reference if it changes.
+    /// </summary>
+    public void SetPlayerTransform(Transform player)
+    {
+        playerTransform = player;
+    }
+
+    /// <summary>
+    /// Get the current path points (for creature navigation).
+    /// </summary>
+    public IReadOnlyList<Vector3> GetPath() => _path;
+
+    /// <summary>
+    /// Get cumulative lengths array (for creature navigation).
+    /// </summary>
+    public float[] GetCumulativeLengths() => _cumLengths;
+
+    /// <summary>
+    /// Get total track length.
+    /// </summary>
+    public float GetTotalLength() => _totalLength;
+
+    /// <summary>
+    /// Get track generator reference.
+    /// </summary>
+    public ProceduralTrackGenerator GetTrackGenerator() => trackGenerator;
+
+    #endregion
+
+    #region Path Building
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+        _lastClosestIdx = 0;
+
+        var src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> src, int subdivisions, List<Vector3> outList)
+    {
+        outList.Clear();
+        if (src == null || src.Count < 2) return;
+
+        outList.Add(src[0]);
+
+        for (int i = 0; i < src.Count - 1; i++)
+        {
+            Vector3 p0 = src[Mathf.Max(i - 1, 0)];
+            Vector3 p1 = src[i];
+            Vector3 p2 = src[i + 1];
+            Vector3 p3 = src[Mathf.Min(i + 2, src.Count - 1)];
+
+            for (int s = 1; s <= subdivisions; s++)
+            {
+                float t = s / (float)subdivisions;
+                outList.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+    }
+
+    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
+    }
+
+    private void SetupSlots()
+    {
+        _creaturesBySlot.Clear();
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / creatureSpacing);
+    }
+
+    #endregion
+
+    #region Streaming
+
+    private void StreamCreatures()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float playerDist = GetPlayerDistance();
+
+        // -------- Spawn AHEAD --------
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / creatureSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / creatureSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_creaturesBySlot.ContainsKey(slot))
+                continue;
+
+            if (_creaturesBySlot.Count >= maxActiveCreatures)
+                break;
+
+            float dist = slot * creatureSpacing;
+
+            // Enforce min distance
+            if (dist < playerDist + minSpawnDistanceAhead)
+                continue;
+
+            // Check spawn chance
+            float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = spawnChanceByDistance != null
+                ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f)
+                continue;
+
+            if (Random.value > effectiveChance)
+                continue;
+
+            TrySpawnCreatureAtDistance(slot, dist);
+        }
+
+        // -------- Despawn behind player --------
+        DespawnBehind(playerDist);
+    }
+
+    private void DespawnBehind(float playerDist)
+    {
+        _toRemove.Clear();
+
+        foreach (var kvp in _creaturesBySlot)
+        {
+            float dist = kvp.Key * creatureSpacing;
+            bool behind = dist < playerDist - despawnBehindDistance;
+
+            if (behind || kvp.Value == null)
+                _toRemove.Add(kvp.Key);
+        }
+
+        foreach (int slot in _toRemove)
+        {
+            if (_creaturesBySlot.TryGetValue(slot, out var obj) && obj != null)
+                Destroy(obj);
+
+            _creaturesBySlot.Remove(slot);
+        }
+    }
+
+    private void PreSpawnInitialWindow()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return;
+
+        float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.FloorToInt(preSpawnEnd / creatureSpacing);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+        {
+            if (_creaturesBySlot.ContainsKey(slot))
+                continue;
+
+            if (_creaturesBySlot.Count >= maxActiveCreatures)
+                break;
+
+            float dist = slot * creatureSpacing;
+
+            float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = spawnChanceByDistance != null
+                ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f) continue;
+            if (Random.value > effectiveChance) continue;
+
+            TrySpawnCreatureAtDistance(slot, dist);
+        }
+
+        if (verboseDebug)
+            Debug.Log($"[TrackCreatureSpawner] PreSpawn: {_creaturesBySlot.Count} creatures up to {preSpawnEnd:F0}m.");
+    }
+
+    #endregion
+
+    #region Spawning
+
+    private void TrySpawnCreatureAtDistance(int slot, float baseDist)
+    {
+        float jitter = Random.Range(-distanceJitter, distanceJitter);
+        float sampleDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+
+        CreatureTypeConfig chosenType = ChooseCreatureType(sampleDist);
+        if (chosenType == null || chosenType.prefab == null)
+            return;
+
+        SampleAlongPath(sampleDist, out Vector3 pos, out Vector3 forward);
+
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = Vector3.forward;
+
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        // Lateral offset
+        float halfWidth = trackGenerator.RoadWidth * 0.5f;
+        float usable = (halfWidth * lateralFraction) - edgeInnerMargin - chosenType.extraLateralPadding;
+        if (usable <= 0f)
+            usable = halfWidth * 0.3f;
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+        float lateralOffset = Random.Range(-usable, usable);
+        pos += right * lateralOffset;
+
+        // Raycast to ground
+        Vector3 origin = pos + Vector3.up * raycastStartHeight;
+        float maxRay = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+        {
+            if (verboseDebug)
+                Debug.LogWarning($"[TrackCreatureSpawner] No ground found at slot {slot}");
+            return;
+        }
+
+        Vector3 spawnPos = hit.point + Vector3.up * (creatureHeightOffset + chosenType.extraHeightOffset);
+
+        // Random rotation for variety
+        float randomYaw = Random.Range(0f, 360f);
+        Quaternion rot = Quaternion.Euler(0f, randomYaw, 0f);
+
+        Transform parent = creatureParent != null ? creatureParent : transform;
+
+        // Spawn the creature
+        GameObject creature = Instantiate(chosenType.prefab, spawnPos, rot, parent);
+
+        // Initialize the creature behavior
+        InitializeCreatureBehavior(creature, chosenType, sampleDist);
+
+        _creaturesBySlot[slot] = creature;
+
+        if (verboseDebug)
+            Debug.Log($"[TrackCreatureSpawner] Spawned {chosenType.id} ({chosenType.behaviorType}) at slot {slot}, dist={sampleDist:F0}m");
+    }
+
+    private void InitializeCreatureBehavior(GameObject creature, CreatureTypeConfig config, float distanceAlongTrack)
+    {
+        // Get or add the TrackCreature component
+        var trackCreature = creature.GetComponent<TrackCreature>();
+        if (trackCreature == null)
+        {
+            trackCreature = creature.AddComponent<TrackCreature>();
+        }
+
+        // Initialize with config and references
+        trackCreature.Initialize(this, playerTransform, config, distanceAlongTrack);
+    }
+
+    #endregion
+
+    #region Creature Selection
+
+    private bool HasAnyValidCreatureType()
+    {
+        if (creatureTypes == null || creatureTypes.Count == 0)
+            return false;
+
+        foreach (var t in creatureTypes)
+        {
+            if (t != null && t.prefab != null && t.baseWeight > 0f)
+                return true;
+        }
+        return false;
+    }
+
+    private CreatureTypeConfig ChooseCreatureType(float distanceAlongTrack)
+    {
+        if (creatureTypes == null || creatureTypes.Count == 0 || _totalLength <= 0f)
+            return null;
+
+        float norm = Mathf.Clamp01(distanceAlongTrack / _totalLength);
+
+        float totalWeight = 0f;
+        float[] weights = new float[creatureTypes.Count];
+
+        for (int i = 0; i < creatureTypes.Count; i++)
+        {
+            var t = creatureTypes[i];
+            if (t == null || t.prefab == null || t.baseWeight <= 0f)
+            {
+                weights[i] = 0f;
+                continue;
+            }
+
+            float w = GetWeightForType(t, norm);
+            weights[i] = w;
+            totalWeight += w;
+        }
+
+        if (totalWeight <= 0f)
+            return null;
+
+        float rand = Random.value * totalWeight;
+        float accum = 0f;
+
+        for (int i = 0; i < weights.Length; i++)
+        {
+            accum += weights[i];
+            if (rand <= accum)
+                return creatureTypes[i];
+        }
+
+        return creatureTypes[creatureTypes.Count - 1];
+    }
+
+    private float GetWeightForType(CreatureTypeConfig t, float normDist)
+    {
+        float start = Mathf.Clamp01(t.startAtNormalizedDist);
+        float full = Mathf.Clamp01(t.fullWeightNormalizedDist);
+        float stop = Mathf.Clamp01(t.stopAtNormalizedDist);
+
+        // Ensure ordering
+        if (full < start) full = start;
+        if (stop < full) stop = full;
+
+        if (normDist < start || normDist > stop)
+            return 0f;
+
+        float factor;
+        if (normDist < full)
+            factor = Mathf.InverseLerp(start, full, normDist);
+        else
+            factor = 1f;
+
+        return t.baseWeight * factor;
+    }
+
+    #endregion
+
+    #region Path Utilities
+
+    private float GetPlayerDistance()
+    {
+        Vector3 p = playerTransform.position;
+        float best = float.MaxValue;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i], b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
+            Vector3 proj = Vector3.Lerp(a, b, t);
+            float d = (p - proj).sqrMagnitude;
+
+            if (d < best)
+            {
+                _lastClosestIdx = i;
+                best = d;
+            }
+        }
+
+        float segLen = Vector3.Distance(_path[_lastClosestIdx], _path[_lastClosestIdx + 1]);
+        Vector3 seg = _path[_lastClosestIdx + 1] - _path[_lastClosestIdx];
+        float prog = Mathf.Clamp01(Vector3.Dot(p - _path[_lastClosestIdx], seg) / (segLen * segLen + 0.0001f));
+
+        return _cumLengths[_lastClosestIdx] + prog * segLen;
+    }
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = 0;
+        for (int i = 0; i < _cumLengths.Length - 1; i++)
+        {
+            if (_cumLengths[i + 1] >= dist)
+            {
+                idx = i;
+                break;
+            }
+        }
+
+        float segStart = _cumLengths[idx];
+        float segEnd = _cumLengths[idx + 1];
+        float segLen = segEnd - segStart;
+        float t = segLen > 0.0001f ? (dist - segStart) / segLen : 0f;
+
+        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
+        fwd = (_path[idx + 1] - _path[idx]).normalized;
+    }
+
+    /// <summary>
+    /// Public method for creatures to sample the path.
+    /// </summary>
+    public void SamplePath(float dist, out Vector3 pos, out Vector3 fwd)
+    {
+        SampleAlongPath(dist, out pos, out fwd);
+    }
+
+    /// <summary>
+    /// Get the distance along the path for a world position.
+    /// </summary>
+    public float GetDistanceAlongPath(Vector3 worldPos)
+    {
+        if (_path.Count < 2) return 0f;
+
+        float best = float.MaxValue;
+        int bestIdx = 0;
+
+        for (int i = 0; i < _path.Count - 1; i++)
+        {
+            Vector3 a = _path[i], b = _path[i + 1];
+            Vector3 ab = b - a;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr < 1e-6f) continue;
+
+            float t = Mathf.Clamp01(Vector3.Dot(worldPos - a, ab) / abSqr);
+            Vector3 proj = Vector3.Lerp(a, b, t);
+            float d = (worldPos - proj).sqrMagnitude;
+
+            if (d < best)
+            {
+                bestIdx = i;
+                best = d;
+            }
+        }
+
+        float segLen = Vector3.Distance(_path[bestIdx], _path[bestIdx + 1]);
+        Vector3 seg = _path[bestIdx + 1] - _path[bestIdx];
+        float prog = Mathf.Clamp01(Vector3.Dot(worldPos - _path[bestIdx], seg) / (segLen * segLen + 0.0001f));
+
+        return _cumLengths[bestIdx] + prog * segLen;
+    }
+
+    private void ClearCreatures()
+    {
+        foreach (var kvp in _creaturesBySlot)
+        {
+            if (kvp.Value != null)
+                Destroy(kvp.Value);
+        }
+        _creaturesBySlot.Clear();
+    }
+
+    #endregion
+
+    #region Public Helpers
+
+    /// <summary>
+    /// Manually remove a creature (e.g., when killed by player).
+    /// </summary>
+    public void RemoveCreature(GameObject creature)
+    {
+        if (creature == null) return;
+
+        int? slotToRemove = null;
+        foreach (var kvp in _creaturesBySlot)
+        {
+            if (kvp.Value == creature)
+            {
+                slotToRemove = kvp.Key;
+                break;
+            }
+        }
+
+        if (slotToRemove.HasValue)
+        {
+            _creaturesBySlot.Remove(slotToRemove.Value);
+        }
+    }
+
+    #endregion
 }
 ```
 
@@ -27826,6 +29561,1140 @@ public sealed class TurretUnlockBinding : MonoBehaviour
 }
 ```
 
+## Assets/Racing_Assets/Racing_Scripts/UI/RacingSkillDetailPanel.cs
+
+```csharp
+using System;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+
+public class RacingSkillDetailPanel : MonoBehaviour
+{
+    [Header("Root / Backdrop")]
+    [SerializeField] private GameObject root;          // Stays active (overall panel parent / skill tree layer)
+    [SerializeField] private GameObject backdrop;      // Clickable area to dismiss ONLY the info
+    [SerializeField] private GameObject infoContainer; // NEW: the actual skill info box (card)
+    [SerializeField] private Button closeButton;       // Legacy (optional) � no longer used
+
+    [Header("Text Fields")]
+    [SerializeField] private TMP_Text nameText;
+    [SerializeField] private TMP_Text descText;
+    [SerializeField] private TMP_Text levelText;
+    [SerializeField] private TMP_Text effectText;
+    [SerializeField] private TMP_Text costText;
+
+    [Header("Actions")]
+    [SerializeField] private Button buyButton;
+
+    private RacingSkillTreeManager mgr;
+    private SkillDefinition def;
+    private bool wired;
+
+    public event Action OnHidden; // Fired when infoContainer is hidden (selection cleared)
+
+    public bool IsInfoVisible => infoContainer != null && infoContainer.activeSelf;
+    public GameObject InfoContainer => infoContainer != null ? infoContainer : null;
+
+    public void Init(RacingSkillTreeManager manager) => mgr = manager;
+
+    void Awake()
+    {
+        if (!mgr) mgr = RacingSkillTreeManager.Instance;
+
+        // Remove the full-screen "big button" behaviour that blocks clicks.
+        // Instead, we make the visual backdrop inert (non-raycast) and install a global click catcher
+        // on the skill tree root so clicks that land outside the info box will hide it while allowing
+        // clicks on other skill buttons to still register.
+        WireStaticBackdrop();
+
+        // Ensure root stays active so backdrop can always catch clicks (if desired).
+        if (root && !root.activeSelf) root.SetActive(true);
+        if (infoContainer && infoContainer.activeSelf) { /* ok */ }
+
+        // Ensure a RacingUISoundManager exists on the UI root (auto-create if missing)
+        var sfxMgr = FindObjectOfType<RacingUISoundManager>();
+        if (sfxMgr == null && root != null)
+        {
+            // Add manager to root so inspector-exposed clips can be assigned by designer
+            sfxMgr = root.AddComponent<RacingUISoundManager>();
+        }
+
+        // Attach global click catcher to the root so we can detect clicks anywhere (without blocking raycasts).
+        if (root != null)
+        {
+            var catcher = root.GetComponent<SkillTreeGlobalClickCatcher>();
+            if (catcher == null) catcher = root.AddComponent<SkillTreeGlobalClickCatcher>();
+            catcher.Init(this);
+        }
+    }
+
+    private void WireStaticBackdrop()
+    {
+        if (backdrop == null) return;
+
+        // If it's an Image (UI panel) make it visual-only (no raycast target) so it doesn't block clicks.
+        var img = backdrop.GetComponent<UnityEngine.UI.Image>();
+        if (img != null)
+        {
+            img.raycastTarget = false;
+        }
+
+        // If there's a Button component, remove its listeners so it won't swallow clicks.
+        var btn = backdrop.GetComponent<Button>();
+        if (btn != null)
+        {
+            btn.onClick.RemoveAllListeners();
+            // remove the Button component entirely to avoid accidental blocking in editor
+            DestroyImmediate(btn);
+        }
+
+        // Remove any legacy BackdropClickCatcher that relied on the backdrop receiving events.
+        var oldCatcher = backdrop.GetComponent<BackdropClickCatcher>();
+        if (oldCatcher != null)
+            DestroyImmediate(oldCatcher);
+
+        // Keep the backdrop GameObject as a visual only.
+    }
+
+    /// <summary>
+    /// Show (or update) the skill info for a given definition.
+    /// </summary>
+    public void Show(SkillDefinition definition)
+    {
+        def = definition;
+        if (!def || mgr == null) return;
+
+        if (root && !root.activeSelf) root.SetActive(true);
+        if (infoContainer && !infoContainer.activeSelf) infoContainer.SetActive(true);
+
+        if (!wired) WireLiveEvents();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Hides only the infoContainer (skill detail content), keeps root active.
+    /// </summary>
+    public void HideInfo()
+    {
+        if (infoContainer) infoContainer.SetActive(false);
+        UnwireLiveEvents();
+        def = null;
+        OnHidden?.Invoke();
+    }
+
+    /// <summary>
+    /// Legacy full hide if ever needed elsewhere (not used by backdrop now).
+    /// </summary>
+    public void Hide()
+    {
+        if (infoContainer) infoContainer.SetActive(false);
+        if (root) root.SetActive(false);
+        UnwireLiveEvents();
+        def = null;
+        OnHidden?.Invoke();
+    }
+
+    /// <summary>
+    /// Immediate full hide (same as Hide, bypassing transitions).
+    /// </summary>
+    public void HideImmediate()
+    {
+        if (infoContainer) infoContainer.SetActive(false);
+        if (root) root.SetActive(false);
+        UnwireLiveEvents();
+        def = null;
+        OnHidden?.Invoke();
+    }
+
+    private void WireLiveEvents()
+    {
+        if (wired || mgr == null) return;
+        mgr.OnCurrencyChanged += HandleCurrencyChanged;
+        mgr.OnLevelChanged += HandleLevelChanged;
+        if (buyButton)
+        {
+            buyButton.onClick.RemoveAllListeners();
+            buyButton.onClick.AddListener(OnBuyClicked);
+        }
+        wired = true;
+    }
+
+    private void UnwireLiveEvents()
+    {
+        if (!wired || mgr == null) return;
+        mgr.OnCurrencyChanged -= HandleCurrencyChanged;
+        mgr.OnLevelChanged -= HandleLevelChanged;
+        if (buyButton) buyButton.onClick.RemoveAllListeners();
+        wired = false;
+    }
+
+    private void HandleCurrencyChanged(int _) => Refresh();
+    private void HandleLevelChanged(SkillType _, int __) => Refresh();
+
+    private void OnBuyClicked()
+    {
+        if (mgr == null || def == null) return;
+
+        // Use smart purchase that checks usesSprockets flag
+        bool purchased = mgr.TryPurchaseSmart(def.type);
+
+        if (purchased)
+        {
+            // Play UI purchase SFXs if available
+            var sfx = FindObjectOfType<RacingUISoundManager>();
+            if (sfx != null)
+            {
+                sfx.PlayPurchaseSkill();
+                sfx.PlayPurchaseCurrency();
+            }
+            Refresh();
+        }
+    }
+
+    private void Refresh()
+    {
+        if (def == null || mgr == null || infoContainer == null || !infoContainer.activeSelf)
+            return;
+
+        int lvl = mgr.GetLevel(def.type);
+        if (nameText) nameText.text = def.displayName;
+        if (descText) descText.text = def.description;
+        if (levelText) levelText.text = $"Lv {lvl}/{def.maxLevel}";
+        if (effectText) effectText.text = FormatEffect(def.type);
+
+        // Cost display with currency type
+        if (costText)
+        {
+            if (lvl >= def.maxLevel)
+            {
+                costText.text = "Maxed";
+            }
+            else
+            {
+                int cost = mgr.GetNextLevelCostSmart(def.type);
+                string currencyName = mgr.GetCurrencyNameForSkill(def.type);
+                costText.text = $"Cost: {cost} {currencyName}";
+            }
+        }
+
+        // Buy button - check correct currency
+        if (buyButton)
+        {
+            bool canBuy = mgr.CanAffordNextLevel(def.type);
+            buyButton.interactable = canBuy;
+        }
+    }
+
+    /// <summary>
+    /// Formats the effect text showing: CurrentStat + Upgrade -> NewStat
+    /// Example: "100 + 15 -> 115" for Max Fuel
+    /// </summary>
+    private string FormatEffect(SkillType type)
+    {
+        if (mgr == null || def == null) return "---";
+
+        int currentLevel = mgr.GetLevel(def.type);
+        int nextLevel = currentLevel + 1;
+        bool isMaxed = currentLevel >= def.maxLevel;
+
+        // Get the actual current stat and projected stat after upgrade
+        float currentStat = GetCurrentStatValue(def.type);
+        float nextStat = isMaxed ? currentStat : GetStatValueAtLevel(def.type, nextLevel);
+        float upgradeAmount = nextStat - currentStat;
+
+        // Determine format based on skill type
+        string format = GetFormatForSkillType(type);
+        string suffix = GetSuffixForSkillType(type);
+
+        // Format output
+        if (isMaxed)
+        {
+            return $"{currentStat.ToString(format)}{suffix} (MAX)";
+        }
+
+        string sign = upgradeAmount >= 0 ? "+" : "";
+        return $"{currentStat.ToString(format)}{suffix} {sign}{upgradeAmount.ToString(format)} -> {nextStat.ToString(format)}{suffix}";
+    }
+
+    private string GetFormatForSkillType(SkillType type)
+    {
+        switch (type)
+        {
+            // Percentage/chance types - show with 1 decimal
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return "0.#";
+
+            // Multiplier types - show with 2 decimals
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+            case SkillType.Acceleration:
+            case SkillType.Acceleration_Add:
+            case SkillType.Acceleration_Mul:
+            case SkillType.MaxSpeed:
+            case SkillType.MaxSpeed_Add:
+            case SkillType.MaxSpeed_Mul:
+                return "0.##";
+
+            // Integer-like values
+            case SkillType.MaxHP_Add:
+            case SkillType.MaxHP_Mul:
+            case SkillType.MaxFuel_Add:
+            case SkillType.MaxFuel_Mul:
+            case SkillType.MashClicksPerClick_Add:
+            case SkillType.MashClicksPerClick_Mul:
+            case SkillType.MashPassiveClickStrength_Add:
+            case SkillType.MashPassiveClickStrength_Mul:
+                return "0";
+
+            // Default
+            default:
+                return "0.##";
+        }
+    }
+
+    private string GetSuffixForSkillType(SkillType type)
+    {
+        switch (type)
+        {
+            // Percentage types
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return "%";
+
+            // Multiplier types
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return "x";
+
+            // Time-based
+            case SkillType.BoostDuration_Add:
+            case SkillType.BoostDuration_Mul:
+            case SkillType.BoostCooldown_Add:
+            case SkillType.BoostCooldown_Mul:
+                return "s";
+
+            // Rate (per second)
+            case SkillType.MashPassiveClickRate_Add:
+            case SkillType.MashPassiveClickRate_Mul:
+            case SkillType.HPRegen_Add:
+            case SkillType.HPRegen_Mul:
+                return "/s";
+
+            default:
+                return "";
+        }
+    }
+
+    /// <summary>
+    /// Gets the current actual stat value for a skill type.
+    /// </summary>
+    private float GetCurrentStatValue(SkillType type)
+    {
+        // Try to get CarController for base stats
+        var car = FindObjectOfType<CarController>();
+
+        switch (type)
+        {
+            // === CORE STATS (read from car's base values) ===
+            case SkillType.Acceleration:
+            case SkillType.Acceleration_Add:
+            case SkillType.Acceleration_Mul:
+                float baseAccel = car != null ? car.BaseAcceleration : 10f;
+                return mgr.ApplyStatChain(baseAccel, SkillType.Acceleration_Add, SkillType.Acceleration_Mul);
+
+            case SkillType.MaxSpeed:
+            case SkillType.MaxSpeed_Add:
+            case SkillType.MaxSpeed_Mul:
+                float baseSpeed = car != null ? car.BaseMaxSpeed : 20f;
+                return mgr.ApplyStatChain(baseSpeed, SkillType.MaxSpeed_Add, SkillType.MaxSpeed_Mul);
+
+            case SkillType.MaxFuel_Add:
+            case SkillType.MaxFuel_Mul:
+                float baseFuel = car != null ? car.BaseMaxFuel : 100f;
+                return mgr.ApplyStatChain(baseFuel, SkillType.MaxFuel_Add, SkillType.MaxFuel_Mul);
+
+            case SkillType.MaxHP_Add:
+            case SkillType.MaxHP_Mul:
+                float baseHP = car != null ? car.BaseMaxHP : 100f;
+                return mgr.ApplyStatChain(baseHP, SkillType.MaxHP_Add, SkillType.MaxHP_Mul);
+
+            case SkillType.TurnSpeed_Add:
+            case SkillType.TurnSpeed_Mul:
+                float baseTurn = car != null ? car.BaseTurnSpeed : 100f;
+                return mgr.ApplyStatChain(baseTurn, SkillType.TurnSpeed_Add, SkillType.TurnSpeed_Mul);
+
+            case SkillType.DrivingFuelUse_Add:
+            case SkillType.DrivingFuelUse_Mul:
+                float baseDriving = car != null ? car.BaseDrivingFuelUse : 2f;
+                return mgr.ApplyStatChain(baseDriving, SkillType.DrivingFuelUse_Add, SkillType.DrivingFuelUse_Mul);
+
+            case SkillType.HPRegen_Add:
+            case SkillType.HPRegen_Mul:
+                float baseRegen = car != null ? car.BaseHPRegen : 0f;
+                return mgr.ApplyStatChain(baseRegen, SkillType.HPRegen_Add, SkillType.HPRegen_Mul);
+
+            // === BOOST STATS ===
+            case SkillType.BoostForce_Add:
+            case SkillType.BoostForce_Mul:
+                float baseBoost = car != null ? car.BaseBoostForce : 50f;
+                return mgr.ApplyStatChain(baseBoost, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+
+            case SkillType.BoostDuration_Add:
+            case SkillType.BoostDuration_Mul:
+                float baseDur = car != null ? car.BaseBoostDuration : 1f;
+                return mgr.ApplyStatChain(baseDur, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+
+            case SkillType.BoostCooldown_Add:
+            case SkillType.BoostCooldown_Mul:
+                float baseCD = car != null ? car.BaseBoostCooldown : 3f;
+                return mgr.ApplyStatChain(baseCD, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+
+            case SkillType.BoostFuelCost_Add:
+            case SkillType.BoostFuelCost_Mul:
+                float baseCost = car != null ? car.BaseBoostFuelCost : 10f;
+                return mgr.ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+
+            // === MASH SKILLS ===
+            case SkillType.MashClicksPerClick_Add:
+            case SkillType.MashClicksPerClick_Mul:
+                float baseClicks = car != null ? car.BaseClicksPerClick : 1f;
+                return mgr.ApplyStatChain(baseClicks, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul);
+
+            case SkillType.MashPassiveClickRate_Add:
+            case SkillType.MashPassiveClickRate_Mul:
+                float baseRate = car != null ? car.BasePassiveClickRate : 0f;
+                return mgr.ApplyStatChain(baseRate, SkillType.MashPassiveClickRate_Add, SkillType.MashPassiveClickRate_Mul);
+
+            case SkillType.MashPassiveClickStrength_Add:
+            case SkillType.MashPassiveClickStrength_Mul:
+                float baseStrength = car != null ? car.BasePassiveClickStrength : 1f;
+                return mgr.ApplyStatChain(baseStrength, SkillType.MashPassiveClickStrength_Add, SkillType.MashPassiveClickStrength_Mul);
+
+            case SkillType.MashFuelPerClick_Add:
+            case SkillType.MashFuelPerClick_Mul:
+                float baseMashFuel = car != null ? car.BaseMashFuelPerClick : 0.3f;
+                return mgr.ApplyStatChain(baseMashFuel, SkillType.MashFuelPerClick_Add, SkillType.MashFuelPerClick_Mul);
+
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                // Base is 1.0 (100%), skill modifies it
+                // Show as multiplier (e.g., 1.0 -> 1.15 -> 1.3)
+                return mgr.ApplyStatChain(1f, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
+
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                // Base is 0% chance, skill adds/multiplies
+                // Show as percentage (e.g., 0 -> 5 -> 10)
+                return mgr.ApplyStatChain(0f, SkillType.CoinDoubleChance_Add, SkillType.CoinDoubleChance_Mul) * 100f;
+
+            // === UNLOCK SKILLS (just show level) ===
+            case SkillType.BoostUnlock:
+            case SkillType.DriftUnlock:
+            case SkillType.TurretUnlock:
+            case SkillType.ForcefieldUnlock:
+            case SkillType.FuelPickupUnlock:
+            case SkillType.HPPickupUnlock:
+                return mgr.GetLevel(type);
+
+            // === DEFAULT: Use raw skill value ===
+            default:
+                return def.GetValueAtLevel(mgr.GetLevel(def.type));
+        }
+    }
+
+    private float GetStatValueAtLevel(SkillType type, int level)
+    {
+        float currentSkillValue = def.GetValueAtLevel(mgr.GetLevel(def.type));
+        float nextSkillValue = def.GetValueAtLevel(level);
+        float skillDelta = nextSkillValue - currentSkillValue;
+
+        float currentStat = GetCurrentStatValue(type);
+
+        // Special handling for percentage-based skills
+        switch (type)
+        {
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                // These start at base 1.0 and modify
+                if (def.mode == SkillApplicationMode.Multiplicative)
+                {
+                    if (currentSkillValue > 0.001f)
+                        return currentStat * (nextSkillValue / currentSkillValue);
+                    return currentStat + skillDelta;
+                }
+                return currentStat + skillDelta;
+
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                // These are shown as percentages (0-100)
+                // Add the skill delta * 100 for additive
+                if (def.mode == SkillApplicationMode.Additive)
+                    return currentStat + (skillDelta * 100f);
+                // Multiplicative
+                if (currentSkillValue > 0.001f)
+                    return currentStat * (nextSkillValue / currentSkillValue);
+                return currentStat + (skillDelta * 100f);
+        }
+
+        // Standard handling for other skills
+        if (def.mode == SkillApplicationMode.Multiplicative)
+        {
+            if (currentSkillValue > 0.001f)
+                return currentStat * (nextSkillValue / currentSkillValue);
+            return currentStat + skillDelta;
+        }
+
+        return currentStat + skillDelta;
+    }
+
+    public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler
+    {
+        public Action onClicked;
+        public void OnPointerClick(PointerEventData eventData) => onClicked?.Invoke();
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/UI/RacingSkillTreeManager.cs
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+[DefaultExecutionOrder(-100)]
+public class RacingSkillTreeManager : MonoBehaviour
+{
+    public static RacingSkillTreeManager Instance { get; private set; }
+
+    [Header("Load")]
+    public List<SkillDefinition> skills = new();
+
+    [Header("Master Control")]
+    [Tooltip("If disabled, all skills return level 0 and have no effect.")]
+    [SerializeField] private bool skillsEnabled = true;
+
+    [Tooltip("If enabled, all skills are revealed at start (ignores individual revealedAtStart settings).")]
+    [SerializeField] private bool revealAllSkillsAtStart = true;
+
+
+
+    /// <summary>
+    /// Master toggle to enable/disable all skill effects at runtime.
+    /// </summary>
+    public bool SkillsEnabled
+    {
+        get => skillsEnabled;
+        set => skillsEnabled = value;
+    }
+
+    [Header("Economy")]
+    [SerializeField] private int playerCurrency = 0;
+
+    [Header("Sprockets Currency")]
+    [SerializeField] private int playerSprockets = 0;
+
+    private const string SprocketsKey = "Racing_Sprockets";
+
+    private bool _hasEverEarnedSprockets = false;
+    private const string FirstSprocketKey = "Racing_HasEarnedSprockets";
+
+    public event Action OnFirstSprocketEarned;
+
+    public event Action<int> OnSprocketsChanged;
+
+    public event Action<int> OnCurrencyChanged;
+    public event Action<SkillType, int> OnLevelChanged;
+    public event Action OnSkillsReset;
+    public event Action<SkillDefinition> OnSkillRevealed;
+
+    private SkillTreeState _state;
+    private readonly Dictionary<SkillType, SkillDefinition> _map = new();
+    private readonly HashSet<SkillType> _revealedSkills = new();
+
+    private const string CurrencyKey = "Racing_Currency";
+
+    void Awake()
+    {
+        if (Instance && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        _map.Clear();
+        foreach (var def in skills)
+        {
+            if (def && !_map.ContainsKey(def.type))
+                _map[def.type] = def;
+        }
+
+        _state = new SkillTreeState();
+        ClearAllData(); // TEMP (remove if you want persistence)
+
+        playerCurrency = PlayerPrefs.GetInt(CurrencyKey, playerCurrency);
+
+        playerSprockets = PlayerPrefs.GetInt(SprocketsKey, playerSprockets);
+
+        _hasEverEarnedSprockets = PlayerPrefs.GetInt(FirstSprocketKey, 0) == 1;
+
+        // If player already has sprockets, they've earned them before
+        if (playerSprockets > 0)
+            _hasEverEarnedSprockets = true;
+
+        _revealedSkills.Clear();
+        foreach (var def in skills)
+        {
+            if (def == null) continue;
+
+            // Reveal if master toggle is on OR individual skill has revealedAtStart
+            if (revealAllSkillsAtStart || def.revealedAtStart)
+            {
+                RevealSkill(def);
+            }
+            // Also reveal first-sprocket skills if player has earned sprockets before
+            else if (def.revealOnFirstSprocket && _hasEverEarnedSprockets)
+            {
+                RevealSkill(def);
+            }
+        }
+
+        OnCurrencyChanged?.Invoke(playerCurrency);
+        OnSprocketsChanged?.Invoke(playerSprockets);
+        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
+            OnLevelChanged?.Invoke(t, GetLevel(t));
+    }
+
+    private void RevealSkill(SkillDefinition def)
+    {
+        if (!def) return;
+        if (_revealedSkills.Add(def.type))
+            OnSkillRevealed?.Invoke(def);
+    }
+
+    public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
+    public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
+
+    public int Currency => playerCurrency;
+    private void SaveCurrency()
+    {
+        PlayerPrefs.SetInt(CurrencyKey, playerCurrency);
+        PlayerPrefs.Save();
+    }
+    public void AddCurrency(int amount)
+    {
+        if (amount <= 0) return;
+        playerCurrency += amount;
+        SaveCurrency();
+        OnCurrencyChanged?.Invoke(playerCurrency);
+    }
+    public void RemoveCurrency(int amount)
+    {
+        if (amount <= 0) return;
+        playerCurrency = Mathf.Max(0, playerCurrency - amount);
+        SaveCurrency();
+        OnCurrencyChanged?.Invoke(playerCurrency);
+    }
+
+    public int GetNextLevelCost(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return 0;
+        return def.GetCostForLevel(nextLevel);
+    }
+
+    public SkillDefinition GetDefinition(SkillType type)
+    {
+        _map.TryGetValue(type, out var def);
+        return def;
+    }
+
+    public IReadOnlyList<SkillDefinition> AllSkills => skills;
+    public int GetLevel(SkillType t) => skillsEnabled ? _state.GetLevel(t) : 0;
+
+    public bool TryPurchase(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+        int cost = def.GetCostForLevel(nextLevel);
+        if (playerCurrency < cost) return false;
+
+        if (_state.Increment(type, def.maxLevel))
+        {
+            playerCurrency -= cost;
+            SaveCurrency();
+            _state.Save();
+            int newLvl = GetLevel(type);
+            OnCurrencyChanged?.Invoke(playerCurrency);
+            OnLevelChanged?.Invoke(type, newLvl);
+            EvaluateProgressiveUnlocks(def, newLvl);
+            return true;
+        }
+        return false;
+    }
+
+    private void EvaluateProgressiveUnlocks(SkillDefinition def, int newLevel)
+    {
+        if (!def) return;
+        foreach (var unlocked in def.GetUnlocksForLevel(newLevel))
+            RevealSkill(unlocked);
+    }
+
+    public float GetRawEffectValue(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def))
+            return 0f;
+        int lvl = GetLevel(type);
+        if (lvl <= 0)
+            return def.mode == SkillApplicationMode.Multiplicative ? 1f : 0f;
+        return def.GetValueAtLevel(lvl);
+    }
+
+    public SkillApplicationMode GetEffectMode(SkillType type)
+    {
+        if (_map.TryGetValue(type, out var def))
+            return def.mode;
+        return SkillApplicationMode.Additive;
+    }
+
+    public float GetDisplayMultiplier(SkillType type)
+    {
+        var mode = GetEffectMode(type);
+        var v = GetRawEffectValue(type);
+        return mode == SkillApplicationMode.Multiplicative ? v : (1f + v);
+    }
+
+    public float ApplyStat(SkillType type, float baseValue)
+    {
+        if (!_map.TryGetValue(type, out var def))
+            return baseValue;
+        int lvl = GetLevel(type);
+        if (lvl <= 0) return baseValue;
+        float v = def.GetValueAtLevel(lvl);
+        if (def.mode == SkillApplicationMode.Multiplicative)
+            return baseValue * Mathf.Max(0f, v);
+        return baseValue + v;
+    }
+
+    // Add these helpers anywhere in the class body
+    public float GetFuelPickupSpawnRateMultiplier()
+    {
+        // 1.0 baseline, then apply add/mul chain, clamped >= 0
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.FuelPickupSpawnRate_Add, SkillType.FuelPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetFuelPickupAmount(float baseAmount = 15f)
+    {
+        // Start at baseAmount (default 15), then apply add/mul chain
+        float v = ApplyStatChain(baseAmount, SkillType.FuelPickupAmount_Add, SkillType.FuelPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsFuelPickupUnlocked()
+    {
+        return GetLevel(SkillType.FuelPickupUnlock) > 0;
+    }
+
+    public float GetHPPickupSpawnRateMultiplier()
+    {
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.HPPickupSpawnRate_Add, SkillType.HPPickupSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    public float GetHPPickupAmount(float baseAmount = 20f)
+    {
+        float v = ApplyStatChain(baseAmount, SkillType.HPPickupAmount_Add, SkillType.HPPickupAmount_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public bool IsHPPickupUnlocked()
+    {
+        return GetLevel(SkillType.HPPickupUnlock) > 0;
+    }
+
+    public float ApplyStatChain(float baseValue, params SkillType[] types)
+    {
+        // If skills disabled, return base value unchanged
+        if (!skillsEnabled) return baseValue;
+
+        float val = baseValue;
+        if (types == null) return val;
+        for (int i = 0; i < types.Length; i++)
+            val = ApplyStat(types[i], val);
+        return val;
+    }
+
+    public float GetCoinSpawnRateMultiplier()
+    {
+        // Effective probability scaling; clamp to [0, +inf) then caller clamps to [0,1]
+        float baseVal = 1f;
+        baseVal = ApplyStatChain(baseVal, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
+        return Mathf.Max(0f, baseVal);
+    }
+
+    // NEW: feature flag for obstacle-on-obstacle impact damage
+    public bool IsForcefieldImpactDamageUnlocked()
+    {
+        return GetLevel(SkillType.ForcefieldImpactDamageUnlock) > 0;
+    }
+
+    // NEW: damage amount (base 1.0f scaled by add/mul chain)
+    public float GetForcefieldImpactDamageAmount(float baseAmount = 1f)
+    {
+        float v = ApplyStatChain(baseAmount, SkillType.ForcefieldImpactDamage_Add, SkillType.ForcefieldImpactDamage_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+    public float GetCoinDoubleChance()
+    {
+        // Starts at 0; additive levels add raw probability, multiplicative levels scale it.
+        float chance = ApplyStatChain(
+            0f,
+            SkillType.CoinDoubleChance_Add,
+            SkillType.CoinDoubleChance_Mul
+        );
+        return Mathf.Clamp01(chance);
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑Held Boost helpers
+    // ------------------------------------------------------------------------
+    public bool IsDriftHeldBoostUnlocked()
+    {
+        return GetLevel(SkillType.DriftHeldBoostUnlock) > 0;
+    }
+
+    public float GetDriftHeldBoostForceScaled(float baseForce)
+    {
+        return ApplyStatChain(baseForce, SkillType.DriftHeldBoostForce_Add, SkillType.DriftHeldBoostForce_Mul);
+    }
+
+    public float GetDriftHeldBoostDurationScaled(float baseDuration)
+    {
+        return ApplyStatChain(baseDuration, SkillType.DriftHeldBoostDuration_Add, SkillType.DriftHeldBoostDuration_Mul);
+    }
+
+    public float GetDriftHeldBoostMaxSpeedMultScaled(float baseMaxMult)
+    {
+        return ApplyStatChain(baseMaxMult, SkillType.DriftHeldBoostMaxSpeedMult_Add, SkillType.DriftHeldBoostMaxSpeedMult_Mul);
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Distance coins per meter
+    // ------------------------------------------------------------------------
+    public float GetDistanceCoinsPerMeter(float baseCoinsPerMeter)
+    {
+        float v = ApplyStatChain(baseCoinsPerMeter, SkillType.DistanceCoinsPerMeter_Add, SkillType.DistanceCoinsPerMeter_Mul);
+        return Mathf.Max(0f, v);
+    }
+
+
+    // ------------------------------------------------------------------------
+    // NEW: Coin base value additive helper
+    // Returns integer amount to add to each coin's configured value (default base 0)
+    // ------------------------------------------------------------------------
+    public int GetCoinBaseAdd()
+    {
+        // start from 0 (no base add); apply add/mul chain (mul on 0 is neutral, but kept for symmetry)
+        float v = ApplyStatChain(0f, SkillType.CoinBase_Add, SkillType.CoinBase_Mul);
+        return Mathf.RoundToInt(Mathf.Max(0f, v));
+    }
+
+    // ------------------------------------------------------------------------
+    // NEW: Drift‑held boost cooldown helper (returns seconds)
+    // ------------------------------------------------------------------------
+    public float GetDriftHeldBoostCooldownScaled(float baseCooldown)
+    {
+        float v = ApplyStatChain(baseCooldown, SkillType.DriftHeldBoostCooldown_Add, SkillType.DriftHeldBoostCooldown_Mul);
+        return Mathf.Max(0.01f, v);
+    }
+
+
+    /// <summary>
+    /// Current sprockets balance.
+    /// </summary>
+    public int Sprockets => playerSprockets;
+
+    private void SaveSprockets()
+    {
+        PlayerPrefs.SetInt(SprocketsKey, playerSprockets);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Add sprockets to player balance.
+    /// </summary>
+    public void AddSprockets(int amount)
+    {
+        if (amount <= 0) return;
+
+        bool wasFirstSprocket = !_hasEverEarnedSprockets && playerSprockets == 0;
+
+        playerSprockets += amount;
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+
+        // Check for first sprocket ever earned
+        if (wasFirstSprocket)
+        {
+            _hasEverEarnedSprockets = true;
+            PlayerPrefs.SetInt(FirstSprocketKey, 1);
+            PlayerPrefs.Save();
+
+            // Reveal skills marked for first-sprocket reveal
+            RevealFirstSprocketSkills();
+            OnFirstSprocketEarned?.Invoke();
+
+            Debug.Log("[SkillTreeManager] First sprocket earned! Revealing sprocket skills.");
+        }
+    }
+
+    private void RevealFirstSprocketSkills()
+    {
+        foreach (var def in skills)
+        {
+            if (def == null) continue;
+            if (def.revealOnFirstSprocket && !IsSkillRevealed(def.type))
+            {
+                RevealSkill(def);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remove sprockets from player balance.
+    /// </summary>
+    public void RemoveSprockets(int amount)
+    {
+        if (amount <= 0) return;
+        playerSprockets = Mathf.Max(0, playerSprockets - amount);
+        SaveSprockets();
+        OnSprocketsChanged?.Invoke(playerSprockets);
+    }
+
+    /// <summary>
+    /// Get coins to award for a close call. Returns 0 if skill not unlocked.
+    /// Level 1 = 1 coin, Level 2 = 2 coins, etc.
+    /// </summary>
+    public int GetCloseCallCoins()
+    {
+        int level = GetLevel(SkillType.CloseCallCoins_Add);
+        if (level <= 0) return 0;
+
+        // Base coins = level, then apply any multiplier
+        float coins = level;
+        coins = ApplyStatChain(coins, SkillType.CloseCallCoins_Add, SkillType.CloseCallCoins_Mul);
+        return Mathf.Max(0, Mathf.RoundToInt(coins));
+    }
+
+    /// <summary>
+    /// Check if close call speed boost is unlocked.
+    /// </summary>
+    public bool IsCloseCallSpeedBoostUnlocked => GetLevel(SkillType.CloseCallSpeedBoostUnlock) > 0;
+
+    /// <summary>
+    /// Get the duration of close call speed boost. Returns 0 if not unlocked.
+    /// Base duration comes from CarController, skill adds to it.
+    /// </summary>
+    public float GetCloseCallSpeedBoostDuration(float baseDuration)
+    {
+        if (!IsCloseCallSpeedBoostUnlocked) return 0f;
+        return ApplyStatChain(baseDuration, SkillType.CloseCallSpeedBoostDuration_Add, SkillType.CloseCallSpeedBoostDuration_Mul);
+    }
+
+    /// <summary>
+    /// Get close call invincibility duration. Returns 0 if skill not unlocked.
+    /// Level determines base duration.
+    /// </summary>
+    public float GetCloseCallInvincibilityDuration()
+    {
+        int level = GetLevel(SkillType.CloseCallInvincibility_Add);
+        if (level <= 0) return 0f;
+
+        // Base duration = 0.3s per level
+        float baseDuration = level * 0.3f;
+        return ApplyStatChain(baseDuration, SkillType.CloseCallInvincibility_Add, SkillType.CloseCallInvincibility_Mul);
+    }
+
+    /// <summary>
+    /// Check if player can afford a sprocket cost.
+    /// </summary>
+    public bool CanAffordSprockets(int cost) => playerSprockets >= cost;
+
+
+    /// <summary>
+    /// Try to purchase a skill using sprockets instead of coins.
+    /// </summary>
+    public bool TryPurchaseWithSprockets(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        // Use sprocket cost (you can add a separate field to SkillDefinition for this)
+        int cost = def.GetSprocketCostForLevel(nextLevel);
+        if (playerSprockets < cost) return false;
+
+        if (_state.Increment(type, def.maxLevel))
+        {
+            playerSprockets -= cost;
+            SaveSprockets();
+            _state.Save();
+            int newLvl = GetLevel(type);
+            OnSprocketsChanged?.Invoke(playerSprockets);
+            OnLevelChanged?.Invoke(type, newLvl);
+            EvaluateProgressiveUnlocks(def, newLvl);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Smart purchase that automatically uses the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public bool TryPurchaseSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+
+        if (def.usesSprockets)
+            return TryPurchaseWithSprockets(type);
+        else
+            return TryPurchase(type);
+    }
+
+    /// <summary>
+    /// Get the next level cost in the correct currency based on skill's usesSprockets flag.
+    /// </summary>
+    public int GetNextLevelCostSmart(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return int.MaxValue;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return 0;
+
+        if (def.usesSprockets)
+            return def.GetSprocketCostForLevel(nextLevel);
+        else
+            return def.GetCostForLevel(nextLevel);
+    }
+
+    /// <summary>
+    /// Check if player can afford the next level of a skill (checks correct currency).
+    /// </summary>
+    public bool CanAffordNextLevel(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return false;
+        int nextLevel = GetLevel(type) + 1;
+        if (nextLevel > def.maxLevel) return false;
+
+        if (def.usesSprockets)
+        {
+            int cost = def.GetSprocketCostForLevel(nextLevel);
+            return playerSprockets >= cost;
+        }
+        else
+        {
+            int cost = def.GetCostForLevel(nextLevel);
+            return playerCurrency >= cost;
+        }
+    }
+
+    /// <summary>
+    /// Get the currency name for display based on skill's usesSprockets flag.
+    /// </summary>
+    public string GetCurrencyNameForSkill(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def)) return "Coins";
+        return def.usesSprockets ? "Sprockets" : "Coins";
+    }
+
+
+    // ------------------------------------------------------------------------
+    // Master Skill Control
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Enable all skill effects.
+    /// </summary>
+    public void EnableAllSkills()
+    {
+        skillsEnabled = true;
+        Debug.Log("[SkillTreeManager] All skills ENABLED");
+    }
+
+    /// <summary>
+    /// Disable all skill effects (skills return to level 0 behavior).
+    /// </summary>
+    public void DisableAllSkills()
+    {
+        skillsEnabled = false;
+        Debug.Log("[SkillTreeManager] All skills DISABLED");
+    }
+
+    /// <summary>
+    /// Toggle skill effects on/off.
+    /// </summary>
+    public void ToggleSkills()
+    {
+        skillsEnabled = !skillsEnabled;
+        Debug.Log($"[SkillTreeManager] Skills {(skillsEnabled ? "ENABLED" : "DISABLED")}");
+    }
+
+    public void ClearAllData()
+    {
+        _state.ClearPersistent();
+        playerCurrency = 0;
+        SaveCurrency();
+        OnCurrencyChanged?.Invoke(playerCurrency);
+        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
+            OnLevelChanged?.Invoke(t, 0);
+
+        _revealedSkills.Clear();
+        foreach (var def in skills)
+        {
+            if (def == null) continue;
+            if (revealAllSkillsAtStart || def.revealedAtStart)
+                RevealSkill(def);
+        }
+
+        OnSkillsReset?.Invoke();
+        _hasEverEarnedSprockets = false;
+        PlayerPrefs.DeleteKey(FirstSprocketKey);
+        playerSprockets = 0;
+        PlayerPrefs.DeleteKey(SprocketsKey);
+        OnSprocketsChanged?.Invoke(playerSprockets);
+    }
+
+    public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
+    public bool HasEverEarnedSprockets => _hasEverEarnedSprockets;
+    public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);
+    public float GetMaxSpeedMultiplier() => GetDisplayMultiplier(SkillType.MaxSpeed);
+    public float GetFuelEfficiencyMultiplier() => GetDisplayMultiplier(SkillType.FuelEfficiency);
+    public float GetSteeringMultiplier() => GetDisplayMultiplier(SkillType.SteeringResponsiveness);
+    public bool IsBoostUnlocked() => GetLevel(SkillType.BoostUnlock) > 0;
+    public float GetBoostForceScaled(float baseForce) =>
+        ApplyStatChain(baseForce, SkillType.BoostForce_Add, SkillType.BoostForce_Mul);
+    public float GetBoostDurationScaled(float baseDuration) =>
+        ApplyStatChain(baseDuration, SkillType.BoostDuration_Add, SkillType.BoostDuration_Mul);
+    public float GetBoostMaxSpeedMultScaled(float baseMult) =>
+        ApplyStatChain(baseMult, SkillType.BoostMaxSpeedMult_Add, SkillType.BoostMaxSpeedMult_Mul);
+    public float GetBoostCooldownScaled(float baseCooldown) =>
+        ApplyStatChain(baseCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
+    public float GetBoostFuelCostScaled(float baseCost) =>
+        ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+}
+```
+
 ## Assets/Racing_Assets/Racing_Scripts/UI/RacingSkillUI.cs
 
 ```csharp
@@ -28018,7 +30887,11 @@ public class RacingSkillUI : MonoBehaviour
             currencyText.text = $"Coins: {mgr.Currency}";
 
         if (sprocketsText && mgr)
+        {
+            bool show = mgr.HasEverEarnedSprockets || mgr.Sprockets > 0;
+            sprocketsText.gameObject.SetActive(show);
             sprocketsText.text = $"Sprockets: {mgr.Sprockets}";
+        }
     }
 
     private void ClearChildren()
@@ -28210,6 +31083,92 @@ public class RacingSkillUIEntry : MonoBehaviour
             default:
                 return "x1";
         }
+    }
+}
+```
+
+## Assets/Racing_Assets/Racing_Scripts/UI/RacingUISoundManager.cs
+
+```csharp
+using UnityEngine;
+using System.Collections;
+
+[DisallowMultipleComponent]
+public class RacingUISoundManager : MonoBehaviour
+{
+    public static RacingUISoundManager Instance { get; private set; }
+
+    [Header("UI SFX (assign in inspector)")]
+    [SerializeField] private AudioClip buttonHoverClip;
+    [SerializeField] private AudioClip buttonSelectClip;
+    [SerializeField] private AudioClip buttonDeselectClip;
+    [SerializeField] private AudioClip purchaseSkillClip;
+    [SerializeField] private AudioClip purchaseCurrencyClip;
+
+    [Header("Volumes")]
+    [Range(0f, 1f)][SerializeField] private float hoverVolume = 0.7f;
+    [Range(0f, 1f)][SerializeField] private float selectVolume = 0.9f;
+    [Range(0f, 1f)][SerializeField] private float purchaseVolume = 1f;
+    [Range(0f, 1f)][SerializeField] private float currencyVolume = 1f;
+
+    private Transform _sfxRoot;
+
+    void Awake()
+    {
+        if (Instance && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+
+        // Create a small parent so created SFX objects are organized under the UI root
+        _sfxRoot = new GameObject("SFX_UI_Root").transform;
+        _sfxRoot.SetParent(transform, false);
+    }
+
+    public void PlayHover()
+    {
+        Play2DClip(buttonHoverClip, hoverVolume);
+    }
+
+    public void PlaySelect()
+    {
+        Play2DClip(buttonSelectClip, selectVolume);
+    }
+
+    public void PlayDeselect()
+    {
+        Play2DClip(buttonDeselectClip, selectVolume * 0.8f);
+    }
+
+    public void PlayPurchaseSkill()
+    {
+        Play2DClip(purchaseSkillClip, purchaseVolume);
+    }
+
+    public void PlayPurchaseCurrency()
+    {
+        Play2DClip(purchaseCurrencyClip, currencyVolume);
+    }
+
+    private void Play2DClip(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+        StartCoroutine(SpawnAndPlay(clip, Mathf.Clamp01(volume)));
+    }
+
+    private IEnumerator SpawnAndPlay(AudioClip clip, float volume)
+    {
+        var go = new GameObject("SFX_UI_" + (clip ? clip.name : "null"));
+        go.transform.SetParent(_sfxRoot, false);
+        var src = go.AddComponent<AudioSource>();
+        src.clip = clip;
+        src.playOnAwake = false;
+        src.loop = false;
+        src.spatialBlend = 0f; // 2D UI
+        src.volume = volume;
+        src.dopplerLevel = 0f;
+        src.Play();
+        float t = clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch));
+        yield return new WaitForSeconds(t);
+        if (go) Destroy(go);
     }
 }
 ```
@@ -28674,7 +31633,11 @@ public class UIManager_Racing : MonoBehaviour
     public void ShowRunSprockets()
     {
         if (runSprocketsLiveText)
-            runSprocketsLiveText.gameObject.SetActive(true);
+        {
+            var mgr = RacingSkillTreeManager.Instance;
+            bool show = mgr != null && (mgr.HasEverEarnedSprockets || mgr.Sprockets > 0);
+            runSprocketsLiveText.gameObject.SetActive(show);
+        }
     }
 
     public void HideRunSprockets()

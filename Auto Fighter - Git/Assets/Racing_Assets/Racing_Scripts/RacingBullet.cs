@@ -1,11 +1,12 @@
 using UnityEngine;
 
 /// <summary>
-/// Rigidbody-driven bullet:
+/// Physics-driven projectile spawned by CarTurretController.
 /// - Applies an initial forward impulse / velocity
 /// - Optional gravity drop (enable on the Rigidbody)
 /// - Tracks lifetime and max travel distance
-/// - Uses trigger collider for simple overlap damage (same logic as before)
+/// - Uses trigger collider for simple overlap damage
+/// - Awards SPROCKETS (not coins) when destroying targets
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -27,6 +28,24 @@ public class RacingBullet : MonoBehaviour
 
     [Header("Hit Filtering")]
     [SerializeField] private LayerMask hitLayers = ~0;  // what we can damage
+
+    [Header("Sprocket Rewards")]
+    [Tooltip("Base sprockets awarded when this bullet destroys a target.")]
+    [SerializeField] private int baseSprocketReward = 1;
+
+    [Header("Hit Effects")]
+    [Tooltip("VFX spawned on hit.")]
+    [SerializeField] private GameObject hitVFX;
+    [Tooltip("Lifetime of hit VFX.")]
+    [SerializeField] private float hitVFXLifetime = 2f;
+    [Tooltip("Sound played on hit.")]
+    [SerializeField] private AudioClip hitSound;
+    [SerializeField, Range(0f, 1f)] private float hitSoundVolume = 0.8f;
+
+    [Header("Kill Effects")]
+    [Tooltip("Sound played when bullet destroys a target.")]
+    [SerializeField] private AudioClip killSound;
+    [SerializeField, Range(0f, 1f)] private float killSoundVolume = 1f;
 
     private Collider _ownerCollider;
     private Vector3 _startPos;
@@ -129,20 +148,126 @@ public class RacingBullet : MonoBehaviour
 
     private void HandleHit(Collider other, Vector3 hitPoint)
     {
-        var dmg = other.GetComponent<IDamageable>() ?? other.GetComponentInParent<IDamageable>();
+        // Check if target is damageable
+        var dmg = other.GetComponent<ITurretDamageable>() ?? other.GetComponentInParent<ITurretDamageable>();
+
         if (dmg != null)
         {
-            dmg.ApplyDamage(damage);
+            // Use new turret-specific interface that returns kill status and reward
+            bool killed = dmg.ApplyTurretDamage(damage, out int sprocketReward);
+
+            if (killed)
+            {
+                // Award sprockets for the kill
+                AwardSprockets(sprocketReward > 0 ? sprocketReward : baseSprocketReward, hitPoint);
+                PlayKillEffects(hitPoint);
+            }
+            else
+            {
+                PlayHitEffects(hitPoint);
+            }
+        }
+        else
+        {
+            // Fallback: try legacy IDamageable
+            var legacyDmg = other.GetComponent<IDamageable>() ?? other.GetComponentInParent<IDamageable>();
+            if (legacyDmg != null)
+            {
+                legacyDmg.ApplyDamage(damage);
+
+                // For legacy targets, just award base sprockets and assume kill
+                // (since we can't know if it died)
+                AwardSprockets(baseSprocketReward, hitPoint);
+            }
+
+            PlayHitEffects(hitPoint);
         }
 
-        // TODO: spawn hit VFX / sound at hitPoint
-
         Destroy(gameObject);
+    }
+
+    /// <summary>
+    /// Awards sprockets to the player with full FX.
+    /// </summary>
+    private void AwardSprockets(int amount, Vector3 position)
+    {
+        if (amount <= 0) return;
+
+        // Register with GameManager
+        var gm = GameManager_Racing.Instance;
+        if (gm != null)
+        {
+            gm.RegisterSprocketGain(amount);
+        }
+
+        // Add to player's sprockets
+        var skillMgr = RacingSkillTreeManager.Instance;
+        if (skillMgr != null)
+        {
+            skillMgr.AddSprockets(amount);
+        }
+
+        // Show popup
+        if (RacingPopups.IsReady)
+        {
+            RacingPopups.SprocketGain(amount, position + Vector3.up * 0.5f);
+        }
+
+        // Screen flash
+        ScreenFlashManager.Sprocket(amount);
+    }
+
+    private void PlayHitEffects(Vector3 position)
+    {
+        // Spawn hit VFX
+        if (hitVFX != null)
+        {
+            var vfx = Instantiate(hitVFX, position, Quaternion.identity);
+            Destroy(vfx, hitVFXLifetime);
+        }
+
+        // Play hit sound
+        if (hitSound != null)
+        {
+            AudioSource.PlayClipAtPoint(hitSound, position, hitSoundVolume);
+        }
+    }
+
+    private void PlayKillEffects(Vector3 position)
+    {
+        // Spawn hit VFX (same as regular hit)
+        if (hitVFX != null)
+        {
+            var vfx = Instantiate(hitVFX, position, Quaternion.identity);
+            Destroy(vfx, hitVFXLifetime);
+        }
+
+        // Play kill sound (or fall back to hit sound)
+        AudioClip clip = killSound != null ? killSound : hitSound;
+        if (clip != null)
+        {
+            AudioSource.PlayClipAtPoint(clip, position, killSoundVolume);
+        }
     }
 }
 
 /// <summary>
-/// Simple damage interface for anything the turret can shoot.
+/// Enhanced damage interface for turret targets.
+/// Returns whether the target was killed and the sprocket reward amount.
+/// </summary>
+public interface ITurretDamageable
+{
+    /// <summary>
+    /// Apply damage from turret. Returns true if this damage killed the target.
+    /// </summary>
+    /// <param name="amount">Damage amount</param>
+    /// <param name="sprocketReward">Out: sprocket reward for killing this target (0 to use bullet default)</param>
+    /// <returns>True if target was destroyed by this damage</returns>
+    bool ApplyTurretDamage(float amount, out int sprocketReward);
+}
+
+/// <summary>
+/// Simple damage interface for anything the turret can shoot (legacy support).
 /// </summary>
 public interface IDamageable
 {

@@ -421,6 +421,50 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Get coins to award for a close call. Returns 0 if skill not unlocked.
+    /// Level 1 = 1 coin, Level 2 = 2 coins, etc.
+    /// </summary>
+    public int GetCloseCallCoins()
+    {
+        int level = GetLevel(SkillType.CloseCallCoins_Add);
+        if (level <= 0) return 0;
+
+        // Base coins = level, then apply any multiplier
+        float coins = level;
+        coins = ApplyStatChain(coins, SkillType.CloseCallCoins_Add, SkillType.CloseCallCoins_Mul);
+        return Mathf.Max(0, Mathf.RoundToInt(coins));
+    }
+
+    /// <summary>
+    /// Check if close call speed boost is unlocked.
+    /// </summary>
+    public bool IsCloseCallSpeedBoostUnlocked => GetLevel(SkillType.CloseCallSpeedBoostUnlock) > 0;
+
+    /// <summary>
+    /// Get the duration of close call speed boost. Returns 0 if not unlocked.
+    /// Base duration comes from CarController, skill adds to it.
+    /// </summary>
+    public float GetCloseCallSpeedBoostDuration(float baseDuration)
+    {
+        if (!IsCloseCallSpeedBoostUnlocked) return 0f;
+        return ApplyStatChain(baseDuration, SkillType.CloseCallSpeedBoostDuration_Add, SkillType.CloseCallSpeedBoostDuration_Mul);
+    }
+
+    /// <summary>
+    /// Get close call invincibility duration. Returns 0 if skill not unlocked.
+    /// Level determines base duration.
+    /// </summary>
+    public float GetCloseCallInvincibilityDuration()
+    {
+        int level = GetLevel(SkillType.CloseCallInvincibility_Add);
+        if (level <= 0) return 0f;
+
+        // Base duration = 0.3s per level
+        float baseDuration = level * 0.3f;
+        return ApplyStatChain(baseDuration, SkillType.CloseCallInvincibility_Add, SkillType.CloseCallInvincibility_Mul);
+    }
+
+    /// <summary>
     /// Check if player can afford a sprocket cost.
     /// </summary>
     public bool CanAffordSprockets(int cost) => playerSprockets >= cost;

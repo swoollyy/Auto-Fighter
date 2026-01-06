@@ -187,7 +187,11 @@ public class RacingSkillUI : MonoBehaviour
             currencyText.text = $"Coins: {mgr.Currency}";
 
         if (sprocketsText && mgr)
+        {
+            bool show = mgr.HasEverEarnedSprockets || mgr.Sprockets > 0;
+            sprocketsText.gameObject.SetActive(show);
             sprocketsText.text = $"Sprockets: {mgr.Sprockets}";
+        }
     }
 
     private void ClearChildren()

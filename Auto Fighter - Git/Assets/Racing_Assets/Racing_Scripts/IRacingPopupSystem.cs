@@ -66,21 +66,35 @@ public static class RacingPopups
         System?.Spawn(type, value, position, color);
     }
 
-    /// <summary>
-    /// Spawn a crash popup with severity-based text.
-    /// </summary>
-    public static void Crash(float severity, Vector3 position)
-    {
-        string text;
-        if (severity >= 0.8f)
-            text = "MASSIVE CRASH!";
-        else if (severity >= 0.5f)
-            text = "CRASH!";
-        else
-            text = "BUMP!";
 
-        Spawn(RacingPopupType.Crash, text, position);
-    }
+
+    // === CRASH / IMPACT POPUPS ===
+
+    /// <summary>
+    /// Spawn a crash popup. Uses random text from the Crash style asset.
+    /// Pass 0 for value to trigger random text selection from the style.
+    /// </summary>
+    public static void Crash(Vector3 position)
+        => Spawn(RacingPopupType.Crash, 0f, position);
+
+    /// <summary>
+    /// Spawn a crash popup with custom text override.
+    /// </summary>
+    public static void Crash(string text, Vector3 position)
+        => Spawn(RacingPopupType.Crash, text, position);
+
+
+    public static void Crash(float severity, Vector3 position)
+=> Spawn(RacingPopupType.Crash, severity, position);
+    // === INVINCIBILITY POPUPS ===
+
+    /// <summary>
+    /// Spawn "INVINCIBLE!" popup when invincibility activates.
+    /// </summary>
+    public static void Invincible(Vector3 position)
+        => Spawn(RacingPopupType.Invincible, "INVINCIBLE!", position);
+
+    // === CLOSE CALL / NEAR MISS ===
 
     /// <summary>
     /// Spawn a close call popup with distance-based text.
@@ -88,9 +102,9 @@ public static class RacingPopups
     public static void CloseCall(float distance, Vector3 position)
     {
         string text;
-        if (distance <= 0.5f)
+        if (distance <= .15f)
             text = "INSANE DODGE!";
-        else if (distance <= 1.5f)
+        else if (distance <= .3f)
             text = "CLOSE CALL!";
         else
             text = "NEAR MISS!";
@@ -111,9 +125,6 @@ public static class RacingPopups
 
     public static void FuelGain(float amount, Vector3 position)
         => Spawn(RacingPopupType.FuelGain, amount, position);
-
-    public static void Crash(Vector3 position)
-    => Spawn(RacingPopupType.Crash, "CRASH!", position);
 
     public static void CoinGain(int amount, Vector3 position)
         => Spawn(RacingPopupType.CoinGain, amount, position);
@@ -137,7 +148,7 @@ public static class RacingPopups
         => SpawnRandomScreen(RacingPopupType.MashFuelReward, amount, new Vector2(-3f, 3f), new Vector2(-1.5f, 1.5f));
 
     public static void SprocketGain(int amount, Vector3 position)
-    => Spawn(RacingPopupType.SprocketGain, amount, position);
+        => Spawn(RacingPopupType.SprocketGain, amount, position);
 
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.

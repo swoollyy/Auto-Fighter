@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
+  m_Name: Invincibility_Popup
+  m_EditorClassIdentifier: 
+  popupType: 12
+  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  fontMaterial: {fileID: 0}
+  spriteAsset: {fileID: 0}
+  baseFontSize: 10
+  textColor: {r: 0.8207547, g: 0.8207547, b: 0.8207547, a: 1}
+  prefix: 
+  suffix: 
+  numberFormat: 0
+  useRandomText: 1
+  randomTexts:
+  - INVINCIBLE!
+  - UNTOUCHABLE!!
+  - GODLIKE!!
+  enableOutline: 1
+  outlineWidth: 0.25
+  outlineColor: {r: 2.2264152, g: 2.2264152, b: 2.2264152, a: 1}
+  outlineIntensity: 1.5
+  faceDilate: 0.05
+  horizontalOffset: 0.8
+  verticalOffset: 0
+  horizontalDrift: 0.15
+  verticalDrift: 0.85
+  fixedRotationZ: 0
+  useRandomRotation: 1
+  randomRotationMin: -40
+  randomRotationMax: 40
+  duration: 1.5
+  fadeInFraction: 0.444
+  fadeOutFraction: 0.15
+  useUnscaledTime: 1
+  riseDistance: 0
+  riseEase: 9
+  popFromScale: 0.3
+  popToScale: 0.71
+  endScale: 0
+  popDelay: 0.06
+  popDurationFraction: 0.4
+  popEase: 27
+  enableTiltShake: 1
+  tiltShakeAngle: 13.5
+  tiltShakeDurationFraction: 0.306
+  enableValueScaling: 0
+  minValueForScale: 1
+  maxValueForScale: 50
+  minScaleMultiplier: 0.8
+  maxScaleMultiplier: 1.4
+  useLogScale: 0
+  sortingLayerName: UI
+  sortingOrder: 1000
+  spawnSound: {fileID: 0}
+  soundVolume: 0.5

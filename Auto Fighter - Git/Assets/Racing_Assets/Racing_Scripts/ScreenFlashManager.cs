@@ -5,6 +5,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Manages screen flash/edge glow effects for game events.
 /// Integrates with CoinDatabase for coin-specific flashes.
+/// Supports continuous pulsing flash for invincibility.
 /// </summary>
 public class ScreenFlashManager : MonoBehaviour
 {
@@ -70,6 +71,19 @@ public class ScreenFlashManager : MonoBehaviour
     [SerializeField] private float sprocketDuration = 0.3f;
     [SerializeField] private float sprocketInnerRadius = 0.35f;
 
+    [Header("Preset: Invincibility (Continuous)")]
+    [SerializeField] private Color invincibilityColor = new Color(0.7f, 0.85f, 1f, 1f);
+    [SerializeField] private float invincibilityIntensityLow = 0.3f;
+    [SerializeField] private float invincibilityIntensityHigh = 0.8f;
+    [SerializeField] private float invincibilityInnerRadius = 0.5f;
+    [SerializeField] private float invincibilityPulseSpeed = 3f;
+
+    [Header("Preset: Invincibility Impact")]
+    [SerializeField] private Color invincibilityImpactColor = Color.white;
+    [SerializeField] private float invincibilityImpactIntensity = 2f;
+    [SerializeField] private float invincibilityImpactDuration = 0.15f;
+    [SerializeField] private float invincibilityImpactInnerRadius = 0.2f;
+
     // Material property IDs
     private static readonly int ColorID = Shader.PropertyToID("_Color");
     private static readonly int IntensityID = Shader.PropertyToID("_Intensity");
@@ -80,6 +94,15 @@ public class ScreenFlashManager : MonoBehaviour
     private Material _instanceMaterial;
     private Tween _currentTween;
     private float _currentIntensity;
+
+    // Persistent flash state
+    private bool _icePersistentActive;
+    private Tween _iceTween;
+
+    // Continuous invincibility flash state
+    private bool _invincibilityActive;
+    private float _invincibilityEndTime;
+    private Tween _invincibilityTween;
 
     void Awake()
     {
@@ -99,6 +122,15 @@ public class ScreenFlashManager : MonoBehaviour
         if (_instanceMaterial) Destroy(_instanceMaterial);
     }
 
+    void Update()
+    {
+        // Check if invincibility has expired
+        if (_invincibilityActive && Time.unscaledTime >= _invincibilityEndTime)
+        {
+            StopInvincibilityFlash();
+        }
+    }
+
     private void SetupMaterial()
     {
         if (edgeGlowMaterial == null)
@@ -116,10 +148,6 @@ public class ScreenFlashManager : MonoBehaviour
         }
     }
 
-
-    private bool _icePersistentActive;
-    private Tween _iceTween;
-
     private bool IsFlashingNow()
     {
         return _currentTween != null && _currentTween.IsActive() && _currentIntensity > 0.001f;
@@ -135,10 +163,16 @@ public class ScreenFlashManager : MonoBehaviour
 
     private void RestorePersistentIfNeeded()
     {
-        if (_icePersistentActive)
+        // Priority: Invincibility > Ice
+        if (_invincibilityActive)
+        {
+            StartInvincibilityPulse();
+        }
+        else if (_icePersistentActive)
+        {
             SetIcePersistent(true);
+        }
     }
-
 
     // === CORE FLASH METHODS ===
 
@@ -150,6 +184,7 @@ public class ScreenFlashManager : MonoBehaviour
         if (_instanceMaterial == null) return;
 
         _currentTween?.Kill();
+        _invincibilityTween?.Kill(); // Pause invincibility pulse during flash
 
         _instanceMaterial.SetColor(ColorID, color);
         _instanceMaterial.SetFloat(InnerRadiusID, innerRadius);
@@ -167,6 +202,7 @@ public class ScreenFlashManager : MonoBehaviour
             duration * 0.3f
         )
         .SetEase(Ease.OutQuad)
+        .SetUpdate(true)
         .OnComplete(() => {
             _currentTween = DOTween.To(
                 () => _currentIntensity,
@@ -178,6 +214,7 @@ public class ScreenFlashManager : MonoBehaviour
                 duration * 0.7f
             )
             .SetEase(Ease.InQuad)
+            .SetUpdate(true)
             .OnComplete(RestorePersistentIfNeeded);
         });
     }
@@ -189,8 +226,10 @@ public class ScreenFlashManager : MonoBehaviour
         _icePersistentActive = active;
         _iceTween?.Kill();
 
+        // Don't override invincibility flash
+        if (_invincibilityActive) return;
+
         // If a one-shot flash is currently playing, let it finish.
-        // We'll restore ice in RestorePersistentIfNeeded().
         if (IsFlashingNow())
             return;
 
@@ -209,7 +248,7 @@ public class ScreenFlashManager : MonoBehaviour
                 },
                 icePersistentIntensity,
                 iceFadeIn
-            ).SetEase(Ease.OutQuad);
+            ).SetEase(Ease.OutQuad).SetUpdate(true);
         }
         else
         {
@@ -222,10 +261,9 @@ public class ScreenFlashManager : MonoBehaviour
                 },
                 0f,
                 iceFadeOut
-            ).SetEase(Ease.OutQuad);
+            ).SetEase(Ease.OutQuad).SetUpdate(true);
         }
     }
-
 
     /// <summary>
     /// Additive flash that stacks with current intensity (for rapid events).
@@ -253,7 +291,118 @@ public class ScreenFlashManager : MonoBehaviour
             duration
         )
         .SetEase(Ease.OutQuad)
+        .SetUpdate(true)
         .OnComplete(RestorePersistentIfNeeded);
+    }
+
+    // === INVINCIBILITY CONTINUOUS FLASH ===
+
+    /// <summary>
+    /// Start continuous pulsing flash for invincibility.
+    /// </summary>
+    public void StartInvincibilityFlash(float duration)
+    {
+        _invincibilityActive = true;
+        _invincibilityEndTime = Time.unscaledTime + duration;
+
+        // Stop any other persistent effects
+        _iceTween?.Kill();
+        _currentTween?.Kill();
+
+        StartInvincibilityPulse();
+    }
+
+    private void StartInvincibilityPulse()
+    {
+        if (!_invincibilityActive || _instanceMaterial == null) return;
+
+        _invincibilityTween?.Kill();
+
+        // Set material properties
+        _instanceMaterial.SetColor(ColorID, invincibilityColor);
+        _instanceMaterial.SetFloat(InnerRadiusID, invincibilityInnerRadius);
+        _instanceMaterial.SetFloat(OuterRadiusID, defaultOuterRadius);
+        _instanceMaterial.SetFloat(SoftnessID, defaultSoftness);
+
+        float pulseDuration = 1f / Mathf.Max(0.1f, invincibilityPulseSpeed);
+
+        // Pulse from low to high
+        _invincibilityTween = DOTween.To(
+            () => _currentIntensity,
+            x => {
+                _currentIntensity = x;
+                _instanceMaterial.SetFloat(IntensityID, x);
+            },
+            invincibilityIntensityHigh,
+            pulseDuration * 0.5f
+        )
+        .SetEase(Ease.InOutSine)
+        .SetUpdate(true)
+        .OnComplete(() => {
+            if (!_invincibilityActive) return;
+
+            // Pulse from high to low
+            _invincibilityTween = DOTween.To(
+                () => _currentIntensity,
+                x => {
+                    _currentIntensity = x;
+                    _instanceMaterial.SetFloat(IntensityID, x);
+                },
+                invincibilityIntensityLow,
+                pulseDuration * 0.5f
+            )
+            .SetEase(Ease.InOutSine)
+            .SetUpdate(true)
+            .OnComplete(() => {
+                // Continue pulsing if still active
+                if (_invincibilityActive && Time.unscaledTime < _invincibilityEndTime)
+                {
+                    StartInvincibilityPulse();
+                }
+                else
+                {
+                    StopInvincibilityFlash();
+                }
+            });
+        });
+    }
+
+    /// <summary>
+    /// Stop invincibility flash and fade out.
+    /// </summary>
+    public void StopInvincibilityFlash()
+    {
+        _invincibilityActive = false;
+        _invincibilityTween?.Kill();
+
+        // Fade out
+        if (_instanceMaterial != null)
+        {
+            DOTween.To(
+                () => _currentIntensity,
+                x => {
+                    _currentIntensity = x;
+                    _instanceMaterial?.SetFloat(IntensityID, x);
+                },
+                0f,
+                0.2f
+            ).SetEase(Ease.OutQuad).SetUpdate(true).OnComplete(() => {
+                // Check if ice should be restored
+                if (_icePersistentActive)
+                    SetIcePersistent(true);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Flash for invincibility impact (quick burst, then resumes pulse).
+    /// </summary>
+    public void FlashInvincibilityImpact()
+    {
+        // Quick bright flash
+        Flash(invincibilityImpactColor, invincibilityImpactIntensity, invincibilityImpactDuration, invincibilityImpactInnerRadius);
+
+        // RestorePersistentIfNeeded will restart the pulse after the flash completes
     }
 
     // === PRESET METHODS ===
@@ -360,6 +509,7 @@ public class ScreenFlashManager : MonoBehaviour
             case ScreenFlashType.Boost: FlashBoost(); break;
             case ScreenFlashType.LevelUp: FlashLevelUp(); break;
             case ScreenFlashType.Sprocket: FlashSprocket(); break;
+            case ScreenFlashType.Invincibility: StartInvincibilityFlash(1f); break;
         }
     }
 
@@ -378,6 +528,11 @@ public class ScreenFlashManager : MonoBehaviour
     public static void LevelUp() => Instance?.FlashLevelUp();
     public static void Sprocket() => Instance?.FlashSprocket();
     public static void Sprocket(int amount) => Instance?.FlashSprocket(amount);
+
+    // Invincibility
+    public static void Invincibility(float duration) => Instance?.StartInvincibilityFlash(duration);
+    public static void InvincibilityImpact() => Instance?.FlashInvincibilityImpact();
+    public static void StopInvincibility() => Instance?.StopInvincibilityFlash();
 }
 
 public enum ScreenFlashType
@@ -388,5 +543,6 @@ public enum ScreenFlashType
     FuelGain,
     Boost,
     LevelUp,
-    Sprocket
+    Sprocket,
+    Invincibility
 }

@@ -21,13 +21,13 @@ MonoBehaviour:
   enableScreenFlash: 1
   flashIntensity: 1.66
   flashDuration: 0.67
-  flashInnerRadius: 0.28
+  flashInnerRadius: 0.4
   enableScreenShake: 0
   shakeDuration: 0.15
   shakeStrength: 0.5
   shakeVibrato: 10
   shakeRandomness: 0.55
-  popupSizeMultiplier: 1.2
+  popupSizeMultiplier: 1
   popupDuration: 1
   popupRiseDistance: 0.75
   collectSounds:

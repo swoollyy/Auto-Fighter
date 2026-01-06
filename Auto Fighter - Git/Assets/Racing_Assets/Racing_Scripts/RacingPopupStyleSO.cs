@@ -39,6 +39,13 @@ public class RacingPopupStyleSO : ScriptableObject
     [Tooltip("Format string for the number (e.g., '0', '0.#', '0.00').")]
     public string numberFormat = "0";
 
+    [Header("Random Text Options")]
+    [Tooltip("If true and randomTexts has entries, picks a random text instead of using prefix/value/suffix.")]
+    public bool useRandomText = false;
+
+    [Tooltip("List of random texts to choose from (e.g., 'WAPOW!', 'KABLAM!', 'POW!').")]
+    public string[] randomTexts = new string[0];
+
     [Header("Outline")]
     public bool enableOutline = true;
 
@@ -67,9 +74,21 @@ public class RacingPopupStyleSO : ScriptableObject
     [Tooltip("Additional random horizontal drift on top of fixed offset.")]
     public float horizontalDrift = 0f;
 
-    [Header("Fixed Rotation (Comic Style)")]
+    [Tooltip("Additional random vertical drift on top of fixed offset.")]
+    public float verticalDrift = 0f;
+
+    [Header("Random Rotation (Comic Style)")]
     [Tooltip("Fixed Z rotation angle. Use for /\\ pyramid effect. Negative = tilt right (/), Positive = tilt left (\\).")]
     public float fixedRotationZ = 0f;
+
+    [Tooltip("If true, picks a random rotation within the range below instead of using fixedRotationZ.")]
+    public bool useRandomRotation = false;
+
+    [Tooltip("Min random rotation angle (used if useRandomRotation is true).")]
+    public float randomRotationMin = -15f;
+
+    [Tooltip("Max random rotation angle (used if useRandomRotation is true).")]
+    public float randomRotationMax = 15f;
 
     [Header("Timing")]
     [Tooltip("Total duration the popup is visible.")]
@@ -180,18 +199,40 @@ public class RacingPopupStyleSO : ScriptableObject
 
     /// <summary>
     /// Format the display text for a given value.
+    /// If useRandomText is enabled and randomTexts has entries, returns a random text instead.
     /// </summary>
     public string FormatText(float value)
     {
+        if (useRandomText && randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
         return $"{prefix}{value.ToString(numberFormat)}{suffix}";
     }
 
     /// <summary>
     /// Format the display text for a given integer value.
+    /// If useRandomText is enabled and randomTexts has entries, returns a random text instead.
     /// </summary>
     public string FormatText(int value)
     {
+        if (useRandomText && randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
         return $"{prefix}{value}{suffix}";
+    }
+
+    /// <summary>
+    /// Get a random text from the randomTexts array (or empty string if none).
+    /// </summary>
+    public string GetRandomText()
+    {
+        if (randomTexts != null && randomTexts.Length > 0)
+        {
+            return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
+        }
+        return prefix + suffix;
     }
 
     /// <summary>
@@ -199,7 +240,20 @@ public class RacingPopupStyleSO : ScriptableObject
     /// </summary>
     public Vector3 GetPositionOffset()
     {
-        float randomDrift = horizontalDrift > 0 ? UnityEngine.Random.Range(-horizontalDrift, horizontalDrift) : 0f;
-        return new Vector3(horizontalOffset + randomDrift, verticalOffset, 0f);
+        float randomH = horizontalDrift > 0 ? UnityEngine.Random.Range(-horizontalDrift, horizontalDrift) : 0f;
+        float randomV = verticalDrift > 0 ? UnityEngine.Random.Range(-verticalDrift, verticalDrift) : 0f;
+        return new Vector3(horizontalOffset + randomH, verticalOffset + randomV, 0f);
+    }
+
+    /// <summary>
+    /// Get the rotation Z angle, either fixed or random based on settings.
+    /// </summary>
+    public float GetRotationZ()
+    {
+        if (useRandomRotation)
+        {
+            return UnityEngine.Random.Range(randomRotationMin, randomRotationMax);
+        }
+        return fixedRotationZ;
     }
 }

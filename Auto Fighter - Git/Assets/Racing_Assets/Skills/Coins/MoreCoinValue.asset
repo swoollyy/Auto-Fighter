@@ -21,7 +21,7 @@ MonoBehaviour:
     m_Curve:
     - serializedVersion: 3
       time: 1
-      value: 80
+      value: 60
       inSlope: 0
       outSlope: 0
       tangentMode: 136
@@ -30,7 +30,7 @@ MonoBehaviour:
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 2
-      value: 100
+      value: 80
       inSlope: 20
       outSlope: 20
       tangentMode: 136
@@ -39,7 +39,7 @@ MonoBehaviour:
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 3
-      value: 120
+      value: 100
       inSlope: 0
       outSlope: 0
       tangentMode: 136
@@ -55,6 +55,7 @@ MonoBehaviour:
   perLevelAdd: 0
   uiPosition: {x: 0, y: 300}
   revealedAtStart: 0
+  revealOnFirstSprocket: 0
   usesSprockets: 0
   baseSprocketCost: 5
   sprocketCostPerLevel: 3

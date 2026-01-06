@@ -26,6 +26,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private IcePathSpawner icePathSpawner;
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
+    [SerializeField] private TrackCreatureSpawner creatureSpawner;
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -639,9 +640,45 @@ public class GameManager_Racing : MonoBehaviour
     {
         if (!enabled) return;
 
+        var mgr = RacingSkillTreeManager.Instance;
+
+        // === CLOSE CALL COINS (Skill) ===
+        if (mgr != null)
+        {
+            int coins = mgr.GetCloseCallCoins();
+            if (coins > 0)
+            {
+                // Award coins
+                mgr.AddCurrency(coins);
+                _pickupCoinsThisRun += coins; // Track for run summary
+
+                // Update live UI
+                int totalCoins = _distanceCoinsThisRun + _pickupCoinsThisRun + _obstacleCoinsThisRun;
+                uiManager?.UpdateRunCoins(totalCoins);
+
+                // Spawn coin popup
+                if (RacingPopups.IsReady)
+                {
+                    Vector3 popupPos = pos + Vector3.up * 2f;
+                    RacingPopups.Spawn(RacingPopupType.CoinGain, coins, popupPos);
+                }
+
+                Debug.Log($"[CloseCall] Awarded {coins} coins!");
+            }
+        }
+
+        // === NOTIFY CAR FOR BOOST/INVINCIBILITY ===
+        var car = ActiveCar;
+        if (car != null)
+        {
+            car.OnCloseCall(pos, closestDistance);
+        }
+
+        // === EXISTING CLOSE CALL EFFECTS ===
+
+        // Spawn popup
         if (RacingPopups.IsReady)
         {
-            // Spawn at the close call position (slightly above)
             Vector3 popupPos = pos + Vector3.up * 1.5f;
             RacingPopups.CloseCall(closestDistance, popupPos);
         }
@@ -655,7 +692,7 @@ public class GameManager_Racing : MonoBehaviour
             postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
         }
 
-        // NEW: play close-call SFX (2D or attach to camera so it sounds consistent)
+        // Play close-call SFX
         if (closeCallClip != null)
         {
             Play2DClip(closeCallClip, closeCallVolume);
@@ -675,11 +712,10 @@ public class GameManager_Racing : MonoBehaviour
             cameraFollow.ZoomPulse(closeCallZoomDeltaFOV, closeCallZoomDuration);
         }
 
-        // Temporarily boost car handling/turn speed
-        var active = ActiveCar;
-        if (active != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
+        // Temporarily boost car handling/turn speed (existing feature)
+        if (car != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
         {
-            active.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
+            car.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
         }
     }
 
@@ -910,6 +946,7 @@ public class GameManager_Racing : MonoBehaviour
         icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
+        creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)

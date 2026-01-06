@@ -12,29 +12,35 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
   m_Name: Sprocket_Collect
   m_EditorClassIdentifier: 
-  popupType: 13
+  popupType: 14
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 11400000, guid: 0248a313a4fb855488b1f02e2bbe463c, type: 2}
-  baseFontSize: 6
+  baseFontSize: 10
   textColor: {r: 0, g: 0.46924734, b: 1, a: 1}
   prefix: '+ '
   suffix: '     <sprite index=0> Sprockets'
   numberFormat: 0
+  useRandomText: 0
+  randomTexts: []
   enableOutline: 1
   outlineWidth: 0.106
   outlineColor: {r: 0.7037427, g: 0.6297538, b: 5.3403134, a: 1}
-  outlineIntensity: 7.75
+  outlineIntensity: 1.5
   faceDilate: 0.05
-  horizontalOffset: 0.5
+  horizontalOffset: 0
   verticalOffset: 0
-  horizontalDrift: 0
+  horizontalDrift: 0.85
+  verticalDrift: 0.85
   fixedRotationZ: 0
+  useRandomRotation: 0
+  randomRotationMin: -40
+  randomRotationMax: 40
   duration: 0.85
   fadeInFraction: 0.059
   fadeOutFraction: 0.142
   useUnscaledTime: 1
-  riseDistance: 1.5
+  riseDistance: 0
   riseEase: 9
   popFromScale: 0.2
   popToScale: 0.8

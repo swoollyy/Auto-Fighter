@@ -172,6 +172,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     }
 
     // Custom burst coroutine using explicit passed values
+    // Custom burst coroutine using explicit passed values
     private IEnumerator BurstRoutineCustom(float chroma, float lensInt, float holdSeconds, float fadeInSeconds, float fadeOutSeconds)
     {
         // local copies
@@ -196,7 +197,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
         // fade in
         float t = 0f;
-
         while (t < fi)
         {
             t += Time.unscaledDeltaTime;
@@ -216,7 +216,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float endHold = Time.unscaledTime + Mathf.Max(0f, holdSeconds);
         while (Time.unscaledTime < endHold)
         {
-
             if (wobble && wobAmp > 0f && wobFreq > 0f)
             {
                 wobT += Time.unscaledDeltaTime;
@@ -225,7 +224,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                 SetLD(localLens, localLensScale,
                     Mathf.Clamp(localCenterX + wob, -1f, 1f),
                     Mathf.Clamp(localCenterY - wob, -1f, 1f));
-                SetBloom(bloomIntensity);
+                SetBloom(localBloom);  // Use localBloom, not bloomIntensity
             }
             else
             {
@@ -236,7 +235,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             yield return null;
         }
 
-        // fade out
+        // fade out - FIXED: Now includes SetBloom interpolation
         t = 0f;
         while (t < fo)
         {
@@ -248,6 +247,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                   Mathf.Lerp(localLensScale, 1f, k),
                   Mathf.Lerp(localCenterX, 0f, k),
                   Mathf.Lerp(localCenterY, 0f, k));
+            SetBloom(Mathf.Lerp(localBloom, _baseBloom, k));  // <-- THE FIX
             yield return null;
         }
 

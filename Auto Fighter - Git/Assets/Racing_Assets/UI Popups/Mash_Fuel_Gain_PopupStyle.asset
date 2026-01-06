@@ -21,20 +21,26 @@ MonoBehaviour:
   prefix: +
   suffix: '     <sprite index=0> Fuel'
   numberFormat: 0.#
+  useRandomText: 0
+  randomTexts: []
   enableOutline: 1
   outlineWidth: 0.25
   outlineColor: {r: 0, g: 0.36426687, b: 1, a: 1}
-  outlineIntensity: 8
+  outlineIntensity: 1.5
   faceDilate: 0.05
-  horizontalOffset: 0.5
+  horizontalOffset: 0
   verticalOffset: 0
   horizontalDrift: 0
+  verticalDrift: 0
   fixedRotationZ: 0
+  useRandomRotation: 0
+  randomRotationMin: -40
+  randomRotationMax: 40
   duration: 0.85
   fadeInFraction: 0.064
   fadeOutFraction: 0.1
   useUnscaledTime: 1
-  riseDistance: 1.5
+  riseDistance: 0
   riseEase: 9
   popFromScale: 0.2
   popToScale: 1.2

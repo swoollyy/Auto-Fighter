@@ -30,6 +30,13 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
     [Tooltip("List of styles for each popup type. Order doesn't matter.")]
     [SerializeField] private List<RacingPopupStyleSO> styles = new();
 
+    [Header("Random Screen Spawn - Anti Overlap")]
+    [SerializeField] private int randomScreenMaxAttempts = 8;
+    [SerializeField] private float randomScreenMinSeparation = 0.6f; // in the same units as your offset ranges
+    [SerializeField] private float randomScreenMemorySeconds = 0.35f;
+
+    private readonly List<(Vector3 offset, float time)> _recentRandomScreenOffsets = new();
+
     [Header("Default Style (fallback)")]
     [SerializeField] private TMP_FontAsset defaultFont;
     [SerializeField] private Material defaultFontMaterial;
@@ -214,18 +221,60 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         SpawnInternal(type, value, null, worldPosition, colorOverride, scaleOverride);
     }
 
-    /// <summary>
-    /// Spawn at random screen position (for mash rewards, etc.)
-    /// </summary>
     public void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange)
     {
-        Vector3 randomOffset = new Vector3(
-            UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
-            UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
-            0f
-        );
-        SpawnInternal(type, value, null, randomOffset, null, null, true);
+        float now = Time.time;
+
+        // purge old entries
+        for (int i = _recentRandomScreenOffsets.Count - 1; i >= 0; i--)
+        {
+            if (now - _recentRandomScreenOffsets[i].time > randomScreenMemorySeconds)
+                _recentRandomScreenOffsets.RemoveAt(i);
+        }
+
+        Vector3 chosen = Vector3.zero;
+        bool found = false;
+
+        for (int attempt = 0; attempt < Mathf.Max(1, randomScreenMaxAttempts); attempt++)
+        {
+            Vector3 candidate = new Vector3(
+                UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
+                UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
+                0f
+            );
+
+            bool overlaps = false;
+            for (int i = 0; i < _recentRandomScreenOffsets.Count; i++)
+            {
+                if (Vector3.Distance(candidate, _recentRandomScreenOffsets[i].offset) < randomScreenMinSeparation)
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+
+            if (!overlaps)
+            {
+                chosen = candidate;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            // fallback: just take one (better than spawning nothing)
+            chosen = new Vector3(
+                UnityEngine.Random.Range(horizontalRange.x, horizontalRange.y),
+                UnityEngine.Random.Range(verticalRange.x, verticalRange.y),
+                0f
+            );
+        }
+
+        _recentRandomScreenOffsets.Add((chosen, now));
+        SpawnInternal(type, value, null, chosen, null, null, true);
     }
+
 
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.
@@ -333,7 +382,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         float popDelay = style?.popDelay ?? defaultPopDelay;
         float popDurFrac = style?.popDurationFraction ?? defaultPopDurationFraction;
         var popEase = style?.popEase ?? Ease.OutBack;
-        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+        float fixedRotZ = style?.GetRotationZ() ?? 0f;
 
         var seq = DOTween.Sequence().SetTarget(go.transform);
         if (style?.useUnscaledTime ?? true)
@@ -428,6 +477,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         tmp.UpdateMeshPadding();
         tmp.SetMaterialDirty();
     }
+
     private void SpawnInternal(RacingPopupType type, float value, string customText, Vector3 worldPosition, Color? colorOverride, float? scaleOverride, bool useRandomScreenPos = false)
     {
         var go = _pool.Get();
@@ -464,13 +514,14 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         // Apply outline
         ApplyOutline(tmp, style);
 
-        // Set text
+        // Set text - supports random text selection via FormatText
         if (!string.IsNullOrEmpty(customText))
         {
             tmp.text = customText;
         }
         else if (style != null)
         {
+            // FormatText now handles random text selection if useRandomText is enabled
             tmp.text = style.FormatText(value);
         }
         else
@@ -506,10 +557,8 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
             }
         }
 
-
-
-        // === FIXED ROTATION (Comic Style /\ ) ===
-        float fixedRotZ = style?.fixedRotationZ ?? 0f;
+        // === ROTATION - Now supports random rotation via GetRotationZ() ===
+        float fixedRotZ = style?.GetRotationZ() ?? 0f;
 
         // === POSITION WITH OFFSET (Comic Style) ===
         Vector3 positionOffset = style?.GetPositionOffset() ?? Vector3.zero;
@@ -709,6 +758,13 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         Vector3 pos = transform.position + Vector3.up * 2f;
         Spawn(RacingPopupType.HPDamage, 30f, pos);
         Spawn(RacingPopupType.FuelLoss, 12f, pos);
+    }
+
+    [ContextMenu("Test Crash Popup")]
+    private void TestCrash()
+    {
+        if (!Application.isPlaying) return;
+        Spawn(RacingPopupType.Crash, 0f, transform.position + Vector3.up * 2f);
     }
 #endif
 }

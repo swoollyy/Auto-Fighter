@@ -183,14 +183,14 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   reactLayers:
     serializedVersion: 2
-    m_Bits: 919553
+    m_Bits: 919681
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
-  pushDeltaVRange: {x: 0, y: 0}
-  upwardBoostRange: {x: 1, y: 3}
-  scaleUpwardBoostBySeverity: 1
+  pushDeltaVRange: {x: 2, y: 5}
+  upwardBoostRange: {x: 2.5, y: 4}
+  scaleUpwardBoostBySeverity: 0
   minSpeedForUpwardBoost: 1
-  maxSpeedForUpwardBoost: 15
+  maxSpeedForUpwardBoost: 9
   enableExplosionOnHeavierImpact: 1
   explosionForceBase: 15
   explosionForceMassScale: 0.5

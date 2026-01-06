@@ -18,6 +18,25 @@ public class CarController : MonoBehaviour
     [SerializeField] private float minSpeedToSteer = 0.6f; // tweak in Inspector
     [SerializeField] private bool allowSteerWhenTryingToMove = true; // W/S lets you steer even if speed is tiny
 
+    private readonly Dictionary<int, float> _perColliderCrashTime = new Dictionary<int, float>();
+    [SerializeField, Tooltip("Minimum seconds between crashes from the same collider.")]
+    private float perColliderCrashCooldown = 0.5f;
+
+    // Reference to forcefield for protection checks
+    private CarForcefield _forcefield;
+
+    [Header("Mash Gauge Skill Scaling")]
+    [Tooltip("How much to scale drain per point of effective clicks above base. E.g., 0.15 means +15% drain per extra click power.")]
+    [SerializeField, Range(0f, 0.5f)] private float drainScalePerClickPower = 0.12f;
+
+    [Tooltip("How much to scale drain per point of passive click strength above base. Usually lower since passive is already gated.")]
+    [SerializeField, Range(0f, 0.3f)] private float drainScalePerPassiveStrength = 0.08f;
+
+    [Tooltip("Maximum drain multiplier from skill scaling (prevents it from becoming impossible).")]
+    [SerializeField, Range(1f, 5f)] private float maxSkillDrainMultiplier = 3f;
+
+    [Tooltip("Minimum drain multiplier (floor, in case player somehow has negative bonuses).")]
+    [SerializeField, Range(0.5f, 1f)] private float minSkillDrainMultiplier = 1f;
 
     [Header("Steering Feel")]
     [SerializeField] private float lowSpeedSteerMultiplier = 1.2f;
@@ -47,6 +66,20 @@ public class CarController : MonoBehaviour
     private bool useExponentialCoast = false;
     [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
     private float coastDampingPerSecond = 2.0f;
+
+
+    [Header("Flip Mash Rewards")]
+    [SerializeField, Tooltip("Base fuel recovered per click.")]
+    private float mashBaseFuelPerClick = 0.3f;
+
+    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
+    private float mashFuelSpeedBonusMax = 2f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
+    private float mashMaxSpeedThreshold = 0.1f;
+
+    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
+    private float mashMinSpeedThreshold = 0.5f;
 
     [Header("Arcade Movement Tuning")]
     [SerializeField] private float coastDecelFactor = 0.1f;
@@ -125,7 +158,41 @@ public class CarController : MonoBehaviour
     [SerializeField, Tooltip("Per-second speed decay while drifting and holding S. Lower = softer, preserves ice feel.")]
     private float driftBrakeDecayPerSecond = 0.6f;
 
+    [Header("Close Call Speed Boost (Skill-Based)")]
+    [Tooltip("Base duration of speed boost when close call skill is unlocked.")]
+    [SerializeField] private float closeCallBoostBaseDuration = 0.8f;
 
+    [Tooltip("Force applied during close call boost.")]
+    [SerializeField] private float closeCallBoostForce = 40f;
+
+    [Tooltip("How the boost force is applied.")]
+    [SerializeField] private ForceMode closeCallBoostForceMode = ForceMode.VelocityChange;
+
+    [Tooltip("Maximum speed multiplier during close call boost.")]
+    [SerializeField] private float closeCallBoostMaxSpeedMult = 2f;
+
+    [Header("Close Call Invincibility (Skill-Based)")]
+    [Tooltip("Visual effect color tint during invincibility.")]
+    [SerializeField] private Color closeCallInvincibilityTint = new Color(0.5f, 0.8f, 1f, 0.5f);
+
+    [Header("Close Call Visuals")]
+    [SerializeField] private Color closeCallTintColor = new Color(0.3f, 0.6f, 1f, 1f);
+    [SerializeField] private float closeCallTintStrength = 0.6f; // 0–1
+
+    private Renderer[] _renderers;
+    private MaterialPropertyBlock _mpb;
+
+    // Cache original colors per renderer
+    private Dictionary<Renderer, Color> _originalColors = new Dictionary<Renderer, Color>();
+
+    [Tooltip("Lateral force applied to obstacles when hit during invincibility.")]
+    [SerializeField] private float invincibilityBumpForceAway = 15f;
+
+    [Tooltip("Upward force applied to obstacles when hit during invincibility.")]
+    [SerializeField] private float invincibilityBumpForceUp = 8f;
+
+    [Tooltip("Torque applied to obstacles for spin effect.")]
+    [SerializeField] private float invincibilityBumpTorque = 5f;
 
     [Header("Drift Neutral Behavior")]
     [Tooltip("Require a non-zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
@@ -154,6 +221,19 @@ public class CarController : MonoBehaviour
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
     [Tooltip("Per-second decay while gliding (very small to keep speed).")]
     [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
+
+    [Header("Close-Call Near-Miss (global)")]
+    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
+    private bool enableCloseCallNearMisses = true;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
+    private float closeCallDistance = 3.5f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
+    private float closeCallMinSpeed = 4f;
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
+    private float closeCallCooldown = 1.0f;
+
+    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
+    private float closeCallRootCooldown = 3.0f;
 
     [Header("Ice Surface Transition")]
     [Tooltip("How fast friction lerps to/from ice values (higher = faster transition).")]
@@ -225,6 +305,10 @@ public class CarController : MonoBehaviour
 
     [Tooltip("Minimum fuel gain to show popup.")]
     [SerializeField] private float minFuelGainForPopup = 0.5f;
+
+    [Header("Mash Fuel Popup (Random Screen Spawn)")]
+    [SerializeField] private Vector2 mashFuelPopupHorizontalRange = new Vector2(-1.2f, 1.2f);
+    [SerializeField] private Vector2 mashFuelPopupVerticalRange = new Vector2(-0.6f, 0.6f);
 
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
@@ -512,18 +596,6 @@ public class CarController : MonoBehaviour
     private float _passiveClickTimer;
 
 
-    [Header("Flip Mash Rewards")]
-    [SerializeField, Tooltip("Base fuel recovered per click.")]
-    private float mashBaseFuelPerClick = 0.3f;
-
-    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
-    private float mashFuelSpeedBonusMax = 2f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
-    private float mashMaxSpeedThreshold = 0.1f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
-    private float mashMinSpeedThreshold = 0.5f;
 
     [Header("Mash Progress Gauge")]
     [Tooltip("Enable the progress gauge that drains over time during mashing.")]
@@ -792,7 +864,7 @@ public class CarController : MonoBehaviour
     private float _originalDynamicFriction;
     private float _originalStaticFriction;
 
-    private bool IsCrashInvulnerable => _inCrash || _isReorienting;
+    private bool IsCrashInvulnerable => _isReorienting;
 
     private bool _inCrash;
     private float _crashTimer;
@@ -860,23 +932,16 @@ public class CarController : MonoBehaviour
     private float fuelValue;
 
 
+    private float _skillDrainMultiplier = 1f;
 
-    // ------------------------------------------------------------------------
-    // NEW: global near-miss / close-call detection for ALL obstacles
-    // Triggers the same close-call slowmo/postfx used by thrown projectiles.
-    // ------------------------------------------------------------------------
-    [Header("Close-Call Near-Miss (global)")]
-    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
-    private bool enableCloseCallNearMisses = true;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
-    private float closeCallDistance = 3.5f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
-    private float closeCallMinSpeed = 4f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
-    private float closeCallCooldown = 1.0f;
 
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
-    private float closeCallRootCooldown = 3.0f;
+
+    // Runtime state
+    private bool _closeCallInvincible;
+    private float _closeCallInvincibilityEndTime;
+    private float _closeCallInvincibilityDuration;
+    private bool _closeCallBoosting;
+    private float _closeCallBoostEndTime;
 
     [Header("Crash Sound Effects")]
     [SerializeField] private AudioClip crashClipDefault;
@@ -998,6 +1063,18 @@ public class CarController : MonoBehaviour
             }
         }
 
+        _renderers = GetComponentsInChildren<Renderer>(true);
+        _mpb = new MaterialPropertyBlock();
+
+        _originalColors.Clear();
+        foreach (var r in _renderers)
+        {
+            if (r.sharedMaterial != null && r.sharedMaterial.HasProperty("_Color"))
+            {
+                _originalColors[r] = r.sharedMaterial.color;
+            }
+        }
+
         _currentIceDynamicFriction = 1f;
         _currentIceStaticFriction = 1f;
         _currentIceHandling = 1f;
@@ -1088,7 +1165,7 @@ public class CarController : MonoBehaviour
         if (currentHP <= 0f && !isOutOfHP)
         {
             isOutOfHP = true;
-
+            ForceStopCloseCallEffects();
             // Hard stop boost immediately
             _isBoosting = false;
             _isPostBoost = false;
@@ -1119,6 +1196,19 @@ public class CarController : MonoBehaviour
     {
         float dt = Time.fixedDeltaTime;
 
+        if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
+        {
+            _closeCallInvincible = false;
+            ClearCloseCallTint();
+            ScreenFlashManager.StopInvincibility(); // optional now
+        }
+
+        if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+        {
+            _closeCallBoosting = false;
+        }
+
+
         if (_flipMashActive)
         {
             // If HP hits 0, you're dead: no mash, no flatten.
@@ -1137,6 +1227,18 @@ public class CarController : MonoBehaviour
                 return;
             }
 
+            if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
+            {
+                _closeCallInvincible = false;
+                ScreenFlashManager.StopInvincibility(); // Stop the continuous pulse
+            }
+
+            if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+            {
+                _closeCallBoosting = false;
+            }
+
+
             if (enableMashProgressGauge && _flipMashActive)
             {
                 float severity = _lastCrashSeverity; // 0 to 1
@@ -1145,6 +1247,7 @@ public class CarController : MonoBehaviour
                 float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
                 float crashBonus = _crashCount * gaugeDrainPerCrash;
                 float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
+                finalGaugeDrain *= _skillDrainMultiplier;
                 _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * Time.deltaTime);
 
                 if (mashDrainsHealth)
@@ -1289,25 +1392,23 @@ public class CarController : MonoBehaviour
 
                 if (rb != null)
                 {
-                    if (!WillStartMashRecoveryNow())
-                    {
-                        rb.freezeRotation = true;
-                    }
-                    else
-                    {
-                        // During mash recovery we stay fully physical (no artificial freezing)
-                        rb.freezeRotation = false;
-                    }
-
                     rb.drag = _baseDrag;
                     rb.angularDrag = _baseAngularDrag;
                     rb.angularVelocity = Vector3.zero;
                 }
 
+                _isBoosting = false;
+                _isPostBoost = false;
+                _postBoostTimer = 0f;
+                _activeBoostMaxMult = 1f;
+                _currentBoostMaxSpeed = 0f;
+                _closeCallBoosting = false;
+                _landingExcessSpeed = 0f; 
+
                 if (IsDeadForAutoUpright)
                 {
-                    rb.freezeRotation = true;
                     // your end-run behavior
+                    ForceStopCloseCallEffects();
                     return;
                 }
 
@@ -1332,7 +1433,6 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    rb.freezeRotation = true;
                     rb.angularVelocity = Vector3.zero;
                 }
 
@@ -1430,7 +1530,6 @@ public class CarController : MonoBehaviour
         _isReorienting = true;
         _reorientElapsed = 0f;
 
-        rb.freezeRotation = true;
         rb.angularVelocity = Vector3.zero;
 
         _reorientStartRot = transform.rotation;
@@ -1832,6 +1931,11 @@ public class CarController : MonoBehaviour
         float normalCap = effectiveMaxSpeed;
         float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
+        if (_closeCallBoosting)
+        {
+            maxMult = Mathf.Max(maxMult, closeCallBoostMaxSpeedMult);
+        }
+
         float boostedCap = normalCap * maxMult;
 
         if (_isPostBoost && postBoostSlowdownDuration > 0f)
@@ -1840,7 +1944,7 @@ public class CarController : MonoBehaviour
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
 
-        return _isBoosting ? boostedCap : normalCap;
+        return (_isBoosting || _closeCallBoosting) ? boostedCap : normalCap;
     }
 
     private void ClearBoostOverride()
@@ -1917,6 +2021,8 @@ public class CarController : MonoBehaviour
 
             _boostRequested = false;
             _boostOverrideActive = false;
+
+
 
             _inputsSuppressedThisFrame = true;
             _suppressThrottleBrakeThisFrame = true;
@@ -2144,8 +2250,7 @@ public class CarController : MonoBehaviour
 
         _driftWasActiveLastFrame = isDrifting;
 
-        // NEW: Glide logic (ice feel) – if holding drift with no directional charge but above speed threshold.
-        if (allowDriftGlideWithoutSteer)
+        if (allowDriftGlideWithoutSteer && driftUnlocked)
         {
             bool canGlide = driftButtonHeld && !isDrifting && speed >= driftMinSpeed;
             if (canGlide)
@@ -2286,6 +2391,29 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        if (_isBoosting)
+        {
+            _isBoosting = false;
+            _boostTimer = 0f;
+        }
+
+        // Clear boost override
+        ClearBoostOverride();
+
+        // Clear close-call boost
+        if (_closeCallBoosting)
+        {
+            _closeCallBoosting = false;
+        }
+
+        // Reset post-boost state
+        _isPostBoost = false;
+        _postBoostTimer = 0f;
+
+        // Clear any active boost max speed multiplier
+        _activeBoostMaxMult = 1f;
+        _currentBoostMaxSpeed = 0f;
+
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
         _crashKilledDriftHeldBoost = true;
         // NEW: also prevent drift-held boost from “arming” during crash sequences
@@ -2315,8 +2443,8 @@ public class CarController : MonoBehaviour
 
         float severityContribution = _lastCrashSeverity;
 
-            if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
-            if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
+        if (_wasAirborneDuringCrash) severityContribution *= airborneClickMultiplier;
+        if (flippedAtImpact) severityContribution *= flippedClickMultiplier;
 
         _crashSeveritySum += severityContribution;
 
@@ -3563,7 +3691,32 @@ public class CarController : MonoBehaviour
     mgr.ApplyStatChain(baseClicksPerClick, SkillType.MashClicksPerClick_Add, SkillType.MashClicksPerClick_Mul)
 ));
 
-            if (mgr.IsPassiveMashUnlocked)
+            int extraClickPower = effectiveClicksPerClick - baseClicksPerClick;
+            float clickDrainBonus = extraClickPower * drainScalePerClickPower;
+
+            // How much extra passive strength above base
+            int extraPassiveStrength = effectivePassiveClickStrength - basePassiveClickStrength;
+            float passiveDrainBonus = extraPassiveStrength * drainScalePerPassiveStrength;
+
+            // Also factor in passive click RATE if unlocked (more clicks/sec = more fill = more drain needed)
+            float passiveRateBonus = 0f;
+            if (mgr.IsPassiveMashUnlocked && effectivePassiveClickRate > 0f)
+            {
+                // Every 1.0 clicks/sec above base adds some drain
+                float extraRate = effectivePassiveClickRate - (basePassiveClickRate > 0f ? basePassiveClickRate : 0.5f);
+                passiveRateBonus = Mathf.Max(0f, extraRate) * drainScalePerPassiveStrength;
+            }
+
+            // Combine all bonuses
+            _skillDrainMultiplier = 1f + clickDrainBonus + passiveDrainBonus + passiveRateBonus;
+
+            // Clamp to reasonable range
+            _skillDrainMultiplier = Mathf.Clamp(_skillDrainMultiplier, minSkillDrainMultiplier, maxSkillDrainMultiplier);
+
+            Debug.Log($"[MashGauge] Skill drain multiplier: {_skillDrainMultiplier:F2} " +
+                      $"(clickPower: +{extraClickPower}, passiveStr: +{extraPassiveStrength}, passiveRate: {effectivePassiveClickRate:F1})");
+
+        if (mgr.IsPassiveMashUnlocked)
             {
                 // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
                 // Then rate skills modify it further
@@ -3858,7 +4011,7 @@ public class CarController : MonoBehaviour
         if (!enablePopupText) return;
         if (!RacingPopups.IsReady) return;
 
-        RacingPopups.MashFuelRandom(value);
+        RacingPopups.SpawnRandomScreen(type, value, mashFuelPopupHorizontalRange, mashFuelPopupVerticalRange);
     }
 
     private float CalculateMashSpeedRating(float timeBetweenClicks)
@@ -3942,6 +4095,82 @@ public class CarController : MonoBehaviour
     
     */
 
+    public bool IsCloseCallInvincible => _closeCallInvincible && Time.time < _closeCallInvincibilityEndTime;
+
+    /// <summary>
+    /// The total duration of the current/last invincibility window.
+    /// </summary>
+    public float CloseCallInvincibilityDuration => _closeCallInvincibilityDuration;
+
+    /// <summary>
+    /// Time remaining on close call invincibility (0 if not active).
+    /// </summary>
+    public float CloseCallInvincibilityRemaining => IsCloseCallInvincible
+        ? Mathf.Max(0f, _closeCallInvincibilityEndTime - Time.time)
+        : 0f;
+
+    /// <summary>
+    /// Apply close call rewards (called by GameManager when close call occurs).
+    /// </summary>
+    public void OnCloseCall(Vector3 obstaclePosition, float distance)
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        // === SPEED BOOST ===
+        if (mgr.IsCloseCallSpeedBoostUnlocked)
+        {
+            float duration = mgr.GetCloseCallSpeedBoostDuration(closeCallBoostBaseDuration);
+            if (duration > 0f)
+            {
+                ApplyCloseCallSpeedBoost(duration);
+            }
+        }
+
+        // === INVINCIBILITY ===
+        float invincDuration = mgr.GetCloseCallInvincibilityDuration();
+        if (invincDuration > 0f)
+        {
+            ApplyCloseCallInvincibility(invincDuration);
+        }
+    }
+
+    /// <summary>
+    /// Apply a short speed boost from close call.
+    /// </summary>
+    private void ApplyCloseCallSpeedBoost(float duration)
+    {
+        _closeCallBoosting = true;
+        _closeCallBoostEndTime = Time.time + duration;
+
+        // Force is applied continuously in FixedUpdate while _closeCallBoosting is true
+        // This creates a smooth, sustained push feel with raised speed cap
+        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x");
+    }
+
+    /// <summary>
+    /// Apply invincibility from close call.
+    /// </summary>
+    private void ApplyCloseCallInvincibility(float duration)
+    {
+        _closeCallInvincible = true;
+        ApplyCloseCallTint();
+        _closeCallInvincibilityDuration = duration;
+        _closeCallInvincibilityEndTime = Time.time + duration;
+
+        // Start continuous screen flash for invincibility duration
+        ScreenFlashManager.Invincibility(duration);
+
+        // Show "INVINCIBLE!" popup at car position
+        if (RacingPopups.IsReady)
+        {
+            Vector3 popupPos = transform.position + Vector3.up * 2.5f;
+            RacingPopups.Invincible(popupPos);
+        }
+
+        Debug.Log($"[CloseCall] Invincibility applied for {duration:F2}s");
+    }
+
     private void EndFlipMashRecoveryAndUpright()
     {
         if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
@@ -3977,6 +4206,35 @@ public class CarController : MonoBehaviour
                 rb.position += Vector3.up * flipUprightLift;
         }
         _isFlippedDuringRecovery = false;
+    }
+
+    private void ApplyCloseCallTint()
+    {
+        foreach (var r in _renderers)
+        {
+            if (!_originalColors.TryGetValue(r, out var baseColor))
+                continue;
+
+            r.GetPropertyBlock(_mpb);
+
+            Color tinted = Color.Lerp(baseColor, closeCallTintColor, closeCallTintStrength);
+            _mpb.SetColor("_EmissionColor", closeCallTintColor * 2.5f);
+
+            r.SetPropertyBlock(_mpb);
+        }
+    }
+
+    private void ClearCloseCallTint()
+    {
+        foreach (var r in _renderers)
+        {
+            if (!_originalColors.TryGetValue(r, out var baseColor))
+                continue;
+
+            r.GetPropertyBlock(_mpb);
+            _mpb.SetColor("_EmissionColor", closeCallTintColor * 2.5f);
+            r.SetPropertyBlock(_mpb);
+        }
     }
 
 
@@ -4036,8 +4294,8 @@ public class CarController : MonoBehaviour
 
     private void UpdateMashGauge(float speedRating)
     {
-        // Calculate fill amount with speed bonus
-        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating);
+        // Calculate fill amount with speed bonus AND clicks-per-click multiplier
+        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating) * effectiveClicksPerClick;
 
         // Add to gauge
         _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
@@ -4053,10 +4311,75 @@ public class CarController : MonoBehaviour
 
             // Visual/audio feedback for reaching max tier
             ScreenFlashManager.Instance?.Flash(Color.cyan, 1.5f, 0.3f, 0.3f);
-
-            // Future skill hook: maxGaugeRefillsFuel
-            // if (maxGaugeRefillsFuel) { ... }
         }
+    }
+
+    /// <summary>
+    /// Bump an obstacle up and away when hit during close call invincibility.
+    /// </summary>
+    private void BumpObstacleAway(Collision collision)
+    {
+        // Try to get rigidbody on the obstacle
+        Rigidbody obstacleRb = collision.collider.attachedRigidbody;
+        if (obstacleRb == null)
+        {
+            // No rigidbody - try to get one from parent
+            obstacleRb = collision.collider.GetComponentInParent<Rigidbody>();
+        }
+
+        if (obstacleRb == null || obstacleRb.isKinematic)
+        {
+            // Can't bump static/kinematic objects, just ignore
+            return;
+        }
+
+        // Calculate bump direction based on collision
+        Vector3 bumpDir;
+        Vector3 contactPoint = transform.position;
+
+        if (collision.contactCount > 0)
+        {
+            var contact = collision.GetContact(0);
+            contactPoint = contact.point;
+            // Direction FROM car TO obstacle (push it away)
+            bumpDir = (collision.transform.position - transform.position).normalized;
+        }
+        else
+        {
+            // Fallback: push in direction from car to obstacle
+            bumpDir = (collision.transform.position - transform.position).normalized;
+        }
+
+        // Ensure lateral direction (zero out Y, then re-normalize)
+        Vector3 lateralDir = new Vector3(bumpDir.x, 0f, bumpDir.z);
+        if (lateralDir.sqrMagnitude > 0.001f)
+        {
+            lateralDir.Normalize();
+        }
+        else
+        {
+            // Fallback to car's forward if no clear lateral direction
+            lateralDir = transform.forward;
+        }
+
+        // Calculate forces
+        Vector3 awayForce = lateralDir * invincibilityBumpForceAway;
+        Vector3 upForce = Vector3.up * invincibilityBumpForceUp;
+        Vector3 totalForce = awayForce + upForce;
+
+        // Apply impulse to obstacle
+        obstacleRb.AddForce(totalForce, ForceMode.VelocityChange);
+
+        // Add some spin for visual flair
+        if (invincibilityBumpTorque > 0f)
+        {
+            Vector3 torqueAxis = Vector3.Cross(Vector3.up, lateralDir); // Perpendicular to push direction
+            obstacleRb.AddTorque(torqueAxis * invincibilityBumpTorque, ForceMode.VelocityChange);
+        }
+
+        // Optional: Play a sound or VFX
+        // PlayBumpSound(contactPoint);
+        // SpawnBumpVFX(contactPoint);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -4068,32 +4391,83 @@ public class CarController : MonoBehaviour
         if (IsCrashInvulnerable)
             return;
 
-        // --- NEW: skip crash logic if obstacle has active forcefield immunity ---
-        var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
-        if (immunity != null && immunity.IsImmune) return;
+        if (_isReorienting)
+            return;
+
+        // === NEW: FORCEFIELD PROTECTION CHECK ===
+        // If the forcefield is armed and this collider is on obstacle layers,
+        // the forcefield should handle it - don't process as crash
+        if (_forcefield != null && _forcefield.IsArmed)
+        {
+            if (((1 << collision.gameObject.layer) & crashLayers) != 0)
+            {
+                // Let forcefield handle this - it will intercept via its trigger
+                // This prevents the collision from also triggering crash logic
+                Debug.Log($"[CarController] Collision ignored - forcefield is armed and will handle {collision.gameObject.name}");
+                return;
+            }
+        }
+
+        // === NEW: PER-COLLIDER CRASH COOLDOWN ===
+        int colliderId = collision.collider.GetInstanceID();
+        if (_perColliderCrashTime.TryGetValue(colliderId, out float lastCrashTime))
+        {
+            if (Time.time - lastCrashTime < perColliderCrashCooldown)
+            {
+                Debug.Log($"[CarController] Collision ignored - same collider cooldown ({collision.collider.name})");
+                return;
+            }
+        }
+
+        bool duringMashRecovery = _flipMashActive;
+        bool duringCrashState = _inCrash;
+
+        float impactSpeed = collision.relativeVelocity.magnitude;
+
+        if (impactSpeed < minImpactSpeed)
+            return;
 
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
             return;
 
-        float impactSpeed = collision.relativeVelocity.magnitude;
+        if (IsCloseCallInvincible)
+        {
+            // Bump the obstacle away
+            BumpObstacleAway(collision);
+            ScreenFlashManager.InvincibilityImpact();
+            var camController = Camera.main?.GetComponent<CameraFollow>();
+            camController?.StartShake(0.15f, 0.15f, 3, 0.15f);
 
+            if (RacingPopups.IsReady)
+            {
+                Vector3 impactPos = collision.contactCount > 0
+                    ? collision.GetContact(0).point + Vector3.up * 1.5f
+                    : transform.position + Vector3.up * 2f;
+                RacingPopups.Crash(impactPos);
+            }
 
-
-        if (impactSpeed < minImpactSpeed)
+            Debug.Log("[CloseCall] Invincibility blocked crash - bumped obstacle away!");
             return;
+        }
+
+        // --- skip crash logic if obstacle has active forcefield immunity ---
+        var immunity = collision.collider.GetComponentInParent<LaunchImmunityMarker>();
+        if (immunity != null && immunity.IsImmune) return;
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
 
         Debug.Log($"Impact Speed: {impactSpeed}");
 
-        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime; // NEW
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
 
+        // If we're in mash recovery and damage window is open, add debt instead of restarting
+        bool wasMashing = _flipMashActive;
 
         ScreenFlashManager.Damage();
 
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
-            gm.OnCarCrash(impactSpeed, severity); // skip currency penalties if still in cooldown
+            gm.OnCarCrash(impactSpeed, severity);
 
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
@@ -4115,15 +4489,12 @@ public class CarController : MonoBehaviour
             hitDir = (transform.position - collision.transform.position).normalized;
         }
 
-        // NOW shuttle calc (uses correct normal)
         var shuttle = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
         if (shuttle != null && rb != null)
         {
             Vector3 rel = rb.velocity - shuttle.GetWorldVelocity();
             impactSpeed = Mathf.Abs(Vector3.Dot(rel, contactNormal));
         }
-
-
 
         var otherCol = collision.collider;
         var cross = otherCol.GetComponentInParent<CrossTrackObstacle>();
@@ -4136,18 +4507,77 @@ public class CarController : MonoBehaviour
             PlayCrashSfx(crashClipDefault, contactPoint, crashSfxVolume);
         }
 
+        // === Track per-root AND per-collider ===
         int rootId = collision.collider.transform.root.GetInstanceID();
         _recentCrashRootTime[rootId] = Time.time;
+        _perColliderCrashTime[colliderId] = Time.time;  // NEW: per-collider tracking
         _closeCallTracking.Remove(rootId);
 
-
-        // Spawn crash/explode VFX at the contact point (only when damage window open)
         if (damageWindowOpen)
         {
             SpawnCrashImpactVFX(contactPoint, contactNormal);
         }
 
+        // If we were mashing, add debt and apply damage but DON'T restart crash state
+        if (wasMashing && damageWindowOpen)
+        {
+            // Store new severity for drain calculations
+            _lastCrashSeverity = Mathf.Max(_lastCrashSeverity, severity);
+            _crashCount++;
+            _crashSeveritySum += severity;
+
+            // Apply damage directly
+            if (hpCrashDamageAtSeverity1 > 0f)
+            {
+                float hpLoss = Mathf.Max(minHpLossPerCrash, hpCrashDamageAtSeverity1 * severity);
+                hpLoss = Mathf.Min(hpLoss, currentHP);
+                currentHP = Mathf.Max(0f, currentHP - hpLoss);
+
+                if (hpLoss >= minHPDamageForPopup)
+                    TrySpawnPopup(RacingPopupType.HPDamage, hpLoss);
+            }
+
+            if (fuelLossAtSeverity1 > 0f)
+            {
+                float fuelLoss = Mathf.Max(minFuelLossPerCrash, fuelLossAtSeverity1 * severity);
+                float before = currentFuel;
+                ConsumeFuel(fuelLoss);
+                float actual = before - currentFuel;
+
+                if (actual >= minFuelLossForPopup)
+                    TrySpawnPopup(RacingPopupType.FuelLoss, actual);
+            }
+
+            // Add mash debt
+            AddMashDebtFromNewCrash(NeedsFlipRecovery());
+
+            // Show crash popup
+            if (RacingPopups.IsReady)
+                RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
+
+            // Reset cooldown
+            _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+
+            // Apply some knockback without full crash state
+            if (rb != null)
+            {
+                Vector3 knockDir = hitDir;
+                knockDir.y += 0.2f;
+                knockDir.Normalize();
+                rb.AddForce(knockDir * impulseMag * 0.5f, ForceMode.VelocityChange);
+            }
+
+            return; // Don't trigger full crash state
+        }
+
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
+    }
+
+    private void ForceStopCloseCallEffects()
+    {
+        _closeCallBoosting = false;
+        _closeCallInvincible = false;
+        ScreenFlashManager.StopInvincibility();
     }
 
     /// <summary>
@@ -4188,7 +4618,8 @@ public class CarController : MonoBehaviour
             if (!_flipMashActive) return 0f;
             float baseDrain = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, _lastCrashSeverity);
             float crashBonus = _crashCount * gaugeDrainPerCrash;
-            return Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+            float drain = Mathf.Min(baseDrain + crashBonus, gaugeDrainCap);
+            return drain * _skillDrainMultiplier;  // Include skill scaling
         }
     }
 
@@ -4325,6 +4756,8 @@ public class CarController : MonoBehaviour
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
             return;
 
+
+
         // (rest of existing crash logic unchanged)
         float impactSpeed = 0f;
         Rigidbody otherRb = other.attachedRigidbody;
@@ -4335,6 +4768,27 @@ public class CarController : MonoBehaviour
 
         if (impactSpeed < minImpactSpeed)
             return;
+
+        if (_forcefield != null && _forcefield.IsArmed)
+        {
+            if (((1 << other.gameObject.layer) & crashLayers) != 0)
+            {
+                Debug.Log($"[CarController] Trigger ignored - forcefield is armed and will handle {other.name}");
+                return;
+            }
+        }
+
+        // === NEW: PER-COLLIDER CRASH COOLDOWN ===
+        int colliderId = other.GetInstanceID();
+        if (_perColliderCrashTime.TryGetValue(colliderId, out float lastCrashTime))
+        {
+            if (Time.time - lastCrashTime < perColliderCrashCooldown)
+            {
+                Debug.Log($"[CarController] Trigger ignored - same collider cooldown ({other.name})");
+                return;
+            }
+        }
+
 
         float severity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactSpeed);
         bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
@@ -4361,6 +4815,7 @@ public class CarController : MonoBehaviour
 
         int rootId = other.transform.root.GetInstanceID();
         _recentCrashRootTime[rootId] = Time.time;
+        _perColliderCrashTime[colliderId] = Time.time;
         _closeCallTracking.Remove(rootId);
 
         // Spawn crash/explode VFX at the contact point (only when damage window open)
@@ -4407,7 +4862,6 @@ public class CarController : MonoBehaviour
             {
                 rb.angularVelocity = Vector3.zero;
                 rb.rotation = transform.rotation;
-                rb.freezeRotation = true;
                 rb.drag = _baseDrag;
                 rb.angularDrag = _baseAngularDrag;
             }

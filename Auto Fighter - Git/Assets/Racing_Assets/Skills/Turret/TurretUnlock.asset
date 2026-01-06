@@ -24,16 +24,17 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  flatCost: 25
+  flatCost: 0
   mode: 0
   baseValue: 1
   perLevelAdd: 0.05
   uiPosition: {x: -150, y: 150}
   revealedAtStart: 0
+  revealOnFirstSprocket: 0
+  usesSprockets: 1
+  baseSprocketCost: 20
+  sprocketCostPerLevel: 0
   progressiveUnlocks:
   - requiredLevel: 1
     unlocks:
-    - {fileID: 11400000, guid: 19a51983ececf2145abca4a3360a6456, type: 2}
-    - {fileID: 11400000, guid: 7f1947f49e16492438735f3571dfe260, type: 2}
-    - {fileID: 11400000, guid: e413e74ecb5b72a4d96aeca7792af177, type: 2}
     - {fileID: 11400000, guid: 0c11f3a9689c46d4da1f5d94a9fe6e45, type: 2}

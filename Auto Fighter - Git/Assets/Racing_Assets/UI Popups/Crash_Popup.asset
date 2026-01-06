@@ -21,23 +21,34 @@ MonoBehaviour:
   prefix: 
   suffix: 
   numberFormat: 0
+  useRandomText: 1
+  randomTexts:
+  - BAM!!
+  - WAPOW!
+  - OOF..
+  - OUCH!!!
+  - YIKES!!
   enableOutline: 1
   outlineWidth: 0.25
   outlineColor: {r: 14.259473, g: 0.3763907, b: 0, a: 1}
-  outlineIntensity: 6.51
+  outlineIntensity: 1.5
   faceDilate: 0.05
-  horizontalOffset: 0.5
-  verticalOffset: 0.1
-  horizontalDrift: -0.1
+  horizontalOffset: 0
+  verticalOffset: 0
+  horizontalDrift: 1.25
+  verticalDrift: 0.85
   fixedRotationZ: 0
-  duration: 0.85
+  useRandomRotation: 1
+  randomRotationMin: -40
+  randomRotationMax: 40
+  duration: 1.21
   fadeInFraction: 0.064
   fadeOutFraction: 0.1
   useUnscaledTime: 1
-  riseDistance: 1.5
+  riseDistance: 0
   riseEase: 9
   popFromScale: 0.2
-  popToScale: 0.5
+  popToScale: 1.42
   endScale: 0
   popDelay: 0.06
   popDurationFraction: 0.4
@@ -49,7 +60,7 @@ MonoBehaviour:
   minValueForScale: 1
   maxValueForScale: 100
   minScaleMultiplier: 0.75
-  maxScaleMultiplier: 1
+  maxScaleMultiplier: 1.38
   useLogScale: 0
   sortingLayerName: UI
   sortingOrder: 1000

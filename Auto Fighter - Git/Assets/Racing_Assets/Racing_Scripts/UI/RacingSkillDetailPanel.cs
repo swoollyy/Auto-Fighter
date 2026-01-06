@@ -238,14 +238,88 @@ public class RacingSkillDetailPanel : MonoBehaviour
         float nextStat = isMaxed ? currentStat : GetStatValueAtLevel(def.type, nextLevel);
         float upgradeAmount = nextStat - currentStat;
 
+        // Determine format based on skill type
+        string format = GetFormatForSkillType(type);
+        string suffix = GetSuffixForSkillType(type);
+
         // Format output
         if (isMaxed)
         {
-            return $"{currentStat:0.##} (MAX)";
+            return $"{currentStat.ToString(format)}{suffix} (MAX)";
         }
 
         string sign = upgradeAmount >= 0 ? "+" : "";
-        return $"{currentStat:0.##} {sign}{upgradeAmount:0.##} -> {nextStat:0.##}";
+        return $"{currentStat.ToString(format)}{suffix} {sign}{upgradeAmount.ToString(format)} -> {nextStat.ToString(format)}{suffix}";
+    }
+
+    private string GetFormatForSkillType(SkillType type)
+    {
+        switch (type)
+        {
+            // Percentage/chance types - show with 1 decimal
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return "0.#";
+
+            // Multiplier types - show with 2 decimals
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+            case SkillType.Acceleration:
+            case SkillType.Acceleration_Add:
+            case SkillType.Acceleration_Mul:
+            case SkillType.MaxSpeed:
+            case SkillType.MaxSpeed_Add:
+            case SkillType.MaxSpeed_Mul:
+                return "0.##";
+
+            // Integer-like values
+            case SkillType.MaxHP_Add:
+            case SkillType.MaxHP_Mul:
+            case SkillType.MaxFuel_Add:
+            case SkillType.MaxFuel_Mul:
+            case SkillType.MashClicksPerClick_Add:
+            case SkillType.MashClicksPerClick_Mul:
+            case SkillType.MashPassiveClickStrength_Add:
+            case SkillType.MashPassiveClickStrength_Mul:
+                return "0";
+
+            // Default
+            default:
+                return "0.##";
+        }
+    }
+
+    private string GetSuffixForSkillType(SkillType type)
+    {
+        switch (type)
+        {
+            // Percentage types
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                return "%";
+
+            // Multiplier types
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                return "x";
+
+            // Time-based
+            case SkillType.BoostDuration_Add:
+            case SkillType.BoostDuration_Mul:
+            case SkillType.BoostCooldown_Add:
+            case SkillType.BoostCooldown_Mul:
+                return "s";
+
+            // Rate (per second)
+            case SkillType.MashPassiveClickRate_Add:
+            case SkillType.MashPassiveClickRate_Mul:
+            case SkillType.HPRegen_Add:
+            case SkillType.HPRegen_Mul:
+                return "/s";
+
+            default:
+                return "";
+        }
     }
 
     /// <summary>
@@ -338,14 +412,17 @@ public class RacingSkillDetailPanel : MonoBehaviour
                 float baseMashFuel = car != null ? car.BaseMashFuelPerClick : 0.3f;
                 return mgr.ApplyStatChain(baseMashFuel, SkillType.MashFuelPerClick_Add, SkillType.MashFuelPerClick_Mul);
 
-            // === PERCENTAGE/CHANCE STATS ===
             case SkillType.CoinSpawnRate_Add:
             case SkillType.CoinSpawnRate_Mul:
-                return mgr.GetCoinSpawnRateMultiplier() * 100f; // Show as percentage
+                // Base is 1.0 (100%), skill modifies it
+                // Show as multiplier (e.g., 1.0 -> 1.15 -> 1.3)
+                return mgr.ApplyStatChain(1f, SkillType.CoinSpawnRate_Add, SkillType.CoinSpawnRate_Mul);
 
             case SkillType.CoinDoubleChance_Add:
             case SkillType.CoinDoubleChance_Mul:
-                return mgr.GetCoinDoubleChance() * 100f; // Show as percentage
+                // Base is 0% chance, skill adds/multiplies
+                // Show as percentage (e.g., 0 -> 5 -> 10)
+                return mgr.ApplyStatChain(0f, SkillType.CoinDoubleChance_Add, SkillType.CoinDoubleChance_Mul) * 100f;
 
             // === UNLOCK SKILLS (just show level) ===
             case SkillType.BoostUnlock:
@@ -362,35 +439,49 @@ public class RacingSkillDetailPanel : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Gets what the stat value WOULD be at a specific skill level.
-    /// </summary>
     private float GetStatValueAtLevel(SkillType type, int level)
     {
-        // Temporarily calculate what the stat would be at the given level
         float currentSkillValue = def.GetValueAtLevel(mgr.GetLevel(def.type));
         float nextSkillValue = def.GetValueAtLevel(level);
         float skillDelta = nextSkillValue - currentSkillValue;
 
-        // Get current stat and add the delta
         float currentStat = GetCurrentStatValue(type);
 
-        // For multiplicative skills, we need to calculate differently
+        // Special handling for percentage-based skills
+        switch (type)
+        {
+            case SkillType.CoinSpawnRate_Add:
+            case SkillType.CoinSpawnRate_Mul:
+                // These start at base 1.0 and modify
+                if (def.mode == SkillApplicationMode.Multiplicative)
+                {
+                    if (currentSkillValue > 0.001f)
+                        return currentStat * (nextSkillValue / currentSkillValue);
+                    return currentStat + skillDelta;
+                }
+                return currentStat + skillDelta;
+
+            case SkillType.CoinDoubleChance_Add:
+            case SkillType.CoinDoubleChance_Mul:
+                // These are shown as percentages (0-100)
+                // Add the skill delta * 100 for additive
+                if (def.mode == SkillApplicationMode.Additive)
+                    return currentStat + (skillDelta * 100f);
+                // Multiplicative
+                if (currentSkillValue > 0.001f)
+                    return currentStat * (nextSkillValue / currentSkillValue);
+                return currentStat + (skillDelta * 100f);
+        }
+
+        // Standard handling for other skills
         if (def.mode == SkillApplicationMode.Multiplicative)
         {
-            // Current stat already has current multiplier applied
-            // We need to apply the ratio of new/old multiplier
             if (currentSkillValue > 0.001f)
-            {
                 return currentStat * (nextSkillValue / currentSkillValue);
-            }
             return currentStat + skillDelta;
         }
-        else
-        {
-            // Additive: just add the delta
-            return currentStat + skillDelta;
-        }
+
+        return currentStat + skillDelta;
     }
 
     public class BackdropClickCatcher : MonoBehaviour, IPointerClickHandler

@@ -14,25 +14,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 41
   displayName: Coin Spawn Rate
-  description: Increases spawn rate of coins by .1
+  description: Increases spawn rate of coins by .5
   maxLevel: 10
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 1
-      value: 10
-      inSlope: 6.25
-      outSlope: 6.25
+      time: 0
+      value: 0
+      inSlope: 6
+      outSlope: 6
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 9
+      time: 10
       value: 60
-      inSlope: 6.25
-      outSlope: 6.25
+      inSlope: 6
+      outSlope: 6
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -43,10 +43,14 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
+  perLevelAdd: 0.5
   uiPosition: {x: 0, y: 225}
   revealedAtStart: 0
+  revealOnFirstSprocket: 0
+  usesSprockets: 0
+  baseSprocketCost: 5
+  sprocketCostPerLevel: 3
   progressiveUnlocks:
-  - requiredLevel: 1
+  - requiredLevel: 3
     unlocks:
     - {fileID: 11400000, guid: 2eca3a7d7e6e7ff47b418ed49010e4a1, type: 2}
