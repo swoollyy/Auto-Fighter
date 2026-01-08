@@ -839,6 +839,102 @@ public class CarController : MonoBehaviour
     private bool _activeBoostIsDrift;           // NEW: tracks current boost type
     private float _activeBoostMaxMult = 1f;     // NEW: max speed multiplier during current boost
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CENTRALIZED SPEED BOOST SYSTEM
+    // All temporary max speed increases are managed here with natural ramp-down
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Represents a single active speed boost with natural ramp-down behavior.
+    /// </summary>
+    [Serializable]
+    public struct SpeedBoostEntry
+    {
+        public string id;                    // Unique identifier for this boost type
+        public float maxSpeedIncrease;       // Peak max speed increase (absolute, in m/s) OR multiplier if isMultiplier=true
+        public float totalDuration;          // Original total duration
+        public float remainingTime;          // Time remaining on this boost
+        public float rampDownStartFraction;  // When to start ramping down (0-1, e.g., 0.3 = last 30%)
+        public bool isMultiplier;            // If true, maxSpeedIncrease is a multiplier; if false, it's additive
+
+        /// <summary>
+        /// Returns the current effective speed increase (additive), accounting for ramp-down.
+        /// For multiplier boosts, pass baseMaxSpeed to calculate the additive equivalent.
+        /// </summary>
+        public float GetCurrentSpeedIncrease(float baseMaxSpeed)
+        {
+            if (remainingTime <= 0f || totalDuration <= 0f) return 0f;
+
+            float normalizedTime = remainingTime / totalDuration;
+            float peakValue = isMultiplier ? (baseMaxSpeed * (maxSpeedIncrease - 1f)) : maxSpeedIncrease;
+
+            // Before ramp-down phase: full value
+            if (normalizedTime > rampDownStartFraction)
+            {
+                return peakValue;
+            }
+
+            // During ramp-down: smoothly interpolate to zero
+            float rampProgress = normalizedTime / Mathf.Max(0.001f, rampDownStartFraction);
+            // Use smooth step for more natural feel
+            float smoothT = rampProgress * rampProgress * (3f - 2f * rampProgress);
+            return peakValue * smoothT;
+        }
+
+        /// <summary>
+        /// Returns the current multiplier if this is a multiplier-based boost, otherwise 1.
+        /// </summary>
+        public float GetCurrentMultiplier()
+        {
+            if (!isMultiplier || remainingTime <= 0f || totalDuration <= 0f) return 1f;
+
+            float normalizedTime = remainingTime / totalDuration;
+
+            // Before ramp-down phase: full multiplier
+            if (normalizedTime > rampDownStartFraction)
+            {
+                return maxSpeedIncrease;
+            }
+
+            // During ramp-down: smoothly interpolate from maxSpeedIncrease to 1
+            float rampProgress = normalizedTime / Mathf.Max(0.001f, rampDownStartFraction);
+            float smoothT = rampProgress * rampProgress * (3f - 2f * rampProgress);
+            return Mathf.Lerp(1f, maxSpeedIncrease, smoothT);
+        }
+
+        /// <summary>
+        /// Returns the fraction of boost remaining (0-1).
+        /// </summary>
+        public float GetRemainingFraction()
+        {
+            if (totalDuration <= 0f) return 0f;
+            return Mathf.Clamp01(remainingTime / totalDuration);
+        }
+    }
+
+    // Active speed boosts list
+    private List<SpeedBoostEntry> _activeSpeedBoosts = new List<SpeedBoostEntry>();
+
+    [Header("Speed Boost Ramp-Down Settings")]
+    [SerializeField, Tooltip("Default fraction of boost duration where ramp-down begins (0.3 = last 30%).")]
+    private float defaultBoostRampDownFraction = 0.35f;
+
+    [SerializeField, Tooltip("Ramp-down fraction specifically for close call boosts.")]
+    private float closeCallBoostRampDownFraction = 0.5f;
+
+    [SerializeField, Tooltip("Ramp-down fraction for regular/drift boosts.")]
+    private float regularBoostRampDownFraction = 0.25f;
+
+    // Speed boost IDs for easy reference
+    private const string BOOST_ID_REGULAR = "regular_boost";
+    private const string BOOST_ID_DRIFT = "drift_boost";
+    private const string BOOST_ID_CLOSE_CALL = "close_call_boost";
+    private const string BOOST_ID_SURFACE = "surface_boost";
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END CENTRALIZED SPEED BOOST SYSTEM FIELDS
+    // ═══════════════════════════════════════════════════════════════════════════
+
     private Quaternion _initialRotation;
     private bool _isReorienting;
     private float _reorientElapsed;
@@ -1203,7 +1299,8 @@ public class CarController : MonoBehaviour
             ScreenFlashManager.StopInvincibility(); // optional now
         }
 
-        if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+        // Sync legacy _closeCallBoosting flag with centralized system
+        if (_closeCallBoosting && !HasSpeedBoost(BOOST_ID_CLOSE_CALL))
         {
             _closeCallBoosting = false;
         }
@@ -1233,7 +1330,8 @@ public class CarController : MonoBehaviour
                 ScreenFlashManager.StopInvincibility(); // Stop the continuous pulse
             }
 
-            if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+            // Sync legacy _closeCallBoosting flag with centralized system
+            if (_closeCallBoosting && !HasSpeedBoost(BOOST_ID_CLOSE_CALL))
             {
                 _closeCallBoosting = false;
             }
@@ -1401,9 +1499,15 @@ public class CarController : MonoBehaviour
                 _isPostBoost = false;
                 _postBoostTimer = 0f;
                 _activeBoostMaxMult = 1f;
+
+                // Clear centralized speed boosts
+                ClearAllSpeedBoosts();
+
+                // Also clear legacy close call boost flag
+                _closeCallBoosting = false;
                 _currentBoostMaxSpeed = 0f;
                 _closeCallBoosting = false;
-                _landingExcessSpeed = 0f; 
+                _landingExcessSpeed = 0f;
 
                 if (IsDeadForAutoUpright)
                 {
@@ -1470,6 +1574,10 @@ public class CarController : MonoBehaviour
         UpdateSteeringInputFixed();
         HandleSteering();
         HandleMovement();                 // coasting + existing decel logic still works
+
+        // Update centralized speed boost system (handles ramp-down for all boosts)
+        UpdateSpeedBoosts(Time.fixedDeltaTime);
+
         if (!outOfFuel) HandleBoost();    // block boost when fuel is 0
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
@@ -1804,6 +1912,12 @@ public class CarController : MonoBehaviour
                 // Clear active type
                 _activeBoostIsDrift = false;
                 _activeBoostMaxMult = 1f;
+
+                // Clear centralized speed boosts
+                ClearAllSpeedBoosts();
+
+                // Also clear legacy close call boost flag
+                _closeCallBoosting = false;
             }
         }
         else if (_isPostBoost)
@@ -1878,6 +1992,17 @@ public class CarController : MonoBehaviour
                 ? Mathf.Max(1f, _boostOverrideMaxMult)
                 : Mathf.Max(1f, boostMaxSpeedMultiplier);
 
+            // Add to centralized speed boost system for natural ramp-down
+            float boostDur = isOverride ? _boostOverrideDuration : boostDuration;
+            string boostId = isDriftBoost ? BOOST_ID_DRIFT : BOOST_ID_REGULAR;
+            AddSpeedBoost(
+                boostId,
+                _activeBoostMaxMult,
+                boostDur,
+                regularBoostRampDownFraction,
+                isMultiplier: true
+            );
+
             try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
 
             // Per-type cooldown
@@ -1929,22 +2054,37 @@ public class CarController : MonoBehaviour
     private float GetCurrentSpeedCap_NoLandingCarry()
     {
         float normalCap = effectiveMaxSpeed;
-        float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
-        if (_closeCallBoosting)
+        // ═══════════════════════════════════════════════════════════════════════
+        // CENTRALIZED SPEED BOOST SYSTEM - SPEED CAP CALCULATION
+        // All speed boosts with natural ramp-down are calculated here
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Get total boost from centralized system (handles ramp-down automatically)
+        float centralizedBoostIncrease = GetTotalSpeedBoostIncrease();
+
+        // Legacy boost handling (for backwards compatibility during transition)
+        // These will be migrated to the centralized system over time
+        float legacyMult = 1f;
+
+        // Regular/Drift boost - now handled by centralized system but keep legacy path for post-boost
+        if (_isBoosting && !HasSpeedBoost(BOOST_ID_REGULAR) && !HasSpeedBoost(BOOST_ID_DRIFT))
         {
-            maxMult = Mathf.Max(maxMult, closeCallBoostMaxSpeedMult);
+            // Legacy path: boost is active but not yet migrated
+            legacyMult = Mathf.Max(legacyMult, _activeBoostMaxMult);
         }
 
-        float boostedCap = normalCap * maxMult;
+        float boostedCap = normalCap * legacyMult + centralizedBoostIncrease;
 
-        if (_isPostBoost && postBoostSlowdownDuration > 0f)
+        // Handle post-boost ramp-down for legacy boosts (non-centralized)
+        if (_isPostBoost && postBoostSlowdownDuration > 0f && !HasAnySpeedBoost)
         {
             float t = 1f - Mathf.Clamp01(_postBoostTimer / postBoostSlowdownDuration);
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
 
-        return (_isBoosting || _closeCallBoosting) ? boostedCap : normalCap;
+        bool hasAnyBoost = _isBoosting || HasAnySpeedBoost;
+        return hasAnyBoost ? boostedCap : normalCap;
     }
 
     private void ClearBoostOverride()
@@ -2412,6 +2552,12 @@ public class CarController : MonoBehaviour
 
         // Clear any active boost max speed multiplier
         _activeBoostMaxMult = 1f;
+
+        // Clear centralized speed boosts
+        ClearAllSpeedBoosts();
+
+        // Also clear legacy close call boost flag
+        _closeCallBoosting = false;
         _currentBoostMaxSpeed = 0f;
 
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
@@ -3593,6 +3739,12 @@ public class CarController : MonoBehaviour
         _activeBoostIsDrift = false;
         _activeBoostMaxMult = 1f;
 
+        // Clear centralized speed boosts
+        ClearAllSpeedBoosts();
+
+        // Also clear legacy close call boost flag
+        _closeCallBoosting = false;
+
         // Optional: wipe cooldown timers so you don't “come out of crash already cooling down”
         _boostCooldownTimer = 0f;
         _driftBoostCooldownTimer = 0f;
@@ -3716,7 +3868,7 @@ public class CarController : MonoBehaviour
             Debug.Log($"[MashGauge] Skill drain multiplier: {_skillDrainMultiplier:F2} " +
                       $"(clickPower: +{extraClickPower}, passiveStr: +{extraPassiveStrength}, passiveRate: {effectivePassiveClickRate:F1})");
 
-        if (mgr.IsPassiveMashUnlocked)
+            if (mgr.IsPassiveMashUnlocked)
             {
                 // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
                 // Then rate skills modify it further
@@ -4137,15 +4289,33 @@ public class CarController : MonoBehaviour
 
     /// <summary>
     /// Apply a short speed boost from close call.
+    /// Uses the centralized speed boost system for natural ramp-down.
     /// </summary>
     private void ApplyCloseCallSpeedBoost(float duration)
     {
+        // Use centralized speed boost system with natural ramp-down
+        AddSpeedBoost(
+            BOOST_ID_CLOSE_CALL,
+            closeCallBoostMaxSpeedMult,
+            duration,
+            closeCallBoostRampDownFraction,
+            isMultiplier: true
+        );
+
+        // Keep legacy flag for backwards compatibility with other systems checking it
         _closeCallBoosting = true;
         _closeCallBoostEndTime = Time.time + duration;
 
-        // Force is applied continuously in FixedUpdate while _closeCallBoosting is true
-        // This creates a smooth, sustained push feel with raised speed cap
-        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x");
+        // Apply initial impulse force (optional - gives immediate "punch")
+        if (rb != null && closeCallBoostForce > 0f)
+        {
+            Vector3 forwardDir = transform.forward;
+            forwardDir.y = 0f;
+            forwardDir.Normalize();
+            rb.AddForce(forwardDir * closeCallBoostForce, closeCallBoostForceMode);
+        }
+
+        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x (with ramp-down at {closeCallBoostRampDownFraction:P0})");
     }
 
     /// <summary>
@@ -4577,6 +4747,10 @@ public class CarController : MonoBehaviour
     {
         _closeCallBoosting = false;
         _closeCallInvincible = false;
+
+        // Remove close call boost from centralized system
+        RemoveSpeedBoost(BOOST_ID_CLOSE_CALL);
+
         ScreenFlashManager.StopInvincibility();
     }
 
@@ -5304,5 +5478,192 @@ public class CarController : MonoBehaviour
     public float BasePassiveClickRate => basePassiveClickRate;
     public float BasePassiveClickStrength => basePassiveClickStrength;
     public float BaseMashFuelPerClick => mashBaseFuelPerClick;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CENTRALIZED SPEED BOOST SYSTEM - METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Adds or refreshes a speed boost. If a boost with the same ID exists, it will be replaced.
+    /// </summary>
+    /// <param name="id">Unique identifier for this boost type</param>
+    /// <param name="maxSpeedValue">Either additive speed increase OR multiplier (based on isMultiplier)</param>
+    /// <param name="duration">How long the boost lasts</param>
+    /// <param name="rampDownFraction">Fraction of duration where ramp-down begins (0.3 = last 30%)</param>
+    /// <param name="isMultiplier">If true, maxSpeedValue is a multiplier (e.g., 1.5 = 50% more); if false, additive</param>
+    public void AddSpeedBoost(string id, float maxSpeedValue, float duration, float rampDownFraction = -1f, bool isMultiplier = false)
+    {
+        if (string.IsNullOrEmpty(id) || duration <= 0f) return;
+
+        // Use default ramp-down if not specified
+        if (rampDownFraction < 0f)
+        {
+            rampDownFraction = defaultBoostRampDownFraction;
+        }
+
+        // Remove existing boost with same ID
+        RemoveSpeedBoost(id);
+
+        var entry = new SpeedBoostEntry
+        {
+            id = id,
+            maxSpeedIncrease = maxSpeedValue,
+            totalDuration = duration,
+            remainingTime = duration,
+            rampDownStartFraction = Mathf.Clamp01(rampDownFraction),
+            isMultiplier = isMultiplier
+        };
+
+        _activeSpeedBoosts.Add(entry);
+
+        Debug.Log($"[SpeedBoost] Added boost '{id}': value={maxSpeedValue:F2}, duration={duration:F2}s, rampDown={rampDownFraction:P0}, isMultiplier={isMultiplier}");
+    }
+
+    /// <summary>
+    /// Removes a speed boost by ID.
+    /// </summary>
+    public void RemoveSpeedBoost(string id)
+    {
+        for (int i = _activeSpeedBoosts.Count - 1; i >= 0; i--)
+        {
+            if (_activeSpeedBoosts[i].id == id)
+            {
+                Debug.Log($"[SpeedBoost] Removed boost '{id}'");
+                _activeSpeedBoosts.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if a specific boost is currently active.
+    /// </summary>
+    public bool HasSpeedBoost(string id)
+    {
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            if (_activeSpeedBoosts[i].id == id && _activeSpeedBoosts[i].remainingTime > 0f)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Gets the remaining time on a specific boost, or 0 if not active.
+    /// </summary>
+    public float GetSpeedBoostRemainingTime(string id)
+    {
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            if (_activeSpeedBoosts[i].id == id)
+                return _activeSpeedBoosts[i].remainingTime;
+        }
+        return 0f;
+    }
+
+    /// <summary>
+    /// Clears all active speed boosts.
+    /// </summary>
+    public void ClearAllSpeedBoosts()
+    {
+        if (_activeSpeedBoosts.Count > 0)
+        {
+            Debug.Log($"[SpeedBoost] Cleared {_activeSpeedBoosts.Count} active boosts");
+            _activeSpeedBoosts.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Updates all active speed boosts (call this in FixedUpdate).
+    /// </summary>
+    private void UpdateSpeedBoosts(float deltaTime)
+    {
+        for (int i = _activeSpeedBoosts.Count - 1; i >= 0; i--)
+        {
+            var boost = _activeSpeedBoosts[i];
+            boost.remainingTime -= deltaTime;
+
+            if (boost.remainingTime <= 0f)
+            {
+                Debug.Log($"[SpeedBoost] Boost '{boost.id}' expired");
+                _activeSpeedBoosts.RemoveAt(i);
+            }
+            else
+            {
+                _activeSpeedBoosts[i] = boost;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Calculates the total speed cap increase from all active boosts.
+    /// This should be added to the base effectiveMaxSpeed.
+    /// </summary>
+    private float GetTotalSpeedBoostIncrease()
+    {
+        if (_activeSpeedBoosts.Count == 0) return 0f;
+
+        float totalIncrease = 0f;
+        float totalMultiplier = 1f;
+
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            var boost = _activeSpeedBoosts[i];
+
+            if (boost.isMultiplier)
+            {
+                // Multiplicative boosts stack multiplicatively
+                totalMultiplier *= boost.GetCurrentMultiplier();
+            }
+            else
+            {
+                // Additive boosts stack additively
+                totalIncrease += boost.GetCurrentSpeedIncrease(effectiveMaxSpeed);
+            }
+        }
+
+        // Apply multiplier to base speed, then add additive boosts
+        float multipliedBase = effectiveMaxSpeed * (totalMultiplier - 1f);
+        return multipliedBase + totalIncrease;
+    }
+
+    /// <summary>
+    /// Gets the total speed multiplier from all active multiplier-based boosts.
+    /// </summary>
+    private float GetTotalSpeedBoostMultiplier()
+    {
+        if (_activeSpeedBoosts.Count == 0) return 1f;
+
+        float totalMultiplier = 1f;
+
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            var boost = _activeSpeedBoosts[i];
+            if (boost.isMultiplier)
+            {
+                totalMultiplier *= boost.GetCurrentMultiplier();
+            }
+        }
+
+        return totalMultiplier;
+    }
+
+    /// <summary>
+    /// Returns the count of currently active speed boosts.
+    /// </summary>
+    public int ActiveSpeedBoostCount => _activeSpeedBoosts.Count;
+
+    /// <summary>
+    /// Returns true if any speed boost is currently active.
+    /// </summary>
+    public bool HasAnySpeedBoost => _activeSpeedBoosts.Count > 0;
+
+    /// <summary>
+    /// Public property to check if close call boost is specifically active.
+    /// </summary>
+    public bool IsCloseCallBoostActive => HasSpeedBoost(BOOST_ID_CLOSE_CALL);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END CENTRALIZED SPEED BOOST SYSTEM - METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
 
 }

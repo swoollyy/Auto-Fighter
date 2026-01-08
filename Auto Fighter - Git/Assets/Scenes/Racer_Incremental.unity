@@ -8121,7 +8121,7 @@ MonoBehaviour:
   invincibilityIntensityLow: 0.43
   invincibilityIntensityHigh: 2.5
   invincibilityInnerRadius: 0.35
-  invincibilityPulseSpeed: 1.17
+  invincibilityPulseSpeed: 1.47
   invincibilityImpactColor: {r: 1, g: 1, b: 1, a: 1}
   invincibilityImpactIntensity: 2
   invincibilityImpactDuration: 0.15
