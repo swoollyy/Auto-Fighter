@@ -27,6 +27,8 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
     [SerializeField] private TrackCreatureSpawner creatureSpawner;
+    [SerializeField] private TrackEnvironmentSpawner trackEnvironmentSpawner;
+    [SerializeField] private TerrainDetailGrassPainter terrainGrassPainter; 
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -379,6 +381,7 @@ public class GameManager_Racing : MonoBehaviour
         if (runStarted && beginRunRoutine != null) return;
 
         runStarted = true;
+        uiManager?.ShowLoading("Generating track...");
         Time.timeScale = 1f;
 
         var mgr = RacingSkillTreeManager.Instance;
@@ -472,6 +475,7 @@ public class GameManager_Racing : MonoBehaviour
     private IEnumerator CoBeginRun()
     {
         EnsureTrackCallbacksWired();
+        uiManager?.ShowLoading("Generating track...");
         trackGenerator.GenerateTrack();
 
         float t = 0f;
@@ -488,6 +492,7 @@ public class GameManager_Racing : MonoBehaviour
         if (!TrackIsReady(trackGenerator))
         {
             Debug.LogError("[GameManager_Racing] Track generation timeout. Allowing retry.");
+            uiManager?.HideLoading();
             runStarted = false;
         }
 
@@ -947,6 +952,15 @@ public class GameManager_Racing : MonoBehaviour
         npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+
+        if (terrainGrassPainter != null)
+        {
+            // coroutine version avoids a nasty spike
+            StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
+        }
+
+        StartCoroutine(CoHideLoadingNextFrame());
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -987,6 +1001,14 @@ public class GameManager_Racing : MonoBehaviour
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
     }
+
+    private IEnumerator CoHideLoadingNextFrame()
+    {
+        // let instantiates + layout rebuilds finish
+        yield return null;
+        uiManager?.HideLoading();
+    }
+
 
     private void BakeNavMeshForTrack()
     {

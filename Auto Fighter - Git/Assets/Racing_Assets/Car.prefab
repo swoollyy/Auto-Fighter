@@ -913,7 +913,7 @@ MonoBehaviour:
   lowSpeedSteerMultiplier: 8
   highSpeedSteerMultiplier: 1.3
   speedForSteerCurve: 3.45
-  steeringInputSmooth: 5
+  steeringInputSmooth: 9
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
   enableIceSteerRamp: 1
@@ -1210,6 +1210,9 @@ MonoBehaviour:
   enableLandingCarrySpeed: 1
   landingExcessBleedPerSecond: 0.55
   landingNoClampGraceSeconds: 0.85
+  defaultBoostRampDownFraction: 0.35
+  closeCallBoostRampDownFraction: 0.5
+  regularBoostRampDownFraction: 0.25
   grassFuelUseMultiplier: 1.5
   offDefaultFraction: 0
   grassFraction: 0

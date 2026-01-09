@@ -45,6 +45,10 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private Image crashRecoveryFill;           // Progress bar fill
     [SerializeField] private TMP_Text crashRecoveryText;        // "MASH! (x left)"
 
+    [Header("Loading Overlay")]
+    [SerializeField] private GameObject loadingOverlayRoot;
+    [SerializeField] private TMP_Text loadingLabel;
+
     [Header("Mash Gauge (Progress Bar)")]
     [SerializeField] private Image mashGaugeFill;
     [Tooltip("STATIC max target marker (98%). This must NOT be a 'recent best' marker.")]
@@ -452,6 +456,17 @@ public class UIManager_Racing : MonoBehaviour
                 }
             );
         }
+    }
+
+    public void ShowLoading(string message = "Loading...")
+    {
+        if (loadingLabel) loadingLabel.text = message;
+        if (loadingOverlayRoot) loadingOverlayRoot.SetActive(true);
+    }
+
+    public void HideLoading()
+    {
+        if (loadingOverlayRoot) loadingOverlayRoot.SetActive(false);
     }
 
     public void OnCrashRecoveryButtonClicked()

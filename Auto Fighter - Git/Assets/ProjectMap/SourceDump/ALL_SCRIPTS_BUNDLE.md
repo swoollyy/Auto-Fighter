@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2026-01-06T05:54:50.2228801Z (UTC)
+- Generated: 2026-01-08T21:12:44.4882227Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 215
+- Files: 216
 
 ## Assets/BumperAnimScript.cs
 
@@ -4962,6 +4962,102 @@ public class CarController : MonoBehaviour
     private bool _activeBoostIsDrift;           // NEW: tracks current boost type
     private float _activeBoostMaxMult = 1f;     // NEW: max speed multiplier during current boost
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CENTRALIZED SPEED BOOST SYSTEM
+    // All temporary max speed increases are managed here with natural ramp-down
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Represents a single active speed boost with natural ramp-down behavior.
+    /// </summary>
+    [Serializable]
+    public struct SpeedBoostEntry
+    {
+        public string id;                    // Unique identifier for this boost type
+        public float maxSpeedIncrease;       // Peak max speed increase (absolute, in m/s) OR multiplier if isMultiplier=true
+        public float totalDuration;          // Original total duration
+        public float remainingTime;          // Time remaining on this boost
+        public float rampDownStartFraction;  // When to start ramping down (0-1, e.g., 0.3 = last 30%)
+        public bool isMultiplier;            // If true, maxSpeedIncrease is a multiplier; if false, it's additive
+
+        /// <summary>
+        /// Returns the current effective speed increase (additive), accounting for ramp-down.
+        /// For multiplier boosts, pass baseMaxSpeed to calculate the additive equivalent.
+        /// </summary>
+        public float GetCurrentSpeedIncrease(float baseMaxSpeed)
+        {
+            if (remainingTime <= 0f || totalDuration <= 0f) return 0f;
+
+            float normalizedTime = remainingTime / totalDuration;
+            float peakValue = isMultiplier ? (baseMaxSpeed * (maxSpeedIncrease - 1f)) : maxSpeedIncrease;
+
+            // Before ramp-down phase: full value
+            if (normalizedTime > rampDownStartFraction)
+            {
+                return peakValue;
+            }
+
+            // During ramp-down: smoothly interpolate to zero
+            float rampProgress = normalizedTime / Mathf.Max(0.001f, rampDownStartFraction);
+            // Use smooth step for more natural feel
+            float smoothT = rampProgress * rampProgress * (3f - 2f * rampProgress);
+            return peakValue * smoothT;
+        }
+
+        /// <summary>
+        /// Returns the current multiplier if this is a multiplier-based boost, otherwise 1.
+        /// </summary>
+        public float GetCurrentMultiplier()
+        {
+            if (!isMultiplier || remainingTime <= 0f || totalDuration <= 0f) return 1f;
+
+            float normalizedTime = remainingTime / totalDuration;
+
+            // Before ramp-down phase: full multiplier
+            if (normalizedTime > rampDownStartFraction)
+            {
+                return maxSpeedIncrease;
+            }
+
+            // During ramp-down: smoothly interpolate from maxSpeedIncrease to 1
+            float rampProgress = normalizedTime / Mathf.Max(0.001f, rampDownStartFraction);
+            float smoothT = rampProgress * rampProgress * (3f - 2f * rampProgress);
+            return Mathf.Lerp(1f, maxSpeedIncrease, smoothT);
+        }
+
+        /// <summary>
+        /// Returns the fraction of boost remaining (0-1).
+        /// </summary>
+        public float GetRemainingFraction()
+        {
+            if (totalDuration <= 0f) return 0f;
+            return Mathf.Clamp01(remainingTime / totalDuration);
+        }
+    }
+
+    // Active speed boosts list
+    private List<SpeedBoostEntry> _activeSpeedBoosts = new List<SpeedBoostEntry>();
+
+    [Header("Speed Boost Ramp-Down Settings")]
+    [SerializeField, Tooltip("Default fraction of boost duration where ramp-down begins (0.3 = last 30%).")]
+    private float defaultBoostRampDownFraction = 0.35f;
+
+    [SerializeField, Tooltip("Ramp-down fraction specifically for close call boosts.")]
+    private float closeCallBoostRampDownFraction = 0.5f;
+
+    [SerializeField, Tooltip("Ramp-down fraction for regular/drift boosts.")]
+    private float regularBoostRampDownFraction = 0.25f;
+
+    // Speed boost IDs for easy reference
+    private const string BOOST_ID_REGULAR = "regular_boost";
+    private const string BOOST_ID_DRIFT = "drift_boost";
+    private const string BOOST_ID_CLOSE_CALL = "close_call_boost";
+    private const string BOOST_ID_SURFACE = "surface_boost";
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END CENTRALIZED SPEED BOOST SYSTEM FIELDS
+    // ═══════════════════════════════════════════════════════════════════════════
+
     private Quaternion _initialRotation;
     private bool _isReorienting;
     private float _reorientElapsed;
@@ -5326,7 +5422,8 @@ public class CarController : MonoBehaviour
             ScreenFlashManager.StopInvincibility(); // optional now
         }
 
-        if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+        // Sync legacy _closeCallBoosting flag with centralized system
+        if (_closeCallBoosting && !HasSpeedBoost(BOOST_ID_CLOSE_CALL))
         {
             _closeCallBoosting = false;
         }
@@ -5356,7 +5453,8 @@ public class CarController : MonoBehaviour
                 ScreenFlashManager.StopInvincibility(); // Stop the continuous pulse
             }
 
-            if (_closeCallBoosting && Time.time >= _closeCallBoostEndTime)
+            // Sync legacy _closeCallBoosting flag with centralized system
+            if (_closeCallBoosting && !HasSpeedBoost(BOOST_ID_CLOSE_CALL))
             {
                 _closeCallBoosting = false;
             }
@@ -5524,9 +5622,15 @@ public class CarController : MonoBehaviour
                 _isPostBoost = false;
                 _postBoostTimer = 0f;
                 _activeBoostMaxMult = 1f;
+
+                // Clear centralized speed boosts
+                ClearAllSpeedBoosts();
+
+                // Also clear legacy close call boost flag
+                _closeCallBoosting = false;
                 _currentBoostMaxSpeed = 0f;
                 _closeCallBoosting = false;
-                _landingExcessSpeed = 0f; 
+                _landingExcessSpeed = 0f;
 
                 if (IsDeadForAutoUpright)
                 {
@@ -5593,6 +5697,10 @@ public class CarController : MonoBehaviour
         UpdateSteeringInputFixed();
         HandleSteering();
         HandleMovement();                 // coasting + existing decel logic still works
+
+        // Update centralized speed boost system (handles ramp-down for all boosts)
+        UpdateSpeedBoosts(Time.fixedDeltaTime);
+
         if (!outOfFuel) HandleBoost();    // block boost when fuel is 0
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
@@ -5927,6 +6035,12 @@ public class CarController : MonoBehaviour
                 // Clear active type
                 _activeBoostIsDrift = false;
                 _activeBoostMaxMult = 1f;
+
+                // Clear centralized speed boosts
+                ClearAllSpeedBoosts();
+
+                // Also clear legacy close call boost flag
+                _closeCallBoosting = false;
             }
         }
         else if (_isPostBoost)
@@ -6001,6 +6115,17 @@ public class CarController : MonoBehaviour
                 ? Mathf.Max(1f, _boostOverrideMaxMult)
                 : Mathf.Max(1f, boostMaxSpeedMultiplier);
 
+            // Add to centralized speed boost system for natural ramp-down
+            float boostDur = isOverride ? _boostOverrideDuration : boostDuration;
+            string boostId = isDriftBoost ? BOOST_ID_DRIFT : BOOST_ID_REGULAR;
+            AddSpeedBoost(
+                boostId,
+                _activeBoostMaxMult,
+                boostDur,
+                regularBoostRampDownFraction,
+                isMultiplier: true
+            );
+
             try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
 
             // Per-type cooldown
@@ -6052,22 +6177,37 @@ public class CarController : MonoBehaviour
     private float GetCurrentSpeedCap_NoLandingCarry()
     {
         float normalCap = effectiveMaxSpeed;
-        float maxMult = _isBoosting ? Mathf.Max(1f, _activeBoostMaxMult) : 1f;
 
-        if (_closeCallBoosting)
+        // ═══════════════════════════════════════════════════════════════════════
+        // CENTRALIZED SPEED BOOST SYSTEM - SPEED CAP CALCULATION
+        // All speed boosts with natural ramp-down are calculated here
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Get total boost from centralized system (handles ramp-down automatically)
+        float centralizedBoostIncrease = GetTotalSpeedBoostIncrease();
+
+        // Legacy boost handling (for backwards compatibility during transition)
+        // These will be migrated to the centralized system over time
+        float legacyMult = 1f;
+
+        // Regular/Drift boost - now handled by centralized system but keep legacy path for post-boost
+        if (_isBoosting && !HasSpeedBoost(BOOST_ID_REGULAR) && !HasSpeedBoost(BOOST_ID_DRIFT))
         {
-            maxMult = Mathf.Max(maxMult, closeCallBoostMaxSpeedMult);
+            // Legacy path: boost is active but not yet migrated
+            legacyMult = Mathf.Max(legacyMult, _activeBoostMaxMult);
         }
 
-        float boostedCap = normalCap * maxMult;
+        float boostedCap = normalCap * legacyMult + centralizedBoostIncrease;
 
-        if (_isPostBoost && postBoostSlowdownDuration > 0f)
+        // Handle post-boost ramp-down for legacy boosts (non-centralized)
+        if (_isPostBoost && postBoostSlowdownDuration > 0f && !HasAnySpeedBoost)
         {
             float t = 1f - Mathf.Clamp01(_postBoostTimer / postBoostSlowdownDuration);
             return Mathf.Lerp(boostedCap, normalCap, t);
         }
 
-        return (_isBoosting || _closeCallBoosting) ? boostedCap : normalCap;
+        bool hasAnyBoost = _isBoosting || HasAnySpeedBoost;
+        return hasAnyBoost ? boostedCap : normalCap;
     }
 
     private void ClearBoostOverride()
@@ -6535,6 +6675,12 @@ public class CarController : MonoBehaviour
 
         // Clear any active boost max speed multiplier
         _activeBoostMaxMult = 1f;
+
+        // Clear centralized speed boosts
+        ClearAllSpeedBoosts();
+
+        // Also clear legacy close call boost flag
+        _closeCallBoosting = false;
         _currentBoostMaxSpeed = 0f;
 
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
@@ -7716,6 +7862,12 @@ public class CarController : MonoBehaviour
         _activeBoostIsDrift = false;
         _activeBoostMaxMult = 1f;
 
+        // Clear centralized speed boosts
+        ClearAllSpeedBoosts();
+
+        // Also clear legacy close call boost flag
+        _closeCallBoosting = false;
+
         // Optional: wipe cooldown timers so you don't “come out of crash already cooling down”
         _boostCooldownTimer = 0f;
         _driftBoostCooldownTimer = 0f;
@@ -7839,7 +7991,7 @@ public class CarController : MonoBehaviour
             Debug.Log($"[MashGauge] Skill drain multiplier: {_skillDrainMultiplier:F2} " +
                       $"(clickPower: +{extraClickPower}, passiveStr: +{extraPassiveStrength}, passiveRate: {effectivePassiveClickRate:F1})");
 
-        if (mgr.IsPassiveMashUnlocked)
+            if (mgr.IsPassiveMashUnlocked)
             {
                 // Base rate comes from the unlock skill (e.g., 0.5 clicks/sec at level 1)
                 // Then rate skills modify it further
@@ -8260,15 +8412,33 @@ public class CarController : MonoBehaviour
 
     /// <summary>
     /// Apply a short speed boost from close call.
+    /// Uses the centralized speed boost system for natural ramp-down.
     /// </summary>
     private void ApplyCloseCallSpeedBoost(float duration)
     {
+        // Use centralized speed boost system with natural ramp-down
+        AddSpeedBoost(
+            BOOST_ID_CLOSE_CALL,
+            closeCallBoostMaxSpeedMult,
+            duration,
+            closeCallBoostRampDownFraction,
+            isMultiplier: true
+        );
+
+        // Keep legacy flag for backwards compatibility with other systems checking it
         _closeCallBoosting = true;
         _closeCallBoostEndTime = Time.time + duration;
 
-        // Force is applied continuously in FixedUpdate while _closeCallBoosting is true
-        // This creates a smooth, sustained push feel with raised speed cap
-        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x");
+        // Apply initial impulse force (optional - gives immediate "punch")
+        if (rb != null && closeCallBoostForce > 0f)
+        {
+            Vector3 forwardDir = transform.forward;
+            forwardDir.y = 0f;
+            forwardDir.Normalize();
+            rb.AddForce(forwardDir * closeCallBoostForce, closeCallBoostForceMode);
+        }
+
+        Debug.Log($"[CloseCall] Speed boost started for {duration:F2}s, max speed mult: {closeCallBoostMaxSpeedMult}x (with ramp-down at {closeCallBoostRampDownFraction:P0})");
     }
 
     /// <summary>
@@ -8700,6 +8870,10 @@ public class CarController : MonoBehaviour
     {
         _closeCallBoosting = false;
         _closeCallInvincible = false;
+
+        // Remove close call boost from centralized system
+        RemoveSpeedBoost(BOOST_ID_CLOSE_CALL);
+
         ScreenFlashManager.StopInvincibility();
     }
 
@@ -9427,6 +9601,193 @@ public class CarController : MonoBehaviour
     public float BasePassiveClickRate => basePassiveClickRate;
     public float BasePassiveClickStrength => basePassiveClickStrength;
     public float BaseMashFuelPerClick => mashBaseFuelPerClick;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CENTRALIZED SPEED BOOST SYSTEM - METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Adds or refreshes a speed boost. If a boost with the same ID exists, it will be replaced.
+    /// </summary>
+    /// <param name="id">Unique identifier for this boost type</param>
+    /// <param name="maxSpeedValue">Either additive speed increase OR multiplier (based on isMultiplier)</param>
+    /// <param name="duration">How long the boost lasts</param>
+    /// <param name="rampDownFraction">Fraction of duration where ramp-down begins (0.3 = last 30%)</param>
+    /// <param name="isMultiplier">If true, maxSpeedValue is a multiplier (e.g., 1.5 = 50% more); if false, additive</param>
+    public void AddSpeedBoost(string id, float maxSpeedValue, float duration, float rampDownFraction = -1f, bool isMultiplier = false)
+    {
+        if (string.IsNullOrEmpty(id) || duration <= 0f) return;
+
+        // Use default ramp-down if not specified
+        if (rampDownFraction < 0f)
+        {
+            rampDownFraction = defaultBoostRampDownFraction;
+        }
+
+        // Remove existing boost with same ID
+        RemoveSpeedBoost(id);
+
+        var entry = new SpeedBoostEntry
+        {
+            id = id,
+            maxSpeedIncrease = maxSpeedValue,
+            totalDuration = duration,
+            remainingTime = duration,
+            rampDownStartFraction = Mathf.Clamp01(rampDownFraction),
+            isMultiplier = isMultiplier
+        };
+
+        _activeSpeedBoosts.Add(entry);
+
+        Debug.Log($"[SpeedBoost] Added boost '{id}': value={maxSpeedValue:F2}, duration={duration:F2}s, rampDown={rampDownFraction:P0}, isMultiplier={isMultiplier}");
+    }
+
+    /// <summary>
+    /// Removes a speed boost by ID.
+    /// </summary>
+    public void RemoveSpeedBoost(string id)
+    {
+        for (int i = _activeSpeedBoosts.Count - 1; i >= 0; i--)
+        {
+            if (_activeSpeedBoosts[i].id == id)
+            {
+                Debug.Log($"[SpeedBoost] Removed boost '{id}'");
+                _activeSpeedBoosts.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if a specific boost is currently active.
+    /// </summary>
+    public bool HasSpeedBoost(string id)
+    {
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            if (_activeSpeedBoosts[i].id == id && _activeSpeedBoosts[i].remainingTime > 0f)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Gets the remaining time on a specific boost, or 0 if not active.
+    /// </summary>
+    public float GetSpeedBoostRemainingTime(string id)
+    {
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            if (_activeSpeedBoosts[i].id == id)
+                return _activeSpeedBoosts[i].remainingTime;
+        }
+        return 0f;
+    }
+
+    /// <summary>
+    /// Clears all active speed boosts.
+    /// </summary>
+    public void ClearAllSpeedBoosts()
+    {
+        if (_activeSpeedBoosts.Count > 0)
+        {
+            Debug.Log($"[SpeedBoost] Cleared {_activeSpeedBoosts.Count} active boosts");
+            _activeSpeedBoosts.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Updates all active speed boosts (call this in FixedUpdate).
+    /// </summary>
+    private void UpdateSpeedBoosts(float deltaTime)
+    {
+        for (int i = _activeSpeedBoosts.Count - 1; i >= 0; i--)
+        {
+            var boost = _activeSpeedBoosts[i];
+            boost.remainingTime -= deltaTime;
+
+            if (boost.remainingTime <= 0f)
+            {
+                Debug.Log($"[SpeedBoost] Boost '{boost.id}' expired");
+                _activeSpeedBoosts.RemoveAt(i);
+            }
+            else
+            {
+                _activeSpeedBoosts[i] = boost;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Calculates the total speed cap increase from all active boosts.
+    /// This should be added to the base effectiveMaxSpeed.
+    /// </summary>
+    private float GetTotalSpeedBoostIncrease()
+    {
+        if (_activeSpeedBoosts.Count == 0) return 0f;
+
+        float totalIncrease = 0f;
+        float totalMultiplier = 1f;
+
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            var boost = _activeSpeedBoosts[i];
+
+            if (boost.isMultiplier)
+            {
+                // Multiplicative boosts stack multiplicatively
+                totalMultiplier *= boost.GetCurrentMultiplier();
+            }
+            else
+            {
+                // Additive boosts stack additively
+                totalIncrease += boost.GetCurrentSpeedIncrease(effectiveMaxSpeed);
+            }
+        }
+
+        // Apply multiplier to base speed, then add additive boosts
+        float multipliedBase = effectiveMaxSpeed * (totalMultiplier - 1f);
+        return multipliedBase + totalIncrease;
+    }
+
+    /// <summary>
+    /// Gets the total speed multiplier from all active multiplier-based boosts.
+    /// </summary>
+    private float GetTotalSpeedBoostMultiplier()
+    {
+        if (_activeSpeedBoosts.Count == 0) return 1f;
+
+        float totalMultiplier = 1f;
+
+        for (int i = 0; i < _activeSpeedBoosts.Count; i++)
+        {
+            var boost = _activeSpeedBoosts[i];
+            if (boost.isMultiplier)
+            {
+                totalMultiplier *= boost.GetCurrentMultiplier();
+            }
+        }
+
+        return totalMultiplier;
+    }
+
+    /// <summary>
+    /// Returns the count of currently active speed boosts.
+    /// </summary>
+    public int ActiveSpeedBoostCount => _activeSpeedBoosts.Count;
+
+    /// <summary>
+    /// Returns true if any speed boost is currently active.
+    /// </summary>
+    public bool HasAnySpeedBoost => _activeSpeedBoosts.Count > 0;
+
+    /// <summary>
+    /// Public property to check if close call boost is specifically active.
+    /// </summary>
+    public bool IsCloseCallBoostActive => HasSpeedBoost(BOOST_ID_CLOSE_CALL);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END CENTRALIZED SPEED BOOST SYSTEM - METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
 
 }
 ```
@@ -13076,6 +13437,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     }
 
     // Custom burst coroutine using explicit passed values
+    // Custom burst coroutine using explicit passed values
     private IEnumerator BurstRoutineCustom(float chroma, float lensInt, float holdSeconds, float fadeInSeconds, float fadeOutSeconds)
     {
         // local copies
@@ -13100,7 +13462,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
         // fade in
         float t = 0f;
-
         while (t < fi)
         {
             t += Time.unscaledDeltaTime;
@@ -13120,7 +13481,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float endHold = Time.unscaledTime + Mathf.Max(0f, holdSeconds);
         while (Time.unscaledTime < endHold)
         {
-
             if (wobble && wobAmp > 0f && wobFreq > 0f)
             {
                 wobT += Time.unscaledDeltaTime;
@@ -13129,7 +13489,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                 SetLD(localLens, localLensScale,
                     Mathf.Clamp(localCenterX + wob, -1f, 1f),
                     Mathf.Clamp(localCenterY - wob, -1f, 1f));
-                SetBloom(bloomIntensity);
+                SetBloom(localBloom);  // Use localBloom, not bloomIntensity
             }
             else
             {
@@ -13140,7 +13500,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             yield return null;
         }
 
-        // fade out
+        // fade out - FIXED: Now includes SetBloom interpolation
         t = 0f;
         while (t < fo)
         {
@@ -13152,6 +13512,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
                   Mathf.Lerp(localLensScale, 1f, k),
                   Mathf.Lerp(localCenterX, 0f, k),
                   Mathf.Lerp(localCenterY, 0f, k));
+            SetBloom(Mathf.Lerp(localBloom, _baseBloom, k));  // <-- THE FIX
             yield return null;
         }
 
@@ -20724,50 +21085,50 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
 ## Assets/Racing_Assets/Racing_Scripts/RacingPopupType.cs
 
 ```csharp
-/// <summary>
-/// Types of popup text that can be displayed in the racing game.
-/// Add new types here as needed for future functionality.
-/// </summary>
 public enum RacingPopupType
 {
     // Damage / Loss
-    HPDamage,           // HP lost from crash
-    FuelLoss,           // Fuel lost from crash
+    HPDamage,
+    FuelLoss,
 
     // Gains / Recovery
-    HPGain,             // HP recovered (pickup, regen)
-    FuelGain,           // Fuel recovered (pickup, mash reward)
-    CoinGain,           // Coins collected
+    HPGain,
+    FuelGain,
+    CoinGain,
 
     // Mash Recovery specific
-    MashFuelReward,     // Fuel gained per mash click
-    MashClickBonus,     // Multi-click bonus display
+    MashFuelReward,
+    MashClickBonus,
 
     // Boost / Speed
-    BoostActivate,      // Boost activated
-    SpeedBonus,         // Speed bonus text
+    BoostActivate,
+    SpeedBonus,
 
     // Combo / Multiplier
-    ComboText,          // Combo counter
-    MultiplierText,     // Score multiplier
+    ComboText,
+    MultiplierText,
 
-    // Collision / Impact (covers crash, invincibility bump, etc.)
-    Crash,              // Cartoony impact text - "WAPOW!", "KABLAM!", "CRASH!", etc.
+    // Collision / Impact
+    Crash,
+
+    // NEW: Creature run-over impact text ("SPLAT!!", "WHAM!!", etc.)
+    CreatureSplat,
 
     // Invincibility
-    Invincible,         // "INVINCIBLE!" when invincibility activates
+    Invincible,
 
     // Near Miss / Close Call
-    NearMiss,           // Close call with obstacle
+    NearMiss,
 
     // Currency
     SprocketGain,
 
     // Generic
-    Generic,            // Generic popup (white, neutral)
-    Warning,            // Warning text (orange/yellow)
-    Critical            // Critical/important (red, large)
+    Generic,
+    Warning,
+    Critical
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/ScreenFlashManager.cs
@@ -25035,6 +25396,25 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("If assigned, uses this instead of auto-finding.")]
     [SerializeField] private Collider hitCollider;
 
+    [Header("UI Popup (Car Run-Over)")]
+    [SerializeField] private bool enableRunOverPopup = true;
+    [SerializeField] private RacingPopupType runOverPopupType = RacingPopupType.CreatureSplat;
+    [SerializeField] private float runOverPopupHeight = 1.2f;
+
+    [Header("Coin Reward SFX (Car Kills)")]
+    [SerializeField] private bool playCoinRewardSound = true;
+
+    [Tooltip("Optional override clips for creature coin rewards. If empty, will try CoinDatabase coin sounds.")]
+    [SerializeField] private AudioClip[] coinRewardSoundsOverride;
+
+    [SerializeField, Range(0f, 1f)] private float coinRewardSoundVolume = 1f;
+    [SerializeField, Range(0f, 0.3f)] private float coinRewardPitchVariance = 0.05f;
+    [SerializeField] private float coinRewardBasePitch = 1f;
+
+    [SerializeField] private float coinRewardMinDistance = 5f;
+    [SerializeField] private float coinRewardMaxDistance = 40f;
+
+
     [Tooltip("Visual root to animate/rotate separately from physics.")]
     [SerializeField] private Transform visualRoot;
 
@@ -25801,9 +26181,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             CausePlayerCrash(playerCollider);
         }
 
+        // NEW: comic popup for running them over
+        SpawnRunOverPopup();
+
         // ALL creatures die and give rewards when hit
         Die();
     }
+
+
+
 
     /// <summary>
     /// Causes the player to crash via code (not physics).
@@ -25927,7 +26313,59 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             Color outlineColor = rewardAmount >= 5 ? new Color(0.8f, 0.5f, 0f) : new Color(0.6f, 0.4f, 0f);
             RacingPopups.SpawnCoin(rewardAmount, position + Vector3.up * 0.5f, textColor, outlineColor);
         }
+        PlayCoinRewardSFX(rewardAmount, position);
+
     }
+
+    private void PlayCoinRewardSFX(int rewardAmount, Vector3 position)
+    {
+        if (!playCoinRewardSound) return;
+
+        AudioClip clip = null;
+
+        // 1) Prefer explicit overrides (fast + predictable)
+        if (coinRewardSoundsOverride != null && coinRewardSoundsOverride.Length > 0)
+        {
+            clip = coinRewardSoundsOverride[Random.Range(0, coinRewardSoundsOverride.Length)];
+        }
+        else
+        {
+            // 2) Fallback to CoinDatabase sounds (matches your coin system)
+            // Map reward to a rough "coin type" for sound choice.
+            CoinType type = rewardAmount >= 10 ? CoinType.Gold : (rewardAmount >= 5 ? CoinType.Silver : CoinType.Bronze);
+            var data = CoinDatabase.Get(type);
+            if (data != null && data.collectSounds != null && data.collectSounds.Length > 0)
+            {
+                clip = data.collectSounds[Random.Range(0, data.collectSounds.Length)];
+
+                // If you want, you can also borrow volume/pitch from the coin data:
+                coinRewardSoundVolume = data.collectVolume;
+                coinRewardPitchVariance = data.pitchVariance;
+                coinRewardBasePitch = data.basePitch;
+            }
+        }
+
+        if (clip == null) return;
+
+        // Need a real AudioSource to support pitch variance (PlayClipAtPoint can't set pitch).
+        var go = new GameObject("CreatureCoinRewardSFX");
+        go.transform.position = position;
+
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f;
+        src.rolloffMode = AudioRolloffMode.Linear;
+        src.minDistance = Mathf.Max(0.01f, coinRewardMinDistance);
+        src.maxDistance = Mathf.Max(src.minDistance + 0.1f, coinRewardMaxDistance);
+
+        src.volume = Mathf.Clamp01(coinRewardSoundVolume);
+        src.pitch = Mathf.Clamp(coinRewardBasePitch + Random.Range(-coinRewardPitchVariance, coinRewardPitchVariance), 0.01f, 3f);
+
+        src.clip = clip;
+        src.Play();
+
+        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
 
     #endregion
 
@@ -25977,6 +26415,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             audioSource.PlayOneShot(clip);
         }
     }
+
+    private void SpawnRunOverPopup()
+    {
+        if (!enableRunOverPopup) return;
+        if (!RacingPopups.IsReady) return;
+
+        Vector3 basePos = (coinSpawnPoint != null) ? coinSpawnPoint.position : transform.position;
+        basePos += Vector3.up * runOverPopupHeight;
+
+        // Pass 0 to trigger random text selection (style asset uses useRandomText/randomTexts)
+        RacingPopups.Spawn(runOverPopupType, 0f, basePos);
+    }
+
 
     #endregion
 
@@ -26909,6 +27360,311 @@ public class TrackDistanceMeter : MonoBehaviour
         );
     }
 }
+```
+
+## Assets/Racing_Assets/Racing_Scripts/TrackEnvironmentSpawner.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+[System.Serializable]
+public class EnvironmentType
+{
+    public string id;
+    public GameObject prefab;
+    [Min(0f)] public float baseWeight = 1f;
+
+    [Header("Placement Tweaks")]
+    public float extraHeightOffset = 0f;
+    public float extraLateralPadding = 0f;
+}
+
+public class TrackEnvironmentSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [SerializeField] private Transform playerTransform;
+    [SerializeField] private Transform environmentParent;
+
+    [Header("Types")]
+    [SerializeField] private List<EnvironmentType> environmentTypes = new();
+
+    [Header("Path Sampling")]
+    [SerializeField] private bool useSmoothing = true;
+    [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
+
+    [Header("Spawn Settings")]
+    [SerializeField] private float spacing = 22f;
+    [SerializeField] private int maxActive = 80;
+
+    [Tooltip("Pre-spawn distance from start so it�s ready before player control.")]
+    [SerializeField] private float initialPreSpawnDistance = 200f;
+
+    [Header("Off-Road Placement")]
+    [Tooltip("How far OUTSIDE the road edge we start placing environment (meters).")]
+    [SerializeField] private float offRoadMin = 1.2f;
+
+    [Tooltip("How far OUTSIDE the road edge we can place environment (meters).")]
+    [SerializeField] private float offRoadMax = 7.0f;
+
+    [Tooltip("Extra margin from the exact road edge to avoid accidental road spawns.")]
+    [SerializeField] private float edgeSafetyMargin = 0.6f;
+
+    [Header("Raycast / Masks")]
+    [Tooltip("What the environment should sit on (your grass/shoulder colliders).")]
+    [SerializeField] private LayerMask groundMask; // RoadSurface
+
+    [Tooltip("The DRIVABLE road layer that environment must NEVER spawn onto.")]
+    [SerializeField] private LayerMask roadExcludeMask; // Road
+
+    [SerializeField] private float raycastStartHeight = 12f;
+    [SerializeField] private float raycastDownDistance = 60f;
+    [SerializeField] private float baseHeightOffset = 0.02f;
+
+    [Header("Road Rejection")]
+    [Tooltip("If a road collider is found within this radius at the spawn point, reject.")]
+    [SerializeField] private float roadOverlapRejectRadius = 0.9f;
+
+    [Header("Debug")]
+    [SerializeField] private bool verboseDebug = false;
+
+    // runtime
+    private readonly List<Vector3> _path = new();
+    private float[] _cumLengths;
+    private float _totalLength;
+
+    private readonly Dictionary<int, GameObject> _spawnedBySlot = new();
+    private int _maxSlotIndex;
+
+    public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
+    {
+        trackGenerator = generator;
+        playerTransform = player;
+
+        if (!trackGenerator || !playerTransform)
+        {
+            Debug.LogError($"[TrackEnvironmentSpawner] InitializeForRun missing refs. generator={generator}, player={player}");
+            return;
+        }
+
+        RebuildPath();
+        ClearAll();
+        SetupSlots();
+
+        PreSpawnInitialWindow();
+    }
+
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+
+        var src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private void SetupSlots()
+    {
+        _spawnedBySlot.Clear();
+        _maxSlotIndex = (_totalLength <= 0f) ? 0 : Mathf.FloorToInt(_totalLength / spacing);
+    }
+
+    private void PreSpawnInitialWindow()
+    {
+        if (_totalLength <= 0f || !HasAnyValidType()) return;
+
+        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(endDist / spacing), 0, _maxSlotIndex);
+
+        for (int slot = 0; slot <= endSlot; slot++)
+            TrySpawnAtSlot(slot);
+    }
+
+    private void TrySpawnAtSlot(int slot)
+    {
+        if (_spawnedBySlot.ContainsKey(slot)) return;
+        if (_spawnedBySlot.Count >= maxActive) return;
+
+        float dist = slot * spacing;
+        if (dist < 0f || dist > _totalLength) return;
+
+        var prefab = ChoosePrefab();
+        if (!prefab) return;
+
+        // Sample center + forward
+        SampleAlongPath(dist, out Vector3 center, out Vector3 forward);
+
+        Vector3 flatForward = forward; flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        float halfWidth = Mathf.Max(0.1f, trackGenerator.RoadWidth * 0.5f); // uses your generator property
+        // choose side + offset outside the road
+        float side = (Random.value < 0.5f) ? -1f : 1f;
+
+        float outDist = Random.Range(offRoadMin, offRoadMax);
+        float lateral = side * (halfWidth + edgeSafetyMargin + outDist);
+
+        // optional per-type padding
+        float extraPad = 0f;
+        var type = FindTypeForPrefab(prefab);
+        if (type != null) extraPad = Mathf.Max(0f, type.extraLateralPadding);
+        lateral += side * extraPad;
+
+        Vector3 xz = center + right * lateral;
+
+        // 1) HARD REJECT: if road is at/near this position
+        if (Physics.CheckSphere(xz + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
+            return;
+
+        // 2) Place on groundMask (grass)
+        Vector3 origin = xz + Vector3.up * raycastStartHeight;
+        float maxRay = raycastStartHeight + raycastDownDistance;
+
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, groundMask, QueryTriggerInteraction.Ignore))
+            return;
+
+        // 3) SECOND REJECT: if the ray also sees road right under it (belt + suspenders)
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit roadHit, maxRay, roadExcludeMask, QueryTriggerInteraction.Ignore))
+        {
+            // if road is basically the same spot, reject
+            if (Mathf.Abs(roadHit.point.y - hit.point.y) < 0.25f && Vector3.Distance(roadHit.point, hit.point) < 1.0f)
+                return;
+        }
+
+        Quaternion rot = Quaternion.LookRotation(flatForward, Vector3.up);
+        Transform parent = environmentParent != null ? environmentParent : transform;
+
+        float h = baseHeightOffset + (type != null ? type.extraHeightOffset : 0f);
+        GameObject go = Instantiate(prefab, hit.point + Vector3.up * h, rot, parent);
+        _spawnedBySlot[slot] = go;
+
+        if (verboseDebug)
+            Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} lateral={lateral:F1} prefab={prefab.name}");
+    }
+
+    private EnvironmentType FindTypeForPrefab(GameObject prefab)
+    {
+        if (!prefab) return null;
+        for (int i = 0; i < environmentTypes.Count; i++)
+            if (environmentTypes[i] != null && environmentTypes[i].prefab == prefab)
+                return environmentTypes[i];
+        return null;
+    }
+
+    private bool HasAnyValidType()
+    {
+        for (int i = 0; i < environmentTypes.Count; i++)
+            if (environmentTypes[i] != null && environmentTypes[i].prefab != null && environmentTypes[i].baseWeight > 0f)
+                return true;
+        return false;
+    }
+
+    private GameObject ChoosePrefab()
+    {
+        float total = 0f;
+        for (int i = 0; i < environmentTypes.Count; i++)
+        {
+            var t = environmentTypes[i];
+            if (t == null || t.prefab == null) continue;
+            total += Mathf.Max(0f, t.baseWeight);
+        }
+        if (total <= 0f) return null;
+
+        float r = Random.value * total;
+        for (int i = 0; i < environmentTypes.Count; i++)
+        {
+            var t = environmentTypes[i];
+            if (t == null || t.prefab == null) continue;
+
+            float w = Mathf.Max(0f, t.baseWeight);
+            if (w <= 0f) continue;
+
+            r -= w;
+            if (r <= 0f) return t.prefab;
+        }
+
+        return environmentTypes[environmentTypes.Count - 1].prefab;
+    }
+
+    private void ClearAll()
+    {
+        foreach (var kv in _spawnedBySlot)
+            if (kv.Value) Destroy(kv.Value);
+        _spawnedBySlot.Clear();
+    }
+
+    // -----------------------------
+    // Sampling helpers (copied pattern)
+    // -----------------------------
+    public void SamplePath(float dist, out Vector3 pos, out Vector3 forward) => SampleAlongPath(dist, out pos, out forward);
+
+    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 forward)
+    {
+        dist = Mathf.Clamp(dist, 0f, _totalLength);
+
+        int idx = FindSegmentIndex(dist);
+        int i0 = Mathf.Clamp(idx, 0, _path.Count - 2);
+        int i1 = i0 + 1;
+
+        float d0 = _cumLengths[i0];
+        float d1 = _cumLengths[i1];
+        float t = (Mathf.Abs(d1 - d0) < 0.0001f) ? 0f : Mathf.InverseLerp(d0, d1, dist);
+
+        pos = Vector3.Lerp(_path[i0], _path[i1], t);
+        forward = (_path[i1] - _path[i0]).normalized;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+    }
+
+    private int FindSegmentIndex(float dist)
+    {
+        // linear is fine for your sizes, but you can binary search later if needed
+        for (int i = 1; i < _cumLengths.Length; i++)
+            if (_cumLengths[i] >= dist) return i - 1;
+        return Mathf.Max(0, _cumLengths.Length - 2);
+    }
+
+    private static void GenerateSmoothedPath(List<Vector3> src, int subdiv, List<Vector3> dst)
+    {
+        // Same style your spawners use: simple subdivision interpolation
+        dst.Clear();
+        if (src == null || src.Count < 2) return;
+
+        for (int i = 0; i < src.Count - 1; i++)
+        {
+            Vector3 a = src[i];
+            Vector3 b = src[i + 1];
+
+            dst.Add(a);
+            for (int s = 1; s < subdiv; s++)
+            {
+                float t = s / (float)subdiv;
+                dst.Add(Vector3.Lerp(a, b, t));
+            }
+        }
+        dst.Add(src[src.Count - 1]);
+    }
+}
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/TrackFuelSpawner.cs

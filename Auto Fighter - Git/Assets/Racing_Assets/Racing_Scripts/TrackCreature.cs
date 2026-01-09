@@ -48,6 +48,25 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("If assigned, uses this instead of auto-finding.")]
     [SerializeField] private Collider hitCollider;
 
+    [Header("UI Popup (Car Run-Over)")]
+    [SerializeField] private bool enableRunOverPopup = true;
+    [SerializeField] private RacingPopupType runOverPopupType = RacingPopupType.CreatureSplat;
+    [SerializeField] private float runOverPopupHeight = 1.2f;
+
+    [Header("Coin Reward SFX (Car Kills)")]
+    [SerializeField] private bool playCoinRewardSound = true;
+
+    [Tooltip("Optional override clips for creature coin rewards. If empty, will try CoinDatabase coin sounds.")]
+    [SerializeField] private AudioClip[] coinRewardSoundsOverride;
+
+    [SerializeField, Range(0f, 1f)] private float coinRewardSoundVolume = 1f;
+    [SerializeField, Range(0f, 0.3f)] private float coinRewardPitchVariance = 0.05f;
+    [SerializeField] private float coinRewardBasePitch = 1f;
+
+    [SerializeField] private float coinRewardMinDistance = 5f;
+    [SerializeField] private float coinRewardMaxDistance = 40f;
+
+
     [Tooltip("Visual root to animate/rotate separately from physics.")]
     [SerializeField] private Transform visualRoot;
 
@@ -814,9 +833,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             CausePlayerCrash(playerCollider);
         }
 
+        // NEW: comic popup for running them over
+        SpawnRunOverPopup();
+
         // ALL creatures die and give rewards when hit
         Die();
     }
+
+
+
 
     /// <summary>
     /// Causes the player to crash via code (not physics).
@@ -940,7 +965,59 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             Color outlineColor = rewardAmount >= 5 ? new Color(0.8f, 0.5f, 0f) : new Color(0.6f, 0.4f, 0f);
             RacingPopups.SpawnCoin(rewardAmount, position + Vector3.up * 0.5f, textColor, outlineColor);
         }
+        PlayCoinRewardSFX(rewardAmount, position);
+
     }
+
+    private void PlayCoinRewardSFX(int rewardAmount, Vector3 position)
+    {
+        if (!playCoinRewardSound) return;
+
+        AudioClip clip = null;
+
+        // 1) Prefer explicit overrides (fast + predictable)
+        if (coinRewardSoundsOverride != null && coinRewardSoundsOverride.Length > 0)
+        {
+            clip = coinRewardSoundsOverride[Random.Range(0, coinRewardSoundsOverride.Length)];
+        }
+        else
+        {
+            // 2) Fallback to CoinDatabase sounds (matches your coin system)
+            // Map reward to a rough "coin type" for sound choice.
+            CoinType type = rewardAmount >= 10 ? CoinType.Gold : (rewardAmount >= 5 ? CoinType.Silver : CoinType.Bronze);
+            var data = CoinDatabase.Get(type);
+            if (data != null && data.collectSounds != null && data.collectSounds.Length > 0)
+            {
+                clip = data.collectSounds[Random.Range(0, data.collectSounds.Length)];
+
+                // If you want, you can also borrow volume/pitch from the coin data:
+                coinRewardSoundVolume = data.collectVolume;
+                coinRewardPitchVariance = data.pitchVariance;
+                coinRewardBasePitch = data.basePitch;
+            }
+        }
+
+        if (clip == null) return;
+
+        // Need a real AudioSource to support pitch variance (PlayClipAtPoint can't set pitch).
+        var go = new GameObject("CreatureCoinRewardSFX");
+        go.transform.position = position;
+
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f;
+        src.rolloffMode = AudioRolloffMode.Linear;
+        src.minDistance = Mathf.Max(0.01f, coinRewardMinDistance);
+        src.maxDistance = Mathf.Max(src.minDistance + 0.1f, coinRewardMaxDistance);
+
+        src.volume = Mathf.Clamp01(coinRewardSoundVolume);
+        src.pitch = Mathf.Clamp(coinRewardBasePitch + Random.Range(-coinRewardPitchVariance, coinRewardPitchVariance), 0.01f, 3f);
+
+        src.clip = clip;
+        src.Play();
+
+        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
 
     #endregion
 
@@ -990,6 +1067,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             audioSource.PlayOneShot(clip);
         }
     }
+
+    private void SpawnRunOverPopup()
+    {
+        if (!enableRunOverPopup) return;
+        if (!RacingPopups.IsReady) return;
+
+        Vector3 basePos = (coinSpawnPoint != null) ? coinSpawnPoint.position : transform.position;
+        basePos += Vector3.up * runOverPopupHeight;
+
+        // Pass 0 to trigger random text selection (style asset uses useRandomText/randomTexts)
+        RacingPopups.Spawn(runOverPopupType, 0f, basePos);
+    }
+
 
     #endregion
 

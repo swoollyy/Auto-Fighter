@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
   m_Name: CloseCall_Popup
   m_EditorClassIdentifier: 
-  popupType: 13
+  popupType: 14
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 0}
