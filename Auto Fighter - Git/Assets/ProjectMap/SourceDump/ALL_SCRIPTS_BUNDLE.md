@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2026-01-08T21:12:44.4882227Z (UTC)
+- Generated: 2026-01-09T21:23:06.4278254Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 216
+- Files: 217
 
 ## Assets/BumperAnimScript.cs
 
@@ -7699,12 +7699,12 @@ public class CarController : MonoBehaviour
             }
 
 #if UNITY_EDITOR
-        if (debugSurfaceRays)
-        {
-            Debug.DrawRay(rayOrigin, Vector3.down * rayDistance, 
-                Physics.Raycast(rayOrigin, Vector3.down, rayDistance, groundCheckLayers, QueryTriggerInteraction.Collide) 
-                    ? Color.green : Color.red, 0.1f);
-        }
+            if (debugSurfaceRays)
+            {
+                Debug.DrawRay(rayOrigin, Vector3.down * rayDistance,
+                    Physics.Raycast(rayOrigin, Vector3.down, rayDistance, groundCheckLayers, QueryTriggerInteraction.Collide)
+                        ? Color.green : Color.red, 0.1f);
+            }
 #endif
         }
 
@@ -8717,6 +8717,31 @@ public class CarController : MonoBehaviour
 
         float impactSpeed = collision.relativeVelocity.magnitude;
 
+        // === FIX: Check shuttle/cross velocity BEFORE minImpactSpeed check ===
+        // This ensures moving obstacles register proper impact even when car is slow/stationary
+        Vector3 contactNormalEarly = Vector3.up;
+        if (collision.contactCount > 0)
+        {
+            contactNormalEarly = collision.GetContact(0).normal;
+        }
+
+        var shuttleEarly = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttleEarly != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttleEarly.GetWorldVelocity();
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+
+        var crossEarly = collision.collider.GetComponentInParent<CrossTrackObstacle>();
+        if (crossEarly != null && rb != null)
+        {
+            // CrossTrackObstacle has GetWorldVelocity() similar to ShuttleTrackObstacle
+            Vector3 crossVel = crossEarly.GetWorldVelocity();
+            Vector3 rel = rb.velocity - crossVel;
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+        // === END FIX ===
+
         if (impactSpeed < minImpactSpeed)
             return;
 
@@ -9062,6 +9087,25 @@ public class CarController : MonoBehaviour
             impactSpeed = (rb.velocity - otherRb.velocity).magnitude;
         else
             impactSpeed = rb.velocity.magnitude;
+
+        // === FIX: Check shuttle/cross velocity BEFORE minImpactSpeed check ===
+        // This ensures moving obstacles register proper impact even when car is slow/stationary
+        var shuttleTrigger = other.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttleTrigger != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttleTrigger.GetWorldVelocity();
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+
+        var crossTriggerEarly = other.GetComponentInParent<CrossTrackObstacle>();
+        if (crossTriggerEarly != null && rb != null)
+        {
+            // CrossTrackObstacle has GetWorldVelocity() similar to ShuttleTrackObstacle
+            Vector3 crossVel = crossTriggerEarly.GetWorldVelocity();
+            Vector3 rel = rb.velocity - crossVel;
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+        // === END FIX ===
 
         if (impactSpeed < minImpactSpeed)
             return;
@@ -12737,6 +12781,17 @@ public class CrossTrackObstacle : MonoBehaviour
         }
     }
 
+
+    public Vector3 GetWorldVelocity()
+    {
+        // If still on scripted motion, return the transform-derived velocity
+        if (!_convertedToPhysics)
+            return _lastVelocity;  // or however you track scripted velocity
+
+        // After conversion, use real rigidbody velocity
+        return _rb != null ? _rb.velocity : Vector3.zero;
+    }
+
     /// <summary>
     /// Calculates the upward velocity boost based on relative speed and configuration.
     /// </summary>
@@ -13853,6 +13908,8 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
     [SerializeField] private TrackCreatureSpawner creatureSpawner;
+    [SerializeField] private TrackEnvironmentSpawner trackEnvironmentSpawner;
+    [SerializeField] private TerrainDetailGrassPainter terrainGrassPainter; 
 
     [Header("NavMesh (for NPC AI)")]
     [Tooltip("Enable runtime NavMesh baking for NPC cars.")]
@@ -14205,6 +14262,7 @@ public class GameManager_Racing : MonoBehaviour
         if (runStarted && beginRunRoutine != null) return;
 
         runStarted = true;
+        uiManager?.ShowLoading("Generating track...");
         Time.timeScale = 1f;
 
         var mgr = RacingSkillTreeManager.Instance;
@@ -14298,6 +14356,7 @@ public class GameManager_Racing : MonoBehaviour
     private IEnumerator CoBeginRun()
     {
         EnsureTrackCallbacksWired();
+        uiManager?.ShowLoading("Generating track...");
         trackGenerator.GenerateTrack();
 
         float t = 0f;
@@ -14314,6 +14373,7 @@ public class GameManager_Racing : MonoBehaviour
         if (!TrackIsReady(trackGenerator))
         {
             Debug.LogError("[GameManager_Racing] Track generation timeout. Allowing retry.");
+            uiManager?.HideLoading();
             runStarted = false;
         }
 
@@ -14773,6 +14833,15 @@ public class GameManager_Racing : MonoBehaviour
         npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+
+        if (terrainGrassPainter != null)
+        {
+            // coroutine version avoids a nasty spike
+            StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
+        }
+
+        StartCoroutine(CoHideLoadingNextFrame());
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -14813,6 +14882,14 @@ public class GameManager_Racing : MonoBehaviour
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
     }
+
+    private IEnumerator CoHideLoadingNextFrame()
+    {
+        // let instantiates + layout rebuilds finish
+        yield return null;
+        uiManager?.HideLoading();
+    }
+
 
     private void BakeNavMeshForTrack()
     {
@@ -27382,6 +27459,12 @@ public class EnvironmentType
 
 public class TrackEnvironmentSpawner : MonoBehaviour
 {
+    public enum EnvSpawnMode
+    {
+        PopulateOnceAfterTrack,   // default: stable fill across whole track
+        StreamAroundPlayer        // optional: stream band near player
+    }
+
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
@@ -27390,26 +27473,44 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Header("Types")]
     [SerializeField] private List<EnvironmentType> environmentTypes = new();
 
+    [Header("Spawn Mode")]
+    [SerializeField] private EnvSpawnMode spawnMode = EnvSpawnMode.PopulateOnceAfterTrack;
+
     [Header("Path Sampling")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
     [Header("Spawn Settings")]
-    [SerializeField] private float spacing = 22f;
-    [SerializeField] private int maxActive = 80;
+    [SerializeField, Min(0.5f)] private float spacing = 22f;
+    [SerializeField, Min(1)] private int maxActive = 180;
 
-    [Tooltip("Pre-spawn distance from start so it�s ready before player control.")]
-    [SerializeField] private float initialPreSpawnDistance = 200f;
+    [Header("Populate Once Settings")]
+    [SerializeField, Min(1)] private int targetCount = 160;
+    [SerializeField, Min(1)] private int maxAttemptsPerSlot = 6;
 
-    [Header("Off-Road Placement")]
-    [Tooltip("How far OUTSIDE the road edge we start placing environment (meters).")]
-    [SerializeField] private float offRoadMin = 1.2f;
+    [Header("Stream Settings (only if Spawn Mode = StreamAroundPlayer)")]
+    [SerializeField] private bool streamSpawnDuringRun = true;
+    [SerializeField] private float updateInterval = 0.35f;
+    [SerializeField] private float maxSpawnDistanceAhead = 260f;
+    [SerializeField] private float maxSpawnDistanceBehind = 180f;
+    [SerializeField] private float despawnBehindDistance = 60f;
 
-    [Tooltip("How far OUTSIDE the road edge we can place environment (meters).")]
-    [SerializeField] private float offRoadMax = 7.0f;
+    [Header("Corridor Placement (NOT RoadWidth-based)")]
+    [Tooltip("Minimum distance away from the road area before we even consider placement.")]
+    [SerializeField, Min(0f)] private float minDistanceFromRoad = 4.0f;
 
-    [Tooltip("Extra margin from the exact road edge to avoid accidental road spawns.")]
-    [SerializeField] private float edgeSafetyMargin = 0.6f;
+    [Tooltip("Maximum distance from the path centerline for environment placement. Prevents '500000 meters away'.")]
+    [SerializeField, Min(1f)] private float maxDistanceFromCenterline = 28f;
+
+    [Tooltip("1 = mostly spawn on the sides (�90�), 0 = any direction around the point.")]
+    [SerializeField, Range(0f, 1f)] private float sideBias = 0.9f;
+
+    [Tooltip("How many random candidate points we try for a given slot before giving up.")]
+    [SerializeField, Min(1)] private int placementAttempts = 8;
+
+    [Header("Grounding")]
+    [SerializeField] private bool autoGroundUsingBounds = true;
+    [SerializeField] private float extraGroundPadding = 0.02f;
 
     [Header("Raycast / Masks")]
     [Tooltip("What the environment should sit on (your grass/shoulder colliders).")]
@@ -27429,22 +27530,74 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
-    // runtime
+    // runtime path
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
     private float _totalLength;
-
-    private readonly Dictionary<int, GameObject> _spawnedBySlot = new();
     private int _maxSlotIndex;
+
+    // runtime spawned
+    private readonly Dictionary<int, GameObject> _spawnedBySlot = new();
+
+    // streaming internals
+    private float _updateTimer;
+    private int _lastClosestIdx = 0;
+    private TrackDistanceMeter _distanceMeter;
+
+    private void Update()
+    {
+        if (spawnMode != EnvSpawnMode.StreamAroundPlayer) return;
+        if (!streamSpawnDuringRun) return;
+        if (trackGenerator == null || playerTransform == null) return;
+        if (_totalLength <= 0f) return;
+
+        _updateTimer -= Time.deltaTime;
+        if (_updateTimer > 0f) return;
+        _updateTimer = updateInterval;
+
+        float playerDist = GetPlayerDistanceAlongTrack();
+
+        // Clean, predictable streaming window (no funky min/max mixing)
+        float windowMin = Mathf.Clamp(playerDist - maxSpawnDistanceBehind, 0f, _totalLength);
+        float windowMax = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int slotMin = Mathf.Clamp(Mathf.FloorToInt(windowMin / spacing), 0, _maxSlotIndex);
+        int slotMax = Mathf.Clamp(Mathf.CeilToInt(windowMax / spacing), 0, _maxSlotIndex);
+
+        for (int slot = slotMin; slot <= slotMax; slot++)
+            TrySpawnAtSlot(slot);
+
+        // Despawn far behind
+        float despawnDist = playerDist - despawnBehindDistance;
+        int despawnSlot = Mathf.FloorToInt(despawnDist / spacing);
+
+        if (_spawnedBySlot.Count > 0)
+        {
+            var toRemove = new List<int>();
+            foreach (var kv in _spawnedBySlot)
+            {
+                if (kv.Key < despawnSlot)
+                    toRemove.Add(kv.Key);
+            }
+
+            for (int i = 0; i < toRemove.Count; i++)
+            {
+                int slot = toRemove[i];
+                if (_spawnedBySlot.TryGetValue(slot, out var go) && go != null)
+                    Destroy(go);
+                _spawnedBySlot.Remove(slot);
+            }
+        }
+    }
 
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {
         trackGenerator = generator;
         playerTransform = player;
 
-        if (!trackGenerator || !playerTransform)
+        if (!trackGenerator)
         {
-            Debug.LogError($"[TrackEnvironmentSpawner] InitializeForRun missing refs. generator={generator}, player={player}");
+            Debug.LogError("[TrackEnvironmentSpawner] InitializeForRun missing trackGenerator.");
             return;
         }
 
@@ -27452,55 +27605,65 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         ClearAll();
         SetupSlots();
 
-        PreSpawnInitialWindow();
-    }
-
-    private void RebuildPath()
-    {
-        _path.Clear();
-        _cumLengths = null;
-        _totalLength = 0f;
-
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
+        if (spawnMode == EnvSpawnMode.PopulateOnceAfterTrack)
         {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
+            PopulateOnceAcrossTrack();
         }
-        _totalLength = len;
+        // else: streaming will fill via Update()
     }
 
-    private void SetupSlots()
-    {
-        _spawnedBySlot.Clear();
-        _maxSlotIndex = (_totalLength <= 0f) ? 0 : Mathf.FloorToInt(_totalLength / spacing);
-    }
-
-    private void PreSpawnInitialWindow()
+    // =========================
+    // Populate Once (stable)
+    // =========================
+    private void PopulateOnceAcrossTrack()
     {
         if (_totalLength <= 0f || !HasAnyValidType()) return;
 
-        float endDist = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(endDist / spacing), 0, _maxSlotIndex);
+        // Make a stable spread across the full track length
+        int totalSlots = Mathf.Max(1, _maxSlotIndex + 1);
+        int want = Mathf.Clamp(targetCount, 1, Mathf.Max(1, maxActive));
 
-        for (int slot = 0; slot <= endSlot; slot++)
-            TrySpawnAtSlot(slot);
+        float stride = totalSlots / (float)want;
+        float jitterFrac = 0.35f; // 0..0.5
+
+        for (int i = 0; i < want; i++)
+        {
+            int baseSlot = Mathf.RoundToInt(i * stride);
+            int jitter = Mathf.RoundToInt((Random.value - 0.5f) * 2f * jitterFrac * stride);
+            int slot = Mathf.Clamp(baseSlot + jitter, 0, _maxSlotIndex);
+
+            bool spawned = false;
+
+            // Try a few times per target so rejections don't leave big gaps
+            for (int a = 0; a < maxAttemptsPerSlot; a++)
+            {
+                TrySpawnAtSlot(slot);
+                if (_spawnedBySlot.ContainsKey(slot))
+                {
+                    spawned = true;
+                    break;
+                }
+
+                // If rejected, drift to a nearby slot and retry
+                slot = Mathf.Clamp(slot + Random.Range(-2, 3), 0, _maxSlotIndex);
+            }
+
+            if (!spawned && verboseDebug)
+                Debug.Log($"[EnvSpawn] PopulateOnce failed near slot={baseSlot} after {maxAttemptsPerSlot} attempts.");
+
+            if (_spawnedBySlot.Count >= maxActive)
+                break;
+        }
     }
 
+    // =========================
+    // Core spawning
+    // =========================
     private void TrySpawnAtSlot(int slot)
     {
         if (_spawnedBySlot.ContainsKey(slot)) return;
         if (_spawnedBySlot.Count >= maxActive) return;
+        if (_totalLength <= 0f) return;
 
         float dist = slot * spacing;
         if (dist < 0f || dist > _totalLength) return;
@@ -27511,32 +27674,22 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         // Sample center + forward
         SampleAlongPath(dist, out Vector3 center, out Vector3 forward);
 
-        Vector3 flatForward = forward; flatForward.y = 0f;
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
         if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
         flatForward.Normalize();
 
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
 
-        float halfWidth = Mathf.Max(0.1f, trackGenerator.RoadWidth * 0.5f); // uses your generator property
-        // choose side + offset outside the road
-        float side = (Random.value < 0.5f) ? -1f : 1f;
-
-        float outDist = Random.Range(offRoadMin, offRoadMax);
-        float lateral = side * (halfWidth + edgeSafetyMargin + outDist);
-
-        // optional per-type padding
-        float extraPad = 0f;
-        var type = FindTypeForPrefab(prefab);
-        if (type != null) extraPad = Mathf.Max(0f, type.extraLateralPadding);
-        lateral += side * extraPad;
-
-        Vector3 xz = center + right * lateral;
+        // Pick an off-road point in a corridor around the path (NOT using RoadWidth math)
+        if (!TryPickOffRoadPoint(center, flatForward, right, out Vector3 xz))
+            return;
 
         // 1) HARD REJECT: if road is at/near this position
         if (Physics.CheckSphere(xz + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
             return;
 
-        // 2) Place on groundMask (grass)
+        // 2) Place on groundMask (grass/shoulder)
         Vector3 origin = xz + Vector3.up * raycastStartHeight;
         float maxRay = raycastStartHeight + raycastDownDistance;
 
@@ -27546,22 +27699,75 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         // 3) SECOND REJECT: if the ray also sees road right under it (belt + suspenders)
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit roadHit, maxRay, roadExcludeMask, QueryTriggerInteraction.Ignore))
         {
-            // if road is basically the same spot, reject
             if (Mathf.Abs(roadHit.point.y - hit.point.y) < 0.25f && Vector3.Distance(roadHit.point, hit.point) < 1.0f)
                 return;
         }
 
+        // Rotation: align to track direction
         Quaternion rot = Quaternion.LookRotation(flatForward, Vector3.up);
         Transform parent = environmentParent != null ? environmentParent : transform;
 
+        // Height offsets
+        var type = FindTypeForPrefab(prefab);
         float h = baseHeightOffset + (type != null ? type.extraHeightOffset : 0f);
+
         GameObject go = Instantiate(prefab, hit.point + Vector3.up * h, rot, parent);
+
+        // Center-pivot trees etc.
+        if (autoGroundUsingBounds)
+            SnapInstanceToGround(go, hit.point.y, extraGroundPadding);
+
         _spawnedBySlot[slot] = go;
 
         if (verboseDebug)
-            Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} lateral={lateral:F1} prefab={prefab.name}");
+            Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} pos=({go.transform.position.x:F1},{go.transform.position.y:F1},{go.transform.position.z:F1}) prefab={prefab.name}");
     }
 
+    private bool TryPickOffRoadPoint(Vector3 center, Vector3 fwd, Vector3 right, out Vector3 xz)
+    {
+        xz = center;
+
+        for (int i = 0; i < placementAttempts; i++)
+        {
+            float angDeg;
+
+            // Bias to sides so it feels like "environment lining the road"
+            if (Random.value < sideBias)
+            {
+                float side = (Random.value < 0.5f) ? -1f : 1f;
+                angDeg = side * 90f + Random.Range(-25f, 25f);
+            }
+            else
+            {
+                angDeg = Random.Range(-180f, 180f);
+            }
+
+            float r = Random.Range(minDistanceFromRoad, maxDistanceFromCenterline);
+
+            // Use forward as base axis so angle behaves consistently relative to track
+            Vector3 dir = (Quaternion.Euler(0f, angDeg, 0f) * fwd).normalized;
+
+            // Optional per-type padding no longer shifts "road edge math"�
+            // it simply increases how far out we sample.
+            float extraPad = 0f;
+            // Note: we don't know prefab type here; keep simple and stable.
+
+            Vector3 candidate = center + dir * (r + extraPad);
+
+            // Reject if road nearby at candidate
+            if (Physics.CheckSphere(candidate + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
+                continue;
+
+            xz = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    // =========================
+    // Helpers: types / selection
+    // =========================
     private EnvironmentType FindTypeForPrefab(GameObject prefab)
     {
         if (!prefab) return null;
@@ -27606,17 +27812,46 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         return environmentTypes[environmentTypes.Count - 1].prefab;
     }
 
+    // =========================
+    // Path build / sampling
+    // =========================
+    private void RebuildPath()
+    {
+        _path.Clear();
+        _cumLengths = null;
+        _totalLength = 0f;
+
+        var src = trackGenerator.PathPoints;
+        if (src == null || src.Count < 2) return;
+
+        if (useSmoothing)
+            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
+        else
+            _path.AddRange(src);
+
+        int n = _path.Count;
+        _cumLengths = new float[n];
+        float len = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            len += Vector3.Distance(_path[i - 1], _path[i]);
+            _cumLengths[i] = len;
+        }
+        _totalLength = len;
+    }
+
+    private void SetupSlots()
+    {
+        _spawnedBySlot.Clear();
+        _maxSlotIndex = (_totalLength <= 0f) ? 0 : Mathf.FloorToInt(_totalLength / spacing);
+    }
+
     private void ClearAll()
     {
         foreach (var kv in _spawnedBySlot)
             if (kv.Value) Destroy(kv.Value);
         _spawnedBySlot.Clear();
     }
-
-    // -----------------------------
-    // Sampling helpers (copied pattern)
-    // -----------------------------
-    public void SamplePath(float dist, out Vector3 pos, out Vector3 forward) => SampleAlongPath(dist, out pos, out forward);
 
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 forward)
     {
@@ -27637,7 +27872,6 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
     private int FindSegmentIndex(float dist)
     {
-        // linear is fine for your sizes, but you can binary search later if needed
         for (int i = 1; i < _cumLengths.Length; i++)
             if (_cumLengths[i] >= dist) return i - 1;
         return Mathf.Max(0, _cumLengths.Length - 2);
@@ -27645,7 +27879,6 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
     private static void GenerateSmoothedPath(List<Vector3> src, int subdiv, List<Vector3> dst)
     {
-        // Same style your spawners use: simple subdivision interpolation
         dst.Clear();
         if (src == null || src.Count < 2) return;
 
@@ -27662,6 +27895,107 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             }
         }
         dst.Add(src[src.Count - 1]);
+    }
+
+    // =========================
+    // Ground snap for center pivots
+    // =========================
+    private static void SnapInstanceToGround(GameObject go, float groundY, float pad)
+    {
+        if (go == null) return;
+
+        Bounds? bounds = null;
+
+        var cols = go.GetComponentsInChildren<Collider>();
+        for (int i = 0; i < cols.Length; i++)
+        {
+            if (cols[i] == null) continue;
+            if (bounds == null) bounds = cols[i].bounds;
+            else
+            {
+                Bounds b = bounds.Value;
+                b.Encapsulate(cols[i].bounds);
+                bounds = b;
+            }
+        }
+
+        if (bounds == null)
+        {
+            var rends = go.GetComponentsInChildren<Renderer>();
+            for (int i = 0; i < rends.Length; i++)
+            {
+                if (rends[i] == null) continue;
+                if (bounds == null) bounds = rends[i].bounds;
+                else
+                {
+                    Bounds b = bounds.Value;
+                    b.Encapsulate(rends[i].bounds);
+                    bounds = b;
+                }
+            }
+        }
+
+        if (bounds == null) return;
+
+        float bottomY = bounds.Value.min.y;
+        float deltaUp = (groundY - bottomY) + pad;
+
+        if (deltaUp > 0f)
+            go.transform.position += Vector3.up * deltaUp;
+    }
+
+    // =========================
+    // Player distance (only used for streaming mode)
+    // =========================
+    private float GetPlayerDistanceAlongTrack()
+    {
+        if (_distanceMeter == null)
+            _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+
+        if (_distanceMeter != null)
+            return Mathf.Clamp(_distanceMeter.DistanceAlongTrack, 0f, _totalLength);
+
+        return Mathf.Clamp(EstimateDistanceByClosestPoint(playerTransform.position), 0f, _totalLength);
+    }
+
+    private float EstimateDistanceByClosestPoint(Vector3 p)
+    {
+        if (_path == null || _path.Count < 2) return 0f;
+
+        int start = Mathf.Clamp(_lastClosestIdx - 12, 0, _path.Count - 2);
+        int end = Mathf.Clamp(_lastClosestIdx + 12, 0, _path.Count - 2);
+
+        float bestDistSqr = float.MaxValue;
+        int bestIdx = start;
+        float bestT = 0f;
+
+        for (int i = start; i <= end; i++)
+        {
+            Vector3 a = _path[i];
+            Vector3 b = _path[i + 1];
+            Vector3 ab = b - a;
+
+            float t = 0f;
+            float abSqr = ab.sqrMagnitude;
+            if (abSqr > 0.0001f)
+                t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
+
+            Vector3 closest = a + ab * t;
+            float dSqr = (p - closest).sqrMagnitude;
+
+            if (dSqr < bestDistSqr)
+            {
+                bestDistSqr = dSqr;
+                bestIdx = i;
+                bestT = t;
+            }
+        }
+
+        _lastClosestIdx = bestIdx;
+
+        float d0 = _cumLengths[bestIdx];
+        float segLen = Vector3.Distance(_path[bestIdx], _path[bestIdx + 1]);
+        return d0 + segLen * bestT;
     }
 }
 
@@ -32013,6 +32347,10 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private Image crashRecoveryFill;           // Progress bar fill
     [SerializeField] private TMP_Text crashRecoveryText;        // "MASH! (x left)"
 
+    [Header("Loading Overlay")]
+    [SerializeField] private GameObject loadingOverlayRoot;
+    [SerializeField] private TMP_Text loadingLabel;
+
     [Header("Mash Gauge (Progress Bar)")]
     [SerializeField] private Image mashGaugeFill;
     [Tooltip("STATIC max target marker (98%). This must NOT be a 'recent best' marker.")]
@@ -32420,6 +32758,17 @@ public class UIManager_Racing : MonoBehaviour
                 }
             );
         }
+    }
+
+    public void ShowLoading(string message = "Loading...")
+    {
+        if (loadingLabel) loadingLabel.text = message;
+        if (loadingOverlayRoot) loadingOverlayRoot.SetActive(true);
+    }
+
+    public void HideLoading()
+    {
+        if (loadingOverlayRoot) loadingOverlayRoot.SetActive(false);
     }
 
     public void OnCrashRecoveryButtonClicked()
@@ -45820,6 +46169,340 @@ public class XPNumberStyleSO : ScriptableObject
     [Header("Update")]
     public bool useUnscaledTime = false;
 }
+```
+
+## Assets/TerrainDetailGrassPainter.cs
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public sealed class TerrainDetailGrassPainter : MonoBehaviour
+{
+    [Header("Terrain")]
+    [SerializeField] private Terrain targetTerrain;
+
+    [Header("Detail Layer")]
+    [Tooltip("Which Terrain Detail layer index to paint (the grass-blade detail prototype index).")]
+    [SerializeField, Min(0)] private int detailLayerIndex = 0;
+
+    [Header("Band Painting (Recommended)")]
+    [SerializeField, Min(0.5f)] private float bandStepMeters = 3f;
+    [SerializeField, Min(1)] private int bandRings = 10;
+    [SerializeField, Min(0.25f)] private float ringSpacingMeters = 2.0f;
+    [SerializeField, Range(0f, 1f)] private float ringJitter = 0.35f;
+
+    [SerializeField] private bool clearRoadUsingPhysics = true;
+    [SerializeField] private LayerMask roadMask; // set to your Road layer
+    [SerializeField] private float roadClearRayStartHeight = 25f;
+    [SerializeField] private float roadClearRayDown = 80f;
+    [SerializeField] private float roadClearExtraMeters = 0.75f;
+
+
+    [Header("Road Clearing")]
+    [Tooltip("Extra meters beyond road width to keep completely clear of grass details.")]
+    [SerializeField, Min(0f)] private float roadClearPaddingMeters = 1.5f;
+
+    [Tooltip("Additional feather band in meters where we fade down to zero (looks less 'cut out').")]
+    [SerializeField, Min(0f)] private float roadFeatherMeters = 1.5f;
+
+    [Header("Grass Painting")]
+    [Tooltip("How far from the road edge we paint grass (meters).")]
+    [SerializeField, Min(0f)] private float paintOutwardMeters = 30f;
+
+    [Tooltip("Detail density written into the terrain detailmap (0..16-ish typical, but Unity allows higher).")]
+    [SerializeField, Range(0, 32)] private int grassDensity = 10;
+
+    [Tooltip("How often we sample along the track to stamp (meters). Lower = more accurate, slower.")]
+    [SerializeField, Range(0.5f, 10f)] private float sampleStepMeters = 2f;
+
+    [Header("Performance")]
+    [Tooltip("If true, yields periodically while painting to avoid a big spike.")]
+    [SerializeField] private bool paintAsCoroutine = true;
+
+    [Tooltip("How many samples before yielding one frame.")]
+    [SerializeField, Range(10, 500)] private int yieldEverySamples = 80;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugLogBounds = true;
+    [SerializeField] private bool debugStampAtCarOnce = true;
+    [SerializeField] private int debugStampSizeCells = 18;
+    [SerializeField] private int debugStampDensity = 16;
+
+    private bool _didDebugStamp;
+
+
+    private TerrainData _td;
+    private int _detailW;
+    private int _detailH;
+    private Vector3 _terrainPos;
+    private Vector3 _terrainSize;
+
+    public void PaintNow(ProceduralTrackGenerator gen)
+    {
+        if (paintAsCoroutine) StartCoroutine(CoPaint(gen));
+        else PaintInternal(gen, allowYield: false);
+    }
+
+    public IEnumerator CoPaint(ProceduralTrackGenerator gen)
+    {
+        yield return PaintInternal(gen, allowYield: true);
+    }
+
+    private IEnumerator PaintInternal(ProceduralTrackGenerator gen, bool allowYield)
+    {
+        if (gen == null || gen.PathPoints == null || gen.PathPoints.Count < 2) yield break;
+        if (targetTerrain == null) targetTerrain = Terrain.activeTerrain;
+        if (targetTerrain == null) yield break;
+
+        _td = targetTerrain.terrainData;
+        if (_td == null) yield break;
+
+        _detailW = _td.detailWidth;
+        _detailH = _td.detailHeight;
+
+        _terrainPos = targetTerrain.transform.position;
+        _terrainSize = _td.size;
+
+        _debugRayHits = 0;
+        _debugRayMisses = 0;
+
+        Physics.SyncTransforms();
+        if (allowYield) yield return new WaitForFixedUpdate();
+
+        if (debugStampAtCarOnce && !_didDebugStamp)
+        {
+            _didDebugStamp = true;
+
+            // If you don't have a car ref here, just stamp at the first path point
+            DebugStampSquareAtWorld(gen.PathPoints[0]);
+        }
+
+        // Road width comes from generator usage pattern in your spawners (same concept)
+        // We'll clear (roadWidth/2 + padding) fully, then feather to grass over roadFeatherMeters.
+        float roadHalf = Mathf.Max(0.01f, gen.RoadWidth * 0.5f);
+        float clearRadius = roadHalf + roadClearPaddingMeters;
+        float featherRadius = clearRadius + roadFeatherMeters;
+        float paintRadius = featherRadius + paintOutwardMeters;
+
+        int samples = 0;
+        int inBounds = 0;
+        int outBounds = 0;
+
+        // Iterate along the path points and stamp into detail map
+        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        {
+            Vector3 a = gen.PathPoints[i];
+            Vector3 b = gen.PathPoints[i + 1];
+
+            float segLen = Vector3.Distance(a, b);
+            if (segLen < 0.01f) continue;
+
+            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.25f, bandStepMeters)));
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = (steps == 0) ? 0f : (s / (float)steps);
+                Vector3 p = Vector3.Lerp(a, b, t);
+
+                // direction along segment
+                Vector3 fwd = (b - a);
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+                fwd.Normalize();
+
+                Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+
+                // Clear radius based on road width (but we'll ALSO do physics road clearing)
+                float hardClear = roadHalf + roadClearPaddingMeters + roadClearExtraMeters;
+
+                // Paint outward rings on BOTH sides
+                for (int ring = 1; ring <= bandRings; ring++)
+                {
+                    float baseOff = hardClear + ring * ringSpacingMeters;
+                    float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
+                    float off = baseOff + jitter;
+
+                    Vector3 leftPos = p - right * off;
+                    Vector3 rightPos = p + right * off;
+
+                    PaintPoint(leftPos, grassDensity);
+                    PaintPoint(rightPos, grassDensity);
+                }
+
+                samples++;
+                if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
+                    yield return null;
+            }
+        }
+
+
+        if (debugLogBounds)
+        {
+            Debug.Log($"[TerrainDetailGrassPainter] layer={detailLayerIndex} samples={samples} detailSize={_detailW}x{_detailH}");
+            Debug.Log($"[TerrainDetailGrassPainter] Road raycast hits={_debugRayHits}, misses={_debugRayMisses}, roadMask={roadMask.value}");
+        }
+        _debugRayHits = 0;
+        _debugRayMisses = 0;
+
+        targetTerrain.Flush();
+    }
+
+    private int _debugRayHits = 0;
+    private int _debugRayMisses = 0;
+
+    private void PaintPoint(Vector3 world, int density)
+    {
+        Vector2 norm = WorldToTerrainNorm(world);
+        if (norm.x < 0f || norm.x > 1f || norm.y < 0f || norm.y > 1f) return;
+
+        // If we can detect road under this point, do NOT paint.
+        if (clearRoadUsingPhysics && roadMask.value != 0)
+        {
+            Vector3 origin = new Vector3(world.x, _terrainPos.y + _terrainSize.y + roadClearRayStartHeight, world.z);
+            float maxRay = _terrainSize.y + roadClearRayDown;
+
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadMask, QueryTriggerInteraction.Ignore))
+            {
+                _debugRayHits++;
+                // road collider under this point => don't place grass
+                return;
+            }
+            else
+            {
+                _debugRayMisses++;
+            }
+        }
+
+        int cx = Mathf.RoundToInt(norm.x * (_detailW - 1));
+        int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
+
+        // Dab size in cells (small square)
+        const int dab = 2;
+        int x0 = Mathf.Clamp(cx - dab, 0, _detailW - 1);
+        int y0 = Mathf.Clamp(cy - dab, 0, _detailH - 1);
+        int w = Mathf.Clamp(cx + dab, 0, _detailW - 1) - x0 + 1;
+        int h = Mathf.Clamp(cy + dab, 0, _detailH - 1) - y0 + 1;
+
+        int[,] layer = _td.GetDetailLayer(x0, y0, w, h, detailLayerIndex);
+        for (int yy = 0; yy < h; yy++)
+            for (int xx = 0; xx < w; xx++)
+                layer[yy, xx] = Mathf.Max(layer[yy, xx], density);
+
+        _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
+    }
+
+
+    private void StampAtWorld(Vector3 world, float clearR, float featherR, float paintR)
+    {
+        // Convert world -> normalized terrain local (0..1)
+        Vector2 norm = WorldToTerrainNorm(world);
+        if (norm.x < 0f || norm.x > 1f || norm.y < 0f || norm.y > 1f) return;
+
+        // Convert meters to detail cells
+        float metersPerCellX = _terrainSize.x / Mathf.Max(1, _detailW);
+        float metersPerCellZ = _terrainSize.z / Mathf.Max(1, _detailH);
+
+        int cx = Mathf.RoundToInt(norm.x * (_detailW - 1));
+        int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
+
+        int radCellsX = Mathf.CeilToInt(paintR / Mathf.Max(0.0001f, metersPerCellX));
+        int radCellsY = Mathf.CeilToInt(paintR / Mathf.Max(0.0001f, metersPerCellZ));
+
+        int x0 = Mathf.Clamp(cx - radCellsX, 0, _detailW - 1);
+        int x1 = Mathf.Clamp(cx + radCellsX, 0, _detailW - 1);
+        int y0 = Mathf.Clamp(cy - radCellsY, 0, _detailH - 1);
+        int y1 = Mathf.Clamp(cy + radCellsY, 0, _detailH - 1);
+
+        int w = x1 - x0 + 1;
+        int h = y1 - y0 + 1;
+
+        // Pull region, modify, push back
+        int[,] layer = _td.GetDetailLayer(x0, y0, w, h, detailLayerIndex);
+
+        for (int yy = 0; yy < h; yy++)
+        {
+            for (int xx = 0; xx < w; xx++)
+            {
+                int dx = (x0 + xx) - cx;
+                int dy = (y0 + yy) - cy;
+
+                float distMeters =
+                    Mathf.Sqrt((dx * metersPerCellX) * (dx * metersPerCellX) +
+                               (dy * metersPerCellZ) * (dy * metersPerCellZ));
+
+                // Inside clear: force 0
+                if (distMeters <= clearR)
+                {
+                    layer[yy, xx] = 0;
+                    continue;
+                }
+
+                // Between clear and feather: fade up from 0 to density
+                if (distMeters <= featherR)
+                {
+                    float u = Mathf.InverseLerp(clearR, featherR, distMeters);
+                    int target = Mathf.RoundToInt(grassDensity * u);
+                    if (target > layer[yy, xx]) layer[yy, xx] = target;
+                    continue;
+                }
+
+                // Between feather and paint radius: set full density
+                if (distMeters <= paintR)
+                {
+                    if (grassDensity > layer[yy, xx]) layer[yy, xx] = grassDensity;
+                }
+            }
+        }
+
+        _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
+    }
+
+    private Vector2 WorldToTerrainNorm(Vector3 world)
+    {
+        Vector3 local = world - _terrainPos;
+        float nx = local.x / Mathf.Max(0.0001f, _terrainSize.x);
+        float nz = local.z / Mathf.Max(0.0001f, _terrainSize.z);
+        return new Vector2(nx, nz);
+    }
+
+    private void DebugStampSquareAtWorld(Vector3 world)
+    {
+        if (_td == null) return;
+
+        Vector2 norm = WorldToTerrainNorm(world);
+        if (debugLogBounds)
+            Debug.Log($"[GrassPainter] DebugStamp world={world} norm={norm} terrainPos={_terrainPos} size={_terrainSize}");
+
+        if (norm.x < 0f || norm.x > 1f || norm.y < 0f || norm.y > 1f)
+        {
+            Debug.LogWarning("[GrassPainter] Debug stamp point OUTSIDE terrain bounds -> nothing will paint.");
+            return;
+        }
+
+        int cx = Mathf.RoundToInt(norm.x * (_detailW - 1));
+        int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
+
+        int half = Mathf.Max(1, debugStampSizeCells / 2);
+        int x0 = Mathf.Clamp(cx - half, 0, _detailW - 1);
+        int y0 = Mathf.Clamp(cy - half, 0, _detailH - 1);
+        int w = Mathf.Clamp(cx + half, 0, _detailW - 1) - x0 + 1;
+        int h = Mathf.Clamp(cy + half, 0, _detailH - 1) - y0 + 1;
+
+        int[,] layer = _td.GetDetailLayer(x0, y0, w, h, detailLayerIndex);
+
+        for (int yy = 0; yy < h; yy++)
+            for (int xx = 0; xx < w; xx++)
+                layer[yy, xx] = Mathf.Max(layer[yy, xx], debugStampDensity);
+
+        _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
+
+        Debug.Log($"[GrassPainter] DebugStamp applied at detail ({cx},{cy}) size={w}x{h} density={debugStampDensity} layer={detailLayerIndex}");
+    }
+
+}
+
 ```
 
 ## Assets/TextMesh Pro/Examples & Extras/Scripts/Benchmark01.cs

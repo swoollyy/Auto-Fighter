@@ -3576,12 +3576,12 @@ public class CarController : MonoBehaviour
             }
 
 #if UNITY_EDITOR
-        if (debugSurfaceRays)
-        {
-            Debug.DrawRay(rayOrigin, Vector3.down * rayDistance, 
-                Physics.Raycast(rayOrigin, Vector3.down, rayDistance, groundCheckLayers, QueryTriggerInteraction.Collide) 
-                    ? Color.green : Color.red, 0.1f);
-        }
+            if (debugSurfaceRays)
+            {
+                Debug.DrawRay(rayOrigin, Vector3.down * rayDistance,
+                    Physics.Raycast(rayOrigin, Vector3.down, rayDistance, groundCheckLayers, QueryTriggerInteraction.Collide)
+                        ? Color.green : Color.red, 0.1f);
+            }
 #endif
         }
 
@@ -4594,6 +4594,31 @@ public class CarController : MonoBehaviour
 
         float impactSpeed = collision.relativeVelocity.magnitude;
 
+        // === FIX: Check shuttle/cross velocity BEFORE minImpactSpeed check ===
+        // This ensures moving obstacles register proper impact even when car is slow/stationary
+        Vector3 contactNormalEarly = Vector3.up;
+        if (collision.contactCount > 0)
+        {
+            contactNormalEarly = collision.GetContact(0).normal;
+        }
+
+        var shuttleEarly = collision.collider.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttleEarly != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttleEarly.GetWorldVelocity();
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+
+        var crossEarly = collision.collider.GetComponentInParent<CrossTrackObstacle>();
+        if (crossEarly != null && rb != null)
+        {
+            // CrossTrackObstacle has GetWorldVelocity() similar to ShuttleTrackObstacle
+            Vector3 crossVel = crossEarly.GetWorldVelocity();
+            Vector3 rel = rb.velocity - crossVel;
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+        // === END FIX ===
+
         if (impactSpeed < minImpactSpeed)
             return;
 
@@ -4939,6 +4964,25 @@ public class CarController : MonoBehaviour
             impactSpeed = (rb.velocity - otherRb.velocity).magnitude;
         else
             impactSpeed = rb.velocity.magnitude;
+
+        // === FIX: Check shuttle/cross velocity BEFORE minImpactSpeed check ===
+        // This ensures moving obstacles register proper impact even when car is slow/stationary
+        var shuttleTrigger = other.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttleTrigger != null && rb != null)
+        {
+            Vector3 rel = rb.velocity - shuttleTrigger.GetWorldVelocity();
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+
+        var crossTriggerEarly = other.GetComponentInParent<CrossTrackObstacle>();
+        if (crossTriggerEarly != null && rb != null)
+        {
+            // CrossTrackObstacle has GetWorldVelocity() similar to ShuttleTrackObstacle
+            Vector3 crossVel = crossTriggerEarly.GetWorldVelocity();
+            Vector3 rel = rb.velocity - crossVel;
+            impactSpeed = Mathf.Max(impactSpeed, rel.magnitude);
+        }
+        // === END FIX ===
 
         if (impactSpeed < minImpactSpeed)
             return;

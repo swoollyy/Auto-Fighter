@@ -2250,7 +2250,7 @@ GameObject:
   - component: {fileID: 796779780}
   - component: {fileID: 796779781}
   - component: {fileID: 796779782}
-  m_Layer: 14
+  m_Layer: 13
   m_Name: TrackGen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3366,26 +3366,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetTerrain: {fileID: 2014939780}
   detailLayerIndex: 0
-  bandStepMeters: 1.65
-  bandRings: 17
-  ringSpacingMeters: 1.02
-  ringJitter: 0.35
+  bandStepMeters: 0.66
+  bandRings: 67
+  ringSpacingMeters: 0.94
+  ringJitter: 0.523
   clearRoadUsingPhysics: 1
   roadMask:
     serializedVersion: 2
-    m_Bits: 8192
-  roadClearRayStartHeight: 25
-  roadClearRayDown: 80
-  roadClearExtraMeters: 0.75
-  roadClearPaddingMeters: 1.5
-  roadFeatherMeters: 1.5
-  paintOutwardMeters: 70
+    m_Bits: 24576
+  roadClearRayStartHeight: 5
+  roadClearRayDown: 10
+  roadClearExtraMeters: 0.05
+  roadClearPaddingMeters: 0.2
+  roadFeatherMeters: 0.2
+  paintOutwardMeters: 15
   grassDensity: 32
   sampleStepMeters: 0.5
   paintAsCoroutine: 1
-  yieldEverySamples: 37
+  yieldEverySamples: 120
   debugLogBounds: 1
-  debugStampAtCarOnce: 1
+  debugStampAtCarOnce: 0
   debugStampSizeCells: 18
   debugStampDensity: 16
 --- !u!1 &804777573

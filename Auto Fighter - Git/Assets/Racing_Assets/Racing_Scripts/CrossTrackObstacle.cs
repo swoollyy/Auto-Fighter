@@ -477,6 +477,17 @@ public class CrossTrackObstacle : MonoBehaviour
         }
     }
 
+
+    public Vector3 GetWorldVelocity()
+    {
+        // If still on scripted motion, return the transform-derived velocity
+        if (!_convertedToPhysics)
+            return _lastVelocity;  // or however you track scripted velocity
+
+        // After conversion, use real rigidbody velocity
+        return _rb != null ? _rb.velocity : Vector3.zero;
+    }
+
     /// <summary>
     /// Calculates the upward velocity boost based on relative speed and configuration.
     /// </summary>

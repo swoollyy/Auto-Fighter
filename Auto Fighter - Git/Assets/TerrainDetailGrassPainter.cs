@@ -90,26 +90,61 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _terrainPos = targetTerrain.transform.position;
         _terrainSize = _td.size;
 
-        if (debugStampAtCarOnce && !_didDebugStamp)
-        {
-            _didDebugStamp = true;
+        _debugRayHits = 0;
+        _debugRayMisses = 0;
 
-            // If you don't have a car ref here, just stamp at the first path point
-            DebugStampSquareAtWorld(gen.PathPoints[0]);
-        }
+        Physics.SyncTransforms();
+        if (allowYield) yield return new WaitForFixedUpdate();
 
-        // Road width comes from generator usage pattern in your spawners (same concept)
-        // We'll clear (roadWidth/2 + padding) fully, then feather to grass over roadFeatherMeters.
+        // Road width info
         float roadHalf = Mathf.Max(0.01f, gen.RoadWidth * 0.5f);
-        float clearRadius = roadHalf + roadClearPaddingMeters;
-        float featherRadius = clearRadius + roadFeatherMeters;
-        float paintRadius = featherRadius + paintOutwardMeters;
+        float clearRadius = roadHalf + roadClearPaddingMeters + roadClearExtraMeters;
 
         int samples = 0;
-        int inBounds = 0;
-        int outBounds = 0;
 
-        // Iterate along the path points and stamp into detail map
+        // ============================================================
+        // PHASE 1: CLEAR grass along the entire road path first
+        // ============================================================
+        if (debugLogBounds)
+            Debug.Log("[TerrainDetailGrassPainter] Phase 1: Clearing grass along road...");
+
+        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        {
+            Vector3 a = gen.PathPoints[i];
+            Vector3 b = gen.PathPoints[i + 1];
+
+            float segLen = Vector3.Distance(a, b);
+            if (segLen < 0.01f) continue;
+
+            // Use smaller steps for clearing to ensure full coverage
+            float clearStepMeters = 1.0f;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / clearStepMeters));
+
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = (steps == 0) ? 0f : (s / (float)steps);
+                Vector3 p = Vector3.Lerp(a, b, t);
+
+                // Clear a wide swath centered on the road
+                ClearGrassAtPoint(p, clearRadius);
+
+                samples++;
+                if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
+                    yield return null;
+            }
+        }
+
+        if (debugLogBounds)
+            Debug.Log($"[TerrainDetailGrassPainter] Phase 1 complete: cleared {samples} points");
+
+        // ============================================================
+        // PHASE 2: Paint grass in rings OUTSIDE the road
+        // ============================================================
+        if (debugLogBounds)
+            Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
+
+        samples = 0;
+
         for (int i = 0; i < gen.PathPoints.Count - 1; i++)
         {
             Vector3 a = gen.PathPoints[i];
@@ -124,7 +159,6 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
                 float t = (steps == 0) ? 0f : (s / (float)steps);
                 Vector3 p = Vector3.Lerp(a, b, t);
 
-                // direction along segment
                 Vector3 fwd = (b - a);
                 fwd.y = 0f;
                 if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
@@ -132,13 +166,10 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
                 Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
 
-                // Clear radius based on road width (but we'll ALSO do physics road clearing)
-                float hardClear = roadHalf + roadClearPaddingMeters + roadClearExtraMeters;
-
-                // Paint outward rings on BOTH sides
+                // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
                 for (int ring = 1; ring <= bandRings; ring++)
                 {
-                    float baseOff = hardClear + ring * ringSpacingMeters;
+                    float baseOff = clearRadius + ring * ringSpacingMeters;
                     float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
                     float off = baseOff + jitter;
 
@@ -155,13 +186,19 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
             }
         }
 
-
         if (debugLogBounds)
-        {   
-            Debug.Log($"[TerrainDetailGrassPainter] layer={detailLayerIndex} samples={samples} inBounds={inBounds} outBounds={outBounds} detailSize={_detailW}x{_detailH}");
+        {
+            Debug.Log($"[TerrainDetailGrassPainter] Phase 2 complete: samples={samples} detailSize={_detailW}x{_detailH}");
+            Debug.Log($"[TerrainDetailGrassPainter] Road raycast hits={_debugRayHits}, misses={_debugRayMisses}, roadMask={roadMask.value}");
         }
+        _debugRayHits = 0;
+        _debugRayMisses = 0;
+
         targetTerrain.Flush();
     }
+
+    private int _debugRayHits = 0;
+    private int _debugRayMisses = 0;
 
     private void PaintPoint(Vector3 world, int density)
     {
@@ -174,10 +211,15 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
             Vector3 origin = new Vector3(world.x, _terrainPos.y + _terrainSize.y + roadClearRayStartHeight, world.z);
             float maxRay = _terrainSize.y + roadClearRayDown;
 
-            if (Physics.Raycast(origin, Vector3.down, out _, maxRay, roadMask, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadMask, QueryTriggerInteraction.Ignore))
             {
-                // road collider under this point => don’t place grass
+                _debugRayHits++;
+                // road collider under this point => don't place grass
                 return;
+            }
+            else
+            {
+                _debugRayMisses++;
             }
         }
 
@@ -185,7 +227,7 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
 
         // Dab size in cells (small square)
-        const int dab = 2; // 2 => 5x5. raise to 3 => 7x7 if you want denser-looking fields
+        const int dab = 2;
         int x0 = Mathf.Clamp(cx - dab, 0, _detailW - 1);
         int y0 = Mathf.Clamp(cy - dab, 0, _detailH - 1);
         int w = Mathf.Clamp(cx + dab, 0, _detailW - 1) - x0 + 1;
@@ -199,7 +241,54 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
     }
 
+    private void ClearGrassAtPoint(Vector3 world, float clearRadiusMeters)
+    {
+        Vector2 norm = WorldToTerrainNorm(world);
+        if (norm.x < 0f || norm.x > 1f || norm.y < 0f || norm.y > 1f) return;
 
+        float metersPerCellX = _terrainSize.x / Mathf.Max(1, _detailW);
+        float metersPerCellZ = _terrainSize.z / Mathf.Max(1, _detailH);
+
+        int cx = Mathf.RoundToInt(norm.x * (_detailW - 1));
+        int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
+
+        int radCellsX = Mathf.CeilToInt(clearRadiusMeters / Mathf.Max(0.0001f, metersPerCellX));
+        int radCellsY = Mathf.CeilToInt(clearRadiusMeters / Mathf.Max(0.0001f, metersPerCellZ));
+
+        int x0 = Mathf.Clamp(cx - radCellsX, 0, _detailW - 1);
+        int x1 = Mathf.Clamp(cx + radCellsX, 0, _detailW - 1);
+        int y0 = Mathf.Clamp(cy - radCellsY, 0, _detailH - 1);
+        int y1 = Mathf.Clamp(cy + radCellsY, 0, _detailH - 1);
+
+        int w = x1 - x0 + 1;
+        int h = y1 - y0 + 1;
+
+        if (w <= 0 || h <= 0) return;
+
+        int[,] layer = _td.GetDetailLayer(x0, y0, w, h, detailLayerIndex);
+
+        for (int yy = 0; yy < h; yy++)
+        {
+            for (int xx = 0; xx < w; xx++)
+            {
+                int dx = (x0 + xx) - cx;
+                int dy = (y0 + yy) - cy;
+
+                float distMeters = Mathf.Sqrt(
+                    (dx * metersPerCellX) * (dx * metersPerCellX) +
+                    (dy * metersPerCellZ) * (dy * metersPerCellZ)
+                );
+
+                // Clear grass within the radius
+                if (distMeters <= clearRadiusMeters)
+                {
+                    layer[yy, xx] = 0;
+                }
+            }
+        }
+
+        _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
+    }
     private void StampAtWorld(Vector3 world, float clearR, float featherR, float paintR)
     {
         // Convert world -> normalized terrain local (0..1)

@@ -962,7 +962,7 @@ MonoBehaviour:
   closeCallBoostBaseDuration: 0.9
   closeCallBoostForce: 12
   closeCallBoostForceMode: 5
-  closeCallBoostMaxSpeedMult: 2.5
+  closeCallBoostMaxSpeedMult: 1.3
   closeCallInvincibilityTint: {r: 0.5, g: 0.8, b: 1, a: 0.5}
   closeCallTintColor: {r: 0.3, g: 0.6, b: 1, a: 1}
   closeCallTintStrength: 0.6
