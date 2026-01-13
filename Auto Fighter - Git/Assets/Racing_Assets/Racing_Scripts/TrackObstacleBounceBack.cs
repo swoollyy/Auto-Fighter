@@ -90,7 +90,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [SerializeField]
     private Vector2 telegraphRadiusClamp = new Vector2(0.75f, 4.0f);
 
-
+    private bool _forcefieldDetached;
 
     [Header("Landing Settle (Fix Shake)")]
     [SerializeField, Min(0f), Tooltip("Time in seconds to let physics settle after landing before freezing.")]
@@ -232,6 +232,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
     {
         if (!InitializeIfNeeded())
             return;
+
+        if (_forcefieldDetached) return;
 
         float dt = Time.fixedDeltaTime;
 
@@ -650,6 +652,28 @@ public class TrackObstacleBounceBack : MonoBehaviour
         }
         _totalLength = len;
     }
+
+    public void DetachForForcefieldLaunch()
+    {
+        if (_forcefieldDetached) return;
+        _forcefieldDetached = true;
+
+        // Kill any tween driving bounce param (if used)
+        try { DOTween.Kill(this); } catch { } // safe kill if you used SetId(this) patterns
+
+        StopAllCoroutines();
+
+        // Let physics take over
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        }
+    }
+
 
     private void IgnoreCollisionTemporarily(Collider other, float now)
     {

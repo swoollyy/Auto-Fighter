@@ -2105,8 +2105,9 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d37518b7da405884294b14d3df54389a, type: 2}
   - {fileID: 11400000, guid: ce980c4f31dfcc945a9dd49f570fabef, type: 2}
   - {fileID: 11400000, guid: f621df00fd6d33e44851d2514b71061d, type: 2}
+  - {fileID: 11400000, guid: c6ea18c72fd94ca4e9e9f3e3d82822d2, type: 2}
   randomScreenMaxAttempts: 8
-  randomScreenMinSeparation: 1.2
+  randomScreenMinSeparation: 4.01
   randomScreenMemorySeconds: 0.35
   defaultFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   defaultFontMaterial: {fileID: 0}
@@ -2335,6 +2336,7 @@ MonoBehaviour:
   constrainToGlobalDirection: 1
   globalAlignmentStrength: 0.033
   maxHeadingDeviation: 103.6
+  grassPainter: {fileID: 796779782}
   useRandomSeed: 1
   fixedSeed: 12345
   generateRoadMesh: 1
@@ -2795,9 +2797,9 @@ MonoBehaviour:
     extraLateralPadding: 0
   - id: Bouncing Rock
     prefab: {fileID: 7218115627756473360, guid: c79e89c8e2e15ee4ca4a516065c5e520, type: 3}
-    baseWeight: 0.75
-    startAtNormalizedDist: 0.025
-    fullWeightNormalizedDist: 0.3
+    baseWeight: 0.9
+    startAtNormalizedDist: 0.017
+    fullWeightNormalizedDist: 0.12
     stopAtNormalizedDist: 0.7
     extraHeightOffset: 0
     extraLateralPadding: 0
@@ -3034,7 +3036,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 0.07
-      value: 0
+      value: 0.05
       inSlope: -0.0083713075
       outSlope: -0.0083713075
       tangentMode: 0
@@ -3104,7 +3106,7 @@ MonoBehaviour:
   - id: NPCCar
     prefab: {fileID: 8123480379425158355, guid: f237c6ce6f175d64e90b970c9c2969b9, type: 3}
     weight: 1
-    startAtNormalizedDist: 0.01
+    startAtNormalizedDist: 0.007
     fullWeightNormalizedDist: 0.05
     stopAtNormalizedDist: 1
   - id: NPCCar BIG
@@ -3115,8 +3117,8 @@ MonoBehaviour:
     stopAtNormalizedDist: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  carSpacing: 3.12
-  maxActiveCars: 8
+  carSpacing: 2.5
+  maxActiveCars: 16
   minSpawnDistanceAhead: 5
   maxSpawnDistanceAhead: 30.3
   allowSpawnBehind: 1
@@ -3193,7 +3195,7 @@ MonoBehaviour:
   - id: Bug
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
-    baseWeight: 1
+    baseWeight: 0
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.05
     stopAtNormalizedDist: 1
@@ -3207,15 +3209,33 @@ MonoBehaviour:
     scaredMaxFleeSpeed: 0
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
+    scaredIdleUseBugMovement: 0
+    scaredIdleBugMoveSpeed: 0
+    scaredIdleBugDirectionChangeInterval: 0.05
+    scaredIdleBugLateralRadius: 0
+    scaredIdleBugForwardRadius: 0
+    scaredFleeFromAggressive: 0
+    scaredAggressiveDetectRadius: 0
+    scaredAggressiveLoseFearDistance: 0
+    scaredAggressiveFleeSpeedMultiplier: 0
+    aggressiveIdleUseBugMovement: 0
+    aggressiveIdleBugMoveSpeed: 0
+    aggressiveIdleBugDirectionChangeInterval: 0.05
+    aggressiveIdleBugLateralRadius: 0
+    aggressiveIdleBugForwardRadius: 0
+    aggressiveHuntScaredCreatures: 0
+    aggressiveHuntRadius: 0
+    aggressiveHuntSpeedMultiplier: 0
     aggressiveDetectionRadius: 0
     aggressiveChargeSpeed: 0
     aggressiveMaxOffTrackDistance: 0
     aggressiveImpactDamage: 0
+    aggressiveCrushMassThreshold: 80
   - id: Critter
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
     baseWeight: 0.8
-    startAtNormalizedDist: 0.05
+    startAtNormalizedDist: 0.005
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -3223,25 +3243,43 @@ MonoBehaviour:
     coinReward: 4
     passiveWanderSpeed: 0
     passiveDirectionChangeInterval: 0
-    scaredDetectionRadius: 8
-    scaredBaseFleeSpeed: 3
-    scaredMaxFleeSpeed: 8
+    scaredDetectionRadius: 3
+    scaredBaseFleeSpeed: 2
+    scaredMaxFleeSpeed: 4
     scaredSpeedBuildupRate: 1.5
-    scaredMaxOffRoadDistance: 50
+    scaredMaxOffRoadDistance: 5
+    scaredIdleUseBugMovement: 1
+    scaredIdleBugMoveSpeed: 1.25
+    scaredIdleBugDirectionChangeInterval: 0.6
+    scaredIdleBugLateralRadius: 2
+    scaredIdleBugForwardRadius: 1.25
+    scaredFleeFromAggressive: 1
+    scaredAggressiveDetectRadius: 6
+    scaredAggressiveLoseFearDistance: 8
+    scaredAggressiveFleeSpeedMultiplier: 1.1
+    aggressiveIdleUseBugMovement: 0
+    aggressiveIdleBugMoveSpeed: 0
+    aggressiveIdleBugDirectionChangeInterval: 0.05
+    aggressiveIdleBugLateralRadius: 0
+    aggressiveIdleBugForwardRadius: 0
+    aggressiveHuntScaredCreatures: 0
+    aggressiveHuntRadius: 0
+    aggressiveHuntSpeedMultiplier: 0
     aggressiveDetectionRadius: 0
     aggressiveChargeSpeed: 0
     aggressiveMaxOffTrackDistance: 0
     aggressiveImpactDamage: 0
+    aggressiveCrushMassThreshold: 80
   - id: Beast
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
-    baseWeight: 0.4
-    startAtNormalizedDist: 0.08
+    baseWeight: 1
+    startAtNormalizedDist: 0.011
     fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
     extraLateralPadding: 0
-    coinReward: 10
+    coinReward: 0
     passiveWanderSpeed: 0
     passiveDirectionChangeInterval: 0
     scaredDetectionRadius: 0
@@ -3249,14 +3287,32 @@ MonoBehaviour:
     scaredMaxFleeSpeed: 0
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
-    aggressiveDetectionRadius: 16
-    aggressiveChargeSpeed: 6
+    scaredIdleUseBugMovement: 0
+    scaredIdleBugMoveSpeed: 1.25
+    scaredIdleBugDirectionChangeInterval: 1
+    scaredIdleBugLateralRadius: 2
+    scaredIdleBugForwardRadius: 1.25
+    scaredFleeFromAggressive: 0
+    scaredAggressiveDetectRadius: 18
+    scaredAggressiveLoseFearDistance: 30
+    scaredAggressiveFleeSpeedMultiplier: 1.25
+    aggressiveIdleUseBugMovement: 1
+    aggressiveIdleBugMoveSpeed: 1.5
+    aggressiveIdleBugDirectionChangeInterval: 1.1
+    aggressiveIdleBugLateralRadius: 5
+    aggressiveIdleBugForwardRadius: 5
+    aggressiveHuntScaredCreatures: 1
+    aggressiveHuntRadius: 10
+    aggressiveHuntSpeedMultiplier: 3.5
+    aggressiveDetectionRadius: 5.5
+    aggressiveChargeSpeed: 2
     aggressiveMaxOffTrackDistance: 50
     aggressiveImpactDamage: 0.6
+    aggressiveCrushMassThreshold: 8
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   creatureSpacing: 7
-  maxActiveCreatures: 30
+  maxActiveCreatures: 12
   minSpawnDistanceAhead: 5
   maxSpawnDistanceAhead: 70
   initialPreSpawnDistance: 70
@@ -3309,13 +3365,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22324d622869b454c9c0cdfebb53eb05, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  overrideSpawnedLayer: 1
+  spawnedEnvironmentLayer: 20
+  applyLayerRecursively: 1
   trackGenerator: {fileID: 796779767}
   playerTransform: {fileID: 0}
   environmentParent: {fileID: 796779768}
   environmentTypes:
   - id: Tree
     prefab: {fileID: 3874382558013832276, guid: d007e7d16d56732489bab747b31c398a, type: 3}
-    baseWeight: 1
+    baseWeight: 0.7
     extraHeightOffset: 0
     extraLateralPadding: 0
   - id: BIg Rock
@@ -3323,22 +3382,27 @@ MonoBehaviour:
     baseWeight: 1
     extraHeightOffset: 0
     extraLateralPadding: 0
+  - id: Rock
+    prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
+    baseWeight: 2
+    extraHeightOffset: 0
+    extraLateralPadding: 0
   spawnMode: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   spacing: 3
-  maxActive: 200
-  targetCount: 200
+  maxActive: 1200
+  targetCount: 1200
   maxAttemptsPerSlot: 6
-  streamSpawnDuringRun: 1
+  streamSpawnDuringRun: 0
   updateInterval: 0.35
-  maxSpawnDistanceAhead: 150
-  maxSpawnDistanceBehind: 150
-  despawnBehindDistance: 100
-  minDistanceFromRoad: 4
-  maxDistanceFromCenterline: 35
-  sideBias: 0.9
-  placementAttempts: 8
+  maxSpawnDistanceAhead: 75
+  maxSpawnDistanceBehind: 15
+  despawnBehindDistance: 50
+  minDistanceFromRoad: 2
+  maxDistanceFromCenterline: 75
+  sideBias: 0
+  placementAttempts: 15
   autoGroundUsingBounds: 1
   extraGroundPadding: 0.02
   groundMask:
@@ -3365,6 +3429,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetTerrain: {fileID: 2014939780}
+  cloneTerrainDataAtRuntime: 0
+  restoreOriginalOnDisable: 1
+  fillEntireTerrainBeforeCut: 1
+  baselineDensity: 32
+  stillPaintRingsAfterFill: 0
   detailLayerIndex: 0
   bandStepMeters: 0.66
   bandRings: 67
@@ -3373,7 +3442,7 @@ MonoBehaviour:
   clearRoadUsingPhysics: 1
   roadMask:
     serializedVersion: 2
-    m_Bits: 24576
+    m_Bits: 16384
   roadClearRayStartHeight: 5
   roadClearRayDown: 10
   roadClearExtraMeters: 0.05
@@ -3383,7 +3452,7 @@ MonoBehaviour:
   grassDensity: 32
   sampleStepMeters: 0.5
   paintAsCoroutine: 1
-  yieldEverySamples: 120
+  yieldEverySamples: 206
   debugLogBounds: 1
   debugStampAtCarOnce: 0
   debugStampSizeCells: 18
@@ -4157,7 +4226,7 @@ Light:
   m_Type: 1
   m_Shape: 0
   m_Color: {r: 0.9755594, g: 0.6933962, b: 1, a: 1}
-  m_Intensity: 0
+  m_Intensity: 0.3
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -4764,7 +4833,7 @@ MonoBehaviour:
   arcHeight: 0
   hitLayers:
     serializedVersion: 2
-    m_Bits: 788481
+    m_Bits: 3934209
   explosiveByDefault: 0
   explosionRadius: 3
   explosionKnockback: 6
@@ -6596,7 +6665,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  spawnCooldownRandomRange: {x: 0.9, y: 8.1}
+  spawnCooldownRandomRange: {x: 0.9, y: 7}
   initialSpawnDelayRange: {x: 6, y: 15}
   useActualPathLengthForPrediction: 1
   offRoadPadding: 7
@@ -8915,7 +8984,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   roadSurfaceMask:
     serializedVersion: 2
-    m_Bits: 16384
+    m_Bits: 8192
   agentLayerMaskToExclude:
     serializedVersion: 2
     m_Bits: 524289
@@ -10121,6 +10190,12 @@ PrefabInstance:
     - target: {fileID: 3851659522157450173, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8999905705015184856, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
+      propertyPath: m_text
+      value: 'Purchase
+
+'
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

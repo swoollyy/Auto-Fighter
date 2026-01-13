@@ -1,5 +1,5 @@
 # All Scripts Bundle
-- Generated: 2026-01-09T21:23:06.4278254Z (UTC)
+- Generated: 2026-01-12T19:24:52.9918947Z (UTC)
 - Unity: 2022.3.62f2
 - Files: 217
 
@@ -4148,6 +4148,19 @@ public class CarController : MonoBehaviour
     // Reference to forcefield for protection checks
     private CarForcefield _forcefield;
 
+    [Header("Ramp / Airborne Speed Preservation")]
+    [SerializeField, Tooltip("If true, we do NOT hard-clamp horizontal speed while airborne.")]
+    private bool skipSpeedClampWhileAirborne = true;
+
+    [SerializeField, Tooltip("When you land with speed above cap, we let you keep the excess and bleed it off smoothly.")]
+    private bool enableLandingCarrySpeed = true;
+
+    [SerializeField, Min(0f), Tooltip("How fast excess landing speed bleeds away (m/s per second).")]
+    private float landingExcessBleedPerSecond = 18f;
+
+    [SerializeField, Min(0f), Tooltip("Extra seconds after touchdown where we still avoid any hard clamp (lets suspension settle).")]
+    private float landingNoClampGraceSeconds = 0.08f;
+
     [Header("Mash Gauge Skill Scaling")]
     [Tooltip("How much to scale drain per point of effective clicks above base. E.g., 0.15 means +15% drain per extra click power.")]
     [SerializeField, Range(0f, 0.5f)] private float drainScalePerClickPower = 0.12f;
@@ -4275,6 +4288,41 @@ public class CarController : MonoBehaviour
     private bool useFullAccelWhileDrifting = true; // NEW
     [SerializeField, Tooltip("Preserve highest speed reached during current drift/glide while drift key held.")]
     private bool lockToDriftPeakSpeed = true; // NEW
+
+    [Header("Crash Recovery Click Model (Multiplicative)")]
+    [Tooltip("If true, mash clicks are computed as: baseClicks * distanceFactor * severityFactor * crashFactor * (optional multipliers).")]
+    [SerializeField] private bool useMultiplicativeMashClicks = true;
+
+    [Tooltip("Starting click count before factors (keep this fairly small; distance scaling is meant to do the heavy lifting).")]
+    [SerializeField, Min(1)] private int mashBaseClicks = 15;
+
+    [Tooltip("How strongly run progress ramps clicks. This should be BIG (this is your primary difficulty driver).")]
+    [SerializeField, Min(0f)] private float mashDistanceWeight = 450f;
+
+    [Tooltip("Power applied to progress (after curve). Higher = stays low early, explodes near the end.")]
+    [SerializeField, Min(0.1f)] private float mashDistanceExponent = 4.0f;
+
+    [Tooltip("Additional multiplier based on last crash severity (0..1).")]
+    [SerializeField, Min(0f)] private float mashSeverityWeight = 1.75f;
+
+    [Tooltip("Power applied to last crash severity. >1 means small crashes barely add anything.")]
+    [SerializeField, Min(0.1f)] private float mashSeverityExponent = 1.25f;
+
+    [Tooltip("Extra multiplier per crash count (monotonic). Example: 0.35 = ~35% more per crash.")]
+    [SerializeField, Min(0f)] private float mashCrashCountWeight = 0.35f;
+
+    [Tooltip("Extra multiplier based on cumulative crash severities this run. Makes repeated crashing ramp fast.")]
+    [SerializeField, Min(0f)] private float mashSeveritySumWeight = 0.80f;
+
+    [Header("Crash Recovery Multipliers")]
+    [Tooltip("If true, mash recovery triggers on ANY crash, not just flips.")]
+    [SerializeField] private bool enableCrashRecoveryAlways = true;
+
+    [Tooltip("Click multiplier when car is flipped (e.g., 1.5 = 50% more clicks).")]
+    [SerializeField, Min(1f)] private float flippedClickMultiplier = 1.5f;
+
+    [Tooltip("Click multiplier when airborne during crash.")]
+    [SerializeField, Min(1f)] private float airborneClickMultiplier = 1.25f;
 
     // NEW: gentle deceleration while drifting if S is held (softer than normal braking)
     [Header("Drift Braking")]
@@ -4486,6 +4534,16 @@ public class CarController : MonoBehaviour
     [SerializeField] private Vector2 malfunctionBurstDuration = new Vector2(0.2f, 0.8f);
     [SerializeField] private Vector2 malfunctionCooldown = new Vector2(0.4f, 1.2f);
 
+    [Header("Malfunction Behavior (Improved)")]
+    [Tooltip("Instead of fully blocking throttle, malfunctions reduce effectiveness to this multiplier (0.35 = 35% throttle during malfunction).")]
+    [SerializeField, Range(0f, 1f)] private float malfunctionThrottleMultiplier = 0.35f;
+    [Tooltip("If true, malfunctions reduce throttle instead of blocking it entirely. Much smoother feel.")]
+    [SerializeField] private bool useSmoothMalfunction = true;
+    [Tooltip("Minimum acceleration (m/s²) the car can ever have, regardless of HP or malfunctions. Prevents total immobility.")]
+    [SerializeField, Min(0f)] private float minimumAccelerationFloor = 4f;
+    [Tooltip("Minimum max speed (m/s) the car can ever have. Ensures car can always move at some speed.")]
+    [SerializeField, Min(0f)] private float minimumMaxSpeedFloor = 6f;
+
     [Header("Crash Penalties")]
     [SerializeField] private float fuelLossAtSeverity1 = 20f;
     [SerializeField, Tooltip("Minimum HP deducted per crash (applies after severity scaling).")]
@@ -4664,40 +4722,7 @@ public class CarController : MonoBehaviour
     [SerializeField, Min(1)] private int mashClicksAbsoluteMax = 500000;
 
 
-    [Header("Crash Recovery Click Model (Multiplicative)")]
-    [Tooltip("If true, mash clicks are computed as: baseClicks * distanceFactor * severityFactor * crashFactor * (optional multipliers).")]
-    [SerializeField] private bool useMultiplicativeMashClicks = true;
 
-    [Tooltip("Starting click count before factors (keep this fairly small; distance scaling is meant to do the heavy lifting).")]
-    [SerializeField, Min(1)] private int mashBaseClicks = 15;
-
-    [Tooltip("How strongly run progress ramps clicks. This should be BIG (this is your primary difficulty driver).")]
-    [SerializeField, Min(0f)] private float mashDistanceWeight = 450f;
-
-    [Tooltip("Power applied to progress (after curve). Higher = stays low early, explodes near the end.")]
-    [SerializeField, Min(0.1f)] private float mashDistanceExponent = 4.0f;
-
-    [Tooltip("Additional multiplier based on last crash severity (0..1).")]
-    [SerializeField, Min(0f)] private float mashSeverityWeight = 1.75f;
-
-    [Tooltip("Power applied to last crash severity. >1 means small crashes barely add anything.")]
-    [SerializeField, Min(0.1f)] private float mashSeverityExponent = 1.25f;
-
-    [Tooltip("Extra multiplier per crash count (monotonic). Example: 0.35 = ~35% more per crash.")]
-    [SerializeField, Min(0f)] private float mashCrashCountWeight = 0.35f;
-
-    [Tooltip("Extra multiplier based on cumulative crash severities this run. Makes repeated crashing ramp fast.")]
-    [SerializeField, Min(0f)] private float mashSeveritySumWeight = 0.80f;
-
-    [Header("Crash Recovery Multipliers")]
-    [Tooltip("If true, mash recovery triggers on ANY crash, not just flips.")]
-    [SerializeField] private bool enableCrashRecoveryAlways = true;
-
-    [Tooltip("Click multiplier when car is flipped (e.g., 1.5 = 50% more clicks).")]
-    [SerializeField, Min(1f)] private float flippedClickMultiplier = 1.5f;
-
-    [Tooltip("Click multiplier when airborne during crash.")]
-    [SerializeField, Min(1f)] private float airborneClickMultiplier = 1.25f;
 
     [Header("Mash Click Skills")]
     [Tooltip("Base clicks registered per button press (before skills).")]
@@ -4744,10 +4769,10 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0.5f, 0.9f)] private float gaugeGoodThreshold = 0.70f;
 
     [Tooltip("Gauge threshold for 'max' tier bonus (0-1). Marker line will show here.")]
-    [SerializeField, Range(0.9f, 1f)] private float gaugeMaxThreshold = 0.98f;
+    private float gaugeMaxThreshold = 0.95f;
 
     [Tooltip("Fuel/sprocket multiplier when gauge is at 0%.")]
-    [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.5f;
+    [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.75f;
 
     [Tooltip("Fuel/sprocket multiplier when gauge reaches 'good' threshold.")]
     [SerializeField, Range(1f, 2f)] private float gaugeMultiplierAtGood = 1.5f;
@@ -4892,18 +4917,7 @@ public class CarController : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Minimum seconds between explosion SFX calls (protects against double-calls).")]
     private float deathExplodeSfxCooldown = 0.08f;
 
-    [Header("Ramp / Airborne Speed Preservation")]
-    [SerializeField, Tooltip("If true, we do NOT hard-clamp horizontal speed while airborne.")]
-    private bool skipSpeedClampWhileAirborne = true;
 
-    [SerializeField, Tooltip("When you land with speed above cap, we let you keep the excess and bleed it off smoothly.")]
-    private bool enableLandingCarrySpeed = true;
-
-    [SerializeField, Min(0f), Tooltip("How fast excess landing speed bleeds away (m/s per second).")]
-    private float landingExcessBleedPerSecond = 18f;
-
-    [SerializeField, Min(0f), Tooltip("Extra seconds after touchdown where we still avoid any hard clamp (lets suspension settle).")]
-    private float landingNoClampGraceSeconds = 0.08f;
 
     // runtime
     private bool _wasGroundedLastFrame = false;
@@ -5136,6 +5150,7 @@ public class CarController : MonoBehaviour
     private bool isOutOfHP = false;
     private float _malfunctionTimer;
     private float _malfunctionCooldownRemain;
+    private float _currentMalfunctionMultiplier = 1f; // 1.0 = no malfunction, lower = reduced throttle
 
     [Header("Debug (read-only)")]
     [SerializeField] private float offDefaultFraction = 0f;
@@ -5690,7 +5705,7 @@ public class CarController : MonoBehaviour
 
         // If we're out of fuel, still run steering + physics, but NO boost.
         bool outOfFuel = IsOutOfFuel;
-
+        UpdateLandingSpeedPreservation();
         SampleGroundAndUpdateMultipliers();
         RefreshSkillEffects();
         ApplySkillEffects();
@@ -6549,6 +6564,8 @@ public class CarController : MonoBehaviour
             smoothRate /= handlingMult;
 
         suppressInputs = false;
+        _currentMalfunctionMultiplier = 1f; // Reset each frame
+
         if (enableDamageMalfunction)
         {
             float hpFrac = HPPercent;
@@ -6568,10 +6585,26 @@ public class CarController : MonoBehaviour
                 }
             }
 
-            suppressInputs = _malfunctionTimer > 0f;
+            bool isMalfunctioning = _malfunctionTimer > 0f;
+
+            if (useSmoothMalfunction)
+            {
+                // IMPROVED: Instead of blocking throttle entirely, reduce effectiveness
+                // This prevents the car from becoming completely immobile
+                if (isMalfunctioning)
+                {
+                    _currentMalfunctionMultiplier = malfunctionThrottleMultiplier;
+                }
+                // Don't set suppressInputs - we handle throttle reduction in ApplyAcceleration instead
+            }
+            else
+            {
+                // Legacy behavior: complete suppression during malfunction
+                suppressInputs = isMalfunctioning;
+            }
         }
 
-        // ADJUSTMENT: never fully suppress steering; only throttle/brake during malfunction
+        // ADJUSTMENT: never fully suppress steering; only throttle/brake during malfunction (legacy mode only)
         _suppressThrottleBrakeThisFrame = suppressInputs;
         _suppressSteeringThisFrame = false; // keep steering responsive even during malfunction
 
@@ -7011,7 +7044,14 @@ public class CarController : MonoBehaviour
             {
                 if (accelerating)
                 {
-                    rb.AddForce(forward * effectiveAcceleration, ForceMode.Acceleration);
+                    // IMPROVED: Apply malfunction multiplier for smooth throttle reduction instead of complete cutoff
+                    float malfunctionAdjustedAccel = effectiveAcceleration * _currentMalfunctionMultiplier;
+                    // Ensure we always have some minimum acceleration during malfunction to prevent immobility
+                    if (useSmoothMalfunction && _currentMalfunctionMultiplier < 1f)
+                    {
+                        malfunctionAdjustedAccel = Mathf.Max(malfunctionAdjustedAccel, minimumAccelerationFloor * 0.5f);
+                    }
+                    rb.AddForce(forward * malfunctionAdjustedAccel, ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
                 else if (brakingOrReverse)
@@ -7093,7 +7133,13 @@ public class CarController : MonoBehaviour
                 if (accelerating && !brakingOrReverse)
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
-                    rb.AddForce(forward * effectiveAcceleration * accelMul, ForceMode.Acceleration);
+                    // IMPROVED: Apply malfunction multiplier during drift too
+                    float malfunctionAdjustedAccel = effectiveAcceleration * _currentMalfunctionMultiplier;
+                    if (useSmoothMalfunction && _currentMalfunctionMultiplier < 1f)
+                    {
+                        malfunctionAdjustedAccel = Mathf.Max(malfunctionAdjustedAccel, minimumAccelerationFloor * 0.5f);
+                    }
+                    rb.AddForce(forward * malfunctionAdjustedAccel * accelMul, ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                     consumedFuelThisFrame = true;
                 }
@@ -8546,7 +8592,65 @@ public class CarController : MonoBehaviour
         effectiveMaxSpeed *= perfMul;
         effectiveTurnSpeed *= perfMul;
 
+        // IMPROVED: Apply minimum floors to prevent total immobility
+        // This ensures the car can always move somewhat, even at 0 HP
+        if (minimumAccelerationFloor > 0f)
+        {
+            effectiveAcceleration = Mathf.Max(effectiveAcceleration, minimumAccelerationFloor);
+        }
+        if (minimumMaxSpeedFloor > 0f)
+        {
+            effectiveMaxSpeed = Mathf.Max(effectiveMaxSpeed, minimumMaxSpeedFloor);
+        }
+
         // IMPORTANT: we do NOT touch effectiveDrag here to avoid stalling the car.
+    }
+
+    /// <summary>
+    /// Tracks airborne-to-grounded transitions and preserves landing speed.
+    /// Must be called every FixedUpdate when NOT in crash/flip state.
+    /// </summary>
+    private void UpdateLandingSpeedPreservation()
+    {
+        if (rb == null) return;
+
+        bool groundedNow = CheckIfGrounded();
+
+        // Detect landing: was airborne last frame, grounded now
+        if (!_wasGroundedLastFrame && groundedNow)
+        {
+            _lastLandedTime = Time.time;
+
+            if (enableLandingCarrySpeed)
+            {
+                Vector3 v = rb.velocity;
+                float horizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
+
+                // Calculate excess speed above current cap
+                float capNoCarry = GetCurrentSpeedCap_NoLandingCarry();
+                float excess = horizSpeed - capNoCarry;
+
+                if (excess > 0f)
+                {
+                    // Keep the higher of current excess or new excess (in case of consecutive jumps)
+                    _landingExcessSpeed = Mathf.Max(_landingExcessSpeed, excess);
+                }
+            }
+        }
+
+        // Bleed off excess allowance over time while grounded
+        if (enableLandingCarrySpeed && _landingExcessSpeed > 0f && groundedNow)
+        {
+            _landingExcessSpeed = Mathf.MoveTowards(
+                _landingExcessSpeed,
+                0f,
+                landingExcessBleedPerSecond * Time.fixedDeltaTime
+            );
+        }
+
+        // Update grounded state for next frame (CRITICAL - this was missing in normal flow!)
+        _wasGroundedLastFrame = groundedNow;
+        _isGrounded = groundedNow;
     }
 
     private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)
@@ -9615,6 +9719,11 @@ public class CarController : MonoBehaviour
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
     public bool IsOutOfFuel => isOutOfFuel;
     public bool IsOutOfHP => isOutOfHP;
+
+    /// <summary>Returns true if a malfunction burst is currently active (throttle is reduced).</summary>
+    public bool IsMalfunctioning => _malfunctionTimer > 0f;
+    /// <summary>Returns the current malfunction throttle multiplier (1.0 = normal, lower = reduced throttle).</summary>
+    public float MalfunctionMultiplier => _currentMalfunctionMultiplier;
     public float CurrentFuel => currentFuel;
     public float MaxFuel => maxFuel;
 
@@ -10197,6 +10306,37 @@ public sealed class CarForcefield : MonoBehaviour
             // Crash the NPC away from the player car (use player car position as "impact from")
             npc.ForceCrashFromForcefield(transform.position, impactSpeed, ownerCollider);
 
+            if (gatherAllCarColliders && _car != null)
+                _carColliders = _car.GetComponentsInChildren<Collider>(true);
+            else if (ownerCollider != null && (_carColliders == null || _carColliders.Length == 0))
+                _carColliders = new[] { ownerCollider };
+
+            // Gather NPC colliders
+            Transform npcRoot = npc.transform.root;
+            Collider[] npcCols = npcRoot.GetComponentsInChildren<Collider>(true);
+            Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+
+            // Add immunity marker so CarController ignores it even if something still �touches�
+            var immunity = npcRoot.GetComponent<LaunchImmunityMarker>();
+            if (!immunity) immunity = npcRoot.gameObject.AddComponent<LaunchImmunityMarker>();
+            immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
+
+            // Ignore collisions between NPC and player car temporarily (like launched obstacles)
+            foreach (var c in npcCols)
+            {
+                if (!c) continue;
+
+                _recentlyLaunched.Add(c); // so the forcefield proxy won�t re-handle repeatedly
+                foreach (var carCol in carCols)
+                {
+                    if (carCol) Physics.IgnoreCollision(carCol, c, true);
+                }
+            }
+
+            if (ignoreWithCarSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(npcCols, carCols, ignoreWithCarSeconds));
+
+
             // FX/SFX like your other intercepts
             Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
 
@@ -10281,18 +10421,18 @@ public sealed class CarForcefield : MonoBehaviour
         Quaternion vfxRot2 = Quaternion.LookRotation(vfxForward2, vfxUp);
 
         var obstacleCols = launchRb.GetComponentsInChildren<Collider>(true);
-        Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+        Collider[] CarCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
         foreach (var c in obstacleCols)
         {
             if (!c) continue;
             _recentlyLaunched.Add(c);
-            foreach (var carCol in carCols)
+            foreach (var carCol in CarCols)
             {
                 if (carCol) Physics.IgnoreCollision(carCol, c, true);
             }
         }
         if (ignoreWithCarSeconds > 0f)
-            StartCoroutine(ReenableCollisionsLater(obstacleCols, carCols, ignoreWithCarSeconds));
+            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, ignoreWithCarSeconds));
 
         Vector3 awayDir = other.bounds.center - (ownerCollider ? ownerCollider.bounds.center : transform.position);
         awayDir.y = 0f;
@@ -14462,6 +14602,13 @@ public class GameManager_Racing : MonoBehaviour
                 int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
 
                 int removed = DeductRunCoins(loss);
+
+                if (removed > 0 && RacingPopups.IsReady && carController != null)
+                {
+                    Vector3 popupPos = carController.transform.position + Vector3.up * 2f;
+                    RacingPopups.CoinLoss(removed, popupPos);
+                }
+
                 Debug.Log($"[GameManager_Racing] Crash penalty: lost {removed} run coins (severity={severity:F2}).");
             }
         }
@@ -16141,6 +16288,9 @@ public static class RacingPopups
 
     public static void SprocketGain(int amount, Vector3 position)
         => Spawn(RacingPopupType.SprocketGain, amount, position);
+
+    public static void CoinLoss(int amount, Vector3 position)
+        => Spawn(RacingPopupType.CoinLoss, amount, position);
 
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.
@@ -21167,6 +21317,7 @@ public enum RacingPopupType
     // Damage / Loss
     HPDamage,
     FuelLoss,
+    CoinLoss,
 
     // Gains / Recovery
     HPGain,
@@ -46272,26 +46423,55 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         Physics.SyncTransforms();
         if (allowYield) yield return new WaitForFixedUpdate();
 
-        if (debugStampAtCarOnce && !_didDebugStamp)
-        {
-            _didDebugStamp = true;
-
-            // If you don't have a car ref here, just stamp at the first path point
-            DebugStampSquareAtWorld(gen.PathPoints[0]);
-        }
-
-        // Road width comes from generator usage pattern in your spawners (same concept)
-        // We'll clear (roadWidth/2 + padding) fully, then feather to grass over roadFeatherMeters.
+        // Road width info
         float roadHalf = Mathf.Max(0.01f, gen.RoadWidth * 0.5f);
-        float clearRadius = roadHalf + roadClearPaddingMeters;
-        float featherRadius = clearRadius + roadFeatherMeters;
-        float paintRadius = featherRadius + paintOutwardMeters;
+        float clearRadius = roadHalf + roadClearPaddingMeters + roadClearExtraMeters;
 
         int samples = 0;
-        int inBounds = 0;
-        int outBounds = 0;
 
-        // Iterate along the path points and stamp into detail map
+        // ============================================================
+        // PHASE 1: CLEAR grass along the entire road path first
+        // ============================================================
+        if (debugLogBounds)
+            Debug.Log("[TerrainDetailGrassPainter] Phase 1: Clearing grass along road...");
+
+        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        {
+            Vector3 a = gen.PathPoints[i];
+            Vector3 b = gen.PathPoints[i + 1];
+
+            float segLen = Vector3.Distance(a, b);
+            if (segLen < 0.01f) continue;
+
+            // Use smaller steps for clearing to ensure full coverage
+            float clearStepMeters = 1.0f;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / clearStepMeters));
+
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = (steps == 0) ? 0f : (s / (float)steps);
+                Vector3 p = Vector3.Lerp(a, b, t);
+
+                // Clear a wide swath centered on the road
+                ClearGrassAtPoint(p, clearRadius);
+
+                samples++;
+                if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
+                    yield return null;
+            }
+        }
+
+        if (debugLogBounds)
+            Debug.Log($"[TerrainDetailGrassPainter] Phase 1 complete: cleared {samples} points");
+
+        // ============================================================
+        // PHASE 2: Paint grass in rings OUTSIDE the road
+        // ============================================================
+        if (debugLogBounds)
+            Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
+
+        samples = 0;
+
         for (int i = 0; i < gen.PathPoints.Count - 1; i++)
         {
             Vector3 a = gen.PathPoints[i];
@@ -46306,7 +46486,6 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
                 float t = (steps == 0) ? 0f : (s / (float)steps);
                 Vector3 p = Vector3.Lerp(a, b, t);
 
-                // direction along segment
                 Vector3 fwd = (b - a);
                 fwd.y = 0f;
                 if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
@@ -46314,13 +46493,10 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
                 Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
 
-                // Clear radius based on road width (but we'll ALSO do physics road clearing)
-                float hardClear = roadHalf + roadClearPaddingMeters + roadClearExtraMeters;
-
-                // Paint outward rings on BOTH sides
+                // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
                 for (int ring = 1; ring <= bandRings; ring++)
                 {
-                    float baseOff = hardClear + ring * ringSpacingMeters;
+                    float baseOff = clearRadius + ring * ringSpacingMeters;
                     float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
                     float off = baseOff + jitter;
 
@@ -46337,10 +46513,9 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
             }
         }
 
-
         if (debugLogBounds)
         {
-            Debug.Log($"[TerrainDetailGrassPainter] layer={detailLayerIndex} samples={samples} detailSize={_detailW}x{_detailH}");
+            Debug.Log($"[TerrainDetailGrassPainter] Phase 2 complete: samples={samples} detailSize={_detailW}x{_detailH}");
             Debug.Log($"[TerrainDetailGrassPainter] Road raycast hits={_debugRayHits}, misses={_debugRayMisses}, roadMask={roadMask.value}");
         }
         _debugRayHits = 0;
@@ -46393,7 +46568,54 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
     }
 
+    private void ClearGrassAtPoint(Vector3 world, float clearRadiusMeters)
+    {
+        Vector2 norm = WorldToTerrainNorm(world);
+        if (norm.x < 0f || norm.x > 1f || norm.y < 0f || norm.y > 1f) return;
 
+        float metersPerCellX = _terrainSize.x / Mathf.Max(1, _detailW);
+        float metersPerCellZ = _terrainSize.z / Mathf.Max(1, _detailH);
+
+        int cx = Mathf.RoundToInt(norm.x * (_detailW - 1));
+        int cy = Mathf.RoundToInt(norm.y * (_detailH - 1));
+
+        int radCellsX = Mathf.CeilToInt(clearRadiusMeters / Mathf.Max(0.0001f, metersPerCellX));
+        int radCellsY = Mathf.CeilToInt(clearRadiusMeters / Mathf.Max(0.0001f, metersPerCellZ));
+
+        int x0 = Mathf.Clamp(cx - radCellsX, 0, _detailW - 1);
+        int x1 = Mathf.Clamp(cx + radCellsX, 0, _detailW - 1);
+        int y0 = Mathf.Clamp(cy - radCellsY, 0, _detailH - 1);
+        int y1 = Mathf.Clamp(cy + radCellsY, 0, _detailH - 1);
+
+        int w = x1 - x0 + 1;
+        int h = y1 - y0 + 1;
+
+        if (w <= 0 || h <= 0) return;
+
+        int[,] layer = _td.GetDetailLayer(x0, y0, w, h, detailLayerIndex);
+
+        for (int yy = 0; yy < h; yy++)
+        {
+            for (int xx = 0; xx < w; xx++)
+            {
+                int dx = (x0 + xx) - cx;
+                int dy = (y0 + yy) - cy;
+
+                float distMeters = Mathf.Sqrt(
+                    (dx * metersPerCellX) * (dx * metersPerCellX) +
+                    (dy * metersPerCellZ) * (dy * metersPerCellZ)
+                );
+
+                // Clear grass within the radius
+                if (distMeters <= clearRadiusMeters)
+                {
+                    layer[yy, xx] = 0;
+                }
+            }
+        }
+
+        _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
+    }
     private void StampAtWorld(Vector3 world, float clearR, float featherR, float paintR)
     {
         // Convert world -> normalized terrain local (0..1)

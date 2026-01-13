@@ -13,12 +13,12 @@ GameObject:
   - component: {fileID: 7000252740046131143}
   - component: {fileID: 4913427648244586458}
   - component: {fileID: 3314179452664020840}
-  - component: {fileID: 6906296771749627853}
   - component: {fileID: 1741596697079727974}
   - component: {fileID: 4180077745294689445}
-  m_Layer: 11
+  - component: {fileID: 9073135879761960940}
+  m_Layer: 21
   m_Name: Obstacle Critter
-  m_TagString: Untagged
+  m_TagString: Creature
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -129,33 +129,6 @@ MonoBehaviour:
   rewardCurrency: 1
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
---- !u!54 &6906296771749627853
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3874382558013832276}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 1
-  m_Constraints: 0
-  m_CollisionDetection: 1
 --- !u!114 &1741596697079727974
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -163,7 +136,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
   m_Name: 
@@ -181,7 +154,7 @@ MonoBehaviour:
   center: {x: 0, y: 0, z: 0}
   updateDistance: 0.4
   isDual: 0
-  radiusExpansionMode: 1
+  radiusExpansionMode: 0
   cutsAddedGeom: 1
   updateRotationDistance: 10
   useRotationAndScale: 1
@@ -198,15 +171,46 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hitCollider: {fileID: 4913427648244586458}
+  enableRunOverPopup: 1
+  runOverPopupType: 13
+  runOverPopupHeight: 1.2
+  playCoinRewardSound: 1
+  coinRewardSoundsOverride: []
+  coinRewardSoundVolume: 1
+  coinRewardPitchVariance: 0.05
+  coinRewardBasePitch: 1
+  coinRewardMinDistance: 5
+  coinRewardMaxDistance: 40
   visualRoot: {fileID: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 24576
+  enableMovementAvoidance: 1
+  movementAvoidanceLayers:
+    serializedVersion: 2
+    m_Bits: 788481
+  avoidanceRadius: 0.15
+  avoidanceLookAhead: 0.5
+  avoidanceCastHeight: 0.35
+  avoidanceSideBias: 0
+  avoidanceResponse: 3
+  aggressivePlayerPriorityRadius: 12
+  creatureSenseLayers:
+    serializedVersion: 2
+    m_Bits: 2097152
+  crushLayers:
+    serializedVersion: 2
+    m_Bits: 2885633
+  minCrushSpeed: 1
+  allowTagCrushWithoutRigidbody: 1
+  obstacleTags:
+  - Creature
+  aggressiveCrushMassThreshold: 9
   groundRayHeight: 2
   groundRayDistance: 5
   groundOffset: 0.25
   groundSnapSpeed: 15
-  rotationSpeed: 10
+  rotationSpeed: 11.7
   alignToGround: 1
   animator: {fileID: 0}
   speedParam: Speed
@@ -223,3 +227,16 @@ MonoBehaviour:
   deathEffectPrefab: {fileID: 0}
   coinSpawnPoint: {fileID: 0}
   showDebugGizmos: 0
+--- !u!114 &9073135879761960940
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19f784f05b410304c8e2da06ce0fc243, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  useFixedUpdate: 1

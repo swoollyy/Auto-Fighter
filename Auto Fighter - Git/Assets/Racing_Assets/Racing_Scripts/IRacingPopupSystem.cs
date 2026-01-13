@@ -150,6 +150,9 @@ public static class RacingPopups
     public static void SprocketGain(int amount, Vector3 position)
         => Spawn(RacingPopupType.SprocketGain, amount, position);
 
+    public static void CoinLoss(int amount, Vector3 position)
+        => Spawn(RacingPopupType.CoinLoss, amount, position);
+
     /// <summary>
     /// Spawn a coin popup with separate text color and outline color.
     /// </summary>

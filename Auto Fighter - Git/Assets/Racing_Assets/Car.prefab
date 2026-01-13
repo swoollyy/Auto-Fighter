@@ -780,6 +780,7 @@ GameObject:
   - component: {fileID: 2006204842711436354}
   - component: {fileID: 3055004073125483376}
   - component: {fileID: 3332605381436512579}
+  - component: {fileID: 4449800069960607024}
   m_Layer: 0
   m_Name: Car
   m_TagString: Untagged
@@ -906,7 +907,11 @@ MonoBehaviour:
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
   perColliderCrashCooldown: 0.5
-  drainScalePerClickPower: 0.35
+  skipSpeedClampWhileAirborne: 1
+  enableLandingCarrySpeed: 1
+  landingExcessBleedPerSecond: 8
+  landingNoClampGraceSeconds: 0.08
+  drainScalePerClickPower: 0.5
   drainScalePerPassiveStrength: 0.12
   maxSkillDrainMultiplier: 5
   minSkillDrainMultiplier: 1
@@ -928,8 +933,8 @@ MonoBehaviour:
   coastDampingPerSecond: 4.48
   mashBaseFuelPerClick: 0
   mashFuelSpeedBonusMax: 2
-  mashMaxSpeedThreshold: 0.1
-  mashMinSpeedThreshold: 0.8
+  mashMaxSpeedThreshold: 0.05
+  mashMinSpeedThreshold: 0.5
   coastDecelFactor: 0.74
   brakeForwardFactor: 0.7
   reverseAccelFactor: 1.06
@@ -958,9 +963,20 @@ MonoBehaviour:
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
   lockToDriftPeakSpeed: 1
+  useMultiplicativeMashClicks: 1
+  mashBaseClicks: 15
+  mashDistanceWeight: 350
+  mashDistanceExponent: 1.34
+  mashSeverityWeight: 1.75
+  mashSeverityExponent: 1.25
+  mashCrashCountWeight: 1.5
+  mashSeveritySumWeight: 1
+  enableCrashRecoveryAlways: 1
+  flippedClickMultiplier: 1.5
+  airborneClickMultiplier: 1.25
   driftBrakeDecayPerSecond: 0.001
   closeCallBoostBaseDuration: 0.9
-  closeCallBoostForce: 12
+  closeCallBoostForce: 9
   closeCallBoostForceMode: 5
   closeCallBoostMaxSpeedMult: 1.3
   closeCallInvincibilityTint: {r: 0.5, g: 0.8, b: 1, a: 0.5}
@@ -976,7 +992,7 @@ MonoBehaviour:
   steerFlipRetainedCharge: 0.055
   steerFlipThreshold: 0.15
   minChargeForFlipReset: 0
-  steerFlipRebuildDelay: 0
+  steerFlipRebuildDelay: 0.1
   allowDriftGlideWithoutSteer: 1
   driftGlideDecayPerSecond: 0.15
   enableCloseCallNearMisses: 1
@@ -1005,7 +1021,7 @@ MonoBehaviour:
   idleSpeedThreshold: 0.5
   crashLayers:
     serializedVersion: 2
-    m_Bits: 788480
+    m_Bits: 1837056
   minImpactSpeed: 1.6
   maxImpactSpeed: 14
   minCrashDuration: 1.08
@@ -1040,12 +1056,16 @@ MonoBehaviour:
   maxHP: 20
   hpCrashDamageAtSeverity1: 100
   baseHpRegenPerSecond: 0
-  performanceAtZeroHP: 0.294
+  performanceAtZeroHP: 0.455
   degradeStartHPFraction: 0.422
   enableDamageMalfunction: 1
-  maxMalfunctionChancePerSecond: 0.317
-  malfunctionBurstDuration: {x: 0.2, y: 0.7}
+  maxMalfunctionChancePerSecond: 0.326
+  malfunctionBurstDuration: {x: 0.2, y: 0.72}
   malfunctionCooldown: {x: 0.5, y: 5}
+  malfunctionThrottleMultiplier: 0.35
+  useSmoothMalfunction: 1
+  minimumAccelerationFloor: 4
+  minimumMaxSpeedFloor: 6
   fuelLossAtSeverity1: 50
   minHpLossPerCrash: 10
   minFuelLossPerCrash: 10
@@ -1151,17 +1171,6 @@ MonoBehaviour:
   mashClicksRandomVariance: 0
   mashClicksAbsoluteMin: 2
   mashClicksAbsoluteMax: 500000
-  useMultiplicativeMashClicks: 1
-  mashBaseClicks: 15
-  mashDistanceWeight: 200
-  mashDistanceExponent: 1.5
-  mashSeverityWeight: 1.75
-  mashSeverityExponent: 1.25
-  mashCrashCountWeight: 1.5
-  mashSeveritySumWeight: 1
-  enableCrashRecoveryAlways: 1
-  flippedClickMultiplier: 1.5
-  airborneClickMultiplier: 1.25
   baseClicksPerClick: 1
   basePassiveClickRate: 0
   basePassiveClickStrength: 1
@@ -1172,7 +1181,6 @@ MonoBehaviour:
   gaugeFillPerClick: 0.05
   gaugeFillSpeedBonus: 2
   gaugeGoodThreshold: 0.7
-  gaugeMaxThreshold: 0.98
   gaugeMultiplierAtZero: 0.5
   gaugeMultiplierAtGood: 1.5
   gaugeMultiplierAtMax: 2
@@ -1206,10 +1214,6 @@ MonoBehaviour:
   deathExplodePitchMin: 0.7
   deathExplodePitchMax: 1
   deathExplodeSfxCooldown: 0.08
-  skipSpeedClampWhileAirborne: 1
-  enableLandingCarrySpeed: 1
-  landingExcessBleedPerSecond: 0.55
-  landingNoClampGraceSeconds: 0.85
   defaultBoostRampDownFraction: 0.35
   closeCallBoostRampDownFraction: 0.5
   regularBoostRampDownFraction: 0.25
@@ -1340,7 +1344,7 @@ MonoBehaviour:
   useProxyLayer: 1
   obstacleLayers:
     serializedVersion: 2
-    m_Bits: 788608
+    m_Bits: 788480
   triggerRadius: 1.45
   startsArmed: 1
   autoRearm: 1
@@ -1545,6 +1549,35 @@ MonoBehaviour:
   spatialize: 1
   spatialBlend: 1
   outputMixerGroup: {fileID: -5018588845661870095, guid: 261796ce193c2ca459a261d29b7256dc, type: 2}
+--- !u!114 &4449800069960607024
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 1073741824
+  graphMask:
+    value: -1
+  type: 3
+  mesh: {fileID: 0}
+  rectangleSize: {x: 1.55, y: 1.5}
+  circleRadius: 1
+  circleResolution: 6
+  height: 1
+  meshScale: 1
+  center: {x: 0, y: 0, z: 0}
+  updateDistance: 0.4
+  isDual: 0
+  radiusExpansionMode: 0
+  cutsAddedGeom: 1
+  updateRotationDistance: 10
+  useRotationAndScale: 1
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0

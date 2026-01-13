@@ -70,7 +70,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
+  - {fileID: 2100000, guid: 69591b6b37205af4e9ec5e59ec1aff64, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -205,7 +205,7 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   convertOnCollisionLayers:
     serializedVersion: 2
-    m_Bits: 788481
+    m_Bits: 3934209
   ignoreRoadAndTerrain: 1
   minTransferVelocity: 0
   collisionDelayFrames: 3

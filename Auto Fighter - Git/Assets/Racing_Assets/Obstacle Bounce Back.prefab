@@ -190,7 +190,7 @@ MonoBehaviour:
   keepUpright: 1
   noPhysicalCollisionMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 131072
   carDetectMask:
     serializedVersion: 2
     m_Bits: 1

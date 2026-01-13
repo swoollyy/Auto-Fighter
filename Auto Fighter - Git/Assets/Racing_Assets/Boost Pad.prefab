@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 9214260732321486737}
   - component: {fileID: 8281355865034160757}
   - component: {fileID: 7179452708302040841}
-  m_Layer: 14
+  m_Layer: 13
   m_Name: Plane
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -141,7 +141,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3696829777583152548}
-  m_Layer: 14
+  m_Layer: 13
   m_Name: Boost Pad
   m_TagString: BoostPad
   m_Icon: {fileID: 0}

@@ -581,6 +581,13 @@ public class GameManager_Racing : MonoBehaviour
                 int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
 
                 int removed = DeductRunCoins(loss);
+
+                if (removed > 0 && RacingPopups.IsReady && carController != null)
+                {
+                    Vector3 popupPos = carController.transform.position + Vector3.up * 2f;
+                    RacingPopups.CoinLoss(removed, popupPos);
+                }
+
                 Debug.Log($"[GameManager_Racing] Crash penalty: lost {removed} run coins (severity={severity:F2}).");
             }
         }

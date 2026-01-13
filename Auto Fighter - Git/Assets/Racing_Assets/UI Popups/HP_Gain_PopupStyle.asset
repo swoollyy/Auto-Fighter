@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
   m_Name: HP_Gain_PopupStyle
   m_EditorClassIdentifier: 
-  popupType: 2
+  popupType: 3
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 11400000, guid: 02d4aa42b7154164f9ec77597763e3b4, type: 2}

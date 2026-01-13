@@ -1,12 +1,32 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+
+using Random = UnityEngine.Random;
 
 [DisallowMultipleComponent]
 public sealed class TerrainDetailGrassPainter : MonoBehaviour
 {
     [Header("Terrain")]
     [SerializeField] private Terrain targetTerrain;
+
+    [Header("Play Mode Safety")]
+    [SerializeField] private bool cloneTerrainDataAtRuntime = true;
+    [SerializeField] private bool restoreOriginalOnDisable = true;
+
+    private TerrainData _originalTd;
+    private bool _clonedThisSession;
+
+    [Header("Repaint Strategy")]
+    [Tooltip("If true, we first fill the entire terrain detail layer to a baseline value, then cut the road out and optionally add ring paint.")]
+    [SerializeField] private bool fillEntireTerrainBeforeCut = true;
+
+    [Tooltip("Baseline density used when fillEntireTerrainBeforeCut is true.")]
+    [SerializeField, Range(0, 32)] private int baselineDensity = 10;
+
+    [Tooltip("If fillEntireTerrainBeforeCut is true, set this false to skip Phase 2 rings (since the world is already grass).")]
+    [SerializeField] private bool stillPaintRingsAfterFill = false;
 
     [Header("Detail Layer")]
     [Tooltip("Which Terrain Detail layer index to paint (the grass-blade detail prototype index).")]
@@ -64,6 +84,38 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
     private Vector3 _terrainPos;
     private Vector3 _terrainSize;
 
+
+    private void Awake()
+    {
+        if (targetTerrain == null) targetTerrain = Terrain.activeTerrain;
+        if (targetTerrain == null) return;
+
+        if (Application.isPlaying && cloneTerrainDataAtRuntime)
+        {
+            _originalTd = targetTerrain.terrainData;
+            if (_originalTd != null)
+            {
+                TerrainData clone = Instantiate(_originalTd);
+                clone.name = _originalTd.name + " (RuntimeClone)";
+                targetTerrain.terrainData = clone;
+                _clonedThisSession = true;
+            }
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (!restoreOriginalOnDisable) return;
+        if (!Application.isPlaying) return;
+
+        if (_clonedThisSession && targetTerrain != null && _originalTd != null)
+        {
+            targetTerrain.terrainData = _originalTd;
+            _clonedThisSession = false;
+        }
+    }
+
+
     public void PaintNow(ProceduralTrackGenerator gen)
     {
         if (paintAsCoroutine) StartCoroutine(CoPaint(gen));
@@ -89,6 +141,16 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
         _terrainPos = targetTerrain.transform.position;
         _terrainSize = _td.size;
+
+        if (fillEntireTerrainBeforeCut)
+        {
+            if (debugLogBounds)
+                Debug.Log("[TerrainDetailGrassPainter] Filling entire detail layer baseline...");
+
+            FillEntireLayer(detailLayerIndex, baselineDensity);
+
+            if (allowYield) yield return null;
+        }
 
         _debugRayHits = 0;
         _debugRayMisses = 0;
@@ -140,51 +202,58 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         // ============================================================
         // PHASE 2: Paint grass in rings OUTSIDE the road
         // ============================================================
-        if (debugLogBounds)
-            Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
 
-        samples = 0;
 
-        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        if(!fillEntireTerrainBeforeCut || stillPaintRingsAfterFill)
         {
-            Vector3 a = gen.PathPoints[i];
-            Vector3 b = gen.PathPoints[i + 1];
+            if (debugLogBounds)
+                Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
 
-            float segLen = Vector3.Distance(a, b);
-            if (segLen < 0.01f) continue;
+            samples = 0;
 
-            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.25f, bandStepMeters)));
-            for (int s = 0; s <= steps; s++)
+            for (int i = 0; i < gen.PathPoints.Count - 1; i++)
             {
-                float t = (steps == 0) ? 0f : (s / (float)steps);
-                Vector3 p = Vector3.Lerp(a, b, t);
+                Vector3 a = gen.PathPoints[i];
+                Vector3 b = gen.PathPoints[i + 1];
 
-                Vector3 fwd = (b - a);
-                fwd.y = 0f;
-                if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
-                fwd.Normalize();
+                float segLen = Vector3.Distance(a, b);
+                if (segLen < 0.01f) continue;
 
-                Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
-
-                // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
-                for (int ring = 1; ring <= bandRings; ring++)
+                int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.25f, bandStepMeters)));
+                for (int s = 0; s <= steps; s++)
                 {
-                    float baseOff = clearRadius + ring * ringSpacingMeters;
-                    float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
-                    float off = baseOff + jitter;
+                    float t = (steps == 0) ? 0f : (s / (float)steps);
+                    Vector3 p = Vector3.Lerp(a, b, t);
 
-                    Vector3 leftPos = p - right * off;
-                    Vector3 rightPos = p + right * off;
+                    Vector3 fwd = (b - a);
+                    fwd.y = 0f;
+                    if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+                    fwd.Normalize();
 
-                    PaintPoint(leftPos, grassDensity);
-                    PaintPoint(rightPos, grassDensity);
+                    Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+
+                    // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
+                    for (int ring = 1; ring <= bandRings; ring++)
+                    {
+                        float baseOff = clearRadius + ring * ringSpacingMeters;
+                        float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
+                        float off = baseOff + jitter;
+
+                        Vector3 leftPos = p - right * off;
+                        Vector3 rightPos = p + right * off;
+
+                        PaintPoint(leftPos, grassDensity);
+                        PaintPoint(rightPos, grassDensity);
+                    }
+
+                    samples++;
+                    if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
+                        yield return null;
                 }
-
-                samples++;
-                if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
-                    yield return null;
             }
+
         }
+
 
         if (debugLogBounds)
         {
@@ -195,6 +264,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _debugRayMisses = 0;
 
         targetTerrain.Flush();
+
+
     }
 
     private int _debugRayHits = 0;
@@ -289,6 +360,18 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
         _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
     }
+
+    private void FillEntireLayer(int layerIndex, int density)
+    {
+        int[,] full = new int[_detailH, _detailW];
+        for (int y = 0; y < _detailH; y++)
+            for (int x = 0; x < _detailW; x++)
+                full[y, x] = density;
+
+        _td.SetDetailLayer(0, 0, layerIndex, full);
+    }
+
+
     private void StampAtWorld(Vector3 world, float clearR, float featherR, float paintR)
     {
         // Convert world -> normalized terrain local (0..1)

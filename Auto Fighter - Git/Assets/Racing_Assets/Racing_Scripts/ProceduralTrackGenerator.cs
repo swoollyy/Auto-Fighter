@@ -97,6 +97,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("Hard cap on how far away from the starting forward we can aim.")]
     [SerializeField] private float maxHeadingDeviation = 110f;
 
+
+    [SerializeField] private TerrainDetailGrassPainter grassPainter;
+
     [Header("Randomness")]
     [SerializeField] private bool useRandomSeed = true;
     [SerializeField] private int fixedSeed = 12345;
@@ -231,6 +234,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
         // If we ended up with a valid track, notify listeners (GameManager, etc.)
         if (success)
         {
+            // Road mesh + collider already exist at this point (BuildRoadMeshFromPath ran inside BuildTrack)
+            if (grassPainter != null)
+                grassPainter.PaintNow(this);
+
             OnTrackGeneratedSuccessfully?.Invoke(this);
         }
     }

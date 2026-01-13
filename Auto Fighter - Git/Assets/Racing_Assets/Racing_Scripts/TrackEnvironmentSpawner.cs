@@ -21,6 +21,18 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         StreamAroundPlayer        // optional: stream band near player
     }
 
+
+    [Header("Spawned Instance Layer Override")]
+    [Tooltip("If enabled, every spawned environment instance will be forced to this layer (including all children).")]
+    [SerializeField] private bool overrideSpawnedLayer = true;
+
+    [Tooltip("Layer index to assign to spawned environment (ex: Environment).")]
+    [SerializeField] private int spawnedEnvironmentLayer = 0; // set in Inspector
+
+    [Tooltip("Apply layer override recursively to all children.")]
+    [SerializeField] private bool applyLayerRecursively = true;
+
+
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
@@ -269,6 +281,12 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
         GameObject go = Instantiate(prefab, hit.point + Vector3.up * h, rot, parent);
 
+        if (overrideSpawnedLayer)
+        {
+            if (applyLayerRecursively) SetLayerRecursively(go.transform, spawnedEnvironmentLayer);
+            else go.layer = spawnedEnvironmentLayer;
+        }
+
         // Center-pivot trees etc.
         if (autoGroundUsingBounds)
             SnapInstanceToGround(go, hit.point.y, extraGroundPadding);
@@ -277,6 +295,16 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
         if (verboseDebug)
             Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} pos=({go.transform.position.x:F1},{go.transform.position.y:F1},{go.transform.position.z:F1}) prefab={prefab.name}");
+    }
+
+    private static void SetLayerRecursively(Transform root, int layer)
+    {
+        if (root == null) return;
+
+        root.gameObject.layer = layer;
+
+        for (int i = 0; i < root.childCount; i++)
+            SetLayerRecursively(root.GetChild(i), layer);
     }
 
     private bool TryPickOffRoadPoint(Vector3 center, Vector3 fwd, Vector3 right, out Vector3 xz)

@@ -295,6 +295,16 @@ public class TrackCreatureSpawner : MonoBehaviour
         foreach (var kvp in _creaturesBySlot)
         {
             float dist = kvp.Key * creatureSpacing;
+
+            // IMPORTANT: creatures can wander forward/back from their original slot,
+            // so use their live distance-along-track when available.
+            if (kvp.Value != null)
+            {
+                var tc = kvp.Value.GetComponent<TrackCreature>();
+                if (tc != null && tc.IsInitialized)
+                    dist = tc.DistanceAlongTrack;
+            }
+
             bool behind = dist < playerDist - despawnBehindDistance;
 
             if (behind || kvp.Value == null)

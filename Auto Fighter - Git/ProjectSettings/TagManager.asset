@@ -17,6 +17,7 @@ TagManager:
   - NoTouch
   - BoostPad
   - Ice
+  - Creature
   layers:
   - Default
   - TransparentFX
@@ -38,8 +39,8 @@ TagManager:
   - Forcefield
   - Non-Colliding Projectile
   - NPCCar
-  - 
-  - 
+  - Environment
+  - Creatures
   - 
   - 
   - 

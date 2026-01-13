@@ -356,6 +356,37 @@ public sealed class CarForcefield : MonoBehaviour
             // Crash the NPC away from the player car (use player car position as "impact from")
             npc.ForceCrashFromForcefield(transform.position, impactSpeed, ownerCollider);
 
+            if (gatherAllCarColliders && _car != null)
+                _carColliders = _car.GetComponentsInChildren<Collider>(true);
+            else if (ownerCollider != null && (_carColliders == null || _carColliders.Length == 0))
+                _carColliders = new[] { ownerCollider };
+
+            // Gather NPC colliders
+            Transform npcRoot = npc.transform.root;
+            Collider[] npcCols = npcRoot.GetComponentsInChildren<Collider>(true);
+            Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+
+            // Add immunity marker so CarController ignores it even if something still “touches”
+            var immunity = npcRoot.GetComponent<LaunchImmunityMarker>();
+            if (!immunity) immunity = npcRoot.gameObject.AddComponent<LaunchImmunityMarker>();
+            immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
+
+            // Ignore collisions between NPC and player car temporarily (like launched obstacles)
+            foreach (var c in npcCols)
+            {
+                if (!c) continue;
+
+                _recentlyLaunched.Add(c); // so the forcefield proxy won’t re-handle repeatedly
+                foreach (var carCol in carCols)
+                {
+                    if (carCol) Physics.IgnoreCollision(carCol, c, true);
+                }
+            }
+
+            if (ignoreWithCarSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(npcCols, carCols, ignoreWithCarSeconds));
+
+
             // FX/SFX like your other intercepts
             Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
 
@@ -397,6 +428,11 @@ public sealed class CarForcefield : MonoBehaviour
         float speed2 = relVel2.magnitude;
         float sev2 = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, speed2);
 
+        var bounceBack = other.GetComponentInParent<TrackObstacleBounceBack>();
+        if (bounceBack != null)
+        {
+            bounceBack.DetachForForcefieldLaunch();
+        }
         Rigidbody launchRb = PrepareObstacleForLaunch(other);
         if (launchRb == null) return;
 
@@ -440,18 +476,18 @@ public sealed class CarForcefield : MonoBehaviour
         Quaternion vfxRot2 = Quaternion.LookRotation(vfxForward2, vfxUp);
 
         var obstacleCols = launchRb.GetComponentsInChildren<Collider>(true);
-        Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+        Collider[] CarCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
         foreach (var c in obstacleCols)
         {
             if (!c) continue;
             _recentlyLaunched.Add(c);
-            foreach (var carCol in carCols)
+            foreach (var carCol in CarCols)
             {
                 if (carCol) Physics.IgnoreCollision(carCol, c, true);
             }
         }
         if (ignoreWithCarSeconds > 0f)
-            StartCoroutine(ReenableCollisionsLater(obstacleCols, carCols, ignoreWithCarSeconds));
+            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, ignoreWithCarSeconds));
 
         Vector3 awayDir = other.bounds.center - (ownerCollider ? ownerCollider.bounds.center : transform.position);
         awayDir.y = 0f;

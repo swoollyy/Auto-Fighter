@@ -110,7 +110,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.75, y: 0.75, z: 0.75}
+  m_Size: {x: 0.5, y: 1, z: 0.5}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &9137398506818108145
 MonoBehaviour:
@@ -185,7 +185,7 @@ MonoBehaviour:
   randomizeLane: 1
   roadLayer:
     serializedVersion: 2
-    m_Bits: 24576
+    m_Bits: 8192
   raycastStartHeight: 6
   raycastDownDistance: 20
   groundClearance: 0.02
@@ -197,7 +197,7 @@ MonoBehaviour:
   trackVelocityBlend: 0.759
   crashLayers:
     serializedVersion: 2
-    m_Bits: 788481
+    m_Bits: 2885632
   ignoreRoadAndTerrain: 1
   enableOverlapDetection: 0
   overlapCheckInterval: 0.05
@@ -219,7 +219,7 @@ MonoBehaviour:
   enableSurfaceEffects: 1
   surfaceDetectionLayers:
     serializedVersion: 2
-    m_Bits: 24576
+    m_Bits: 8192
   surfaceCheckInterval: 0.1
   surfaceSpeedLerpRate: 1.65
   boostPadSpeedBonus: 2.86

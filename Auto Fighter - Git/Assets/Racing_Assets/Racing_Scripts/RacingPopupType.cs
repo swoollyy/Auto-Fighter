@@ -3,6 +3,7 @@ public enum RacingPopupType
     // Damage / Loss
     HPDamage,
     FuelLoss,
+    CoinLoss,
 
     // Gains / Recovery
     HPGain,

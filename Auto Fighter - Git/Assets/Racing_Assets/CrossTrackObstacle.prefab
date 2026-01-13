@@ -70,7 +70,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
+  - {fileID: 2100000, guid: 69591b6b37205af4e9ec5e59ec1aff64, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -141,7 +141,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
   serializedVersion: 4
-  m_Mass: 1
+  m_Mass: 3
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -183,11 +183,11 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   reactLayers:
     serializedVersion: 2
-    m_Bits: 919681
+    m_Bits: 3016833
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
-  pushDeltaVRange: {x: 2, y: 5}
-  upwardBoostRange: {x: 2.5, y: 4}
+  pushDeltaVRange: {x: 2.88, y: 6.1}
+  upwardBoostRange: {x: 3, y: 5}
   scaleUpwardBoostBySeverity: 0
   minSpeedForUpwardBoost: 1
   maxSpeedForUpwardBoost: 9
