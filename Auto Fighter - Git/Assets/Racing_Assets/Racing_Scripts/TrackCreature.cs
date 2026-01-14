@@ -230,6 +230,11 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     // Cached colliders
     private Collider[] _allColliders;
 
+    private const int MAX_THREATS = 8;
+    private Collider[] _threatColliderBuffer = new Collider[MAX_THREATS];
+    private Vector3 _combinedFleeDirection = Vector3.forward;
+    private int _activeThreatCount = 0;
+
     #endregion
 
     #region Properties
@@ -430,7 +435,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Aggressive creature instantly kills scared creature on trigger contact
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
-            TrackCreature otherCreature = other.GetComponent<TrackCreature>();
+            TrackCreature otherCreature = other.GetComponentInParent<TrackCreature>();
 
             if (otherCreature != null &&
                 otherCreature != this &&
@@ -561,61 +566,69 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// <summary>
     /// Scared behavior: Wanders until player gets close, then flees.
     /// </summary>
+    /// <summary>
+    /// Scared behavior: Wanders until player or aggressive creature gets close, then flees.
+    /// </summary>
     protected virtual void UpdateScaredBehavior(float dt)
     {
+        // Determine if ANY threat is present
+        bool hasAggressiveThreat = threatIsAggressive && threatTransform != null &&
+                                   threatDistance < config.scaredAggressiveDetectRadius;
+        bool hasPlayerThreat = playerDetected && playerDistance < config.scaredDetectionRadius;
+        bool shouldFlee = hasAggressiveThreat || hasPlayerThreat;
+
         switch (currentState)
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                // Flee from aggressive creature if nearby
-                if (threatIsAggressive && threatTransform != null && threatDistance < config.scaredAggressiveDetectRadius)
+                if (shouldFlee)
                 {
+                    // Immediately start fleeing
                     if (currentState != CreatureState.Fleeing)
                         SetState(CreatureState.Fleeing);
 
-                    // Boost flee speed a bit when fleeing aggressive
-                    currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) * Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
-                }
-
-                // Check for player detection
-                if (playerDetected && playerDistance < config.scaredDetectionRadius)
-                {
-                    SetState(CreatureState.Fleeing);
+                    // Boost flee speed when fleeing from aggressive creatures
+                    if (hasAggressiveThreat)
+                    {
+                        currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
+                                           Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
+                    }
                 }
                 else
                 {
-                    // Stay in "idle bug" movement until the player is actually near enough to spook us.
-                    // This is intentionally low-commitment movement and can drift off-road.
+                    // No threats - do idle/wander behavior
                     if (config != null && config.scaredIdleUseBugMovement)
                     {
                         if (currentState != CreatureState.Idle)
                             SetState(CreatureState.Idle);
 
-                        UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed, config.scaredIdleBugDirectionChangeInterval,
-                            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius, config.scaredMaxOffRoadDistance);
+                        UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
+                            config.scaredIdleBugDirectionChangeInterval,
+                            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
+                            config.scaredMaxOffRoadDistance);
                     }
                     else
                     {
-                        // Fallback to prior behavior
                         if (currentState != CreatureState.Wandering)
                             SetState(CreatureState.Wandering);
 
                         UpdateWandering(dt);
                     }
-
                 }
                 break;
 
             case CreatureState.Fleeing:
+                // ALWAYS update fleeing movement - never skip this!
                 UpdateFleeing(dt);
 
-                // Keep fleeing as long as the threat is close enough.
-                bool playerFar = playerDistance > config.scaredDetectionRadius * 2f;
-                bool aggroFar = !threatIsAggressive || threatTransform == null || threatDistance > config.scaredAggressiveLoseFearDistance;
+                // Check if we can calm down (all threats far enough away)
+                bool playerFar = !playerDetected || playerDistance > config.scaredDetectionRadius * 2f;
+                bool aggroFar = !threatIsAggressive || threatTransform == null ||
+                               threatDistance > config.scaredAggressiveLoseFearDistance;
 
-                if (playerFar && aggroFar)
+                if (playerFar && aggroFar && _activeThreatCount == 0)
                 {
-                    // Calm down -> return to idle/wander.
+                    // All threats gone - return to idle/wander
                     SetState(CreatureState.Wandering);
                     currentFleeSpeed = config.scaredBaseFleeSpeed;
                 }
@@ -876,14 +889,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (target == null) return;
 
-        if (chaseTargetTransform == null ||
-    (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead))
-        {
-            chaseTargetTransform = null;
-            SetState(CreatureState.Idle);
-            currentSpeed = 0f;
-            return;
-        }
+// Only bail out if we were hunting a creature and it died
+if (chaseTargetTransform != null && 
+    chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
+{
+    chaseTargetTransform = null;
+    SetState(CreatureState.Idle);
+    currentSpeed = 0f;
+    return;
+}
 
         bool huntingCreature = (target != playerTransform);
 
@@ -1190,28 +1204,102 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         threatIsAggressive = false;
         threatDistance = float.MaxValue;
         threatDirection = Vector3.zero;
+        _activeThreatCount = 0;
+        _combinedFleeDirection = Vector3.zero;
 
         if (spawner == null || config == null) return;
 
-        // Scared: detect nearby aggressive creature
+        // Scared: detect ALL nearby aggressive creatures and compute combined flee vector
         if (behaviorType == CreatureBehaviorType.Scared && config.scaredFleeFromAggressive)
         {
-            var aggro = FindNearestCreature(CreatureBehaviorType.Aggressive, config.scaredAggressiveDetectRadius);
-            if (aggro != null)
+            float detectRadius = config.scaredAggressiveDetectRadius;
+            int hitCount = Physics.OverlapSphereNonAlloc(
+                transform.position,
+                detectRadius,
+                _threatColliderBuffer,
+                creatureSenseLayers,
+                QueryTriggerInteraction.Collide
+            );
+
+            Vector3 combinedAwayVector = Vector3.zero;
+            float closestDistSqr = float.MaxValue;
+            Transform closestThreat = null;
+
+            for (int i = 0; i < hitCount; i++)
             {
-                threatTransform = aggro.transform;
+                var col = _threatColliderBuffer[i];
+                if (col == null) continue;
+
+                var tc = col.GetComponentInParent<TrackCreature>();
+                if (tc == null || tc == this) continue;
+                if (!tc.isInitialized || tc.isDead) continue;
+                if (tc.behaviorType != CreatureBehaviorType.Aggressive) continue;
+
+                Vector3 toThreat = tc.transform.position - transform.position;
+                float distSqr = toThreat.sqrMagnitude;
+
+                // Calculate away vector with distance-based weighting (closer = stronger influence)
+                Vector3 awayFromThis = -toThreat;
+                awayFromThis.y = 0f;
+                float dist = Mathf.Sqrt(distSqr);
+                if (dist > 0.01f)
+                {
+                    // Weight by inverse distance - closer threats have more influence
+                    float weight = 1f / Mathf.Max(0.5f, dist);
+                    combinedAwayVector += awayFromThis.normalized * weight;
+                }
+
+                _activeThreatCount++;
+
+                // Track the closest threat for backward compatibility
+                if (distSqr < closestDistSqr)
+                {
+                    closestDistSqr = distSqr;
+                    closestThreat = tc.transform;
+                }
+            }
+
+            // Set the closest threat as the primary (for legacy code that uses threatTransform)
+            if (closestThreat != null)
+            {
+                threatTransform = closestThreat;
                 threatIsAggressive = true;
 
                 Vector3 toThreat = threatTransform.position - transform.position;
                 threatDistance = toThreat.magnitude;
                 threatDirection = threatDistance > 0.01f ? (toThreat / threatDistance) : Vector3.zero;
             }
+
+            // Also factor in the player as a threat if nearby
+            if (playerDetected && playerTransform != null && playerDistance < config.scaredDetectionRadius)
+            {
+                Vector3 awayFromPlayer = transform.position - playerTransform.position;
+                awayFromPlayer.y = 0f;
+                if (awayFromPlayer.sqrMagnitude > 0.0001f)
+                {
+                    float playerWeight = 1f / Mathf.Max(0.5f, playerDistance);
+                    combinedAwayVector += awayFromPlayer.normalized * playerWeight;
+                }
+                _activeThreatCount++;
+            }
+
+            // Normalize the combined flee direction
+            if (combinedAwayVector.sqrMagnitude > 0.0001f)
+            {
+                _combinedFleeDirection = combinedAwayVector.normalized;
+            }
+            else
+            {
+                // No threats - default to forward along track
+                spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
+                fwd.y = 0f;
+                _combinedFleeDirection = fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
+            }
         }
 
         // Aggressive: optionally detect scared to hunt
         if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveHuntScaredCreatures)
         {
-            // If the player is inside the priority radius, do NOT hunt other creatures.
             bool playerPriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
             if (playerPriority)
             {
@@ -1261,36 +1349,35 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected Vector3 GetFleeDirection()
     {
-        // Prefer fleeing from an aggressive creature if one is currently threatening us.
-        if (threatIsAggressive && threatTransform != null)
+        // If we have a valid combined flee direction from multi-threat detection, use it
+        if (_activeThreatCount > 0 && _combinedFleeDirection.sqrMagnitude > 0.0001f)
         {
-            Vector3 away = transform.position - threatTransform.position;
-            away.y = 0f;
-            if (away.sqrMagnitude > 0.0001f)
-                return away.normalized;
+            return _combinedFleeDirection;
         }
 
-        if (!playerDetected || playerTransform == null)
+        // Fallback: flee from player if detected
+        if (playerDetected && playerTransform != null)
         {
-            // Default: run forward along track
+            Vector3 fleeDir = transform.position - playerTransform.position;
+            fleeDir.y = 0f;
+
+            if (fleeDir.sqrMagnitude > 0.01f)
+            {
+                return fleeDir.normalized;
+            }
+        }
+
+        // Last resort: run forward along track
+        if (spawner != null)
+        {
             spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
             fwd.y = 0f;
-            return fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
+            if (fwd.sqrMagnitude > 0.0001f)
+                return fwd.normalized;
         }
 
-        // Run directly away from player
-        Vector3 fleeDir = transform.position - playerTransform.position;
-        fleeDir.y = 0f;
-
-        if (fleeDir.sqrMagnitude < 0.01f)
-        {
-            // Player is exactly on us, pick a random direction
-            fleeDir = Random.insideUnitCircle.normalized;
-            fleeDir = new Vector3(fleeDir.x, 0f, fleeDir.y);
-        }
-
-        return fleeDir.normalized;
-    }
+        return Vector3.forward;
+    }   
 
     protected bool IsPlayerCollider(Collider col)
     {

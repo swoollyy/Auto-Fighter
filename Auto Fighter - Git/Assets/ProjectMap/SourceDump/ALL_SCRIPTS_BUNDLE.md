@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2026-01-12T19:24:52.9918947Z (UTC)
+- Generated: 2026-01-13T23:29:12.2826216Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 217
+- Files: 218
 
 ## Assets/BumperAnimScript.cs
 
@@ -1085,6 +1085,58 @@ public class FireVelocityFeeder : MonoBehaviour
         _mpb.SetVector("_VelWS", _velSmoothed * velScale);
         if (sendAngular) _mpb.SetVector("_AngVelWS", _angSmoothed);
         _rend.SetPropertyBlock(_mpb, materialIndex);
+    }
+}
+
+```
+
+## Assets/KinematicVelocityTracker.cs
+
+```csharp
+using UnityEngine;
+
+/// <summary>
+/// Attach to any object that moves via transform.position / tweening / kinematic motion.
+/// Provides a reliable "velocity" value for trigger-based interactions.
+/// </summary>
+public class KinematicVelocityTracker : MonoBehaviour
+{
+    public Vector3 Velocity { get; private set; }
+    public float Speed => Velocity.magnitude;
+
+    [Tooltip("If true, uses FixedUpdate for velocity. Use FixedUpdate if you move in FixedUpdate.")]
+    [SerializeField] private bool useFixedUpdate = false;
+
+    private Vector3 _prevPos;
+    private bool _inited;
+
+    private void OnEnable()
+    {
+        _prevPos = transform.position;
+        Velocity = Vector3.zero;
+        _inited = true;
+    }
+
+    private void Update()
+    {
+        if (useFixedUpdate) return;
+        Tick(Time.deltaTime);
+    }
+
+    private void FixedUpdate()
+    {
+        if (!useFixedUpdate) return;
+        Tick(Time.fixedDeltaTime);
+    }
+
+    private void Tick(float dt)
+    {
+        if (!_inited) { _prevPos = transform.position; _inited = true; return; }
+        if (dt <= 0f) return;
+
+        Vector3 pos = transform.position;
+        Velocity = (pos - _prevPos) / dt;
+        _prevPos = pos;
     }
 }
 
@@ -10378,6 +10430,11 @@ public sealed class CarForcefield : MonoBehaviour
         float speed2 = relVel2.magnitude;
         float sev2 = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, speed2);
 
+        var bounceBack = other.GetComponentInParent<TrackObstacleBounceBack>();
+        if (bounceBack != null)
+        {
+            bounceBack.DetachForForcefieldLaunch();
+        }
         Rigidbody launchRb = PrepareObstacleForLaunch(other);
         if (launchRb == null) return;
 
@@ -11941,6 +11998,60 @@ public class CreatureTypeConfig
     [Tooltip("How far off-road the scared creature can run.")]
     [Min(0f)] public float scaredMaxOffRoadDistance = 3f;
 
+
+    [Header("Scared - Idle Bug Movement (Before Detection)")]
+    [Tooltip("If true, scared creatures use the same low-energy 'bug idle' movement until the player is within scaredDetectionRadius.")]
+    public bool scaredIdleUseBugMovement = true;
+
+    [Tooltip("Speed used for idle bug movement (small wiggles).")]
+    [Min(0f)] public float scaredIdleBugMoveSpeed = 1.25f;
+
+    [Tooltip("How often the idle bug movement picks a new micro-direction.")]
+    [Min(0.05f)] public float scaredIdleBugDirectionChangeInterval = 1.0f;
+
+    [Tooltip("Max left/right wiggle distance (meters) around the idle anchor.")]
+    [Min(0f)] public float scaredIdleBugLateralRadius = 2.0f;
+
+    [Tooltip("Max forward/back wiggle distance (meters) around the idle anchor (along-track).")]
+    [Min(0f)] public float scaredIdleBugForwardRadius = 1.25f;
+
+    [Header("Scared - Flee From Aggressive (Big Creature)")]
+    [Tooltip("If true, scared creatures will also flee when an aggressive creature is nearby.")]
+    public bool scaredFleeFromAggressive = true;
+
+    [Tooltip("Radius to detect aggressive creatures.")]
+    [Min(0f)] public float scaredAggressiveDetectRadius = 18f;
+
+    [Tooltip("If the aggressive creature is farther than this, the scared creature calms down and returns to idle/wander.")]
+    [Min(0f)] public float scaredAggressiveLoseFearDistance = 30f;
+
+    [Tooltip("Speed multiplier applied when fleeing from an aggressive creature (on top of scared flee speed).")]
+    [Min(0f)] public float scaredAggressiveFleeSpeedMultiplier = 1.25f;
+
+    [Header("Aggressive - Idle & Hunting")]
+    [Tooltip("If true, aggressive creatures will also wander using idle bug movement when not chasing.")]
+    public bool aggressiveIdleUseBugMovement = true;
+
+    [Tooltip("Speed used for aggressive idle movement.")]
+    [Min(0f)] public float aggressiveIdleBugMoveSpeed = 1.0f;
+
+    [Tooltip("How often the aggressive idle movement picks a new micro-direction.")]
+    [Min(0.05f)] public float aggressiveIdleBugDirectionChangeInterval = 1.1f;
+
+    [Tooltip("Max left/right wiggle distance (meters) around the aggressive idle anchor.")]
+    [Min(0f)] public float aggressiveIdleBugLateralRadius = 2.5f;
+
+    [Tooltip("Max forward/back wiggle distance (meters) around the aggressive idle anchor (along-track).")]
+    [Min(0f)] public float aggressiveIdleBugForwardRadius = 1.5f;
+
+    [Tooltip("If true, aggressive creatures will hunt scared (medium) creatures when they are close.")]
+    public bool aggressiveHuntScaredCreatures = true;
+
+    [Tooltip("Radius to detect scared creatures to hunt.")]
+    [Min(0f)] public float aggressiveHuntRadius = 20f;
+
+    [Tooltip("Speed multiplier applied when hunting scared creatures.")]
+    [Min(0f)] public float aggressiveHuntSpeedMultiplier = 1.35f;
     [Header("Behavior Tuning - Aggressive")]
     [Tooltip("Detection radius for the aggressive creature to spot the player.")]
     [Min(0f)] public float aggressiveDetectionRadius = 25f;
@@ -11953,7 +12064,12 @@ public class CreatureTypeConfig
 
     [Tooltip("Crash severity caused on collision (0-1).")]
     [Range(0f, 1f)] public float aggressiveImpactDamage = 0.5f;
+
+    [Header("Crush Interaction")]
+    [Tooltip("Aggressive (big) creature only dies to obstacles with Rigidbody mass >= this threshold (Passive + Scared always die).")]
+    [Min(0f)] public float aggressiveCrushMassThreshold = 80f;
 }
+
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CrossObstacleDirector.cs
@@ -18920,6 +19036,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("Hard cap on how far away from the starting forward we can aim.")]
     [SerializeField] private float maxHeadingDeviation = 110f;
 
+
+    [SerializeField] private TerrainDetailGrassPainter grassPainter;
+
     [Header("Randomness")]
     [SerializeField] private bool useRandomSeed = true;
     [SerializeField] private int fixedSeed = 12345;
@@ -19054,6 +19173,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
         // If we ended up with a valid track, notify listeners (GameManager, etc.)
         if (success)
         {
+            // Road mesh + collider already exist at this point (BuildRoadMeshFromPath ran inside BuildTrack)
+            if (grassPainter != null)
+                grassPainter.PaintNow(this);
+
             OnTrackGeneratedSuccessfully?.Invoke(this);
         }
     }
@@ -25599,7 +25722,7 @@ public enum CreatureKillSource
 {
     Car,        // Run over by player - rewards coins
     Turret,     // Shot by turret - rewards sprockets
-    Other       // Any other source - rewards coins
+    Other       // Any other source - NO reward
 }
 
 /// <summary>
@@ -25649,6 +25772,53 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("Layer mask for ground raycasting.")]
     [SerializeField] private LayerMask groundLayer = ~0;
 
+
+    [Header("Movement Avoidance")]
+    [Tooltip("If enabled, creatures will steer around colliders on these layers while moving (wander/idle/flee/charge).")]
+    [SerializeField] private bool enableMovementAvoidance = true;
+
+    [Tooltip("Layers to avoid while moving (obstacles, walls, props, etc).")]
+    [SerializeField] private LayerMask movementAvoidanceLayers = 0;
+
+    [Tooltip("Sphere radius for obstacle sensing while moving.")]
+    [SerializeField, Min(0.01f)] private float avoidanceRadius = 0.35f;
+
+    [Tooltip("How far ahead we check for blockers (meters).")]
+    [SerializeField, Min(0.05f)] private float avoidanceLookAhead = 1.2f;
+
+    [Tooltip("Height above pivot for the sphere cast origin (helps if pivot is low).")]
+    [SerializeField] private float avoidanceCastHeight = 0.35f;
+
+    [Tooltip("If we can't slide, we pick a side-step amount (meters per second-ish bias).")]
+    [SerializeField] private float avoidanceSideBias = 0.9f;
+
+    [Tooltip("How fast we bias sideways when avoiding (higher = snappier).")]
+    [SerializeField]
+    private float avoidanceResponse =
+12f;
+
+    [Header("Aggressive - Priority")]
+    public float aggressivePlayerPriorityRadius = 12f;
+
+    [Header("Creature Sensing")]
+    [Tooltip("Layers used for creature-vs-creature sensing (aggressive hunts scared; scared flees aggressive). Put your creatures on a dedicated layer for best results.")]
+    [SerializeField] private LayerMask creatureSenseLayers = ~0;
+
+    [Header("Crush / Obstacle Interaction")]
+    [Tooltip("Layers that can 'crush' creatures. Only used when the other collider has a Rigidbody OR is tagged as an obstacle.")]
+    [SerializeField] private LayerMask crushLayers = ~0;
+
+    [Tooltip("Minimum obstacle speed required to squish a creature. If the obstacle isn't moving, it won't squish.")]
+    [SerializeField, Min(0f)] private float minCrushSpeed = 0.75f;
+
+    [Tooltip("If true, tag-based crushers without rigidbodies can still squish (treated as moving). Recommend FALSE.")]
+    [SerializeField] private bool allowTagCrushWithoutRigidbody = false;
+
+    [Tooltip("Any collider with one of these tags is treated as an obstacle crush even if it has no Rigidbody.")]
+    [SerializeField] private string[] obstacleTags = new string[] { "Obstacle" };
+
+    [Tooltip("Aggressive (big) creature only dies to obstacles with mass >= this threshold. Passive + Scared always die.")]
+    [SerializeField] private float aggressiveCrushMassThreshold = 80f;
     [Header("Ground Snapping")]
     [SerializeField] private float groundRayHeight = 2f;
     [SerializeField] private float groundRayDistance = 5f;
@@ -25679,6 +25849,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [SerializeField] private AudioClip carKillSound;
     [SerializeField, Range(0f, 1f)] private float killSoundVolume = 1f;
 
+
+
     [Header("Effects (Optional)")]
     [SerializeField] private GameObject deathEffectPrefab;
     [SerializeField] private Transform coinSpawnPoint;
@@ -25706,7 +25878,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected bool isDead = false;
 
     // Kill tracking
-    protected CreatureKillSource killSource = CreatureKillSource.Car;
+    protected CreatureKillSource killSource = CreatureKillSource.Other;
     protected float currentHealth = 100f;
 
     // Track position
@@ -25725,11 +25897,30 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float wanderDirectionZ; // -1 to 1 forward/back direction
     protected float nextWanderChangeTime;
 
+
+    // Idle "bug" wiggle state (used by Scared while not detected)
+    protected float idleAnchorDistance;
+    protected float idleAnchorLateral;
+    protected float idleTargetDistOffset;
+    protected float idleTargetLateralOffset;
+    protected float idleCurrentDistOffset;
+    protected float idleCurrentLateralOffset;
+    protected float nextIdleChangeTime;
     // Detection state
     protected bool playerDetected = false;
     protected float playerDistance;
     protected Vector3 playerDirection;
 
+
+
+    // Threat / creature-vs-creature interactions
+    protected Transform threatTransform;
+    protected bool threatIsAggressive;
+    protected float threatDistance;
+    protected Vector3 threatDirection;
+
+    // Aggressive hunting target (scared creature)
+    protected Transform chaseTargetTransform;
     // Ground state
     protected bool isGrounded = true;
     protected Vector3 groundNormal = Vector3.up;
@@ -25747,6 +25938,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     public CreatureBehaviorType BehaviorType => behaviorType;
     public float DistanceToPlayer => playerDistance;
 
+
+    public bool IsInitialized => isInitialized;
+    public float DistanceAlongTrack => currentDistanceAlongTrack;
     #endregion
 
     #region Initialization
@@ -25898,6 +26092,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Update player detection
         UpdatePlayerDetection();
 
+
+        // Update creature-vs-creature threat detection
+        UpdateThreatDetection();
         // Update state machine
         UpdateStateMachine(dt);
 
@@ -25920,11 +26117,48 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected virtual void OnTriggerEnter(Collider other)
     {
         if (isDead) return;
+        if (other == null) return;
 
-        // Check if hit by player car
+        // Player car hit (run over)
         if (IsPlayerCollider(other))
         {
             OnHitByPlayer(other);
+            return;
+        }
+
+        // Aggressive creature instantly kills scared creature on trigger contact
+        if (behaviorType == CreatureBehaviorType.Aggressive)
+        {
+            TrackCreature otherCreature = other.GetComponent<TrackCreature>();
+
+            if (otherCreature != null &&
+                otherCreature != this &&
+                !otherCreature.isDead &&
+                otherCreature.behaviorType == CreatureBehaviorType.Scared)
+            {
+
+                Debug.Log($"Working!");
+
+                // Kill immediately
+                otherCreature.killSource = CreatureKillSource.Other;
+                otherCreature.Die();
+
+                // Stop chasing and return to idle
+                chaseTargetTransform = null;
+                SetState(CreatureState.Idle);
+
+                return; // IMPORTANT: stop further trigger processing
+            }
+            else
+            {
+                Debug.Log($"Working Not! {other.gameObject.name}");
+            }
+        }
+
+
+        if (IsCrushingCollider(other, out float otherMass, out float otherSpeed))
+        {
+            OnHitByCrushingObstacle(other, otherMass, otherSpeed);
         }
     }
 
@@ -25968,7 +26202,18 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
                 currentSpeed = 0f;
+
+                // Idle anchor for bug-style idle movement (scared + aggressive).
+                if (config != null)
+                {
+                    if (behaviorType == CreatureBehaviorType.Scared && config.scaredIdleUseBugMovement)
+                        CaptureIdleAnchor();
+
+                    if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveIdleUseBugMovement)
+                        CaptureIdleAnchor();
+                }
                 break;
+
 
             case CreatureState.Wandering:
                 ResetWanderDirection();
@@ -26021,6 +26266,16 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
+                // Flee from aggressive creature if nearby
+                if (threatIsAggressive && threatTransform != null && threatDistance < config.scaredAggressiveDetectRadius)
+                {
+                    if (currentState != CreatureState.Fleeing)
+                        SetState(CreatureState.Fleeing);
+
+                    // Boost flee speed a bit when fleeing aggressive
+                    currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) * Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
+                }
+
                 // Check for player detection
                 if (playerDetected && playerDistance < config.scaredDetectionRadius)
                 {
@@ -26028,21 +26283,38 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 }
                 else
                 {
-                    // Wander casually
-                    if (currentState != CreatureState.Wandering)
-                        SetState(CreatureState.Wandering);
-                    UpdateWandering(dt);
+                    // Stay in "idle bug" movement until the player is actually near enough to spook us.
+                    // This is intentionally low-commitment movement and can drift off-road.
+                    if (config != null && config.scaredIdleUseBugMovement)
+                    {
+                        if (currentState != CreatureState.Idle)
+                            SetState(CreatureState.Idle);
+
+                        UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed, config.scaredIdleBugDirectionChangeInterval,
+                            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius, config.scaredMaxOffRoadDistance);
+                    }
+                    else
+                    {
+                        // Fallback to prior behavior
+                        if (currentState != CreatureState.Wandering)
+                            SetState(CreatureState.Wandering);
+
+                        UpdateWandering(dt);
+                    }
+
                 }
                 break;
 
             case CreatureState.Fleeing:
                 UpdateFleeing(dt);
 
-                // Keep fleeing as long as player is somewhat close
-                // (don't stop fleeing just because player got a bit further)
-                if (playerDistance > config.scaredDetectionRadius * 2f)
+                // Keep fleeing as long as the threat is close enough.
+                bool playerFar = playerDistance > config.scaredDetectionRadius * 2f;
+                bool aggroFar = !threatIsAggressive || threatTransform == null || threatDistance > config.scaredAggressiveLoseFearDistance;
+
+                if (playerFar && aggroFar)
                 {
-                    // Player is far enough, go back to wandering
+                    // Calm down -> return to idle/wander.
                     SetState(CreatureState.Wandering);
                     currentFleeSpeed = config.scaredBaseFleeSpeed;
                 }
@@ -26059,26 +26331,68 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                // Check for player detection
-                if (playerDetected && playerDistance < config.aggressiveDetectionRadius)
+
+                // Priority radius: if the player is inside this bubble, ALWAYS target the player.
+                bool playerIsClosePriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
+
+                if (playerIsClosePriority)
+                {
+                    chaseTargetTransform = null; // force target = player
+                    SetState(CreatureState.Charging);
+                }
+                else if (config.aggressiveHuntScaredCreatures && chaseTargetTransform != null)
+
                 {
                     SetState(CreatureState.Charging);
                 }
+                else if (playerDetected && playerDistance < config.aggressiveDetectionRadius)
+                {
+                    SetState(CreatureState.Charging);
+                }
+
                 else
                 {
-                    // Idle or slow wander
-                    if (currentState != CreatureState.Idle)
-                        SetState(CreatureState.Idle);
+                    // Idle bug movement (gives the big creature life even when not chasing)
+                    if (config.aggressiveIdleUseBugMovement)
+                    {
+                        if (currentState != CreatureState.Idle)
+                            SetState(CreatureState.Idle);
+
+                        UpdateBugIdleMovement(
+                            dt,
+                            config.aggressiveIdleBugMoveSpeed,
+                            config.aggressiveIdleBugDirectionChangeInterval,
+                            config.aggressiveIdleBugLateralRadius,
+                            config.aggressiveIdleBugForwardRadius,
+                            config.aggressiveMaxOffTrackDistance);
+                    }
+                    else
+                    {
+                        if (currentState != CreatureState.Idle)
+                            SetState(CreatureState.Idle);
+                    }
                 }
                 break;
 
             case CreatureState.Charging:
                 UpdateCharging(dt);
 
-                // If player gets too far, give up (optional)
-                if (playerDistance > config.aggressiveDetectionRadius * 1.5f)
+                // Give up if target is gone / too far
+                bool hunting = chaseTargetTransform != null;
+
+                if (hunting)
                 {
-                    SetState(CreatureState.Idle);
+                    float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
+                    if (distToTarget > config.aggressiveHuntRadius * 1.25f)
+                    {
+                        chaseTargetTransform = null;
+                        SetState(CreatureState.Idle);
+                    }
+                }
+                else
+                {
+                    if (playerDistance > config.aggressiveDetectionRadius * 1.5f)
+                        SetState(CreatureState.Idle);
                 }
                 break;
         }
@@ -26096,6 +26410,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             ResetWanderDirection();
         }
+
 
         // Calculate target speed
         float targetSpeed = config.passiveWanderSpeed;
@@ -26118,6 +26433,81 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Smooth lateral movement
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, config.passiveWanderSpeed * dt);
     }
+
+
+    /// <summary>
+    /// Captures the current position as the center of our idle "bug wiggle".
+    /// This is used by Scared creatures while the player is NOT close enough to spook them.
+    /// </summary>
+    protected void CaptureIdleAnchor()
+    {
+        idleAnchorDistance = currentDistanceAlongTrack;
+        idleAnchorLateral = currentLateralOffset;
+
+        idleCurrentDistOffset = 0f;
+        idleCurrentLateralOffset = 0f;
+
+        idleTargetDistOffset = 0f;
+        idleTargetLateralOffset = 0f;
+
+        wanderTimer = 0f;
+        nextIdleChangeTime = 0f; // force immediate target pick
+    }
+
+    /// <summary>
+    /// Very small, low-speed wandering used as "idle bug" movement.
+    /// - Lets the creature drift off the road (within extraOffRoad).
+    /// - Intended for Scared creatures BEFORE they detect the player.
+    /// </summary>
+    protected virtual void UpdateBugIdleMovement(
+        float dt,
+        float bugSpeed,
+        float directionChangeInterval,
+        float lateralRadius,
+        float forwardRadius,
+        float extraOffRoad)
+    {
+        if (spawner == null) return;
+
+        // If we haven't anchored yet (e.g., config toggled at runtime), anchor now.
+        if (nextIdleChangeTime <= 0f)
+        {
+            CaptureIdleAnchor();
+        }
+
+        wanderTimer += dt;
+
+        // Pick a new tiny target offset occasionally
+        if (wanderTimer >= nextIdleChangeTime)
+        {
+            float interval = Mathf.Max(0.05f, directionChangeInterval) * Random.Range(0.85f, 1.15f);
+            nextIdleChangeTime = wanderTimer + interval;
+
+            idleTargetLateralOffset = Random.Range(-Mathf.Abs(lateralRadius), Mathf.Abs(lateralRadius));
+            idleTargetDistOffset = Random.Range(-Mathf.Abs(forwardRadius), Mathf.Abs(forwardRadius));
+        }
+
+        // Smooth speed toward bugSpeed
+        currentSpeed = Mathf.MoveTowards(currentSpeed, bugSpeed, Mathf.Max(0.01f, bugSpeed) * 3f * dt);
+
+        // Move our current offsets toward the target offsets
+        float step = Mathf.Max(0.01f, currentSpeed) * dt;
+        idleCurrentLateralOffset = Mathf.MoveTowards(idleCurrentLateralOffset, idleTargetLateralOffset, step);
+        idleCurrentDistOffset = Mathf.MoveTowards(idleCurrentDistOffset, idleTargetDistOffset, step);
+
+        // Apply offsets around anchor
+        float totalLength = spawner.GetTotalLength();
+        currentDistanceAlongTrack = Mathf.Clamp(idleAnchorDistance + idleCurrentDistOffset, 0f, totalLength);
+
+        float halfWidth = GetRoadHalfWidth();
+        float maxLateral = halfWidth + Mathf.Max(0f, extraOffRoad);
+        targetLateralOffset = Mathf.Clamp(idleAnchorLateral + idleCurrentLateralOffset, -maxLateral, maxLateral);
+
+        // Smooth lateral
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, Mathf.Max(0.01f, currentSpeed) * dt);
+    }
+
+
 
     protected virtual void UpdateFleeing(float dt)
     {
@@ -26170,51 +26560,65 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected virtual void UpdateCharging(float dt)
     {
-        currentSpeed = config.aggressiveChargeSpeed;
+        if (spawner == null || config == null) return;
 
-        if (playerTransform == null) return;
 
-        // Get direction toward player
-        Vector3 toPlayer = playerTransform.position - transform.position;
-        toPlayer.y = 0f;
 
-        if (toPlayer.sqrMagnitude < 0.01f) return;
+        // Determine target (player has priority if inside aggressivePlayerPriorityRadius).
+        Transform target = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
 
-        Vector3 chargeDirection = toPlayer.normalized;
+        bool playerPriority = playerDetected && playerTransform != null &&
+                              playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
 
-        // Get track info
+        if (playerPriority)
+            target = playerTransform;
+
+        if (target == null) return;
+
+        if (chaseTargetTransform == null ||
+    (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead))
+        {
+            chaseTargetTransform = null;
+            SetState(CreatureState.Idle);
+            currentSpeed = 0f;
+            return;
+        }
+
+        bool huntingCreature = (target != playerTransform);
+
+        float speedMult = huntingCreature ? Mathf.Max(0.01f, config.aggressiveHuntSpeedMultiplier) : 1f;
+        currentSpeed = Mathf.Max(0f, config.aggressiveChargeSpeed) * speedMult;
+
+        // -------- FIX: move in "track space" toward the target's distance-along-track --------
+        // The old dot-product weighting could go ~0 when the target was mostly lateral, causing the
+        // big creature to rotate toward the player but barely move.
+        float targetDistAlong = spawner.GetDistanceAlongPath(target.position);
+
+        float moveStep = currentSpeed * dt;
+        currentDistanceAlongTrack = Mathf.MoveTowards(currentDistanceAlongTrack, targetDistAlong, moveStep);
+
+        // Update lateral intercept based on the path frame at our current distance.
         spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+
         Vector3 flatForward = pathForward;
         flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
         flatForward.Normalize();
 
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
 
-        // Move along track toward player
-        float forwardDot = Vector3.Dot(chargeDirection, flatForward);
-        float trackDirection = forwardDot >= 0 ? 1f : -1f;
+        float desiredLateral = Vector3.Dot(target.position - pathPos, right);
 
-        // Weight movement toward player
-        float trackMovement = currentSpeed * Mathf.Abs(forwardDot) * trackDirection * dt;
-        currentDistanceAlongTrack += trackMovement;
-
-        // Clamp to track bounds
-        float totalLength = spawner.GetTotalLength();
-        currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
-
-        // Lateral movement toward player
-        float lateralDot = Vector3.Dot(chargeDirection, right);
-        float lateralMovement = currentSpeed * lateralDot * dt;
-
-        // Can move off-track to intercept
-        float maxOffTrack = config.aggressiveMaxOffTrackDistance;
+        float maxOffTrack = Mathf.Max(0f, config.aggressiveMaxOffTrackDistance);
         float halfWidth = GetRoadHalfWidth();
         float maxLateral = halfWidth + maxOffTrack;
 
-        targetLateralOffset += lateralMovement;
-        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+        desiredLateral = Mathf.Clamp(desiredLateral, -maxLateral, maxLateral);
 
-        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, currentSpeed * 1.5f * dt);
+        // Smooth lateral steering so it feels like "chasing" instead of teleporting.
+        float lateralStep = moveStep * 1.5f;
+        targetLateralOffset = Mathf.MoveTowards(targetLateralOffset, desiredLateral, lateralStep);
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, lateralStep);
     }
 
     #endregion
@@ -26242,13 +26646,111 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Keep current Y for now (ground snap handles Y)
         targetPos.y = transform.position.y;
 
-        // Move toward target position
-        float moveSpeed = Mathf.Max(currentSpeed, 5f); // Minimum speed for responsiveness
-        transform.position = Vector3.MoveTowards(transform.position, targetPos, moveSpeed * dt);
+        // --- NEW: real velocity from position delta ---
+        Vector3 prevPos = transform.position;
 
-        // Calculate velocity for animation
-        currentVelocity = (targetPos - transform.position) / Mathf.Max(dt, 0.001f);
+        // Move toward target position
+        float moveSpeed = Mathf.Max(currentSpeed, 0f); // Use state-driven speed (don't force movement when idle)
+
+        Vector3 desired = targetPos - transform.position;
+        desired.y = 0f;
+
+        float desiredDist = desired.magnitude;
+        Vector3 moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
+
+        float step = moveSpeed * dt;
+
+        // Layer avoidance (steer moveDir so we don't run into / path through certain layers)
+        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f)
+        {
+            moveDir = ApplyAvoidanceToMoveDir(moveDir, step, flatForward, right);
+        }
+
+        Vector3 newPos = transform.position + moveDir * Mathf.Min(step, desiredDist);
+        // Keep current Y for now (ground snap handles Y)
+        newPos.y = transform.position.y;
+
+        transform.position = newPos;
+
+        Vector3 delta = transform.position - prevPos;
+        currentVelocity = delta / Mathf.Max(dt, 0.001f);
+
     }
+
+    private Vector3 ApplyAvoidanceToMoveDir(Vector3 moveDir, float step, Vector3 flatForward, Vector3 right)
+    {
+        Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+
+        float look = Mathf.Max(avoidanceLookAhead, step * 2f);
+
+        // If we'd hit something we want to avoid, steer
+        if (Physics.SphereCast(origin, avoidanceRadius, moveDir, out RaycastHit hit, look, movementAvoidanceLayers, QueryTriggerInteraction.Ignore))
+        {
+            Vector3 n = hit.normal;
+            n.y = 0f;
+
+            // If normal is garbage (rare), just treat it as "block forward"
+            if (n.sqrMagnitude < 0.0001f)
+                n = -moveDir;
+
+            n.Normalize();
+
+            // Slide along the surface
+            Vector3 slide = Vector3.ProjectOnPlane(moveDir, n);
+            slide.y = 0f;
+
+            if (slide.sqrMagnitude > 0.0001f)
+            {
+                slide.Normalize();
+
+                // small lateral bias so we don't jitter-stick on edges
+                float sideDot = Mathf.Clamp(Vector3.Dot(slide, right), -1f, 1f);
+                currentLateralOffset = Mathf.MoveTowards(
+                    currentLateralOffset,
+                    currentLateralOffset + sideDot * avoidanceSideBias,
+                    avoidanceResponse * Time.deltaTime
+                );
+
+                return slide;
+            }
+
+            // If we can't slide (head-on), choose whichever side is clearer
+            float side = ChooseClearSide(origin, right, look);
+            Vector3 sidestep = (moveDir + right * side * 0.75f);
+            sidestep.y = 0f;
+
+            if (sidestep.sqrMagnitude > 0.0001f)
+            {
+                sidestep.Normalize();
+
+                currentLateralOffset = Mathf.MoveTowards(
+                    currentLateralOffset,
+                    currentLateralOffset + side * avoidanceSideBias,
+                    avoidanceResponse * Time.deltaTime
+                );
+
+                return sidestep;
+            }
+        }
+
+        return moveDir;
+    }
+
+    private float ChooseClearSide(Vector3 origin, Vector3 right, float look)
+    {
+        // Probe both sides a bit. Pick the side with MORE free space.
+        float probeDist = Mathf.Max(0.25f, avoidanceRadius * 2f);
+
+        bool hitR = Physics.SphereCast(origin, avoidanceRadius, right, out _, probeDist, movementAvoidanceLayers, QueryTriggerInteraction.Ignore);
+        bool hitL = Physics.SphereCast(origin, avoidanceRadius, -right, out _, probeDist, movementAvoidanceLayers, QueryTriggerInteraction.Ignore);
+
+        if (hitR && !hitL) return -1f;
+        if (!hitR && hitL) return 1f;
+
+        // If both clear or both blocked, bias randomly so groups don't all pick the same side.
+        return (Random.value < 0.5f) ? -1f : 1f;
+    }
+
 
     protected virtual void UpdateGroundSnap(float dt)
     {
@@ -26280,6 +26782,31 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Determine facing direction based on state
         Vector3 lookDirection = Vector3.zero;
 
+        Vector3 moveDir = currentVelocity;
+        moveDir.y = 0f;
+
+        if (moveDir.sqrMagnitude > 0.0004f) // ~0.02 m/s threshold
+        {
+            moveDir.Normalize();
+
+            Quaternion TargetRot;
+            if (alignToGround && isGrounded)
+            {
+                Vector3 forward = Vector3.ProjectOnPlane(moveDir, groundNormal).normalized;
+                TargetRot = (forward.sqrMagnitude > 0.01f)
+                    ? Quaternion.LookRotation(forward, groundNormal)
+                    : Quaternion.LookRotation(moveDir, Vector3.up);
+            }
+            else
+            {
+                TargetRot = Quaternion.LookRotation(moveDir, Vector3.up);
+            }
+
+            Transform RotTarget = visualRoot != null ? visualRoot : transform;
+            RotTarget.rotation = Quaternion.Slerp(RotTarget.rotation, TargetRot, rotationSpeed * dt);
+            return; // important: don't override with "look at player" logic
+        }
+
         switch (currentState)
         {
             case CreatureState.Wandering:
@@ -26293,9 +26820,10 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
 
             case CreatureState.Charging:
-                if (playerTransform != null)
                 {
-                    lookDirection = (playerTransform.position - transform.position);
+                    Transform t = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
+                    if (t != null)
+                        lookDirection = (t.position - transform.position);
                 }
                 break;
 
@@ -26343,22 +26871,110 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             playerDetected = false;
             playerDistance = float.MaxValue;
+            playerDirection = Vector3.zero;
             return;
         }
 
         Vector3 toPlayer = playerTransform.position - transform.position;
         playerDistance = toPlayer.magnitude;
-        playerDirection = playerDistance > 0.01f ? toPlayer / playerDistance : Vector3.zero;
+        playerDirection = playerDistance > 0.01f ? (toPlayer / playerDistance) : Vector3.zero;
+
+        // We always have a valid player; state logic decides what to do based on distance thresholds.
         playerDetected = true;
+    }
+
+    protected virtual void UpdateThreatDetection()
+    {
+        threatTransform = null;
+        threatIsAggressive = false;
+        threatDistance = float.MaxValue;
+        threatDirection = Vector3.zero;
+
+        if (spawner == null || config == null) return;
+
+        // Scared: detect nearby aggressive creature
+        if (behaviorType == CreatureBehaviorType.Scared && config.scaredFleeFromAggressive)
+        {
+            var aggro = FindNearestCreature(CreatureBehaviorType.Aggressive, config.scaredAggressiveDetectRadius);
+            if (aggro != null)
+            {
+                threatTransform = aggro.transform;
+                threatIsAggressive = true;
+
+                Vector3 toThreat = threatTransform.position - transform.position;
+                threatDistance = toThreat.magnitude;
+                threatDirection = threatDistance > 0.01f ? (toThreat / threatDistance) : Vector3.zero;
+            }
+        }
+
+        // Aggressive: optionally detect scared to hunt
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveHuntScaredCreatures)
+        {
+            // If the player is inside the priority radius, do NOT hunt other creatures.
+            bool playerPriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
+            if (playerPriority)
+            {
+                chaseTargetTransform = null;
+            }
+            else
+            {
+                var scared = FindNearestCreature(CreatureBehaviorType.Scared, config.aggressiveHuntRadius);
+                chaseTargetTransform = scared != null ? scared.transform : null;
+            }
+        }
+        else
+        {
+            chaseTargetTransform = null;
+        }
+    }
+
+    protected TrackCreature FindNearestCreature(CreatureBehaviorType targetType, float radius)
+    {
+        if (radius <= 0.01f) return null;
+
+        Collider[] cols = Physics.OverlapSphere(transform.position, radius, creatureSenseLayers, QueryTriggerInteraction.Collide);
+
+        TrackCreature best = null;
+        float bestSqr = float.MaxValue;
+
+        for (int i = 0; i < cols.Length; i++)
+        {
+            var c = cols[i];
+            if (c == null) continue;
+
+            var tc = c.GetComponentInParent<TrackCreature>();
+            if (tc == null || tc == this) continue;
+            if (!tc.isInitialized || tc.isDead) continue;
+            if (tc.behaviorType != targetType) continue;
+
+            float sqr = (tc.transform.position - transform.position).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                best = tc;
+            }
+        }
+
+        return best;
     }
 
     protected Vector3 GetFleeDirection()
     {
+        // Prefer fleeing from an aggressive creature if one is currently threatening us.
+        if (threatIsAggressive && threatTransform != null)
+        {
+            Vector3 away = transform.position - threatTransform.position;
+            away.y = 0f;
+            if (away.sqrMagnitude > 0.0001f)
+                return away.normalized;
+        }
+
         if (!playerDetected || playerTransform == null)
         {
             // Default: run forward along track
             spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
-            return fwd;
+            fwd.y = 0f;
+            return fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
         }
 
         // Run directly away from player
@@ -26387,6 +27003,100 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         return false;
     }
+
+    #endregion
+
+    #region Crush Detection
+
+
+    protected bool IsCrushingCollider(Collider col, out float otherMass, out float otherSpeed)
+    {
+        otherMass = 0f;
+        otherSpeed = 0f;
+
+        if (col == null) return false;
+        if (col.transform == transform || col.transform.IsChildOf(transform)) return false;
+
+        // Only consider things that are on allowed layers
+        if ((crushLayers.value & (1 << col.gameObject.layer)) == 0)
+            return false;
+
+        // Prefer Rigidbody detection so we can check velocity
+        Rigidbody rb = col.attachedRigidbody != null ? col.attachedRigidbody : col.GetComponentInParent<Rigidbody>();
+        if (rb != null)
+        {
+            otherMass = rb.mass;
+
+            // Use point velocity at the contact point to better reflect "moving into" the creature
+            Vector3 v = rb.GetPointVelocity(transform.position);
+            otherSpeed = v.magnitude;
+
+            // Only crush if actually moving
+            return otherSpeed >= minCrushSpeed;
+        }
+
+        var tracker = col.GetComponentInParent<KinematicVelocityTracker>();
+        if (tracker != null)
+        {
+            otherMass = 0f; // unknown / irrelevant for non-RB movers
+            otherSpeed = tracker.Speed;
+
+            // only crush if actually moving
+            return otherSpeed >= minCrushSpeed;
+        }
+
+        // Tag-based fallback: only allow if explicitly enabled (otherwise we can't know velocity)
+        if (HasAnyTag(col, obstacleTags))
+        {
+            if (!allowTagCrushWithoutRigidbody)
+                return false;
+
+            // Treat as "moving" if user allows this path (legacy override)
+            otherSpeed = minCrushSpeed;
+            return true;
+        }
+
+        return false;
+    }
+
+
+    protected bool HasAnyTag(Collider col, string[] tags)
+    {
+        if (col == null || tags == null || tags.Length == 0) return false;
+        for (int i = 0; i < tags.Length; i++)
+        {
+            string t = tags[i];
+            if (string.IsNullOrEmpty(t)) continue;
+            if (col.CompareTag(t) || col.transform.root.CompareTag(t))
+                return true;
+        }
+        return false;
+    }
+
+    protected virtual void OnHitByCrushingObstacle(Collider obstacleCollider, float obstacleMass, float obstacleSpeed)
+    {
+        if (isDead) return;
+
+        // Extra safety: if not moving, don't squish.
+        if (obstacleSpeed < minCrushSpeed)
+            return;
+
+        // Passive + Scared always die to moving obstacle impacts.
+        // Aggressive (big) only dies if obstacle is "heavy enough".
+        if (behaviorType == CreatureBehaviorType.Aggressive && obstacleMass > 0f)
+        {
+            float threshold = aggressiveCrushMassThreshold;
+            if (config != null)
+                threshold = Mathf.Max(0f, config.aggressiveCrushMassThreshold);
+
+            if (obstacleMass < threshold)
+                return;
+        }
+
+        killSource = CreatureKillSource.Other;
+        Die();
+    }
+
 
     #endregion
 
@@ -26472,9 +27182,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             Instantiate(deathEffectPrefab, transform.position, Quaternion.identity);
         }
 
-        // Only award coins if NOT killed by turret
-        // (turret kills award sprockets via RacingBullet)
-        if (killSource != CreatureKillSource.Turret)
+        // Only award coins when the PLAYER car ran it over.
+        // Turret kills award sprockets via RacingBullet; obstacle/crush kills award nothing.
+        if (killSource == CreatureKillSource.Car)
         {
             SpawnCoinReward(effectPos);
         }
@@ -27020,6 +27730,16 @@ public class TrackCreatureSpawner : MonoBehaviour
         foreach (var kvp in _creaturesBySlot)
         {
             float dist = kvp.Key * creatureSpacing;
+
+            // IMPORTANT: creatures can wander forward/back from their original slot,
+            // so use their live distance-along-track when available.
+            if (kvp.Value != null)
+            {
+                var tc = kvp.Value.GetComponent<TrackCreature>();
+                if (tc != null && tc.IsInitialized)
+                    dist = tc.DistanceAlongTrack;
+            }
+
             bool behind = dist < playerDist - despawnBehindDistance;
 
             if (behind || kvp.Value == null)
@@ -27616,6 +28336,18 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         StreamAroundPlayer        // optional: stream band near player
     }
 
+
+    [Header("Spawned Instance Layer Override")]
+    [Tooltip("If enabled, every spawned environment instance will be forced to this layer (including all children).")]
+    [SerializeField] private bool overrideSpawnedLayer = true;
+
+    [Tooltip("Layer index to assign to spawned environment (ex: Environment).")]
+    [SerializeField] private int spawnedEnvironmentLayer = 0; // set in Inspector
+
+    [Tooltip("Apply layer override recursively to all children.")]
+    [SerializeField] private bool applyLayerRecursively = true;
+
+
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
@@ -27864,6 +28596,12 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
         GameObject go = Instantiate(prefab, hit.point + Vector3.up * h, rot, parent);
 
+        if (overrideSpawnedLayer)
+        {
+            if (applyLayerRecursively) SetLayerRecursively(go.transform, spawnedEnvironmentLayer);
+            else go.layer = spawnedEnvironmentLayer;
+        }
+
         // Center-pivot trees etc.
         if (autoGroundUsingBounds)
             SnapInstanceToGround(go, hit.point.y, extraGroundPadding);
@@ -27872,6 +28610,16 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
         if (verboseDebug)
             Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} pos=({go.transform.position.x:F1},{go.transform.position.y:F1},{go.transform.position.z:F1}) prefab={prefab.name}");
+    }
+
+    private static void SetLayerRecursively(Transform root, int layer)
+    {
+        if (root == null) return;
+
+        root.gameObject.layer = layer;
+
+        for (int i = 0; i < root.childCount; i++)
+            SetLayerRecursively(root.GetChild(i), layer);
     }
 
     private bool TryPickOffRoadPoint(Vector3 center, Vector3 fwd, Vector3 right, out Vector3 xz)
@@ -29327,7 +30075,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [SerializeField]
     private Vector2 telegraphRadiusClamp = new Vector2(0.75f, 4.0f);
 
-
+    private bool _forcefieldDetached;
 
     [Header("Landing Settle (Fix Shake)")]
     [SerializeField, Min(0f), Tooltip("Time in seconds to let physics settle after landing before freezing.")]
@@ -29469,6 +30217,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
     {
         if (!InitializeIfNeeded())
             return;
+
+        if (_forcefieldDetached) return;
 
         float dt = Time.fixedDeltaTime;
 
@@ -29887,6 +30637,28 @@ public class TrackObstacleBounceBack : MonoBehaviour
         }
         _totalLength = len;
     }
+
+    public void DetachForForcefieldLaunch()
+    {
+        if (_forcefieldDetached) return;
+        _forcefieldDetached = true;
+
+        // Kill any tween driving bounce param (if used)
+        try { DOTween.Kill(this); } catch { } // safe kill if you used SetId(this) patterns
+
+        StopAllCoroutines();
+
+        // Let physics take over
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        }
+    }
+
 
     private void IgnoreCollisionTemporarily(Collider other, float now)
     {
@@ -46325,15 +47097,35 @@ public class XPNumberStyleSO : ScriptableObject
 ## Assets/TerrainDetailGrassPainter.cs
 
 ```csharp
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+
+using Random = UnityEngine.Random;
 
 [DisallowMultipleComponent]
 public sealed class TerrainDetailGrassPainter : MonoBehaviour
 {
     [Header("Terrain")]
     [SerializeField] private Terrain targetTerrain;
+
+    [Header("Play Mode Safety")]
+    [SerializeField] private bool cloneTerrainDataAtRuntime = true;
+    [SerializeField] private bool restoreOriginalOnDisable = true;
+
+    private TerrainData _originalTd;
+    private bool _clonedThisSession;
+
+    [Header("Repaint Strategy")]
+    [Tooltip("If true, we first fill the entire terrain detail layer to a baseline value, then cut the road out and optionally add ring paint.")]
+    [SerializeField] private bool fillEntireTerrainBeforeCut = true;
+
+    [Tooltip("Baseline density used when fillEntireTerrainBeforeCut is true.")]
+    [SerializeField, Range(0, 32)] private int baselineDensity = 10;
+
+    [Tooltip("If fillEntireTerrainBeforeCut is true, set this false to skip Phase 2 rings (since the world is already grass).")]
+    [SerializeField] private bool stillPaintRingsAfterFill = false;
 
     [Header("Detail Layer")]
     [Tooltip("Which Terrain Detail layer index to paint (the grass-blade detail prototype index).")]
@@ -46391,6 +47183,38 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
     private Vector3 _terrainPos;
     private Vector3 _terrainSize;
 
+
+    private void Awake()
+    {
+        if (targetTerrain == null) targetTerrain = Terrain.activeTerrain;
+        if (targetTerrain == null) return;
+
+        if (Application.isPlaying && cloneTerrainDataAtRuntime)
+        {
+            _originalTd = targetTerrain.terrainData;
+            if (_originalTd != null)
+            {
+                TerrainData clone = Instantiate(_originalTd);
+                clone.name = _originalTd.name + " (RuntimeClone)";
+                targetTerrain.terrainData = clone;
+                _clonedThisSession = true;
+            }
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (!restoreOriginalOnDisable) return;
+        if (!Application.isPlaying) return;
+
+        if (_clonedThisSession && targetTerrain != null && _originalTd != null)
+        {
+            targetTerrain.terrainData = _originalTd;
+            _clonedThisSession = false;
+        }
+    }
+
+
     public void PaintNow(ProceduralTrackGenerator gen)
     {
         if (paintAsCoroutine) StartCoroutine(CoPaint(gen));
@@ -46416,6 +47240,16 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
         _terrainPos = targetTerrain.transform.position;
         _terrainSize = _td.size;
+
+        if (fillEntireTerrainBeforeCut)
+        {
+            if (debugLogBounds)
+                Debug.Log("[TerrainDetailGrassPainter] Filling entire detail layer baseline...");
+
+            FillEntireLayer(detailLayerIndex, baselineDensity);
+
+            if (allowYield) yield return null;
+        }
 
         _debugRayHits = 0;
         _debugRayMisses = 0;
@@ -46467,51 +47301,58 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         // ============================================================
         // PHASE 2: Paint grass in rings OUTSIDE the road
         // ============================================================
-        if (debugLogBounds)
-            Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
 
-        samples = 0;
 
-        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        if(!fillEntireTerrainBeforeCut || stillPaintRingsAfterFill)
         {
-            Vector3 a = gen.PathPoints[i];
-            Vector3 b = gen.PathPoints[i + 1];
+            if (debugLogBounds)
+                Debug.Log("[TerrainDetailGrassPainter] Phase 2: Painting grass beside road...");
 
-            float segLen = Vector3.Distance(a, b);
-            if (segLen < 0.01f) continue;
+            samples = 0;
 
-            int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.25f, bandStepMeters)));
-            for (int s = 0; s <= steps; s++)
+            for (int i = 0; i < gen.PathPoints.Count - 1; i++)
             {
-                float t = (steps == 0) ? 0f : (s / (float)steps);
-                Vector3 p = Vector3.Lerp(a, b, t);
+                Vector3 a = gen.PathPoints[i];
+                Vector3 b = gen.PathPoints[i + 1];
 
-                Vector3 fwd = (b - a);
-                fwd.y = 0f;
-                if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
-                fwd.Normalize();
+                float segLen = Vector3.Distance(a, b);
+                if (segLen < 0.01f) continue;
 
-                Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
-
-                // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
-                for (int ring = 1; ring <= bandRings; ring++)
+                int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / Mathf.Max(0.25f, bandStepMeters)));
+                for (int s = 0; s <= steps; s++)
                 {
-                    float baseOff = clearRadius + ring * ringSpacingMeters;
-                    float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
-                    float off = baseOff + jitter;
+                    float t = (steps == 0) ? 0f : (s / (float)steps);
+                    Vector3 p = Vector3.Lerp(a, b, t);
 
-                    Vector3 leftPos = p - right * off;
-                    Vector3 rightPos = p + right * off;
+                    Vector3 fwd = (b - a);
+                    fwd.y = 0f;
+                    if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+                    fwd.Normalize();
 
-                    PaintPoint(leftPos, grassDensity);
-                    PaintPoint(rightPos, grassDensity);
+                    Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+
+                    // Paint outward rings on BOTH sides, starting OUTSIDE the clear zone
+                    for (int ring = 1; ring <= bandRings; ring++)
+                    {
+                        float baseOff = clearRadius + ring * ringSpacingMeters;
+                        float jitter = (Random.value - 0.5f) * 2f * ringJitter * ringSpacingMeters;
+                        float off = baseOff + jitter;
+
+                        Vector3 leftPos = p - right * off;
+                        Vector3 rightPos = p + right * off;
+
+                        PaintPoint(leftPos, grassDensity);
+                        PaintPoint(rightPos, grassDensity);
+                    }
+
+                    samples++;
+                    if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
+                        yield return null;
                 }
-
-                samples++;
-                if (allowYield && yieldEverySamples > 0 && (samples % yieldEverySamples) == 0)
-                    yield return null;
             }
+
         }
+
 
         if (debugLogBounds)
         {
@@ -46522,6 +47363,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _debugRayMisses = 0;
 
         targetTerrain.Flush();
+
+
     }
 
     private int _debugRayHits = 0;
@@ -46616,6 +47459,18 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
         _td.SetDetailLayer(x0, y0, detailLayerIndex, layer);
     }
+
+    private void FillEntireLayer(int layerIndex, int density)
+    {
+        int[,] full = new int[_detailH, _detailW];
+        for (int y = 0; y < _detailH; y++)
+            for (int x = 0; x < _detailW; x++)
+                full[y, x] = density;
+
+        _td.SetDetailLayer(0, 0, layerIndex, full);
+    }
+
+
     private void StampAtWorld(Vector3 world, float clearR, float featherR, float paintR)
     {
         // Convert world -> normalized terrain local (0..1)

@@ -139,6 +139,7 @@
     <Compile Include="Assets\Scripts\Brawler.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SpawnUtils.cs" />
+    <Compile Include="Assets\KinematicVelocityTracker.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\FPSTest.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\BallGrowRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundRing.cs" />

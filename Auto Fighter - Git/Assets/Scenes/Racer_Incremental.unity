@@ -3302,17 +3302,17 @@ MonoBehaviour:
     aggressiveIdleBugLateralRadius: 5
     aggressiveIdleBugForwardRadius: 5
     aggressiveHuntScaredCreatures: 1
-    aggressiveHuntRadius: 10
-    aggressiveHuntSpeedMultiplier: 3.5
+    aggressiveHuntRadius: 6
+    aggressiveHuntSpeedMultiplier: 1.5
     aggressiveDetectionRadius: 5.5
-    aggressiveChargeSpeed: 2
+    aggressiveChargeSpeed: 3
     aggressiveMaxOffTrackDistance: 50
     aggressiveImpactDamage: 0.6
     aggressiveCrushMassThreshold: 8
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   creatureSpacing: 7
-  maxActiveCreatures: 12
+  maxActiveCreatures: 10
   minSpawnDistanceAhead: 5
   maxSpawnDistanceAhead: 70
   initialPreSpawnDistance: 70

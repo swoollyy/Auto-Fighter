@@ -408,6 +408,7 @@
 "Assets/BumperLightController.cs"
 "Assets/DullPad.cs"
 "Assets/FireWispVelocityDriver.cs"
+"Assets/KinematicVelocityTracker.cs"
 "Assets/Racing_Assets/Racing_Scripts/AstarRuntimeBootstrap.cs"
 "Assets/Racing_Assets/Racing_Scripts/CameraFollow.cs"
 "Assets/Racing_Assets/Racing_Scripts/CarController.cs"
