@@ -27,6 +27,7 @@ ScriptsOnlyBuild:
     - IcePath
     - IcePathScreenFlashDriver
     - IcePathSpawner
+    - KinematicVelocityTracker
     - MirzaBeig.VolumetricFogLite.VolumetricFogRendererFeatureLite
     - NPCTrafficCar
     - NPCTrafficCarSpawner
@@ -81,7 +82,6 @@ ScriptsOnlyBuild:
     - Pathfinding.Seeker
     - Pathfinding.Util.BatchedEvents
     AstarPathfindingProjectEditor.dll:
-    - Pathfinding.NavmeshCutEditor
     - Pathfinding.PathfindingEditorSettings
     DOTween.dll:
     - DG.Tweening.Core.DOTweenSettings
@@ -375,295 +375,297 @@ ScriptsOnlyBuild:
     - Class: 108
       Script: {instanceID: 0}
     - Class: 114
-      Script: {instanceID: 1872}
+      Script: {instanceID: 1816}
     - Class: 114
-      Script: {instanceID: 1876}
+      Script: {instanceID: 1820}
     - Class: 114
-      Script: {instanceID: 1878}
+      Script: {instanceID: 1822}
     - Class: 114
-      Script: {instanceID: 1880}
+      Script: {instanceID: 1824}
     - Class: 114
-      Script: {instanceID: 1884}
+      Script: {instanceID: 1826}
     - Class: 114
-      Script: {instanceID: 1886}
+      Script: {instanceID: 1828}
     - Class: 114
-      Script: {instanceID: 1896}
+      Script: {instanceID: 1836}
     - Class: 114
-      Script: {instanceID: 2054}
+      Script: {instanceID: 1838}
     - Class: 114
-      Script: {instanceID: 2096}
+      Script: {instanceID: 1840}
     - Class: 114
-      Script: {instanceID: 2202}
+      Script: {instanceID: 1844}
     - Class: 114
-      Script: {instanceID: 2294}
+      Script: {instanceID: 1848}
     - Class: 114
-      Script: {instanceID: 2352}
+      Script: {instanceID: 1850}
     - Class: 114
-      Script: {instanceID: 2430}
+      Script: {instanceID: 1852}
     - Class: 114
-      Script: {instanceID: 2484}
+      Script: {instanceID: 1854}
     - Class: 114
-      Script: {instanceID: 2754}
+      Script: {instanceID: 1856}
     - Class: 114
-      Script: {instanceID: 2796}
+      Script: {instanceID: 1860}
     - Class: 114
-      Script: {instanceID: 2926}
+      Script: {instanceID: 1862}
     - Class: 114
-      Script: {instanceID: 3110}
+      Script: {instanceID: 1920}
     - Class: 114
-      Script: {instanceID: 3122}
+      Script: {instanceID: 1924}
     - Class: 114
-      Script: {instanceID: 3218}
+      Script: {instanceID: 1926}
     - Class: 114
-      Script: {instanceID: 3526}
+      Script: {instanceID: 1928}
     - Class: 114
-      Script: {instanceID: 3788}
+      Script: {instanceID: 1932}
+    - Class: 114
+      Script: {instanceID: 1934}
+    - Class: 114
+      Script: {instanceID: 1944}
+    - Class: 114
+      Script: {instanceID: 2102}
+    - Class: 114
+      Script: {instanceID: 2144}
+    - Class: 114
+      Script: {instanceID: 2340}
+    - Class: 114
+      Script: {instanceID: 2398}
+    - Class: 114
+      Script: {instanceID: 2474}
+    - Class: 114
+      Script: {instanceID: 2528}
+    - Class: 114
+      Script: {instanceID: 2798}
+    - Class: 114
+      Script: {instanceID: 2968}
+    - Class: 114
+      Script: {instanceID: 3162}
+    - Class: 114
+      Script: {instanceID: 3258}
+    - Class: 114
+      Script: {instanceID: 3566}
     - Class: 114
       Script: {instanceID: 3828}
     - Class: 114
-      Script: {instanceID: 3878}
+      Script: {instanceID: 3868}
     - Class: 114
-      Script: {instanceID: 3920}
+      Script: {instanceID: 3918}
     - Class: 114
-      Script: {instanceID: 3998}
+      Script: {instanceID: 4036}
     - Class: 114
-      Script: {instanceID: 4010}
+      Script: {instanceID: 4048}
     - Class: 114
-      Script: {instanceID: 4058}
+      Script: {instanceID: 4096}
     - Class: 114
-      Script: {instanceID: 4074}
+      Script: {instanceID: 4112}
     - Class: 114
-      Script: {instanceID: 4244}
+      Script: {instanceID: 4282}
     - Class: 114
-      Script: {instanceID: 4466}
+      Script: {instanceID: 4504}
     - Class: 114
-      Script: {instanceID: 4654}
+      Script: {instanceID: 4748}
     - Class: 114
-      Script: {instanceID: 4712}
+      Script: {instanceID: 4752}
     - Class: 114
-      Script: {instanceID: 4716}
+      Script: {instanceID: 4796}
     - Class: 114
-      Script: {instanceID: 4760}
+      Script: {instanceID: 5618}
     - Class: 114
-      Script: {instanceID: 5526}
+      Script: {instanceID: 5674}
     - Class: 114
-      Script: {instanceID: 5584}
+      Script: {instanceID: 5734}
     - Class: 114
-      Script: {instanceID: 5640}
-    - Class: 114
-      Script: {instanceID: 5700}
-    - Class: 114
-      Script: {instanceID: 5770}
-    - Class: 114
-      Script: {instanceID: 5840}
+      Script: {instanceID: 5804}
     - Class: 114
       Script: {instanceID: 5874}
     - Class: 114
-      Script: {instanceID: 5948}
+      Script: {instanceID: 5908}
     - Class: 114
-      Script: {instanceID: 6074}
+      Script: {instanceID: 5982}
     - Class: 114
-      Script: {instanceID: 6096}
+      Script: {instanceID: 6106}
     - Class: 114
-      Script: {instanceID: 6122}
+      Script: {instanceID: 6128}
     - Class: 114
-      Script: {instanceID: 6684}
+      Script: {instanceID: 6714}
     - Class: 114
-      Script: {instanceID: 6692}
+      Script: {instanceID: 6722}
     - Class: 114
-      Script: {instanceID: 6740}
+      Script: {instanceID: 6768}
     - Class: 114
-      Script: {instanceID: 6796}
+      Script: {instanceID: 6824}
     - Class: 114
-      Script: {instanceID: 6912}
+      Script: {instanceID: 6940}
     - Class: 114
-      Script: {instanceID: 6944}
+      Script: {instanceID: 6972}
     - Class: 114
-      Script: {instanceID: 7008}
+      Script: {instanceID: 7036}
     - Class: 114
-      Script: {instanceID: 7100}
+      Script: {instanceID: 7128}
     - Class: 114
-      Script: {instanceID: 7122}
+      Script: {instanceID: 7150}
     - Class: 114
-      Script: {instanceID: 7204}
+      Script: {instanceID: 7232}
     - Class: 114
-      Script: {instanceID: 7286}
+      Script: {instanceID: 7314}
     - Class: 114
-      Script: {instanceID: 7304}
+      Script: {instanceID: 7330}
     - Class: 114
-      Script: {instanceID: 7400}
+      Script: {instanceID: 7340}
     - Class: 114
-      Script: {instanceID: 7468}
+      Script: {instanceID: 7428}
     - Class: 114
-      Script: {instanceID: 7528}
+      Script: {instanceID: 7496}
     - Class: 114
-      Script: {instanceID: 7570}
+      Script: {instanceID: 7556}
     - Class: 114
-      Script: {instanceID: 7756}
+      Script: {instanceID: 7598}
     - Class: 114
-      Script: {instanceID: 7900}
+      Script: {instanceID: 7784}
     - Class: 114
-      Script: {instanceID: 8160}
+      Script: {instanceID: 8186}
     - Class: 114
-      Script: {instanceID: 8226}
+      Script: {instanceID: 8252}
     - Class: 114
-      Script: {instanceID: 8354}
+      Script: {instanceID: 8380}
     - Class: 114
-      Script: {instanceID: 8526}
+      Script: {instanceID: 8552}
     - Class: 114
-      Script: {instanceID: 8566}
-    - Class: 114
-      Script: {instanceID: 8614}
+      Script: {instanceID: 8592}
     - Class: 114
       Script: {instanceID: 8640}
     - Class: 114
-      Script: {instanceID: 8668}
+      Script: {instanceID: 8666}
     - Class: 114
-      Script: {instanceID: 8734}
+      Script: {instanceID: 8694}
     - Class: 114
-      Script: {instanceID: 8804}
+      Script: {instanceID: 8760}
     - Class: 114
-      Script: {instanceID: 9462}
+      Script: {instanceID: 8830}
     - Class: 114
-      Script: {instanceID: 9634}
+      Script: {instanceID: 9488}
     - Class: 114
-      Script: {instanceID: 9710}
+      Script: {instanceID: 9660}
     - Class: 114
-      Script: {instanceID: 9716}
+      Script: {instanceID: 9736}
     - Class: 114
-      Script: {instanceID: 9774}
+      Script: {instanceID: 9742}
     - Class: 114
-      Script: {instanceID: 9874}
+      Script: {instanceID: 9800}
     - Class: 114
-      Script: {instanceID: 9892}
+      Script: {instanceID: 9900}
     - Class: 114
-      Script: {instanceID: 10004}
+      Script: {instanceID: 9918}
     - Class: 114
-      Script: {instanceID: 10094}
+      Script: {instanceID: 10028}
     - Class: 114
-      Script: {instanceID: 10110}
+      Script: {instanceID: 10118}
     - Class: 114
-      Script: {instanceID: 10144}
+      Script: {instanceID: 10134}
     - Class: 114
-      Script: {instanceID: 10210}
+      Script: {instanceID: 10230}
     - Class: 114
-      Script: {instanceID: 10294}
+      Script: {instanceID: 10314}
     - Class: 114
-      Script: {instanceID: 10322}
+      Script: {instanceID: 10402}
     - Class: 114
-      Script: {instanceID: 10328}
+      Script: {instanceID: 10406}
     - Class: 114
-      Script: {instanceID: 10386}
+      Script: {instanceID: 10524}
     - Class: 114
-      Script: {instanceID: 10390}
+      Script: {instanceID: 10610}
     - Class: 114
-      Script: {instanceID: 10508}
+      Script: {instanceID: 10730}
     - Class: 114
-      Script: {instanceID: 10594}
+      Script: {instanceID: 10848}
     - Class: 114
-      Script: {instanceID: 10670}
+      Script: {instanceID: 10968}
     - Class: 114
-      Script: {instanceID: 10716}
+      Script: {instanceID: 11098}
     - Class: 114
-      Script: {instanceID: 10834}
+      Script: {instanceID: 11106}
     - Class: 114
-      Script: {instanceID: 10954}
+      Script: {instanceID: 11180}
     - Class: 114
-      Script: {instanceID: 11084}
+      Script: {instanceID: 11198}
     - Class: 114
-      Script: {instanceID: 11092}
+      Script: {instanceID: 11474}
     - Class: 114
-      Script: {instanceID: 11166}
+      Script: {instanceID: 11584}
     - Class: 114
-      Script: {instanceID: 11184}
+      Script: {instanceID: 11614}
     - Class: 114
-      Script: {instanceID: 11460}
+      Script: {instanceID: 11796}
     - Class: 114
-      Script: {instanceID: 11530}
+      Script: {instanceID: 11858}
     - Class: 114
-      Script: {instanceID: 11572}
+      Script: {instanceID: 11882}
     - Class: 114
-      Script: {instanceID: 11602}
+      Script: {instanceID: 11964}
     - Class: 114
-      Script: {instanceID: 11756}
+      Script: {instanceID: 12122}
     - Class: 114
-      Script: {instanceID: 11786}
+      Script: {instanceID: 12126}
     - Class: 114
-      Script: {instanceID: 11846}
+      Script: {instanceID: 12230}
     - Class: 114
-      Script: {instanceID: 11850}
+      Script: {instanceID: 12236}
     - Class: 114
-      Script: {instanceID: 11874}
+      Script: {instanceID: 12456}
     - Class: 114
-      Script: {instanceID: 11956}
+      Script: {instanceID: 12718}
     - Class: 114
-      Script: {instanceID: 12114}
+      Script: {instanceID: 12776}
     - Class: 114
-      Script: {instanceID: 12118}
+      Script: {instanceID: 12980}
     - Class: 114
-      Script: {instanceID: 12222}
+      Script: {instanceID: 13230}
     - Class: 114
-      Script: {instanceID: 12228}
+      Script: {instanceID: 13282}
     - Class: 114
-      Script: {instanceID: 12444}
+      Script: {instanceID: 13338}
     - Class: 114
-      Script: {instanceID: 12450}
+      Script: {instanceID: 13646}
     - Class: 114
-      Script: {instanceID: 12712}
+      Script: {instanceID: 13672}
     - Class: 114
-      Script: {instanceID: 12770}
+      Script: {instanceID: 13674}
     - Class: 114
-      Script: {instanceID: 12974}
+      Script: {instanceID: 13810}
     - Class: 114
-      Script: {instanceID: 13224}
+      Script: {instanceID: 13906}
     - Class: 114
-      Script: {instanceID: 13276}
+      Script: {instanceID: 13918}
     - Class: 114
-      Script: {instanceID: 13332}
+      Script: {instanceID: 14022}
     - Class: 114
-      Script: {instanceID: 13640}
+      Script: {instanceID: 14180}
     - Class: 114
-      Script: {instanceID: 13666}
+      Script: {instanceID: 14358}
     - Class: 114
-      Script: {instanceID: 13668}
+      Script: {instanceID: 14664}
     - Class: 114
-      Script: {instanceID: 13804}
+      Script: {instanceID: 14666}
     - Class: 114
-      Script: {instanceID: 13900}
+      Script: {instanceID: 14718}
     - Class: 114
-      Script: {instanceID: 13912}
+      Script: {instanceID: 14734}
     - Class: 114
-      Script: {instanceID: 14016}
+      Script: {instanceID: 14780}
     - Class: 114
-      Script: {instanceID: 14174}
+      Script: {instanceID: 14990}
     - Class: 114
-      Script: {instanceID: 14352}
+      Script: {instanceID: 15126}
     - Class: 114
-      Script: {instanceID: 14658}
+      Script: {instanceID: 15218}
     - Class: 114
-      Script: {instanceID: 14660}
+      Script: {instanceID: 15260}
     - Class: 114
-      Script: {instanceID: 14712}
+      Script: {instanceID: 15270}
     - Class: 114
-      Script: {instanceID: 14730}
+      Script: {instanceID: 15344}
     - Class: 114
-      Script: {instanceID: 14776}
-    - Class: 114
-      Script: {instanceID: 14986}
-    - Class: 114
-      Script: {instanceID: 15122}
-    - Class: 114
-      Script: {instanceID: 15214}
-    - Class: 114
-      Script: {instanceID: 15256}
-    - Class: 114
-      Script: {instanceID: 15266}
-    - Class: 114
-      Script: {instanceID: 15340}
-    - Class: 114
-      Script: {instanceID: 15364}
-    - Class: 114
-      Script: {instanceID: 15656}
+      Script: {instanceID: 15658}
     - Class: 115
       Script: {instanceID: 0}
     - Class: 120
@@ -719,6 +721,150 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
     className: UniversalRenderPipelineAsset
+  - hash:
+      serializedVersion: 2
+      Hash: dcc0c6203da9d44ce3299cfea260197b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCar
+  - hash:
+      serializedVersion: 2
+      Hash: 10a014f2a144d8451101394cdb0b3907
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: GroundRing
+  - hash:
+      serializedVersion: 2
+      Hash: 79f97726bd47bc33673316c13b00ac5e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: AstarRuntimeBootstrap
+  - hash:
+      serializedVersion: 2
+      Hash: 3f3a51093f170745e1876b84fb71dc31
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: IcePathSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 7724a5a4c2634dc9d62499d37482dadb
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackCoinSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 8d7fb44cf293fd68a81a8e4505ba94c2
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ShuttleTrackObstacle
+  - hash:
+      serializedVersion: 2
+      Hash: cbae61d9a9d452d0a0e75e115a967e48
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarController
+  - hash:
+      serializedVersion: 2
+      Hash: fae4d5e972320b2ca0bad3d6d5e015de
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TweenDamageNumberSystem
+  - hash:
+      serializedVersion: 2
+      Hash: ce471fb5d16f17a42057892d92a3b4ae
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: Ball
+  - hash:
+      serializedVersion: 2
+      Hash: a9d3915dab08c6e18e042976f827186c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ForcefieldLaunchTag
+  - hash:
+      serializedVersion: 2
+      Hash: 5908105713d3f4e7666625cfae4b5a1c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TerrainDetailGrassPainter
+  - hash:
+      serializedVersion: 2
+      Hash: 08759a2a2d4c04865797c600fc5e6b2c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarVelocityAndPitch
+  - hash:
+      serializedVersion: 2
+      Hash: f3e4c4994a9e8d38717e0de2700bd919
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackGuideBeacon
+  - hash:
+      serializedVersion: 2
+      Hash: 86dc548234b497d78e9cce7f591db977
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: Pinball
+  - hash:
+      serializedVersion: 2
+      Hash: 23ce777f17abe20e89b8041bd4815460
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCarSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 03116ccae195fd7a0abf1c949396038a
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: MashGaugeUI
+  - hash:
+      serializedVersion: 2
+      Hash: ca2013f611dba0d66dfe15e995716d53
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarForcefield
+  - hash:
+      serializedVersion: 2
+      Hash: 23743be9c947e908a3d0267599e7a39d
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CrossObstacleDirector
+  - hash:
+      serializedVersion: 2
+      Hash: f438e6c7440b9cacfc99de2fed8d53b1
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingObstacle
+  - hash:
+      serializedVersion: 2
+      Hash: 2a504baa7e43f855b15c57c3ab246e49
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingSkillUI
+  - hash:
+      serializedVersion: 2
+      Hash: 7571a9cf982b88d3f22ec27d6b69629a
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackObstacleSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 4dc81e5feae0331cff4e0f04a11dbd02
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: PortalWarpController
+  - hash:
+      serializedVersion: 2
+      Hash: 19b6f208d6bb7325499c123bb707d8df
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackDistanceMeter
+  - hash:
+      serializedVersion: 2
+      Hash: c9cc5de8d903bb38ce6df4095bfd38b9
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ForcefieldSkillHook
   - hash:
       serializedVersion: 2
       Hash: d41ab9b5ea92474f9c0a6937a0607ce1
@@ -817,12 +963,6 @@ ScriptsOnlyBuild:
     className: CinemachineTriggerAction
   - hash:
       serializedVersion: 2
-      Hash: 5908105713d3f4e7666625cfae4b5a1c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TerrainDetailGrassPainter
-  - hash:
-      serializedVersion: 2
       Hash: 95c8a8c68e664d4868755f06e7c55997
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
@@ -857,12 +997,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: HPPickup
-  - hash:
-      serializedVersion: 2
-      Hash: a9d3915dab08c6e18e042976f827186c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ForcefieldLaunchTag
   - hash:
       serializedVersion: 2
       Hash: 674f86f72fc0bf1ef8d192a4dea794c8
@@ -925,12 +1059,6 @@ ScriptsOnlyBuild:
     className: PinballFlipper
   - hash:
       serializedVersion: 2
-      Hash: 3f3a51093f170745e1876b84fb71dc31
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: IcePathSpawner
-  - hash:
-      serializedVersion: 2
       Hash: 66cbe3e65a026cf7393acc5b95a1900f
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -977,12 +1105,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: TimelineAsset
-  - hash:
-      serializedVersion: 2
-      Hash: 7571a9cf982b88d3f22ec27d6b69629a
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackObstacleSpawner
   - hash:
       serializedVersion: 2
       Hash: b050f641e1dc5a817bf4909a159fadfb
@@ -1201,12 +1323,6 @@ ScriptsOnlyBuild:
     className: ScriptMachine
   - hash:
       serializedVersion: 2
-      Hash: 23743be9c947e908a3d0267599e7a39d
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CrossObstacleDirector
-  - hash:
-      serializedVersion: 2
       Hash: 43ebd945b04bced376c791411cf5a289
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -1349,12 +1465,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: SignalReceiver
-  - hash:
-      serializedVersion: 2
-      Hash: 2a504baa7e43f855b15c57c3ab246e49
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingSkillUI
   - hash:
       serializedVersion: 2
       Hash: cacf61280eff55ba0f02a0f286c959ba
@@ -1501,12 +1611,6 @@ ScriptsOnlyBuild:
     className: CinemachineBlendListCamera
   - hash:
       serializedVersion: 2
-      Hash: ca2013f611dba0d66dfe15e995716d53
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarForcefield
-  - hash:
-      serializedVersion: 2
       Hash: f0b3e0c9b5a90386f53945df649c8db3
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding
@@ -1609,12 +1713,6 @@ ScriptsOnlyBuild:
     className: RichAI
   - hash:
       serializedVersion: 2
-      Hash: 86dc548234b497d78e9cce7f591db977
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: Pinball
-  - hash:
-      serializedVersion: 2
       Hash: 0dd14e314956b0d0d83ffcffe60aa46f
     assemblyName: Assembly-CSharp
     namespaceName: TMPro
@@ -1667,12 +1765,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: GroupTrack
-  - hash:
-      serializedVersion: 2
-      Hash: f3e4c4994a9e8d38717e0de2700bd919
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackGuideBeacon
   - hash:
       serializedVersion: 2
       Hash: 5c2a5af4658ede896d072a8a641d706e
@@ -1781,12 +1873,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.TextMeshPro
     namespaceName: TMPro
     className: TextMeshProUGUI
-  - hash:
-      serializedVersion: 2
-      Hash: ce471fb5d16f17a42057892d92a3b4ae
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: Ball
   - hash:
       serializedVersion: 2
       Hash: a184bc1c29b4c77ed2b3eb8cf72cb090
@@ -1903,16 +1989,16 @@ ScriptsOnlyBuild:
     className: RacingCurrencyCheat
   - hash:
       serializedVersion: 2
-      Hash: fae4d5e972320b2ca0bad3d6d5e015de
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TweenDamageNumberSystem
-  - hash:
-      serializedVersion: 2
       Hash: 59475f3ae91b4c0ef487acd1e9ebd48e
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: ProjectileHitReceiver
+  - hash:
+      serializedVersion: 2
+      Hash: 6a2ec4b80676775a29efaa745421687b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: KinematicVelocityTracker
   - hash:
       serializedVersion: 2
       Hash: ab146b9b456a0ac8917d892a3f2e3f4b
@@ -2063,12 +2149,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnSubmitMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: dcc0c6203da9d44ce3299cfea260197b
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: NPCTrafficCar
   - hash:
       serializedVersion: 2
       Hash: 5ebc58ec194dd44630b25fcc270ad4af
@@ -2485,12 +2565,6 @@ ScriptsOnlyBuild:
     className: CameraFollowSimple
   - hash:
       serializedVersion: 2
-      Hash: 4dc81e5feae0331cff4e0f04a11dbd02
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: PortalWarpController
-  - hash:
-      serializedVersion: 2
       Hash: 37dbaff32a49c70ff37b8bb15bd24c18
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering
@@ -2539,22 +2613,10 @@ ScriptsOnlyBuild:
     className: AudioTrack
   - hash:
       serializedVersion: 2
-      Hash: 03116ccae195fd7a0abf1c949396038a
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: MashGaugeUI
-  - hash:
-      serializedVersion: 2
       Hash: ada873da50974d1e7ce247ffb296b0f3
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnCollisionEnterMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 79f97726bd47bc33673316c13b00ac5e
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: AstarRuntimeBootstrap
   - hash:
       serializedVersion: 2
       Hash: db79736741eab4b57f517a51185b9563
@@ -2585,18 +2647,6 @@ ScriptsOnlyBuild:
     assemblyName: UnityEngine.UI
     namespaceName: UnityEngine.UI
     className: GraphicRaycaster
-  - hash:
-      serializedVersion: 2
-      Hash: f438e6c7440b9cacfc99de2fed8d53b1
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingObstacle
-  - hash:
-      serializedVersion: 2
-      Hash: c9cc5de8d903bb38ce6df4095bfd38b9
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ForcefieldSkillHook
   - hash:
       serializedVersion: 2
       Hash: 3b5263a98bcc71d9a9d1d78a31b34ced
@@ -2669,12 +2719,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: Benchmark04
-  - hash:
-      serializedVersion: 2
-      Hash: 08759a2a2d4c04865797c600fc5e6b2c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarVelocityAndPitch
   - hash:
       serializedVersion: 2
       Hash: 7a0bde3ac6d739f92105cfe5613df2e0
@@ -2857,12 +2901,6 @@ ScriptsOnlyBuild:
     className: CinemachineGroupComposer
   - hash:
       serializedVersion: 2
-      Hash: 7724a5a4c2634dc9d62499d37482dadb
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackCoinSpawner
-  - hash:
-      serializedVersion: 2
       Hash: 5dc51b0140815ee83ba613dce32f5b12
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
@@ -2929,12 +2967,6 @@ ScriptsOnlyBuild:
     className: AIPath
   - hash:
       serializedVersion: 2
-      Hash: cbae61d9a9d452d0a0e75e115a967e48
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarController
-  - hash:
-      serializedVersion: 2
       Hash: 70373e18181a2229c9ec8448873d7545
     assemblyName: Cinemachine
     namespaceName: Cinemachine
@@ -2951,12 +2983,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: DictionaryAsset
-  - hash:
-      serializedVersion: 2
-      Hash: 19b6f208d6bb7325499c123bb707d8df
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackDistanceMeter
   - hash:
       serializedVersion: 2
       Hash: 3594d8e9fcbd74e51eec80efbf16c599
@@ -3095,12 +3121,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnEndDragMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 23ce777f17abe20e89b8041bd4815460
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: NPCTrafficCarSpawner
   - hash:
       serializedVersion: 2
       Hash: 570aaa0553d201594695339632c95a46
@@ -3541,12 +3561,6 @@ ScriptsOnlyBuild:
     className: TrackFuelSpawner
   - hash:
       serializedVersion: 2
-      Hash: 10a014f2a144d8451101394cdb0b3907
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: GroundRing
-  - hash:
-      serializedVersion: 2
       Hash: e0737712ea1f9376b4d1832a82df0fa2
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3643,7 +3657,7 @@ ScriptsOnlyBuild:
     className: ObstaclePathPreview
   - hash:
       serializedVersion: 2
-      Hash: 9acc41add8d86c3de5153c5a79f47046
+      Hash: e5956be84710c59aa80c9832738f9b24
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: TrackCreature
@@ -3659,12 +3673,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: CoinDataSO
-  - hash:
-      serializedVersion: 2
-      Hash: 8d7fb44cf293fd68a81a8e4505ba94c2
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ShuttleTrackObstacle
   - hash:
       serializedVersion: 2
       Hash: 05542cbd5ac43845488988bf4fc2f487

@@ -202,7 +202,7 @@ MonoBehaviour:
   enableOverlapDetection: 0
   overlapCheckInterval: 0.05
   overlapRadius: 0
-  minTransferVelocity: 4.23
+  minTransferVelocity: 1
   crashBounceUp: 4
   crashBounceBack: 6
   crashSpinRange: {x: 180, y: 540}

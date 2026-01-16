@@ -183,7 +183,7 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   reactLayers:
     serializedVersion: 2
-    m_Bits: 3016833
+    m_Bits: 919681
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
   pushDeltaVRange: {x: 2.88, y: 6.1}

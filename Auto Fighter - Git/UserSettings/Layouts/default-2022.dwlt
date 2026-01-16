@@ -118,7 +118,7 @@ MonoBehaviour:
   m_MinSize: {x: 400, y: 100}
   m_MaxSize: {x: 32384, y: 16192}
   vertical: 1
-  controlID: 8115
+  controlID: 16235
   draggingID: 0
 --- !u!114 &6
 MonoBehaviour:
@@ -145,7 +145,7 @@ MonoBehaviour:
   m_MinSize: {x: 400, y: 100}
   m_MaxSize: {x: 32384, y: 16192}
   vertical: 0
-  controlID: 8116
+  controlID: 16236
   draggingID: 0
 --- !u!114 &7
 MonoBehaviour:
@@ -197,7 +197,7 @@ MonoBehaviour:
   m_MinSize: {x: 200, y: 100}
   m_MaxSize: {x: 16192, y: 16192}
   vertical: 1
-  controlID: 8178
+  controlID: 16237
   draggingID: 0
 --- !u!114 &9
 MonoBehaviour:
@@ -223,7 +223,7 @@ MonoBehaviour:
   m_MinSize: {x: 200, y: 50}
   m_MaxSize: {x: 16192, y: 8096}
   vertical: 0
-  controlID: 8153
+  controlID: 16238
   draggingID: 0
 --- !u!114 &10
 MonoBehaviour:
@@ -476,7 +476,7 @@ MonoBehaviour:
       scrollPos: {x: 0, y: 0}
       m_SelectedIDs: 
       m_LastClickedID: 0
-      m_ExpandedIDs: 84b7ffff
+      m_ExpandedIDs: 3e01efff4e02efff9e07efff0c09efffa6faffff
       m_RenameOverlay:
         m_UserAcceptedRename: 0
         m_Name: 
@@ -856,9 +856,9 @@ MonoBehaviour:
   m_PlayAudio: 0
   m_AudioPlay: 0
   m_Position:
-    m_Target: {x: 13.593316, y: -5.1601224, z: 15.842066}
+    m_Target: {x: 12.5382805, y: -0.8534097, z: 21.06723}
     speed: 2
-    m_Value: {x: 13.593316, y: -5.1601224, z: 15.842066}
+    m_Value: {x: 12.5382805, y: -0.8534097, z: 21.06723}
   m_RenderMode: 0
   m_CameraMode:
     drawMode: 0
@@ -869,7 +869,7 @@ MonoBehaviour:
   m_SceneViewState:
     m_AlwaysRefresh: 0
     showFog: 1
-    showSkybox: 0
+    showSkybox: 1
     showFlares: 1
     showImageEffects: 1
     showParticleSystems: 1
@@ -904,13 +904,13 @@ MonoBehaviour:
     m_GridAxis: 1
     m_gridOpacity: 0.5
   m_Rotation:
-    m_Target: {x: -0.23706652, y: 0.7291508, z: -0.3064002, w: -0.5641629}
+    m_Target: {x: -0.16180725, y: -0.8299333, z: 0.43430355, w: -0.31107184}
     speed: 2
-    m_Value: {x: -0.23706391, y: 0.72914267, z: -0.3063968, w: -0.56415665}
+    m_Value: {x: 0.16180725, y: 0.8299333, z: -0.43430358, w: 0.31107184}
   m_Size:
-    m_Target: 20.628325
+    m_Target: 7.369856
     speed: 2
-    m_Value: 20.628325
+    m_Value: 7.369856
   m_Ortho:
     m_Target: 0
     speed: 2
@@ -2654,7 +2654,7 @@ MonoBehaviour:
     m_SkipHidden: 0
     m_SearchArea: 1
     m_Folders:
-    - Assets/Racing_Assets/Racing_Scripts
+    - Assets/Racing_Assets
     m_Globs: []
     m_OriginalText: 
     m_ImportLogFlags: 0
@@ -2662,17 +2662,16 @@ MonoBehaviour:
   m_ViewMode: 1
   m_StartGridSize: 64
   m_LastFolders:
-  - Assets/Racing_Assets/Racing_Scripts
+  - Assets/Racing_Assets
   m_LastFoldersGridSize: -1
-  m_LastProjectPath: C:\Users\kylef\OneDrive\Documents\GitHub\Auto-Fighter\Auto Fighter
-    - Git
+  m_LastProjectPath: D:\game_dev\Auto-Fighter-Git\Auto Fighter - Git
   m_LockTracker:
     m_IsLocked: 0
   m_FolderTreeState:
     scrollPos: {x: 0, y: 22}
-    m_SelectedIDs: f63e0000
-    m_LastClickedID: 16118
-    m_ExpandedIDs: 000000008e3e00003a99000000ca9a3bffffff7f
+    m_SelectedIDs: de850000
+    m_LastClickedID: 34270
+    m_ExpandedIDs: 00000000c285000000ca9a3bffffff7f
     m_RenameOverlay:
       m_UserAcceptedRename: 0
       m_Name: 
@@ -2700,7 +2699,7 @@ MonoBehaviour:
     scrollPos: {x: 0, y: 0}
     m_SelectedIDs: 
     m_LastClickedID: 0
-    m_ExpandedIDs: 000000003a99000000ca9a3bffffff7f
+    m_ExpandedIDs: 00000000c285000000ca9a3bffffff7f
     m_RenameOverlay:
       m_UserAcceptedRename: 0
       m_Name: 
@@ -2752,7 +2751,7 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
     m_NewAssetIndexInList: -1
-    m_ScrollPosition: {x: 0, y: 360}
+    m_ScrollPosition: {x: 0, y: 46.5}
     m_GridSize: 64
   m_SkipHiddenPackages: 0
   m_DirectoriesAreaWidth: 148
@@ -3008,7 +3007,7 @@ MonoBehaviour:
     m_OverlaysVisible: 1
   m_LockTracker:
     m_IsLocked: 0
-  m_LastSelectedObjectID: 37860
+  m_LastSelectedObjectID: 47166
 --- !u!114 &24
 MonoBehaviour:
   m_ObjectHideFlags: 52
@@ -3084,7 +3083,7 @@ MonoBehaviour:
     m_ControlHash: -371814159
     m_PrefName: Preview_InspectorPreview
   m_LastInspectedObjectInstanceID: -1
-  m_LastVerticalScrollValue: 0
+  m_LastVerticalScrollValue: 186
   m_GlobalObjectId: 
   m_InspectorMode: 0
   m_LockTracker:

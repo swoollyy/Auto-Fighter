@@ -3195,9 +3195,9 @@ MonoBehaviour:
   - id: Bug
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
-    baseWeight: 0
+    baseWeight: 0.7
     startAtNormalizedDist: 0.001
-    fullWeightNormalizedDist: 0.05
+    fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
     extraLateralPadding: 0
@@ -3234,9 +3234,9 @@ MonoBehaviour:
   - id: Critter
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
-    baseWeight: 0.8
-    startAtNormalizedDist: 0.005
-    fullWeightNormalizedDist: 0.1
+    baseWeight: 0.5
+    startAtNormalizedDist: 0.04
+    fullWeightNormalizedDist: 0.3
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
     extraLateralPadding: 0
@@ -3273,9 +3273,9 @@ MonoBehaviour:
   - id: Beast
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
-    baseWeight: 1
-    startAtNormalizedDist: 0.011
-    fullWeightNormalizedDist: 0.2
+    baseWeight: 0.3
+    startAtNormalizedDist: 0.09
+    fullWeightNormalizedDist: 0.6
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
     extraLateralPadding: 0
@@ -3305,13 +3305,13 @@ MonoBehaviour:
     aggressiveHuntRadius: 6
     aggressiveHuntSpeedMultiplier: 1.5
     aggressiveDetectionRadius: 5.5
-    aggressiveChargeSpeed: 3
+    aggressiveChargeSpeed: 2.3
     aggressiveMaxOffTrackDistance: 50
     aggressiveImpactDamage: 0.6
     aggressiveCrushMassThreshold: 8
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  creatureSpacing: 7
+  creatureSpacing: 19
   maxActiveCreatures: 10
   minSpawnDistanceAhead: 5
   maxSpawnDistanceAhead: 70
@@ -6548,7 +6548,7 @@ MonoBehaviour:
   crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
   enabledSpawning: 1
   minPlayerSpeed: -0.1
-  spawnCooldownSeconds: 16
+  spawnCooldownSeconds: 45
   minLeadDistance: 5
   maxLeadDistance: 29
   maxCurvatureHorizonScale: 0.65
@@ -6665,7 +6665,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  spawnCooldownRandomRange: {x: 0.9, y: 7}
+  spawnCooldownRandomRange: {x: 1.35, y: 3.56}
   initialSpawnDelayRange: {x: 6, y: 15}
   useActualPathLengthForPrediction: 1
   offRoadPadding: 7

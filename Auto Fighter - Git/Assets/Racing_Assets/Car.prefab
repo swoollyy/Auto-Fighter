@@ -954,11 +954,11 @@ MonoBehaviour:
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 2.15
-  maxDriftSteerMultiplier: 5.31
-  driftBuildRate: 0.68
-  driftReleaseRate: 16
-  driftSideForce: 0.35
-  driftSpeedDecayPerSecond: 0.12
+  maxDriftSteerMultiplier: 3.1
+  driftBuildRate: 0.7
+  driftReleaseRate: 12.2
+  driftSideForce: 0.41
+  driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
@@ -987,7 +987,7 @@ MonoBehaviour:
   invincibilityBumpTorque: 5
   requireDirectionalInputForDriftCharge: 0
   driftNeutralDrainRate: 2.6
-  driftNeutralFullResetDelay: 0.76
+  driftNeutralFullResetDelay: 3.65
   resetDriftChargeOnSteerFlip: 1
   steerFlipRetainedCharge: 0.055
   steerFlipThreshold: 0.15
