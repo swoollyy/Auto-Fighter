@@ -198,6 +198,7 @@ public class NPCTrafficCar : MonoBehaviour
 
 
 
+
     // ============================================
     // INTERNALS - Components
     // ============================================
@@ -274,6 +275,7 @@ public class NPCTrafficCar : MonoBehaviour
         _surfaceCheckTimer = 0f;
         _boostEndTime = 0f;
         _onBoostPad = false;
+
     }
 
     private void Start()
@@ -349,10 +351,10 @@ public class NPCTrafficCar : MonoBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
-        // A* has moved us - now do ground snap and rotation
+        // ============================================
+        // GROUND SNAP (Y only)
+        // ============================================
         Vector3 pos = transform.position;
-
-        // Ground snap (Y only - don't fight A* in XZ)
         if (RaycastGround(pos, out RaycastHit hit))
         {
             pos.y = hit.point.y + _pivotToBottom + groundClearance;
@@ -360,47 +362,39 @@ public class NPCTrafficCar : MonoBehaviour
             _groundNormal = hit.normal;
         }
 
-        // Compute velocity for crash physics
-        _lastVelocity = (transform.position - _prevPosition) / dt;
+        // ============================================
+        // VELOCITY CALCULATION (use A* velocity when available)
+        // ============================================
+        Vector3 currentVel = Vector3.zero;
+        if (_aiBase != null)
+        {
+            currentVel = _aiBase.velocity;
+        }
+        else
+        {
+            currentVel = (transform.position - _prevPosition) / dt;
+        }
         _prevPosition = transform.position;
 
-        // Smooth the velocity to prevent frantic direction changes
-        if (_smoothedVelocity.sqrMagnitude < 0.01f)
-            _smoothedVelocity = _lastVelocity;
-        else
-            _smoothedVelocity = Vector3.Lerp(_smoothedVelocity, _lastVelocity, dt / Mathf.Max(0.01f, velocitySmoothTime));
+        // Frame-rate independent exponential smoothing for velocity
+        float smoothFactor = 1f - Mathf.Exp(-dt / Mathf.Max(0.01f, velocitySmoothTime));
+        _smoothedVelocity = Vector3.Lerp(_smoothedVelocity, currentVel, smoothFactor);
+        _lastVelocity = currentVel;
 
+        // ============================================
+        // ROTATION - just face velocity direction
+        // ============================================
         if (rotateToVelocity)
         {
-            // Prefer A*'s velocity (more stable than position-delta when repathing)
-            Vector3 v = Vector3.zero;
+            Vector3 vel = _smoothedVelocity;
+            vel.y = 0f;
 
-            // RichAI inherits AIBase, which exposes velocity
-            if (_aiBase != null) v = _aiBase.velocity;
-            else v = (transform.position - _prevPosition) / dt; // fallback
-
-            v.y = 0f;
-
-            if (v.sqrMagnitude > (minSpeedForRotation * minSpeedForRotation))
+            if (vel.sqrMagnitude > minSpeedForRotation * minSpeedForRotation)
             {
-                Vector3 up = alignToGround ? _groundNormal : Vector3.up;
-                Vector3 fwd = Vector3.ProjectOnPlane(v.normalized, up);
-
-                if (fwd.sqrMagnitude > 0.0001f)
-                {
-                    Quaternion target = Quaternion.LookRotation(fwd, up);
-
-                    // HARD ASSURANCE OPTION:
-                    // If you truly want "always face velocity", snap:
-                    // transform.rotation = target;
-
-                    // Smooth option (recommended): still always aims at velocity, just not instant
-                    float t = 1f - Mathf.Exp(-rotationSpeed * dt);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, target, t);
-                }
+                Quaternion targetRot = Quaternion.LookRotation(vel.normalized, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * dt);
             }
         }
-
     }
 
     // ============================================
@@ -498,11 +492,11 @@ public class NPCTrafficCar : MonoBehaviour
             _richAI.rotationSpeed = 0f;
             _richAI.enableRotation = false;
 
-            ForceAstarFixedUpdate(_richAI);   // ✅ call on RichAI
+            ConfigureAstarUpdateMode(_richAI);
         }
         else if (_aiBase != null)
         {
-            ForceAstarFixedUpdate(_aiBase);   // ✅ fallback for AIPath, etc.
+            ConfigureAstarUpdateMode(_aiBase);
         }
         _defaultMaxSpeed = speed;
         _defaultRichAccel = _richAI.acceleration;
@@ -914,7 +908,7 @@ public class NPCTrafficCar : MonoBehaviour
         }
     }
 
-    private static void ForceAstarFixedUpdate(object aiObj)
+    private static void ConfigureAstarUpdateMode(object aiObj)
     {
         if (aiObj == null) return;
 
@@ -922,7 +916,8 @@ public class NPCTrafficCar : MonoBehaviour
         var p = t.GetProperty("updateMode"); // AIBase.updateMode
         if (p != null && p.CanWrite && p.PropertyType.IsEnum)
         {
-            try { p.SetValue(aiObj, Enum.Parse(p.PropertyType, "FixedUpdate", true)); }
+            // Use Update mode for smoother movement (not FixedUpdate)
+            try { p.SetValue(aiObj, Enum.Parse(p.PropertyType, "Update", true)); }
             catch { }
         }
     }

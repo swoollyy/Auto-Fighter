@@ -889,15 +889,18 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (target == null) return;
 
-// Only bail out if we were hunting a creature and it died
-if (chaseTargetTransform != null && 
-    chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
-{
-    chaseTargetTransform = null;
-    SetState(CreatureState.Idle);
-    currentSpeed = 0f;
-    return;
-}
+        if (chaseTargetTransform != null)
+        {
+            if (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
+            {
+                chaseTargetTransform = null;
+                SetState(CreatureState.Idle);
+                currentSpeed = 0f;
+                return;
+            }
+        }
+
+
 
         bool huntingCreature = (target != playerTransform);
 

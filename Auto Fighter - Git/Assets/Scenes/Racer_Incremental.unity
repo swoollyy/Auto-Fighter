@@ -3117,9 +3117,9 @@ MonoBehaviour:
     stopAtNormalizedDist: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  carSpacing: 2.5
-  maxActiveCars: 16
-  minSpawnDistanceAhead: 5
+  carSpacing: 15
+  maxActiveCars: 12
+  minSpawnDistanceAhead: 10
   maxSpawnDistanceAhead: 30.3
   allowSpawnBehind: 1
   minSpawnDistanceBehind: 5
@@ -3128,7 +3128,7 @@ MonoBehaviour:
   viewportMargin: -0.13
   initialPreSpawnDistance: 17.76
   despawnBehindDistance: 60
-  despawnCrashedAfter: 30
+  despawnCrashedAfter: 10
   distanceJitter: 5.14
   spawnChancePerSlot: 0.717
   spawnChanceByDistance:
@@ -3195,7 +3195,7 @@ MonoBehaviour:
   - id: Bug
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
-    baseWeight: 0.7
+    baseWeight: 0
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
@@ -3235,7 +3235,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
     baseWeight: 0.5
-    startAtNormalizedDist: 0.04
+    startAtNormalizedDist: 0
     fullWeightNormalizedDist: 0.3
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -3274,7 +3274,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
     baseWeight: 0.3
-    startAtNormalizedDist: 0.09
+    startAtNormalizedDist: 0
     fullWeightNormalizedDist: 0.6
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
