@@ -65,7 +65,6 @@ public class CreatureTypeConfig
     [Tooltip("How far off-road the scared creature can run.")]
     [Min(0f)] public float scaredMaxOffRoadDistance = 3f;
 
-
     [Header("Scared - Idle Bug Movement (Before Detection)")]
     [Tooltip("If true, scared creatures use the same low-energy 'bug idle' movement until the player is within scaredDetectionRadius.")]
     public bool scaredIdleUseBugMovement = true;
@@ -119,6 +118,7 @@ public class CreatureTypeConfig
 
     [Tooltip("Speed multiplier applied when hunting scared creatures.")]
     [Min(0f)] public float aggressiveHuntSpeedMultiplier = 1.35f;
+
     [Header("Behavior Tuning - Aggressive")]
     [Tooltip("Detection radius for the aggressive creature to spot the player.")]
     [Min(0f)] public float aggressiveDetectionRadius = 25f;
@@ -129,10 +129,74 @@ public class CreatureTypeConfig
     [Tooltip("How far off-track the aggressive creature can go to intercept.")]
     [Min(0f)] public float aggressiveMaxOffTrackDistance = 4f;
 
-    [Tooltip("Crash severity caused on collision (0-1).")]
-    [Range(0f, 1f)] public float aggressiveImpactDamage = 0.5f;
-
     [Header("Crush Interaction")]
     [Tooltip("Aggressive (big) creature only dies to obstacles with Rigidbody mass >= this threshold (Passive + Scared always die).")]
     [Min(0f)] public float aggressiveCrushMassThreshold = 80f;
+
+    [Header("Aggressive - Bull Rush")]
+    [Tooltip("If true, the aggressive creature will charge up before rushing in a straight line toward the player.")]
+    public bool useBullRush = true;
+
+    [Tooltip("Duration in seconds the creature pauses to 'wind up' before charging.")]
+    [Min(0f)] public float bullRushChargeUpDuration = 0.8f;
+
+    [Tooltip("Speed multiplier during the bull rush (applied on top of aggressiveChargeSpeed).")]
+    [Min(0.1f)] public float bullRushSpeedMultiplier = 1.5f;
+
+    [Tooltip("How long the bull rush lasts before the creature can re-target (seconds).")]
+    [Min(0.1f)] public float bullRushDuration = 1.5f;
+
+    [Tooltip("Maximum lateral steering rate during bull rush (degrees per second). Lower = straighter line.")]
+    [Min(0f)] public float bullRushMaxSteerRate = 15f;
+
+    [Tooltip("If the creature misses and travels this far past the target, end the rush early.")]
+    [Min(1f)] public float bullRushOvershootDistance = 8f;
+
+    [Tooltip("Cooldown after a bull rush before the creature can start another one.")]
+    [Min(0f)] public float bullRushCooldown = 1.0f;
+
+    [Header("Aggressive - Bull Rush Telegraph (Line Renderer)")]
+    [Tooltip("If true, draws a line showing the bull rush path during charge-up.")]
+    public bool bullRushShowTelegraph = true;
+
+    [Tooltip("Width of the telegraph line.")]
+    [Min(0.01f)] public float bullRushLineWidth = 0.2f;
+
+    [Tooltip("How far ahead the line extends from the creature.")]
+    [Min(1f)] public float bullRushLineLength = 25f;
+
+    [Tooltip("Height offset for the line above the ground.")]
+    public float bullRushLineYOffset = 0.1f;
+
+    [Tooltip("Color of the telegraph line during charge-up.")]
+    public Color bullRushLineColorCharging = new Color(1f, 0.3f, 0f, 0.7f); // Orange
+
+    [Tooltip("Color of the telegraph line during active rush.")]
+    public Color bullRushLineColorRushing = new Color(1f, 0f, 0f, 0.9f); // Red
+
+    [Tooltip("Fade out duration when rush ends.")]
+    [Min(0f)] public float bullRushLineFadeOutTime = 0.2f;
+
+    [Header("Aggressive - Impact (Crash Settings)")]
+    [Tooltip("Crash severity when hitting the player (0-1). Higher = longer recovery, more damage.")]
+    [Range(0f, 1f)] public float impactCrashSeverity = 0.5f;
+
+    [Tooltip("Additional impulse force applied to the car on hit (VelocityChange mode). Set higher for bull rush feel.")]
+    [Min(0f)] public float impactKnockbackForce = 12f;
+
+    [Tooltip("Upward force component added to the impact (gives the car a bump).")]
+    [Min(0f)] public float impactLift = 3f;
+
+    [Tooltip("Torque applied to spin the car on impact.")]
+    [Min(0f)] public float impactTorque = 6f;
+
+    [Tooltip("Multiplier applied to all impact values when the hit occurs during a bull rush.")]
+    [Min(1f)] public float bullRushImpactMultiplier = 1.5f;
+
+    [Tooltip("If true, the creature despawns after successfully hitting the player.")]
+    public bool despawnAfterHit = true;
+
+    [Tooltip("Delay before despawning after hitting the player (allows death FX to play).")]
+    [Min(0f)] public float despawnDelay = 0.3f;
+
 }

@@ -186,16 +186,16 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 24576
-  enableMovementAvoidance: 0
+  enableMovementAvoidance: 1
   movementAvoidanceLayers:
     serializedVersion: 2
-    m_Bits: 788480
+    m_Bits: 1837056
   avoidanceRadius: 0.15
   avoidanceLookAhead: 0.5
   avoidanceCastHeight: 0.35
   avoidanceSideBias: 0
   avoidanceResponse: 3
-  aggressivePlayerPriorityRadius: 12
+  aggressivePlayerPriorityRadius: 8
   creatureSenseLayers:
     serializedVersion: 2
     m_Bits: 2097152

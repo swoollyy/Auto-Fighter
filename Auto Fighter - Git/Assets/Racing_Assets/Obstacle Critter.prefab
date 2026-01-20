@@ -189,7 +189,7 @@ MonoBehaviour:
   enableMovementAvoidance: 1
   movementAvoidanceLayers:
     serializedVersion: 2
-    m_Bits: 788481
+    m_Bits: 1837057
   avoidanceRadius: 0.15
   avoidanceLookAhead: 0.5
   avoidanceCastHeight: 0.35

@@ -736,6 +736,7 @@ GameObject:
   - component: {fileID: 277147483}
   - component: {fileID: 277147485}
   - component: {fileID: 277147486}
+  - component: {fileID: 277147487}
   m_Layer: 0
   m_Name: UIManager
   m_TagString: Untagged
@@ -821,6 +822,9 @@ MonoBehaviour:
   mashGaugeContainer: {fileID: 182028225}
   gaugeGoodLabel: {fileID: 730228538}
   gaugeMaxLabel: {fileID: 1564136444}
+  smashButton: {fileID: 1829527392}
+  smashButtonLabel: {fileID: 1304188370}
+  usePlayStationSymbols: 1
 --- !u!4 &277147484
 Transform:
   m_ObjectHideFlags: 0
@@ -865,6 +869,15 @@ MonoBehaviour:
   autoOpenFirstSkill: 0
   verboseDebug: 1
   forceDeferredBuild: 1
+  enableGamepadPanZoom: 1
+  gamepadPanAxisX: RightStickX
+  gamepadPanAxisY: RightStickY
+  gamepadZoomInAxis: RightTrigger
+  gamepadZoomOutAxis: LeftTrigger
+  gamepadStickDeadzone: 0.5
+  gamepadPanPixelsPerSecond: 200
+  gamepadZoomSpeed: 5.7
+  invertRightStickY: 0
 --- !u!114 &277147486
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -886,6 +899,33 @@ MonoBehaviour:
   selectVolume: 0.491
   purchaseVolume: 0.491
   currencyVolume: 0.491
+--- !u!114 &277147487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 277147482}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d97671f6a79af244b2ec9895f248d21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cursorRect: {fileID: 579166399}
+  canvas: {fileID: 863292882}
+  clampArea: {fileID: 863292879}
+  detailPanel: {fileID: 663395617}
+  axisX: Horizontal
+  axisY: Vertical
+  clickKey: 331
+  deadZone: 0.18
+  cursorSpeedPixelsPerSecond: 1400
+  useUnscaledTime: 1
+  closeDetailOnEmptyClick: 1
+  clickCooldown: 0.05
+  autoSwitchInput: 1
+  mouseMovePixelsThreshold: 2.5
+  stickActivateThreshold: 0.22
 --- !u!1 &294822564
 GameObject:
   m_ObjectHideFlags: 0
@@ -969,7 +1009,7 @@ AudioSource:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 305780350}
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 8300000, guid: 661a69b156089bd4fba461baaa1ecf47, type: 3}
@@ -1521,6 +1561,81 @@ MonoBehaviour:
   boostMaxSpeed: 0
   boostDuringCrash: 1
   boostCrashMultiplier: 0.5
+--- !u!1 &579166398
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 579166399}
+  - component: {fileID: 579166401}
+  - component: {fileID: 579166400}
+  m_Layer: 0
+  m_Name: ControllerCursor_IMAGE
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &579166399
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579166398}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 0.15, y: 0.15, z: 0.15}
+  m_ConstrainProportionsScale: 1
+  m_Children: []
+  m_Father: {fileID: 663395614}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &579166400
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579166398}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &579166401
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579166398}
+  m_CullTransparentMesh: 1
 --- !u!1 &597905367
 GameObject:
   m_ObjectHideFlags: 0
@@ -1858,6 +1973,7 @@ RectTransform:
   - {fileID: 1451236230}
   - {fileID: 448631921}
   - {fileID: 1274564944}
+  - {fileID: 579166399}
   m_Father: {fileID: 863292879}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -3195,7 +3311,7 @@ MonoBehaviour:
   - id: Bug
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
-    baseWeight: 0
+    baseWeight: 1.1
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
@@ -3229,13 +3345,33 @@ MonoBehaviour:
     aggressiveDetectionRadius: 0
     aggressiveChargeSpeed: 0
     aggressiveMaxOffTrackDistance: 0
-    aggressiveImpactDamage: 0
     aggressiveCrushMassThreshold: 80
+    useBullRush: 0
+    bullRushChargeUpDuration: 0.8
+    bullRushSpeedMultiplier: 1.5
+    bullRushDuration: 1.5
+    bullRushMaxSteerRate: 15
+    bullRushOvershootDistance: 8
+    bullRushCooldown: 1
+    bullRushShowTelegraph: 0
+    bullRushLineWidth: 0.2
+    bullRushLineLength: 25
+    bullRushLineYOffset: 0.1
+    bullRushLineColorCharging: {r: 1, g: 0.3, b: 0, a: 0.7}
+    bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+    bullRushLineFadeOutTime: 0.2
+    impactCrashSeverity: 0.5
+    impactKnockbackForce: 12
+    impactLift: 3
+    impactTorque: 6
+    bullRushImpactMultiplier: 1.5
+    despawnAfterHit: 1
+    despawnDelay: 0.3
   - id: Critter
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
     baseWeight: 0.5
-    startAtNormalizedDist: 0
+    startAtNormalizedDist: 0.03
     fullWeightNormalizedDist: 0.3
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -3243,19 +3379,19 @@ MonoBehaviour:
     coinReward: 4
     passiveWanderSpeed: 0
     passiveDirectionChangeInterval: 0
-    scaredDetectionRadius: 3
+    scaredDetectionRadius: 1.5
     scaredBaseFleeSpeed: 2
     scaredMaxFleeSpeed: 4
     scaredSpeedBuildupRate: 1.5
-    scaredMaxOffRoadDistance: 5
+    scaredMaxOffRoadDistance: 6
     scaredIdleUseBugMovement: 1
     scaredIdleBugMoveSpeed: 1.25
     scaredIdleBugDirectionChangeInterval: 0.6
     scaredIdleBugLateralRadius: 2
     scaredIdleBugForwardRadius: 1.25
     scaredFleeFromAggressive: 1
-    scaredAggressiveDetectRadius: 6
-    scaredAggressiveLoseFearDistance: 8
+    scaredAggressiveDetectRadius: 3
+    scaredAggressiveLoseFearDistance: 4
     scaredAggressiveFleeSpeedMultiplier: 1.1
     aggressiveIdleUseBugMovement: 0
     aggressiveIdleBugMoveSpeed: 0
@@ -3268,13 +3404,33 @@ MonoBehaviour:
     aggressiveDetectionRadius: 0
     aggressiveChargeSpeed: 0
     aggressiveMaxOffTrackDistance: 0
-    aggressiveImpactDamage: 0
     aggressiveCrushMassThreshold: 80
+    useBullRush: 0
+    bullRushChargeUpDuration: 0.8
+    bullRushSpeedMultiplier: 1.5
+    bullRushDuration: 1.5
+    bullRushMaxSteerRate: 15
+    bullRushOvershootDistance: 8
+    bullRushCooldown: 1
+    bullRushShowTelegraph: 0
+    bullRushLineWidth: 0.2
+    bullRushLineLength: 25
+    bullRushLineYOffset: 0.1
+    bullRushLineColorCharging: {r: 1, g: 0.3, b: 0, a: 0.7}
+    bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+    bullRushLineFadeOutTime: 0.2
+    impactCrashSeverity: 0.5
+    impactKnockbackForce: 12
+    impactLift: 3
+    impactTorque: 6
+    bullRushImpactMultiplier: 1.5
+    despawnAfterHit: 1
+    despawnDelay: 0.3
   - id: Beast
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
-    baseWeight: 0.3
-    startAtNormalizedDist: 0
+    baseWeight: 1
+    startAtNormalizedDist: 0.05
     fullWeightNormalizedDist: 0.6
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -3304,11 +3460,31 @@ MonoBehaviour:
     aggressiveHuntScaredCreatures: 1
     aggressiveHuntRadius: 6
     aggressiveHuntSpeedMultiplier: 1.5
-    aggressiveDetectionRadius: 5.5
+    aggressiveDetectionRadius: 5
     aggressiveChargeSpeed: 2.3
     aggressiveMaxOffTrackDistance: 50
-    aggressiveImpactDamage: 0.6
     aggressiveCrushMassThreshold: 8
+    useBullRush: 1
+    bullRushChargeUpDuration: 1
+    bullRushSpeedMultiplier: 1.5
+    bullRushDuration: 6.91
+    bullRushMaxSteerRate: 0.8
+    bullRushOvershootDistance: 21.1
+    bullRushCooldown: 5
+    bullRushShowTelegraph: 1
+    bullRushLineWidth: 0.15
+    bullRushLineLength: 25
+    bullRushLineYOffset: 0.1
+    bullRushLineColorCharging: {r: 1, g: 0.8386418, b: 0, a: 0.7}
+    bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+    bullRushLineFadeOutTime: 0.2
+    impactCrashSeverity: 0.65
+    impactKnockbackForce: 12
+    impactLift: 3
+    impactTorque: 6
+    bullRushImpactMultiplier: 1.14
+    despawnAfterHit: 1
+    despawnDelay: 0.7
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   creatureSpacing: 19
@@ -3546,6 +3722,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  xHoldSeconds: 0.35
   skillTreeRoot: {fileID: 663395613}
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
@@ -3575,9 +3752,9 @@ MonoBehaviour:
   depositCoinsClip: {fileID: 8300000, guid: d3fbeb90926ad1a4fb8f91aedf0b2c26, type: 3}
   depositCoinsVolume: 0.16
   runEndSettleDelay: 0.5
-  freezeAfterRunCompleteDelayRealtime: 0.75
+  freezeAfterRunCompleteDelayRealtime: 0.5
   deathStopShakeMult: 0.82
-  deathStopSlowMoSeverity: 0.7
+  deathStopSlowMoSeverity: 0.8
   lethalCrashSlowMoHoldMultiplier: 2.25
 --- !u!4 &804777575
 Transform:
@@ -4740,6 +4917,7 @@ RectTransform:
   - {fileID: 390939234}
   - {fileID: 730228537}
   - {fileID: 1564136443}
+  - {fileID: 1304188369}
   m_Father: {fileID: 863292879}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -5731,6 +5909,140 @@ CanvasRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1274564943}
+  m_CullTransparentMesh: 1
+--- !u!1 &1304188368
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1304188369}
+  - component: {fileID: 1304188371}
+  - component: {fileID: 1304188370}
+  m_Layer: 0
+  m_Name: Smash_TEXT
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1304188369
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1304188368}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1118833408}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: -119.6}
+  m_SizeDelta: {x: 200, y: 50}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1304188370
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1304188368}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_text: New Text
+  m_isRightToLeft: 0
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontSharedMaterials: []
+  m_fontMaterial: {fileID: 0}
+  m_fontMaterials: []
+  m_fontColor32:
+    serializedVersion: 2
+    rgba: 4278190080
+  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
+  m_enableVertexGradient: 0
+  m_colorMode: 3
+  m_fontColorGradient:
+    topLeft: {r: 1, g: 1, b: 1, a: 1}
+    topRight: {r: 1, g: 1, b: 1, a: 1}
+    bottomLeft: {r: 1, g: 1, b: 1, a: 1}
+    bottomRight: {r: 1, g: 1, b: 1, a: 1}
+  m_fontColorGradientPreset: {fileID: 0}
+  m_spriteAsset: {fileID: 0}
+  m_tintAllSprites: 0
+  m_StyleSheet: {fileID: 0}
+  m_TextStyleHashCode: -1183493901
+  m_overrideHtmlColors: 0
+  m_faceColor:
+    serializedVersion: 2
+    rgba: 4294967295
+  m_fontSize: 36
+  m_fontSizeBase: 36
+  m_fontWeight: 400
+  m_enableAutoSizing: 0
+  m_fontSizeMin: 18
+  m_fontSizeMax: 72
+  m_fontStyle: 0
+  m_HorizontalAlignment: 2
+  m_VerticalAlignment: 256
+  m_textAlignment: 65535
+  m_characterSpacing: 0
+  m_wordSpacing: 0
+  m_lineSpacing: 0
+  m_lineSpacingMax: 0
+  m_paragraphSpacing: 0
+  m_charWidthMaxAdj: 0
+  m_enableWordWrapping: 1
+  m_wordWrappingRatios: 0.4
+  m_overflowMode: 0
+  m_linkedTextComponent: {fileID: 0}
+  parentLinkedComponent: {fileID: 0}
+  m_enableKerning: 1
+  m_enableExtraPadding: 0
+  checkPaddingRequired: 0
+  m_isRichText: 1
+  m_parseCtrlCharacters: 1
+  m_isOrthographic: 1
+  m_isCullingEnabled: 0
+  m_horizontalMapping: 0
+  m_verticalMapping: 0
+  m_uvLineOffset: 0
+  m_geometrySortingOrder: 0
+  m_IsTextObjectScaleStatic: 0
+  m_VertexBufferAutoSizeReduction: 0
+  m_useMaxVisibleDescender: 1
+  m_pageToDisplay: 1
+  m_margin: {x: 0, y: 0, z: 0, w: 0}
+  m_isUsingLegacyAnimationComponent: 0
+  m_isVolumetricText: 0
+  m_hasFontAssetChanged: 0
+  m_baseMaterial: {fileID: 0}
+  m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!222 &1304188371
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1304188368}
   m_CullTransparentMesh: 1
 --- !u!1 &1344415179
 GameObject:
@@ -6784,6 +7096,22 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 6339490621384319407, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
+      propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.size
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6339490621384319407, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
+      propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Mode
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6339490621384319407, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
+      propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Target
+      value: 
+      objectReference: {fileID: 277147482}
+    - target: {fileID: 6339490621384319407, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
+      propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_CallState
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 8999905705015184856, guid: 8f03e49044205f747964cfb7d9c210fb, type: 3}
       propertyPath: m_text
       value: 'Play
@@ -7447,7 +7775,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '''R'' to Restart'
+  m_text: '''R'' or X on Controller to Restart'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -8456,7 +8784,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: SMASH
+  m_text: SMASH!!
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

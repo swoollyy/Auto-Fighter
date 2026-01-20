@@ -30,6 +30,32 @@ public class RacingSkillUI : MonoBehaviour
     [SerializeField] private bool verboseDebug = false;
     [SerializeField] private bool forceDeferredBuild = true;
 
+    [Header("Tree View - Gamepad")]
+    [SerializeField] private bool enableGamepadPanZoom = true;
+
+    [Tooltip("Input Manager axis name for Right Stick Horizontal.")]
+    [SerializeField] private string gamepadPanAxisX = "RightStickX";
+
+    [Tooltip("Input Manager axis name for Right Stick Vertical.")]
+    [SerializeField] private string gamepadPanAxisY = "RightStickY";
+
+    [Tooltip("Input Manager axis name for Right Trigger (0..1).")]
+    [SerializeField] private string gamepadZoomInAxis = "RightTrigger";
+
+    [Tooltip("Input Manager axis name for Left Trigger (0..1).")]
+    [SerializeField] private string gamepadZoomOutAxis = "LeftTrigger";
+
+    [SerializeField, Range(0f, 0.5f)] private float gamepadStickDeadzone = 0.18f;
+
+    [Tooltip("Pixels per second at full stick tilt (before panSpeed multiplier).")]
+    [SerializeField, Min(0f)] private float gamepadPanPixelsPerSecond = 900f;
+
+    [Tooltip("Zoom units per second at full trigger pull (multiplied by zoomStep).")]
+    [SerializeField, Min(0f)] private float gamepadZoomSpeed = 2.0f;
+
+    [Tooltip("Invert Y so pushing stick up pans upward (usually feels correct in UI).")]
+    [SerializeField] private bool invertRightStickY = true;
+
     private bool _isPanning;
     private Vector2 _lastMouse;
     private Vector3 _contentBaseScale = Vector3.one;
@@ -65,6 +91,7 @@ public class RacingSkillUI : MonoBehaviour
     {
         HandleTreePan();
         HandleTreeZoom();
+        HandleTreePanZoomGamepad();   // <-- add this
     }
 
     public void BindGameManager(GameManager_Racing gm) => gameManager = gm;
@@ -161,6 +188,50 @@ public class RacingSkillUI : MonoBehaviour
         if (!def || !detailPanel) return;
         selectedEntry = entries.Find(e => e.GetDefinition() == def);
         ShowEntryDetail(selectedEntry);
+    }
+
+    private void HandleTreePanZoomGamepad()
+    {
+        if (!enableGamepadPanZoom) return;
+        if (!treeViewport || !treeContent) return;
+        if (!treeViewport.gameObject.activeInHierarchy) return;
+
+        float dt = Time.unscaledDeltaTime;
+
+        // -------- PAN (Right Stick) --------
+        float x = 0f;
+        float y = 0f;
+
+        if (!string.IsNullOrEmpty(gamepadPanAxisX)) x = Input.GetAxisRaw(gamepadPanAxisX);
+        if (!string.IsNullOrEmpty(gamepadPanAxisY)) y = Input.GetAxisRaw(gamepadPanAxisY);
+
+        if (invertRightStickY) y = -y;
+
+        Vector2 stick = new Vector2(x, y);
+        if (stick.magnitude < gamepadStickDeadzone) stick = Vector2.zero;
+        else stick = stick.normalized * ((stick.magnitude - gamepadStickDeadzone) / (1f - gamepadStickDeadzone));
+
+        if (stick != Vector2.zero)
+        {
+            Vector2 deltaPixels = stick * (gamepadPanPixelsPerSecond * dt);
+            treeContent.anchoredPosition += deltaPixels * panSpeed;
+        }
+
+        // -------- ZOOM (Triggers) --------
+        float rt = 0f;
+        float lt = 0f;
+
+        if (!string.IsNullOrEmpty(gamepadZoomInAxis)) rt = Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomInAxis));
+        if (!string.IsNullOrEmpty(gamepadZoomOutAxis)) lt = Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomOutAxis));
+
+        // Right trigger zoom in, left trigger zoom out
+        float zoomInput = rt - lt; // + = zoom in, - = zoom out
+        if (Mathf.Abs(zoomInput) > 0.001f)
+        {
+            float cur = treeContent.localScale.x;
+            float next = Mathf.Clamp(cur + (zoomInput * zoomStep * gamepadZoomSpeed * dt), minZoom, maxZoom);
+            treeContent.localScale = new Vector3(next, next, 1f);
+        }
     }
 
     private void ShowEntryDetail(RacingSkillUIEntry entry)

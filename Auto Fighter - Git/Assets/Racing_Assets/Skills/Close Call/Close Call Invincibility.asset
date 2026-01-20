@@ -22,17 +22,17 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 5
-      outSlope: 5
+      inSlope: 8.888889
+      outSlope: 8.888889
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 9
-      value: 45
-      inSlope: 5
-      outSlope: 5
+      value: 80
+      inSlope: 8.888889
+      outSlope: 8.888889
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.12
+  perLevelAdd: 0.35
   uiPosition: {x: 300, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

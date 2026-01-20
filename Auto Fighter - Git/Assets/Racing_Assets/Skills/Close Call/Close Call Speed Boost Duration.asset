@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 4820
   displayName: Close Call Speed Boost Duration
-  description: Increases the duration of the speed boost by .2
+  description: Increases the duration of the speed boost by .35
   maxLevel: 5
   costCurve:
     serializedVersion: 2
@@ -22,17 +22,17 @@ MonoBehaviour:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 5
-      outSlope: 5
+      inSlope: 10
+      outSlope: 10
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 9
-      value: 45
-      inSlope: 5
-      outSlope: 5
+      time: 5
+      value: 50
+      inSlope: 10
+      outSlope: 10
       tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
+  perLevelAdd: 0.35
   uiPosition: {x: 300, y: 75}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

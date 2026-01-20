@@ -1,4 +1,4 @@
-using TMPro;
+﻿using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,6 +13,8 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
     [SerializeField] private TMP_Text hpText;      // Shows "75 / 100" or "75%"
     [SerializeField] private bool showHPAsPercent = false;
+
+    private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
 
     [Header("In-Run UI")]
     [SerializeField] private TMP_Text runCoinsLiveText;      // e.g. "Coins: 0"
@@ -72,6 +74,13 @@ public class UIManager_Racing : MonoBehaviour
 
     [Tooltip("Optional: Text label for max threshold.")]
     [SerializeField] private TMP_Text gaugeMaxLabel;
+
+    [Header("Crash Recovery - Smash Button")]
+    [SerializeField] private Button smashButton;
+    [SerializeField] private TMP_Text smashButtonLabel;
+
+    [Header("Controller UI")]
+    [SerializeField] private bool usePlayStationSymbols = true;
 
     private CarController car;
 
@@ -138,7 +147,41 @@ public class UIManager_Racing : MonoBehaviour
         }
 
         UpdateCrashRecoveryUI();
+
+        if (car != null && car.IsFlipMashActive)
+        {
+            if (smashButton != null)
+                smashButton.gameObject.SetActive(true);
+
+            if (smashButtonLabel != null)
+            {
+                string symbol = usePlayStationSymbols
+                    ? car.MashSymbolPS
+                    : car.MashSymbolXbox;
+
+                smashButtonLabel.text = $"SMASH {GetMashDisplaySymbol()}";
+            }
+
+            if (Input.GetKeyDown(car.MashFaceButtonKey) || Input.GetKeyDown(car.MashRequiredKey))
+            {
+                OnCrashRecoveryButtonClicked();
+            }
+
+#if UNITY_EDITOR
+    if (Input.GetKeyDown(KeyCode.Space))
+    {
+        OnCrashRecoveryButtonClicked();
     }
+#endif
+        }
+        else
+        {
+            if (smashButton != null)
+                smashButton.gameObject.SetActive(false);
+        }
+
+    }
+
 
     public void ShowRunComplete(
         int distanceMeters,
@@ -481,4 +524,39 @@ public class UIManager_Racing : MonoBehaviour
         if (crashRecoveryRoot != null)
             crashRecoveryRoot.SetActive(false);
     }
+
+    private string GetMashDisplaySymbol()
+    {
+        if (car == null) return "";
+
+        // Pick the intended display set (PS symbols vs Xbox letters)
+        string intended = usePlayStationSymbols ? car.MashSymbolPS : car.MashSymbolXbox;
+
+        // If we're not using PS symbols, just return the letter mapping.
+        if (!usePlayStationSymbols) return intended;
+
+        // PS symbols are Unicode. If the TMP font asset doesn't contain the glyph,
+        // TextMeshPro will show the "square" tofu fallback.
+        // So: detect missing glyph and fall back to safe text.
+        if (smashButtonLabel == null || smashButtonLabel.font == null) return intended;
+
+        // intended is 1 char for PS ("✕", "◯", "□", "△")
+        char c = intended.Length > 0 ? intended[0] : '?';
+
+        if (smashButtonLabel.font.HasCharacter(c))
+            return intended;
+
+        // Fallbacks that virtually all fonts have:
+        // Cross: X, Circle: O, Square: [ ], Triangle: ^
+        switch (car.RequiredMashButton)
+        {
+            case CarController.FaceButton.Cross: return "X";
+            case CarController.FaceButton.Circle: return "O";
+            case CarController.FaceButton.Square: return "[]";
+            case CarController.FaceButton.Triangle: return "^";
+            default: return "X";
+        }
+    }
+
+
 }

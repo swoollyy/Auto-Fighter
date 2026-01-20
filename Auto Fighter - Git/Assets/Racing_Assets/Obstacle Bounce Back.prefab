@@ -204,7 +204,7 @@ MonoBehaviour:
   reactToOtherObstacles: 1
   obstacleReactMask:
     serializedVersion: 2
-    m_Bits: 264192
+    m_Bits: 2885632
   obstacleImpulse: 9.48
   obstacleUpImpulse: 2.8
   obstacleImpactCooldown: 0.08

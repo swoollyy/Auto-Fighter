@@ -179,7 +179,7 @@ MonoBehaviour:
   destinationMoveThreshold: 2.24
   speed: 3
   randomizeSpeed: 1
-  speedRange: {x: 3, y: 7}
+  speedRange: {x: 4, y: 7.5}
   lateralFraction: 0.907
   edgeMargin: 0.92
   randomizeLane: 1
@@ -191,8 +191,8 @@ MonoBehaviour:
   groundClearance: 0.02
   rotateToVelocity: 1
   alignToGround: 0
-  rotationSpeed: 17.2
-  velocitySmoothTime: 1.1
+  rotationSpeed: 27
+  velocitySmoothTime: 0.85
   minSpeedForRotation: 1
   trackVelocityBlend: 0.754
   crashLayers:

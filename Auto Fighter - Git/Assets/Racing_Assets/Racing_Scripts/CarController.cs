@@ -81,6 +81,77 @@ public class CarController : MonoBehaviour
     private float coastDampingPerSecond = 2.0f;
 
 
+    [Header("Flip Recovery (Mash) - Input")]
+    [SerializeField, Tooltip("If true, each mash recovery chooses a random controller face button (0-3).")]
+    private bool randomizeMashFaceButton = true;
+
+    [SerializeField, Tooltip("If true, Space will still work for mash in Editor (in addition to the chosen face button).")]
+    private bool allowSpaceMashInEditor = true;
+
+    // 0..3 => Unity: JoystickButton0..3
+    // (PS) 0=Cross(✕) 1=Circle(◯) 2=Square(□) 3=Triangle(△)
+    private int _mashFaceButtonIndex = 0;
+
+    public int MashFaceButtonIndex => _mashFaceButtonIndex;
+
+    private static readonly KeyCode[] PS_FACE_KEYS =
+    {
+    KeyCode.JoystickButton1, // Cross (X)
+    KeyCode.JoystickButton2, // Circle
+    KeyCode.JoystickButton0, // Square
+    KeyCode.JoystickButton3  // Triangle
+};
+
+    public KeyCode MashFaceButtonKey
+        => PS_FACE_KEYS[Mathf.Clamp(_mashFaceButtonIndex, 0, 3)];
+
+    public enum FaceButton { Cross, Circle, Square, Triangle }
+
+    [Header("Mash Input Mapping (Set these to match your controller backend)")]
+    private KeyCode psCrossKey = KeyCode.JoystickButton1;    // your current X
+    private KeyCode psCircleKey = KeyCode.JoystickButton2;
+    private KeyCode psSquareKey = KeyCode.JoystickButton0;
+    private KeyCode psTriangleKey = KeyCode.JoystickButton3;
+
+    private FaceButton _requiredMashButton = FaceButton.Cross;
+
+    public FaceButton RequiredMashButton => _requiredMashButton;
+
+    public KeyCode MashRequiredKey
+    {
+        get
+        {
+            return _requiredMashButton switch
+            {
+                FaceButton.Cross => psCrossKey,
+                FaceButton.Circle => psCircleKey,
+                FaceButton.Square => psSquareKey,
+                FaceButton.Triangle => psTriangleKey,
+                _ => psCrossKey
+            };
+        }
+    }
+
+    private static readonly string[] PS_FACE_SYMBOLS = { "✕", "◯", "□", "△" };
+
+    public string MashSymbolPS
+        => PS_FACE_SYMBOLS[Mathf.Clamp(_mashFaceButtonIndex, 0, 3)];
+
+    public string MashSymbolXbox
+    {
+        get
+        {
+            return _requiredMashButton switch
+            {
+                FaceButton.Cross => "A",
+                FaceButton.Circle => "B",
+                FaceButton.Square => "X",
+                FaceButton.Triangle => "Y",
+                _ => "A"
+            };
+        }
+    }
+
     [Header("Flip Mash Rewards")]
     [SerializeField, Tooltip("Base fuel recovered per click.")]
     private float mashBaseFuelPerClick = 0.3f;
@@ -151,6 +222,7 @@ public class CarController : MonoBehaviour
 
     [Header("Drift (Arcade)")]
     [SerializeField] private KeyCode driftKey = KeyCode.LeftShift;
+    private KeyCode driftButtonController = KeyCode.JoystickButton2;
     [SerializeField] private float driftMinSpeed = 5f;
     [SerializeField] private float maxDriftSteerMultiplier = 2.5f;
     [SerializeField] private float driftBuildRate = 1.8f;
@@ -474,6 +546,7 @@ public class CarController : MonoBehaviour
 
     [Header("Boost")]
     [SerializeField] private KeyCode boostKey = KeyCode.Space;
+    private KeyCode boostButtonController = KeyCode.JoystickButton1; // X on PS5
     [SerializeField] private float boostForce = 50f;
     [SerializeField] private float boostSustainAcceleration = 0f;
     [SerializeField] private float boostDuration = 1.2f;
@@ -646,7 +719,7 @@ public class CarController : MonoBehaviour
     [SerializeField, Range(0.5f, 0.9f)] private float gaugeGoodThreshold = 0.70f;
 
     [Tooltip("Gauge threshold for 'max' tier bonus (0-1). Marker line will show here.")]
-    private float gaugeMaxThreshold = 0.95f;
+    private float gaugeMaxThreshold = 0.92f;
 
     [Tooltip("Fuel/sprocket multiplier when gauge is at 0%.")]
     [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.75f;
@@ -1265,7 +1338,7 @@ public class CarController : MonoBehaviour
 
         HandleInput();
 
-        if (Input.GetKeyDown(boostKey) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
+        if ((Input.GetKeyDown(boostKey) || Input.GetKeyDown(boostButtonController)) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
             _boostRequested = true;
 
         if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
@@ -2211,7 +2284,7 @@ public class CarController : MonoBehaviour
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
-        driftButtonHeld = Input.GetKey(driftKey);
+        driftButtonHeld = Input.GetKey(driftKey) || Input.GetKey(driftButtonController);
         bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
 
         // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
@@ -2871,8 +2944,20 @@ public class CarController : MonoBehaviour
         if (rb == null) return;
 
         Vector3 forward = transform.forward;
+
+        // Keyboard input
         bool forwardKey = Input.GetKey(KeyCode.W);
         bool reverseKey = Input.GetKey(KeyCode.S);
+
+        // Controller triggers: PS5/PS4 uses axes 4 (RT) and 5 (LT) typically
+        // Note: Triggers often rest at -1 and go to +1 when fully pressed
+        // Some setups have them at 0 to 1. We check both patterns.
+        float rightTrigger = Input.GetAxisRaw("RightTrigger");   // RT - Accelerate
+        float leftTrigger = Input.GetAxisRaw("LeftTrigger");     // LT - Brake/Reverse
+
+        // Apply trigger input (threshold to avoid drift)
+        if (rightTrigger > 0.1f) forwardKey = true;
+        if (leftTrigger > 0.1f) reverseKey = true;
 
         if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame)
         {
@@ -4098,6 +4183,25 @@ public class CarController : MonoBehaviour
         return Mathf.Abs(pitch) > 1.0f || Mathf.Abs(roll) > 1.0f;
     }
 
+    private void ChooseMashFaceButton()
+    {
+        if (!randomizeMashFaceButton)
+        {
+            _mashFaceButtonIndex = Mathf.Clamp(_mashFaceButtonIndex, 0, 3);
+            _requiredMashButton = (FaceButton)_mashFaceButtonIndex;
+            return;
+        }
+
+        int r = UnityEngine.Random.Range(0, 4);
+
+        // SINGLE SOURCE OF TRUTH for the UI
+        _mashFaceButtonIndex = r;
+
+        // Keep the "required" system in lockstep so input + UI can never disagree
+        _requiredMashButton = (FaceButton)r;
+    }
+
+
     // === BOOST PAD SCREEN FLASH ===
     private void CheckBoostFlash()
     {
@@ -4152,7 +4256,7 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        _totalMashClicksThisSession++;
+        _totalMashClicksThisSession += Mathf.Max(1, effectiveClicksPerClick);
 
         // Calculate mash speed (time since last click)
         float timeSinceLastMash = Time.time - _lastMashTime;
@@ -4181,6 +4285,7 @@ public class CarController : MonoBehaviour
         }
 
         _flipMashClicks += effectiveClicksPerClick;
+        _totalMashClicksThisSession += Mathf.Max(1, effectivePassiveClickStrength);
 
         if (_flipMashClicks >= _flipMashClicksNeeded)
             EndFlipMashRecoveryAndUpright();
@@ -4407,6 +4512,18 @@ public class CarController : MonoBehaviour
         // The fuel is now gained per-click with gauge multiplier instead
 
         _flipMashActive = false;
+
+        CancelAllBoostState(0.35f);   // small lockout prevents instant re-trigger
+
+        // Also kill any leftover landing carry allowance so you can't "keep" boosted cap as excess speed
+        _landingExcessSpeed = 0f;
+
+        // Force surface max speed to re-sample cleanly next tick (prevents stale smoothed value)
+        _smoothedSurfaceMaxSpeed = -1f;
+
+        // Re-evaluate currentMaxSpeed -> effectiveMaxSpeed right now
+        SampleGroundAndUpdateMultipliers();
+        ApplySkillEffects();
 
         // Only do upright reorientation if we were actually flipped
         if (_isFlippedDuringRecovery)
@@ -5302,6 +5419,8 @@ public class CarController : MonoBehaviour
     {
         if (IsDeadForMashRecovery) return;
         if (!enableFlipRecoveryMash) return;
+
+        ChooseMashFaceButton();
 
         _mashGaugeValue = 0f;
         _mashGaugePeakValue = 0f;

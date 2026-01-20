@@ -66,7 +66,13 @@ public class GameManager_Racing : MonoBehaviour
     // Optional curve to scale effect based on severity (x=0–1 severity, y=0–1 strength)
     [SerializeField] private AnimationCurve crashSlowMoCurve = AnimationCurve.Linear(0, 0.4f, 1, 1f);
 
+    private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
 
+
+    [SerializeField, Min(0.05f)]
+    private float xHoldSeconds = 0.35f; // tap vs hold threshold (realtime)
+
+    private float _xDownRealtime = -1f;
 
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
@@ -263,18 +269,26 @@ public class GameManager_Racing : MonoBehaviour
         if (carController == null)
             return;
 
-            Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
+        Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
 
-        if (_finalizePending && Input.GetKeyDown(KeyCode.R))
+        if (_finalizePending && !carController.IsFlipMashActive)
         {
-            if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
-            _finalizeRunCR = null;
-            _finalizePending = false;
+            bool restartPressed =
+                Input.GetKeyDown(KeyCode.R) ||                 // keep R always
+                (RestartAllowedNow() && Input.GetKeyDown(PAD_X)); // gate X until slowmo ends
 
-            TryPlayDepositSoundOnReset();
-            RestartRun();
-            return;
+            if (restartPressed)
+            {
+                if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+                _finalizeRunCR = null;
+                _finalizePending = false;
+
+                TryPlayDepositSoundOnReset();
+                RestartRun();
+                return;
+            }
         }
+
 
 
         // Finalize run only when out of fuel AND forward/overall speed is tiny
@@ -337,23 +351,33 @@ public class GameManager_Racing : MonoBehaviour
             }
         }
 
-        // Replace previous Restart-on-R behaviour with "Return to Skill Tree" by default.
-        // Holding Ctrl or Shift + R still forces a full scene restart for convenience.
-        if (runEnded && Input.GetKeyDown(KeyCode.R))
+        if (runEnded && !carController.IsFlipMashActive)
         {
-            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
-                Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            bool restartPressed =
+                Input.GetKeyDown(KeyCode.R) ||
+                (RestartAllowedNow() && Input.GetKeyDown(PAD_X));
+
+            if (restartPressed)
             {
-                // explicit restart (legacy behavior when modifier held)
-                RestartRun();
-            }
-            else
-            {
-                // Default: play deposit sound if needed, then restart the run (scene reload) so everything is reset.
                 TryPlayDepositSoundOnReset();
                 RestartRun();
+                return;
             }
         }
+    }
+
+    private bool XDown() => Input.GetKeyDown(PAD_X);
+    private bool XHeld() => Input.GetKey(PAD_X);
+    private bool XUp() => Input.GetKeyUp(PAD_X);
+
+    private void TickXHoldTimer()
+    {
+        if (XDown())
+            _xDownRealtime = Time.realtimeSinceStartup;
+
+        // Safety: if something eats the up event, clear stale timer
+        if (!XHeld() && _xDownRealtime > 0f && !XUp())
+            _xDownRealtime = -1f;
     }
 
     // New helper: same gating logic used by ReturnToSkillTree for deposit audio, but callable before a scene restart.
@@ -1007,6 +1031,14 @@ public class GameManager_Racing : MonoBehaviour
         // Now hide the skill tree
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
+    }
+
+    private bool RestartAllowedNow()
+    {
+        // Only allow "Press X to continue" after all slowmo/pause owners are done.
+        return Time.timeScale >= 0.99f
+            && !TimeScaleHub.IsPaused
+            && !TimeScaleHub.IsAnyActive;
     }
 
     private IEnumerator CoHideLoadingNextFrame()

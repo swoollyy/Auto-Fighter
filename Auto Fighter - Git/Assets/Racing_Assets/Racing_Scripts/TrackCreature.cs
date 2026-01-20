@@ -222,6 +222,20 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     // Aggressive hunting target (scared creature)
     protected Transform chaseTargetTransform;
+
+    protected bool isBullRushCharging = false;      // True during wind-up phase
+    protected bool isBullRushActive = false;        // True during the actual rush
+    protected float bullRushChargeTimer = 0f;       // Timer for charge-up phase
+    protected float bullRushActiveTimer = 0f;       // Timer for rush duration
+    protected float bullRushCooldownTimer = 0f;    // Cooldown between rushes
+    protected Vector3 bullRushDirection;            // Locked direction for the rush
+    protected float bullRushTargetDistance;         // Distance along track when rush started
+    protected float bullRushStartDistance;          // Our distance along track when rush started
+
+    protected LineRenderer bullRushLineRenderer;
+    protected float bullRushLineAlpha = 0f;
+    protected bool bullRushLineFadingOut = false;
+
     // Ground state
     protected bool isGrounded = true;
     protected Vector3 groundNormal = Vector3.up;
@@ -247,6 +261,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     public bool IsInitialized => isInitialized;
     public float DistanceAlongTrack => currentDistanceAlongTrack;
+
+    public bool IsBullRushActive => isBullRushActive;
+    public Vector3 BullRushDirection => bullRushDirection;
     #endregion
 
     #region Initialization
@@ -289,6 +306,11 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureBehaviorType.Aggressive:
                 SetState(CreatureState.Idle);
                 break;
+        }
+
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.useBullRush && config.bullRushShowTelegraph)
+        {
+            SetupBullRushLineRenderer();
         }
 
         isInitialized = true;
@@ -413,8 +435,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Update rotation
         UpdateRotation(dt);
 
-        // Update animation
         UpdateAnimation();
+
+        // Update bull rush telegraph line (for aggressive creatures)
+        if (behaviorType == CreatureBehaviorType.Aggressive && config != null && config.useBullRush)
+        {
+            UpdateBullRushTelegraph(dt);
+        }
     }
 
     /// <summary>
@@ -531,6 +558,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
 
             case CreatureState.Charging:
+                if (config != null && config.useBullRush)
+                {
+                    isBullRushCharging = false;
+                    isBullRushActive = false;
+                    bullRushChargeTimer = 0f;
+                    bullRushActiveTimer = 0f;
+                }
                 PlaySound(aggroSound);
                 break;
 
@@ -637,36 +671,47 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// Aggressive behavior: Idles until player is detected, then charges.
+    /// Aggressive behavior: Idles until player is detected, then does bull rush.
+    /// NO continuous chasing - only bull rush attacks.
     /// </summary>
     protected virtual void UpdateAggressiveBehavior(float dt)
     {
+        // Update bull rush cooldown (always ticks down)
+        if (bullRushCooldownTimer > 0f)
+            bullRushCooldownTimer -= dt;
+
         switch (currentState)
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
 
+                // Reset bull rush state when idle
+                isBullRushCharging = false;
+                isBullRushActive = false;
+                bullRushChargeTimer = 0f;
+                bullRushActiveTimer = 0f;
+
+                // Check if we should start a new bull rush (only if cooldown is done)
+                bool canStartNewRush = bullRushCooldownTimer <= 0f;
+
                 // Priority radius: if the player is inside this bubble, ALWAYS target the player.
                 bool playerIsClosePriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
+                bool playerInDetectionRange = playerDetected && playerDistance < config.aggressiveDetectionRadius;
 
-                if (playerIsClosePriority)
+                // Start charging at player (bull rush only)
+                if (canStartNewRush && config.useBullRush && (playerIsClosePriority || playerInDetectionRange))
                 {
-                    chaseTargetTransform = null; // force target = player
+                    chaseTargetTransform = null; // Target is player
                     SetState(CreatureState.Charging);
                 }
+                // Hunt scared creatures (standard tracking, not bull rush)
                 else if (config.aggressiveHuntScaredCreatures && chaseTargetTransform != null)
-
                 {
                     SetState(CreatureState.Charging);
                 }
-                else if (playerDetected && playerDistance < config.aggressiveDetectionRadius)
-                {
-                    SetState(CreatureState.Charging);
-                }
-
+                // Idle bug movement
                 else
                 {
-                    // Idle bug movement (gives the big creature life even when not chasing)
                     if (config.aggressiveIdleUseBugMovement)
                     {
                         if (currentState != CreatureState.Idle)
@@ -691,22 +736,30 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureState.Charging:
                 UpdateCharging(dt);
 
-                // Give up if target is gone / too far
-                bool hunting = chaseTargetTransform != null;
+                // For hunting creatures: give up if target is gone / too far
+                // (Bull rush handles its own exit conditions)
+                if (!isBullRushActive && !isBullRushCharging)
+                {
+                    bool hunting = chaseTargetTransform != null;
 
-                if (hunting)
-                {
-                    float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
-                    if (distToTarget > config.aggressiveHuntRadius * 1.25f)
+                    if (hunting)
                     {
-                        chaseTargetTransform = null;
-                        SetState(CreatureState.Idle);
+                        float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
+                        if (distToTarget > config.aggressiveHuntRadius * 1.25f)
+                        {
+                            chaseTargetTransform = null;
+                            SetState(CreatureState.Idle);
+                        }
                     }
-                }
-                else
-                {
-                    if (playerDistance > config.aggressiveDetectionRadius * 1.5f)
-                        SetState(CreatureState.Idle);
+                    // If targeting player but not in bull rush, go back to idle
+                    // (This shouldn't happen with new logic, but safety check)
+                    else if (!config.useBullRush)
+                    {
+                        if (!playerDetected || playerDistance > config.aggressiveDetectionRadius * 1.5f)
+                        {
+                            SetState(CreatureState.Idle);
+                        }
+                    }
                 }
                 break;
         }
@@ -876,8 +929,6 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null || config == null) return;
 
-
-
         // Determine target (player has priority if inside aggressivePlayerPriorityRadius).
         Transform target = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
 
@@ -889,27 +940,315 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (target == null) return;
 
+        // Check if hunting target died
         if (chaseTargetTransform != null)
         {
             if (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
             {
                 chaseTargetTransform = null;
+                EndBullRush();
                 SetState(CreatureState.Idle);
                 currentSpeed = 0f;
                 return;
             }
         }
 
-
-
         bool huntingCreature = (target != playerTransform);
 
+        // ========== BULL RUSH MECHANIC ==========
+        if (config.useBullRush && !huntingCreature)
+        {
+            UpdateBullRush(dt, target);
+        }
+        else
+        {
+            // Standard charging behavior (for hunting creatures or if bull rush disabled)
+            UpdateStandardCharging(dt, target, huntingCreature);
+        }
+    }
+
+    /// <summary>
+    /// Bull rush mechanic: Charge up -> Rush in locked direction -> Return to Idle
+    /// NO chasing - only bull rush attacks against the player.
+    /// </summary>
+    protected virtual void UpdateBullRush(float dt, Transform target)
+    {
+        // ===== PHASE 1: CHARGE UP (wind up, rotate toward target, don't move) =====
+        if (!isBullRushActive && !isBullRushCharging && bullRushCooldownTimer <= 0f)
+        {
+            // Start charging up
+            isBullRushCharging = true;
+            bullRushChargeTimer = 0f;
+            currentSpeed = 0f;
+            Debug.Log("[TrackCreature] Bull rush CHARGE UP started!");
+        }
+
+        if (isBullRushCharging)
+        {
+            bullRushChargeTimer += dt;
+            currentSpeed = 0f; // Stay completely still during charge up
+
+            // Keep rotating toward target during charge up
+            Vector3 toTarget = target.position - transform.position;
+            toTarget.y = 0f;
+
+            if (toTarget.sqrMagnitude > 0.01f)
+            {
+                bullRushDirection = toTarget.normalized;
+            }
+
+            // Check if charge up complete
+            if (bullRushChargeTimer >= config.bullRushChargeUpDuration)
+            {
+                // Lock in the rush direction and start rushing
+                isBullRushCharging = false;
+                isBullRushActive = true;
+                bullRushActiveTimer = 0f;
+                bullRushStartDistance = currentDistanceAlongTrack;
+                bullRushTargetDistance = spawner.GetDistanceAlongPath(target.position);
+
+                // Lock the direction at the moment of release
+                Vector3 toTargetFinal = target.position - transform.position;
+                toTargetFinal.y = 0f;
+                if (toTargetFinal.sqrMagnitude > 0.01f)
+                {
+                    bullRushDirection = toTargetFinal.normalized;
+                }
+
+                Debug.Log("[TrackCreature] Bull rush LAUNCHED!");
+            }
+
+            return; // Don't move during charge up
+        }
+
+        // ===== PHASE 2: ACTIVE RUSH (move fast in locked direction with slight steering) =====
+        if (isBullRushActive)
+        {
+            bullRushActiveTimer += dt;
+
+            // Rush speed
+            float rushSpeed = config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier;
+            currentSpeed = rushSpeed;
+
+            // Allow SLIGHT steering toward target (the "bend")
+            Vector3 toTargetNow = target.position - transform.position;
+            toTargetNow.y = 0f;
+
+            if (toTargetNow.sqrMagnitude > 0.01f)
+            {
+                Vector3 desiredDir = toTargetNow.normalized;
+
+                // Calculate max rotation this frame based on steer rate
+                float maxAngleThisFrame = config.bullRushMaxSteerRate * dt;
+
+                // Smoothly rotate rush direction toward target (limited steering)
+                float angleBetween = Vector3.SignedAngle(bullRushDirection, desiredDir, Vector3.up);
+                float steerAngle = Mathf.Clamp(angleBetween, -maxAngleThisFrame, maxAngleThisFrame);
+
+                bullRushDirection = Quaternion.Euler(0f, steerAngle, 0f) * bullRushDirection;
+                bullRushDirection.Normalize();
+            }
+
+            // Move in rush direction
+            float moveStep = currentSpeed * dt;
+
+            // Convert world direction to track movement
+            spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+
+            Vector3 flatForward = pathForward;
+            flatForward.y = 0f;
+            if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+            flatForward.Normalize();
+
+            Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+            // Project rush direction onto track axes
+            float forwardComponent = Vector3.Dot(bullRushDirection, flatForward);
+            float lateralComponent = Vector3.Dot(bullRushDirection, right);
+
+            // Update track position
+            currentDistanceAlongTrack += forwardComponent * moveStep;
+            float totalLength = spawner.GetTotalLength();
+            currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
+
+            // Update lateral position
+            float maxOffTrack = Mathf.Max(0f, config.aggressiveMaxOffTrackDistance);
+            float halfWidth = GetRoadHalfWidth();
+            float maxLateral = halfWidth + maxOffTrack;
+
+            targetLateralOffset += lateralComponent * moveStep;
+            targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+            currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, moveStep * 1.5f);
+
+            // ===== CHECK END CONDITIONS =====
+            bool rushTimedOut = bullRushActiveTimer >= config.bullRushDuration;
+
+            // Check if we've overshot the target
+            float distTraveled = Mathf.Abs(currentDistanceAlongTrack - bullRushStartDistance);
+            float distToOriginalTarget = Mathf.Abs(bullRushTargetDistance - bullRushStartDistance);
+            bool overshot = distTraveled > (distToOriginalTarget + config.bullRushOvershootDistance);
+
+
+            if (rushTimedOut || overshot)
+            {
+                Debug.Log($"[TrackCreature] Bull rush ENDED. Timeout={rushTimedOut}, Overshot={overshot}");
+                EndBullRush();
+
+                // GO BACK TO IDLE - no chasing!
+                SetState(CreatureState.Idle);
+            }
+
+            return;
+        }
+
+        // ===== PHASE 3: COOLDOWN - STAY IDLE, NO MOVEMENT =====
+        // During cooldown, creature stays still (handled by Idle state)
+        // This phase only exists if we're somehow still in Charging state during cooldown
+        if (bullRushCooldownTimer > 0f)
+        {
+            currentSpeed = 0f; // Stay still during cooldown
+            // Don't chase - just wait
+        }
+    }
+
+    /// <summary>
+    /// End the bull rush and start cooldown.
+    /// </summary>
+    protected void EndBullRush()
+    {
+        isBullRushCharging = false;
+        isBullRushActive = false;
+        bullRushChargeTimer = 0f;
+        bullRushActiveTimer = 0f;
+        bullRushCooldownTimer = config.bullRushCooldown;
+        currentSpeed = 0f;
+    }
+
+    /// <summary>
+    /// Creates and configures the LineRenderer for bull rush telegraph.
+    /// </summary>
+    protected void SetupBullRushLineRenderer()
+    {
+        if (bullRushLineRenderer != null) return; // Already setup
+        if (config == null || !config.bullRushShowTelegraph) return;
+
+        // Create a child GameObject for the line
+        var lineObj = new GameObject("BullRushTelegraph");
+        lineObj.transform.SetParent(transform);
+        lineObj.transform.localPosition = Vector3.zero;
+        lineObj.transform.localRotation = Quaternion.identity;
+
+        bullRushLineRenderer = lineObj.AddComponent<LineRenderer>();
+        bullRushLineRenderer.useWorldSpace = true;
+        bullRushLineRenderer.positionCount = 2;
+        bullRushLineRenderer.startWidth = config.bullRushLineWidth;
+        bullRushLineRenderer.endWidth = config.bullRushLineWidth * 0.5f; // Taper at end
+
+        // Create a simple material
+        bullRushLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        bullRushLineRenderer.material.color = config.bullRushLineColorCharging;
+
+        // Start hidden
+        bullRushLineRenderer.enabled = false;
+        bullRushLineAlpha = 0f;
+    }
+
+    /// <summary>
+    /// Updates the bull rush telegraph line position and appearance.
+    /// </summary>
+    protected void UpdateBullRushTelegraph(float dt)
+    {
+        if (config == null || !config.bullRushShowTelegraph) return;
+        if (bullRushLineRenderer == null)
+        {
+            SetupBullRushLineRenderer();
+            if (bullRushLineRenderer == null) return;
+        }
+
+        bool shouldShow = isBullRushCharging || isBullRushActive;
+
+        if (shouldShow)
+        {
+            bullRushLineFadingOut = false;
+
+            // Fade in
+            bullRushLineAlpha = Mathf.MoveTowards(bullRushLineAlpha, 1f, dt * 5f);
+
+            // Enable the line
+            bullRushLineRenderer.enabled = true;
+
+            // Calculate line positions
+            Vector3 startPos = transform.position;
+            startPos.y += config.bullRushLineYOffset;
+
+            // Direction: use bullRushDirection if available, otherwise forward
+            Vector3 lineDir = bullRushDirection;
+            if (lineDir.sqrMagnitude < 0.01f)
+            {
+                lineDir = transform.forward;
+            }
+            lineDir.y = 0f;
+            lineDir.Normalize();
+
+            Vector3 endPos = startPos + lineDir * config.bullRushLineLength;
+            endPos.y = startPos.y; // Keep same height
+
+            // Set positions
+            bullRushLineRenderer.SetPosition(0, startPos);
+            bullRushLineRenderer.SetPosition(1, endPos);
+
+            // Set color based on phase
+            Color lineColor = isBullRushActive ? config.bullRushLineColorRushing : config.bullRushLineColorCharging;
+            lineColor.a *= bullRushLineAlpha;
+
+            bullRushLineRenderer.startColor = lineColor;
+            bullRushLineRenderer.endColor = new Color(lineColor.r, lineColor.g, lineColor.b, lineColor.a * 0.3f); // Fade at end
+        }
+        else if (bullRushLineAlpha > 0f || bullRushLineFadingOut)
+        {
+            // Fade out
+            bullRushLineFadingOut = true;
+            float fadeSpeed = config.bullRushLineFadeOutTime > 0f ? (1f / config.bullRushLineFadeOutTime) : 10f;
+            bullRushLineAlpha = Mathf.MoveTowards(bullRushLineAlpha, 0f, dt * fadeSpeed);
+
+            if (bullRushLineAlpha <= 0f)
+            {
+                bullRushLineRenderer.enabled = false;
+                bullRushLineFadingOut = false;
+            }
+            else
+            {
+                // Update alpha during fade
+                Color lineColor = bullRushLineRenderer.startColor;
+                lineColor.a = config.bullRushLineColorCharging.a * bullRushLineAlpha;
+                bullRushLineRenderer.startColor = lineColor;
+                bullRushLineRenderer.endColor = new Color(lineColor.r, lineColor.g, lineColor.b, lineColor.a * 0.3f);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Immediately hides the bull rush telegraph line.
+    /// </summary>
+    protected void HideBullRushTelegraph()
+    {
+        if (bullRushLineRenderer != null)
+        {
+            bullRushLineRenderer.enabled = false;
+            bullRushLineAlpha = 0f;
+            bullRushLineFadingOut = false;
+        }
+    }
+
+    /// <summary>
+    /// Standard charging behavior (used when bull rush is disabled or for hunting creatures).
+    /// </summary>
+    protected virtual void UpdateStandardCharging(float dt, Transform target, bool huntingCreature)
+    {
         float speedMult = huntingCreature ? Mathf.Max(0.01f, config.aggressiveHuntSpeedMultiplier) : 1f;
         currentSpeed = Mathf.Max(0f, config.aggressiveChargeSpeed) * speedMult;
 
-        // -------- FIX: move in "track space" toward the target's distance-along-track --------
-        // The old dot-product weighting could go ~0 when the target was mostly lateral, causing the
-        // big creature to rotate toward the player but barely move.
+        // Move in "track space" toward the target's distance-along-track
         float targetDistAlong = spawner.GetDistanceAlongPath(target.position);
 
         float moveStep = currentSpeed * dt;
@@ -933,7 +1272,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         desiredLateral = Mathf.Clamp(desiredLateral, -maxLateral, maxLateral);
 
-        // Smooth lateral steering so it feels like "chasing" instead of teleporting.
+        // Smooth lateral steering
         float lateralStep = moveStep * 1.5f;
         targetLateralOffset = Mathf.MoveTowards(targetLateralOffset, desiredLateral, lateralStep);
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, lateralStep);
@@ -978,8 +1317,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         float step = moveSpeed * dt;
 
-        // Layer avoidance (steer moveDir so we don't run into / path through certain layers)
-        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f)
+        bool skipAvoidance = isBullRushActive || isBullRushCharging;
+
+        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidance)
         {
             moveDir = ApplyAvoidanceToMoveDir(moveDir, step, flatForward, right);
         }
@@ -1508,44 +1848,129 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
             CausePlayerCrash(playerCollider);
+            HideBullRushTelegraph(); 
         }
 
-        // NEW: comic popup for running them over
+        // Comic popup for running them over
         SpawnRunOverPopup();
 
         // ALL creatures die and give rewards when hit
         Die();
+
+        // Handle special despawn for aggressive creatures
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.despawnAfterHit)
+        {
+            CancelInvoke();
+            StopAllCoroutines();
+            Destroy(gameObject, config.despawnDelay);
+        }
     }
 
 
 
 
     /// <summary>
-    /// Causes the player to crash via code (not physics).
-    /// Uses ApplyExternalCrashDamage so all crash FX/penalties apply.
+    /// Causes the player to crash with knockback.
+    /// Impact is amplified if this occurs during a bull rush.
     /// </summary>
     protected virtual void CausePlayerCrash(Collider playerCollider)
     {
-        // Try to find CarController and trigger crash
         var carController = playerCollider.GetComponentInParent<CarController>();
-        if (carController != null)
+        if (carController == null) return;
+
+        Rigidbody carRb = carController.GetComponent<Rigidbody>();
+
+        // Determine if this is a bull rush hit
+        bool isBullRushHit = isBullRushActive && config.useBullRush;
+        float impactMultiplier = isBullRushHit ? Mathf.Max(1f, config.bullRushImpactMultiplier) : 1f;
+
+        // Calculate hit direction
+        Vector3 hitDirection;
+        if (isBullRushHit && bullRushDirection.sqrMagnitude > 0.01f)
         {
-            // Calculate hit direction from creature to car
-            Vector3 hitDirection = (carController.transform.position - transform.position).normalized;
+            // Use the bull rush direction (the way we were charging)
+            hitDirection = bullRushDirection;
+        }
+        else
+        {
+            // Use direction from creature to car
+            hitDirection = (carController.transform.position - transform.position).normalized;
+        }
+        hitDirection.y = 0f;
+        hitDirection.Normalize();
 
-            // Use the car's current speed as impact speed, or a minimum
-            Rigidbody carRb = carController.GetComponent<Rigidbody>();
-            float impactSpeed = carRb != null ? carRb.velocity.magnitude : 10f;
-            impactSpeed = Mathf.Max(impactSpeed, 8f); // Minimum impact for creature attacks
+        // Calculate impact speed
+        float baseImpactSpeed = isBullRushHit
+            ? config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier
+            : config.aggressiveChargeSpeed;
+        float impactSpeed = Mathf.Max(baseImpactSpeed, 8f);
 
-            // Contact point is the creature's position
-            Vector3 contactPoint = transform.position;
+        // Contact point is the creature's position
+        Vector3 contactPoint = transform.position;
 
-            // Severity based on config (0-1)
-            float severity = Mathf.Clamp01(config.aggressiveImpactDamage);
+        // Severity scales with multiplier for bull rush
+        float severity = Mathf.Clamp01(config.impactCrashSeverity * impactMultiplier);
 
-            // Call the proper crash method - this handles all FX, damage, etc.
-            carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+        // Trigger the crash (handles FX, damage, recovery state, etc.)
+        carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+
+        // Apply additional knockback force for impact feel
+        if (carRb != null)
+        {
+            ApplyImpactKnockback(carRb, hitDirection, impactMultiplier);
+        }
+
+        // Handle despawn
+        if (config.despawnAfterHit)
+        {
+            // Stop movement
+            if (isBullRushHit) EndBullRush();
+            currentSpeed = 0f;
+        }
+
+        if (isBullRushHit)
+        {
+            Debug.Log($"[TrackCreature] Bull rush HIT! Multiplier={impactMultiplier:F1}x, Severity={severity:F2}");
+        }
+    }
+
+    /// <summary>
+    /// Applies physics knockback to the car.
+    /// </summary>
+    protected virtual void ApplyImpactKnockback(Rigidbody carRb, Vector3 hitDirection, float multiplier)
+    {
+        if (carRb == null || config == null) return;
+
+        // Calculate knockback with multiplier
+        float knockbackForce = config.impactKnockbackForce * multiplier;
+        float lift = config.impactLift * multiplier;
+        float torque = config.impactTorque * multiplier;
+
+        // Build force direction with lift
+        Vector3 forceDir = hitDirection;
+        if (knockbackForce > 0.01f)
+        {
+            forceDir = hitDirection + Vector3.up * (lift / Mathf.Max(1f, knockbackForce));
+            forceDir.Normalize();
+        }
+
+        // Apply knockback impulse
+        if (knockbackForce > 0f)
+        {
+            carRb.AddForce(forceDir * knockbackForce, ForceMode.VelocityChange);
+        }
+
+        // Apply spin torque
+        if (torque > 0f)
+        {
+            Vector3 toCarLocal = carRb.transform.InverseTransformDirection(hitDirection);
+            float sideSign = Mathf.Sign(toCarLocal.x);
+            if (Mathf.Abs(sideSign) < 0.1f)
+            {
+                sideSign = Random.value > 0.5f ? 1f : -1f;
+            }
+
+            carRb.AddTorque(Vector3.up * torque * sideSign, ForceMode.VelocityChange);
         }
     }
 
@@ -1562,6 +1987,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected virtual void OnDeath()
     {
+
+        HideBullRushTelegraph();
+
         Vector3 effectPos = coinSpawnPoint != null ? coinSpawnPoint.position : transform.position;
 
         // Play appropriate death sound based on kill source
@@ -1592,8 +2020,10 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             spawner.RemoveCreature(gameObject);
         }
 
-        // Destroy after a short delay (allows death animation/effects)
-        Destroy(gameObject, 0.5f);
+        if (!IsInvoking() && gameObject != null)
+        {
+            Destroy(gameObject, 0.5f);
+        }
     }
 
     /// <summary>

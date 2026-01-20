@@ -508,6 +508,7 @@
 "Assets/Scripts/XPCollectorRegistry.cs"
 "Assets/Scripts/XPFormula.cs"
 "Assets/Scripts/XPNumberStyleSO.cs"
+"Assets/SkillTreeVirtualCursor.cs"
 "Assets/TerrainDetailGrassPainter.cs"
 "Assets/TextMesh Pro/Examples & Extras/Scripts/Benchmark01.cs"
 "Assets/TextMesh Pro/Examples & Extras/Scripts/Benchmark01_UGUI.cs"

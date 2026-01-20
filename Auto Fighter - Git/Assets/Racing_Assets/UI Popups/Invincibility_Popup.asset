@@ -16,7 +16,7 @@ MonoBehaviour:
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 0}
-  baseFontSize: 10
+  baseFontSize: 8
   textColor: {r: 0.8207547, g: 0.8207547, b: 0.8207547, a: 1}
   prefix: 
   suffix: 

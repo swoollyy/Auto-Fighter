@@ -1,7 +1,7 @@
 # All Scripts Bundle
-- Generated: 2026-01-16T21:53:55.2697805Z (UTC)
+- Generated: 2026-01-17T21:50:09.8247635Z (UTC)
 - Unity: 2022.3.62f2
-- Files: 218
+- Files: 219
 
 ## Assets/BumperAnimScript.cs
 
@@ -4256,6 +4256,77 @@ public class CarController : MonoBehaviour
     private float coastDampingPerSecond = 2.0f;
 
 
+    [Header("Flip Recovery (Mash) - Input")]
+    [SerializeField, Tooltip("If true, each mash recovery chooses a random controller face button (0-3).")]
+    private bool randomizeMashFaceButton = true;
+
+    [SerializeField, Tooltip("If true, Space will still work for mash in Editor (in addition to the chosen face button).")]
+    private bool allowSpaceMashInEditor = true;
+
+    // 0..3 => Unity: JoystickButton0..3
+    // (PS) 0=Cross(✕) 1=Circle(◯) 2=Square(□) 3=Triangle(△)
+    private int _mashFaceButtonIndex = 0;
+
+    public int MashFaceButtonIndex => _mashFaceButtonIndex;
+
+    private static readonly KeyCode[] PS_FACE_KEYS =
+    {
+    KeyCode.JoystickButton1, // Cross (X)
+    KeyCode.JoystickButton2, // Circle
+    KeyCode.JoystickButton0, // Square
+    KeyCode.JoystickButton3  // Triangle
+};
+
+    public KeyCode MashFaceButtonKey
+        => PS_FACE_KEYS[Mathf.Clamp(_mashFaceButtonIndex, 0, 3)];
+
+    public enum FaceButton { Cross, Circle, Square, Triangle }
+
+    [Header("Mash Input Mapping (Set these to match your controller backend)")]
+    private KeyCode psCrossKey = KeyCode.JoystickButton1;    // your current X
+    private KeyCode psCircleKey = KeyCode.JoystickButton2;
+    private KeyCode psSquareKey = KeyCode.JoystickButton0;
+    private KeyCode psTriangleKey = KeyCode.JoystickButton3;
+
+    private FaceButton _requiredMashButton = FaceButton.Cross;
+
+    public FaceButton RequiredMashButton => _requiredMashButton;
+
+    public KeyCode MashRequiredKey
+    {
+        get
+        {
+            return _requiredMashButton switch
+            {
+                FaceButton.Cross => psCrossKey,
+                FaceButton.Circle => psCircleKey,
+                FaceButton.Square => psSquareKey,
+                FaceButton.Triangle => psTriangleKey,
+                _ => psCrossKey
+            };
+        }
+    }
+
+    private static readonly string[] PS_FACE_SYMBOLS = { "✕", "◯", "□", "△" };
+
+    public string MashSymbolPS
+        => PS_FACE_SYMBOLS[Mathf.Clamp(_mashFaceButtonIndex, 0, 3)];
+
+    public string MashSymbolXbox
+    {
+        get
+        {
+            return _requiredMashButton switch
+            {
+                FaceButton.Cross => "A",
+                FaceButton.Circle => "B",
+                FaceButton.Square => "X",
+                FaceButton.Triangle => "Y",
+                _ => "A"
+            };
+        }
+    }
+
     [Header("Flip Mash Rewards")]
     [SerializeField, Tooltip("Base fuel recovered per click.")]
     private float mashBaseFuelPerClick = 0.3f;
@@ -4326,6 +4397,7 @@ public class CarController : MonoBehaviour
 
     [Header("Drift (Arcade)")]
     [SerializeField] private KeyCode driftKey = KeyCode.LeftShift;
+    private KeyCode driftButtonController = KeyCode.JoystickButton2;
     [SerializeField] private float driftMinSpeed = 5f;
     [SerializeField] private float maxDriftSteerMultiplier = 2.5f;
     [SerializeField] private float driftBuildRate = 1.8f;
@@ -4649,6 +4721,7 @@ public class CarController : MonoBehaviour
 
     [Header("Boost")]
     [SerializeField] private KeyCode boostKey = KeyCode.Space;
+    private KeyCode boostButtonController = KeyCode.JoystickButton1; // X on PS5
     [SerializeField] private float boostForce = 50f;
     [SerializeField] private float boostSustainAcceleration = 0f;
     [SerializeField] private float boostDuration = 1.2f;
@@ -5440,7 +5513,7 @@ public class CarController : MonoBehaviour
 
         HandleInput();
 
-        if (Input.GetKeyDown(boostKey) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
+        if ((Input.GetKeyDown(boostKey) || Input.GetKeyDown(boostButtonController)) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
             _boostRequested = true;
 
         if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
@@ -6386,7 +6459,7 @@ public class CarController : MonoBehaviour
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
-        driftButtonHeld = Input.GetKey(driftKey);
+        driftButtonHeld = Input.GetKey(driftKey) || Input.GetKey(driftButtonController);
         bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
 
         // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
@@ -7046,8 +7119,20 @@ public class CarController : MonoBehaviour
         if (rb == null) return;
 
         Vector3 forward = transform.forward;
+
+        // Keyboard input
         bool forwardKey = Input.GetKey(KeyCode.W);
         bool reverseKey = Input.GetKey(KeyCode.S);
+
+        // Controller triggers: PS5/PS4 uses axes 4 (RT) and 5 (LT) typically
+        // Note: Triggers often rest at -1 and go to +1 when fully pressed
+        // Some setups have them at 0 to 1. We check both patterns.
+        float rightTrigger = Input.GetAxisRaw("RightTrigger");   // RT - Accelerate
+        float leftTrigger = Input.GetAxisRaw("LeftTrigger");     // LT - Brake/Reverse
+
+        // Apply trigger input (threshold to avoid drift)
+        if (rightTrigger > 0.1f) forwardKey = true;
+        if (leftTrigger > 0.1f) reverseKey = true;
 
         if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame)
         {
@@ -8273,6 +8358,25 @@ public class CarController : MonoBehaviour
         return Mathf.Abs(pitch) > 1.0f || Mathf.Abs(roll) > 1.0f;
     }
 
+    private void ChooseMashFaceButton()
+    {
+        if (!randomizeMashFaceButton)
+        {
+            _mashFaceButtonIndex = Mathf.Clamp(_mashFaceButtonIndex, 0, 3);
+            _requiredMashButton = (FaceButton)_mashFaceButtonIndex;
+            return;
+        }
+
+        int r = UnityEngine.Random.Range(0, 4);
+
+        // SINGLE SOURCE OF TRUTH for the UI
+        _mashFaceButtonIndex = r;
+
+        // Keep the "required" system in lockstep so input + UI can never disagree
+        _requiredMashButton = (FaceButton)r;
+    }
+
+
     // === BOOST PAD SCREEN FLASH ===
     private void CheckBoostFlash()
     {
@@ -9477,6 +9581,8 @@ public class CarController : MonoBehaviour
     {
         if (IsDeadForMashRecovery) return;
         if (!enableFlipRecoveryMash) return;
+
+        ChooseMashFaceButton();
 
         _mashGaugeValue = 0f;
         _mashGaugePeakValue = 0f;
@@ -11998,7 +12104,6 @@ public class CreatureTypeConfig
     [Tooltip("How far off-road the scared creature can run.")]
     [Min(0f)] public float scaredMaxOffRoadDistance = 3f;
 
-
     [Header("Scared - Idle Bug Movement (Before Detection)")]
     [Tooltip("If true, scared creatures use the same low-energy 'bug idle' movement until the player is within scaredDetectionRadius.")]
     public bool scaredIdleUseBugMovement = true;
@@ -12052,6 +12157,7 @@ public class CreatureTypeConfig
 
     [Tooltip("Speed multiplier applied when hunting scared creatures.")]
     [Min(0f)] public float aggressiveHuntSpeedMultiplier = 1.35f;
+
     [Header("Behavior Tuning - Aggressive")]
     [Tooltip("Detection radius for the aggressive creature to spot the player.")]
     [Min(0f)] public float aggressiveDetectionRadius = 25f;
@@ -12062,14 +12168,77 @@ public class CreatureTypeConfig
     [Tooltip("How far off-track the aggressive creature can go to intercept.")]
     [Min(0f)] public float aggressiveMaxOffTrackDistance = 4f;
 
-    [Tooltip("Crash severity caused on collision (0-1).")]
-    [Range(0f, 1f)] public float aggressiveImpactDamage = 0.5f;
-
     [Header("Crush Interaction")]
     [Tooltip("Aggressive (big) creature only dies to obstacles with Rigidbody mass >= this threshold (Passive + Scared always die).")]
     [Min(0f)] public float aggressiveCrushMassThreshold = 80f;
-}
 
+    [Header("Aggressive - Bull Rush")]
+    [Tooltip("If true, the aggressive creature will charge up before rushing in a straight line toward the player.")]
+    public bool useBullRush = true;
+
+    [Tooltip("Duration in seconds the creature pauses to 'wind up' before charging.")]
+    [Min(0f)] public float bullRushChargeUpDuration = 0.8f;
+
+    [Tooltip("Speed multiplier during the bull rush (applied on top of aggressiveChargeSpeed).")]
+    [Min(0.1f)] public float bullRushSpeedMultiplier = 1.5f;
+
+    [Tooltip("How long the bull rush lasts before the creature can re-target (seconds).")]
+    [Min(0.1f)] public float bullRushDuration = 1.5f;
+
+    [Tooltip("Maximum lateral steering rate during bull rush (degrees per second). Lower = straighter line.")]
+    [Min(0f)] public float bullRushMaxSteerRate = 15f;
+
+    [Tooltip("If the creature misses and travels this far past the target, end the rush early.")]
+    [Min(1f)] public float bullRushOvershootDistance = 8f;
+
+    [Tooltip("Cooldown after a bull rush before the creature can start another one.")]
+    [Min(0f)] public float bullRushCooldown = 1.0f;
+
+    [Header("Aggressive - Bull Rush Telegraph (Line Renderer)")]
+    [Tooltip("If true, draws a line showing the bull rush path during charge-up.")]
+    public bool bullRushShowTelegraph = true;
+
+    [Tooltip("Width of the telegraph line.")]
+    [Min(0.01f)] public float bullRushLineWidth = 0.2f;
+
+    [Tooltip("How far ahead the line extends from the creature.")]
+    [Min(1f)] public float bullRushLineLength = 25f;
+
+    [Tooltip("Height offset for the line above the ground.")]
+    public float bullRushLineYOffset = 0.1f;
+
+    [Tooltip("Color of the telegraph line during charge-up.")]
+    public Color bullRushLineColorCharging = new Color(1f, 0.3f, 0f, 0.7f); // Orange
+
+    [Tooltip("Color of the telegraph line during active rush.")]
+    public Color bullRushLineColorRushing = new Color(1f, 0f, 0f, 0.9f); // Red
+
+    [Tooltip("Fade out duration when rush ends.")]
+    [Min(0f)] public float bullRushLineFadeOutTime = 0.2f;
+
+    [Header("Aggressive - Impact (Crash Settings)")]
+    [Tooltip("Crash severity when hitting the player (0-1). Higher = longer recovery, more damage.")]
+    [Range(0f, 1f)] public float impactCrashSeverity = 0.5f;
+
+    [Tooltip("Additional impulse force applied to the car on hit (VelocityChange mode). Set higher for bull rush feel.")]
+    [Min(0f)] public float impactKnockbackForce = 12f;
+
+    [Tooltip("Upward force component added to the impact (gives the car a bump).")]
+    [Min(0f)] public float impactLift = 3f;
+
+    [Tooltip("Torque applied to spin the car on impact.")]
+    [Min(0f)] public float impactTorque = 6f;
+
+    [Tooltip("Multiplier applied to all impact values when the hit occurs during a bull rush.")]
+    [Min(1f)] public float bullRushImpactMultiplier = 1.5f;
+
+    [Tooltip("If true, the creature despawns after successfully hitting the player.")]
+    public bool despawnAfterHit = true;
+
+    [Tooltip("Delay before despawning after hitting the player (allows death FX to play).")]
+    [Min(0f)] public float despawnDelay = 0.3f;
+
+}
 ```
 
 ## Assets/Racing_Assets/Racing_Scripts/CrossObstacleDirector.cs
@@ -14203,7 +14372,13 @@ public class GameManager_Racing : MonoBehaviour
     // Optional curve to scale effect based on severity (x=0–1 severity, y=0–1 strength)
     [SerializeField] private AnimationCurve crashSlowMoCurve = AnimationCurve.Linear(0, 0.4f, 1, 1f);
 
+    private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
 
+
+    [SerializeField, Min(0.05f)]
+    private float xHoldSeconds = 0.35f; // tap vs hold threshold (realtime)
+
+    private float _xDownRealtime = -1f;
 
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
@@ -14400,18 +14575,26 @@ public class GameManager_Racing : MonoBehaviour
         if (carController == null)
             return;
 
-            Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
+        Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
 
-        if (_finalizePending && Input.GetKeyDown(KeyCode.R))
+        if (_finalizePending && !carController.IsFlipMashActive)
         {
-            if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
-            _finalizeRunCR = null;
-            _finalizePending = false;
+            bool restartPressed =
+                Input.GetKeyDown(KeyCode.R) ||                 // keep R always
+                (RestartAllowedNow() && Input.GetKeyDown(PAD_X)); // gate X until slowmo ends
 
-            TryPlayDepositSoundOnReset();
-            RestartRun();
-            return;
+            if (restartPressed)
+            {
+                if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+                _finalizeRunCR = null;
+                _finalizePending = false;
+
+                TryPlayDepositSoundOnReset();
+                RestartRun();
+                return;
+            }
         }
+
 
 
         // Finalize run only when out of fuel AND forward/overall speed is tiny
@@ -14474,23 +14657,33 @@ public class GameManager_Racing : MonoBehaviour
             }
         }
 
-        // Replace previous Restart-on-R behaviour with "Return to Skill Tree" by default.
-        // Holding Ctrl or Shift + R still forces a full scene restart for convenience.
-        if (runEnded && Input.GetKeyDown(KeyCode.R))
+        if (runEnded && !carController.IsFlipMashActive)
         {
-            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
-                Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            bool restartPressed =
+                Input.GetKeyDown(KeyCode.R) ||
+                (RestartAllowedNow() && Input.GetKeyDown(PAD_X));
+
+            if (restartPressed)
             {
-                // explicit restart (legacy behavior when modifier held)
-                RestartRun();
-            }
-            else
-            {
-                // Default: play deposit sound if needed, then restart the run (scene reload) so everything is reset.
                 TryPlayDepositSoundOnReset();
                 RestartRun();
+                return;
             }
         }
+    }
+
+    private bool XDown() => Input.GetKeyDown(PAD_X);
+    private bool XHeld() => Input.GetKey(PAD_X);
+    private bool XUp() => Input.GetKeyUp(PAD_X);
+
+    private void TickXHoldTimer()
+    {
+        if (XDown())
+            _xDownRealtime = Time.realtimeSinceStartup;
+
+        // Safety: if something eats the up event, clear stale timer
+        if (!XHeld() && _xDownRealtime > 0f && !XUp())
+            _xDownRealtime = -1f;
     }
 
     // New helper: same gating logic used by ReturnToSkillTree for deposit audio, but callable before a scene restart.
@@ -15144,6 +15337,14 @@ public class GameManager_Racing : MonoBehaviour
         // Now hide the skill tree
         if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
 
+    }
+
+    private bool RestartAllowedNow()
+    {
+        // Only allow "Press X to continue" after all slowmo/pause owners are done.
+        return Time.timeScale >= 0.99f
+            && !TimeScaleHub.IsPaused
+            && !TimeScaleHub.IsAnyActive;
     }
 
     private IEnumerator CoHideLoadingNextFrame()
@@ -17623,6 +17824,7 @@ public class NPCTrafficCar : MonoBehaviour
 
 
 
+
     // ============================================
     // INTERNALS - Components
     // ============================================
@@ -17699,6 +17901,7 @@ public class NPCTrafficCar : MonoBehaviour
         _surfaceCheckTimer = 0f;
         _boostEndTime = 0f;
         _onBoostPad = false;
+
     }
 
     private void Start()
@@ -17774,10 +17977,10 @@ public class NPCTrafficCar : MonoBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
-        // A* has moved us - now do ground snap and rotation
+        // ============================================
+        // GROUND SNAP (Y only)
+        // ============================================
         Vector3 pos = transform.position;
-
-        // Ground snap (Y only - don't fight A* in XZ)
         if (RaycastGround(pos, out RaycastHit hit))
         {
             pos.y = hit.point.y + _pivotToBottom + groundClearance;
@@ -17785,47 +17988,39 @@ public class NPCTrafficCar : MonoBehaviour
             _groundNormal = hit.normal;
         }
 
-        // Compute velocity for crash physics
-        _lastVelocity = (transform.position - _prevPosition) / dt;
+        // ============================================
+        // VELOCITY CALCULATION (use A* velocity when available)
+        // ============================================
+        Vector3 currentVel = Vector3.zero;
+        if (_aiBase != null)
+        {
+            currentVel = _aiBase.velocity;
+        }
+        else
+        {
+            currentVel = (transform.position - _prevPosition) / dt;
+        }
         _prevPosition = transform.position;
 
-        // Smooth the velocity to prevent frantic direction changes
-        if (_smoothedVelocity.sqrMagnitude < 0.01f)
-            _smoothedVelocity = _lastVelocity;
-        else
-            _smoothedVelocity = Vector3.Lerp(_smoothedVelocity, _lastVelocity, dt / Mathf.Max(0.01f, velocitySmoothTime));
+        // Frame-rate independent exponential smoothing for velocity
+        float smoothFactor = 1f - Mathf.Exp(-dt / Mathf.Max(0.01f, velocitySmoothTime));
+        _smoothedVelocity = Vector3.Lerp(_smoothedVelocity, currentVel, smoothFactor);
+        _lastVelocity = currentVel;
 
+        // ============================================
+        // ROTATION - just face velocity direction
+        // ============================================
         if (rotateToVelocity)
         {
-            // Prefer A*'s velocity (more stable than position-delta when repathing)
-            Vector3 v = Vector3.zero;
+            Vector3 vel = _smoothedVelocity;
+            vel.y = 0f;
 
-            // RichAI inherits AIBase, which exposes velocity
-            if (_aiBase != null) v = _aiBase.velocity;
-            else v = (transform.position - _prevPosition) / dt; // fallback
-
-            v.y = 0f;
-
-            if (v.sqrMagnitude > (minSpeedForRotation * minSpeedForRotation))
+            if (vel.sqrMagnitude > minSpeedForRotation * minSpeedForRotation)
             {
-                Vector3 up = alignToGround ? _groundNormal : Vector3.up;
-                Vector3 fwd = Vector3.ProjectOnPlane(v.normalized, up);
-
-                if (fwd.sqrMagnitude > 0.0001f)
-                {
-                    Quaternion target = Quaternion.LookRotation(fwd, up);
-
-                    // HARD ASSURANCE OPTION:
-                    // If you truly want "always face velocity", snap:
-                    // transform.rotation = target;
-
-                    // Smooth option (recommended): still always aims at velocity, just not instant
-                    float t = 1f - Mathf.Exp(-rotationSpeed * dt);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, target, t);
-                }
+                Quaternion targetRot = Quaternion.LookRotation(vel.normalized, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * dt);
             }
         }
-
     }
 
     // ============================================
@@ -17923,11 +18118,11 @@ public class NPCTrafficCar : MonoBehaviour
             _richAI.rotationSpeed = 0f;
             _richAI.enableRotation = false;
 
-            ForceAstarFixedUpdate(_richAI);   // ✅ call on RichAI
+            ConfigureAstarUpdateMode(_richAI);
         }
         else if (_aiBase != null)
         {
-            ForceAstarFixedUpdate(_aiBase);   // ✅ fallback for AIPath, etc.
+            ConfigureAstarUpdateMode(_aiBase);
         }
         _defaultMaxSpeed = speed;
         _defaultRichAccel = _richAI.acceleration;
@@ -18339,7 +18534,7 @@ public class NPCTrafficCar : MonoBehaviour
         }
     }
 
-    private static void ForceAstarFixedUpdate(object aiObj)
+    private static void ConfigureAstarUpdateMode(object aiObj)
     {
         if (aiObj == null) return;
 
@@ -18347,7 +18542,8 @@ public class NPCTrafficCar : MonoBehaviour
         var p = t.GetProperty("updateMode"); // AIBase.updateMode
         if (p != null && p.CanWrite && p.PropertyType.IsEnum)
         {
-            try { p.SetValue(aiObj, Enum.Parse(p.PropertyType, "FixedUpdate", true)); }
+            // Use Update mode for smoother movement (not FixedUpdate)
+            try { p.SetValue(aiObj, Enum.Parse(p.PropertyType, "Update", true)); }
             catch { }
         }
     }
@@ -25921,6 +26117,20 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     // Aggressive hunting target (scared creature)
     protected Transform chaseTargetTransform;
+
+    protected bool isBullRushCharging = false;      // True during wind-up phase
+    protected bool isBullRushActive = false;        // True during the actual rush
+    protected float bullRushChargeTimer = 0f;       // Timer for charge-up phase
+    protected float bullRushActiveTimer = 0f;       // Timer for rush duration
+    protected float bullRushCooldownTimer = 0f;    // Cooldown between rushes
+    protected Vector3 bullRushDirection;            // Locked direction for the rush
+    protected float bullRushTargetDistance;         // Distance along track when rush started
+    protected float bullRushStartDistance;          // Our distance along track when rush started
+
+    protected LineRenderer bullRushLineRenderer;
+    protected float bullRushLineAlpha = 0f;
+    protected bool bullRushLineFadingOut = false;
+
     // Ground state
     protected bool isGrounded = true;
     protected Vector3 groundNormal = Vector3.up;
@@ -25946,6 +26156,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     public bool IsInitialized => isInitialized;
     public float DistanceAlongTrack => currentDistanceAlongTrack;
+
+    public bool IsBullRushActive => isBullRushActive;
+    public Vector3 BullRushDirection => bullRushDirection;
     #endregion
 
     #region Initialization
@@ -25988,6 +26201,11 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureBehaviorType.Aggressive:
                 SetState(CreatureState.Idle);
                 break;
+        }
+
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.useBullRush && config.bullRushShowTelegraph)
+        {
+            SetupBullRushLineRenderer();
         }
 
         isInitialized = true;
@@ -26112,8 +26330,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Update rotation
         UpdateRotation(dt);
 
-        // Update animation
         UpdateAnimation();
+
+        // Update bull rush telegraph line (for aggressive creatures)
+        if (behaviorType == CreatureBehaviorType.Aggressive && config != null && config.useBullRush)
+        {
+            UpdateBullRushTelegraph(dt);
+        }
     }
 
     /// <summary>
@@ -26230,6 +26453,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
 
             case CreatureState.Charging:
+                if (config != null && config.useBullRush)
+                {
+                    isBullRushCharging = false;
+                    isBullRushActive = false;
+                    bullRushChargeTimer = 0f;
+                    bullRushActiveTimer = 0f;
+                }
                 PlaySound(aggroSound);
                 break;
 
@@ -26336,36 +26566,47 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// Aggressive behavior: Idles until player is detected, then charges.
+    /// Aggressive behavior: Idles until player is detected, then does bull rush.
+    /// NO continuous chasing - only bull rush attacks.
     /// </summary>
     protected virtual void UpdateAggressiveBehavior(float dt)
     {
+        // Update bull rush cooldown (always ticks down)
+        if (bullRushCooldownTimer > 0f)
+            bullRushCooldownTimer -= dt;
+
         switch (currentState)
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
 
+                // Reset bull rush state when idle
+                isBullRushCharging = false;
+                isBullRushActive = false;
+                bullRushChargeTimer = 0f;
+                bullRushActiveTimer = 0f;
+
+                // Check if we should start a new bull rush (only if cooldown is done)
+                bool canStartNewRush = bullRushCooldownTimer <= 0f;
+
                 // Priority radius: if the player is inside this bubble, ALWAYS target the player.
                 bool playerIsClosePriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
+                bool playerInDetectionRange = playerDetected && playerDistance < config.aggressiveDetectionRadius;
 
-                if (playerIsClosePriority)
+                // Start charging at player (bull rush only)
+                if (canStartNewRush && config.useBullRush && (playerIsClosePriority || playerInDetectionRange))
                 {
-                    chaseTargetTransform = null; // force target = player
+                    chaseTargetTransform = null; // Target is player
                     SetState(CreatureState.Charging);
                 }
+                // Hunt scared creatures (standard tracking, not bull rush)
                 else if (config.aggressiveHuntScaredCreatures && chaseTargetTransform != null)
-
                 {
                     SetState(CreatureState.Charging);
                 }
-                else if (playerDetected && playerDistance < config.aggressiveDetectionRadius)
-                {
-                    SetState(CreatureState.Charging);
-                }
-
+                // Idle bug movement
                 else
                 {
-                    // Idle bug movement (gives the big creature life even when not chasing)
                     if (config.aggressiveIdleUseBugMovement)
                     {
                         if (currentState != CreatureState.Idle)
@@ -26390,22 +26631,30 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureState.Charging:
                 UpdateCharging(dt);
 
-                // Give up if target is gone / too far
-                bool hunting = chaseTargetTransform != null;
+                // For hunting creatures: give up if target is gone / too far
+                // (Bull rush handles its own exit conditions)
+                if (!isBullRushActive && !isBullRushCharging)
+                {
+                    bool hunting = chaseTargetTransform != null;
 
-                if (hunting)
-                {
-                    float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
-                    if (distToTarget > config.aggressiveHuntRadius * 1.25f)
+                    if (hunting)
                     {
-                        chaseTargetTransform = null;
-                        SetState(CreatureState.Idle);
+                        float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
+                        if (distToTarget > config.aggressiveHuntRadius * 1.25f)
+                        {
+                            chaseTargetTransform = null;
+                            SetState(CreatureState.Idle);
+                        }
                     }
-                }
-                else
-                {
-                    if (playerDistance > config.aggressiveDetectionRadius * 1.5f)
-                        SetState(CreatureState.Idle);
+                    // If targeting player but not in bull rush, go back to idle
+                    // (This shouldn't happen with new logic, but safety check)
+                    else if (!config.useBullRush)
+                    {
+                        if (!playerDetected || playerDistance > config.aggressiveDetectionRadius * 1.5f)
+                        {
+                            SetState(CreatureState.Idle);
+                        }
+                    }
                 }
                 break;
         }
@@ -26575,8 +26824,6 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null || config == null) return;
 
-
-
         // Determine target (player has priority if inside aggressivePlayerPriorityRadius).
         Transform target = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
 
@@ -26588,27 +26835,315 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (target == null) return;
 
+        // Check if hunting target died
         if (chaseTargetTransform != null)
         {
             if (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
             {
                 chaseTargetTransform = null;
+                EndBullRush();
                 SetState(CreatureState.Idle);
                 currentSpeed = 0f;
                 return;
             }
         }
 
-
-
         bool huntingCreature = (target != playerTransform);
 
+        // ========== BULL RUSH MECHANIC ==========
+        if (config.useBullRush && !huntingCreature)
+        {
+            UpdateBullRush(dt, target);
+        }
+        else
+        {
+            // Standard charging behavior (for hunting creatures or if bull rush disabled)
+            UpdateStandardCharging(dt, target, huntingCreature);
+        }
+    }
+
+    /// <summary>
+    /// Bull rush mechanic: Charge up -> Rush in locked direction -> Return to Idle
+    /// NO chasing - only bull rush attacks against the player.
+    /// </summary>
+    protected virtual void UpdateBullRush(float dt, Transform target)
+    {
+        // ===== PHASE 1: CHARGE UP (wind up, rotate toward target, don't move) =====
+        if (!isBullRushActive && !isBullRushCharging && bullRushCooldownTimer <= 0f)
+        {
+            // Start charging up
+            isBullRushCharging = true;
+            bullRushChargeTimer = 0f;
+            currentSpeed = 0f;
+            Debug.Log("[TrackCreature] Bull rush CHARGE UP started!");
+        }
+
+        if (isBullRushCharging)
+        {
+            bullRushChargeTimer += dt;
+            currentSpeed = 0f; // Stay completely still during charge up
+
+            // Keep rotating toward target during charge up
+            Vector3 toTarget = target.position - transform.position;
+            toTarget.y = 0f;
+
+            if (toTarget.sqrMagnitude > 0.01f)
+            {
+                bullRushDirection = toTarget.normalized;
+            }
+
+            // Check if charge up complete
+            if (bullRushChargeTimer >= config.bullRushChargeUpDuration)
+            {
+                // Lock in the rush direction and start rushing
+                isBullRushCharging = false;
+                isBullRushActive = true;
+                bullRushActiveTimer = 0f;
+                bullRushStartDistance = currentDistanceAlongTrack;
+                bullRushTargetDistance = spawner.GetDistanceAlongPath(target.position);
+
+                // Lock the direction at the moment of release
+                Vector3 toTargetFinal = target.position - transform.position;
+                toTargetFinal.y = 0f;
+                if (toTargetFinal.sqrMagnitude > 0.01f)
+                {
+                    bullRushDirection = toTargetFinal.normalized;
+                }
+
+                Debug.Log("[TrackCreature] Bull rush LAUNCHED!");
+            }
+
+            return; // Don't move during charge up
+        }
+
+        // ===== PHASE 2: ACTIVE RUSH (move fast in locked direction with slight steering) =====
+        if (isBullRushActive)
+        {
+            bullRushActiveTimer += dt;
+
+            // Rush speed
+            float rushSpeed = config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier;
+            currentSpeed = rushSpeed;
+
+            // Allow SLIGHT steering toward target (the "bend")
+            Vector3 toTargetNow = target.position - transform.position;
+            toTargetNow.y = 0f;
+
+            if (toTargetNow.sqrMagnitude > 0.01f)
+            {
+                Vector3 desiredDir = toTargetNow.normalized;
+
+                // Calculate max rotation this frame based on steer rate
+                float maxAngleThisFrame = config.bullRushMaxSteerRate * dt;
+
+                // Smoothly rotate rush direction toward target (limited steering)
+                float angleBetween = Vector3.SignedAngle(bullRushDirection, desiredDir, Vector3.up);
+                float steerAngle = Mathf.Clamp(angleBetween, -maxAngleThisFrame, maxAngleThisFrame);
+
+                bullRushDirection = Quaternion.Euler(0f, steerAngle, 0f) * bullRushDirection;
+                bullRushDirection.Normalize();
+            }
+
+            // Move in rush direction
+            float moveStep = currentSpeed * dt;
+
+            // Convert world direction to track movement
+            spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+
+            Vector3 flatForward = pathForward;
+            flatForward.y = 0f;
+            if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
+            flatForward.Normalize();
+
+            Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+            // Project rush direction onto track axes
+            float forwardComponent = Vector3.Dot(bullRushDirection, flatForward);
+            float lateralComponent = Vector3.Dot(bullRushDirection, right);
+
+            // Update track position
+            currentDistanceAlongTrack += forwardComponent * moveStep;
+            float totalLength = spawner.GetTotalLength();
+            currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
+
+            // Update lateral position
+            float maxOffTrack = Mathf.Max(0f, config.aggressiveMaxOffTrackDistance);
+            float halfWidth = GetRoadHalfWidth();
+            float maxLateral = halfWidth + maxOffTrack;
+
+            targetLateralOffset += lateralComponent * moveStep;
+            targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
+            currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, moveStep * 1.5f);
+
+            // ===== CHECK END CONDITIONS =====
+            bool rushTimedOut = bullRushActiveTimer >= config.bullRushDuration;
+
+            // Check if we've overshot the target
+            float distTraveled = Mathf.Abs(currentDistanceAlongTrack - bullRushStartDistance);
+            float distToOriginalTarget = Mathf.Abs(bullRushTargetDistance - bullRushStartDistance);
+            bool overshot = distTraveled > (distToOriginalTarget + config.bullRushOvershootDistance);
+
+
+            if (rushTimedOut || overshot)
+            {
+                Debug.Log($"[TrackCreature] Bull rush ENDED. Timeout={rushTimedOut}, Overshot={overshot}");
+                EndBullRush();
+
+                // GO BACK TO IDLE - no chasing!
+                SetState(CreatureState.Idle);
+            }
+
+            return;
+        }
+
+        // ===== PHASE 3: COOLDOWN - STAY IDLE, NO MOVEMENT =====
+        // During cooldown, creature stays still (handled by Idle state)
+        // This phase only exists if we're somehow still in Charging state during cooldown
+        if (bullRushCooldownTimer > 0f)
+        {
+            currentSpeed = 0f; // Stay still during cooldown
+            // Don't chase - just wait
+        }
+    }
+
+    /// <summary>
+    /// End the bull rush and start cooldown.
+    /// </summary>
+    protected void EndBullRush()
+    {
+        isBullRushCharging = false;
+        isBullRushActive = false;
+        bullRushChargeTimer = 0f;
+        bullRushActiveTimer = 0f;
+        bullRushCooldownTimer = config.bullRushCooldown;
+        currentSpeed = 0f;
+    }
+
+    /// <summary>
+    /// Creates and configures the LineRenderer for bull rush telegraph.
+    /// </summary>
+    protected void SetupBullRushLineRenderer()
+    {
+        if (bullRushLineRenderer != null) return; // Already setup
+        if (config == null || !config.bullRushShowTelegraph) return;
+
+        // Create a child GameObject for the line
+        var lineObj = new GameObject("BullRushTelegraph");
+        lineObj.transform.SetParent(transform);
+        lineObj.transform.localPosition = Vector3.zero;
+        lineObj.transform.localRotation = Quaternion.identity;
+
+        bullRushLineRenderer = lineObj.AddComponent<LineRenderer>();
+        bullRushLineRenderer.useWorldSpace = true;
+        bullRushLineRenderer.positionCount = 2;
+        bullRushLineRenderer.startWidth = config.bullRushLineWidth;
+        bullRushLineRenderer.endWidth = config.bullRushLineWidth * 0.5f; // Taper at end
+
+        // Create a simple material
+        bullRushLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        bullRushLineRenderer.material.color = config.bullRushLineColorCharging;
+
+        // Start hidden
+        bullRushLineRenderer.enabled = false;
+        bullRushLineAlpha = 0f;
+    }
+
+    /// <summary>
+    /// Updates the bull rush telegraph line position and appearance.
+    /// </summary>
+    protected void UpdateBullRushTelegraph(float dt)
+    {
+        if (config == null || !config.bullRushShowTelegraph) return;
+        if (bullRushLineRenderer == null)
+        {
+            SetupBullRushLineRenderer();
+            if (bullRushLineRenderer == null) return;
+        }
+
+        bool shouldShow = isBullRushCharging || isBullRushActive;
+
+        if (shouldShow)
+        {
+            bullRushLineFadingOut = false;
+
+            // Fade in
+            bullRushLineAlpha = Mathf.MoveTowards(bullRushLineAlpha, 1f, dt * 5f);
+
+            // Enable the line
+            bullRushLineRenderer.enabled = true;
+
+            // Calculate line positions
+            Vector3 startPos = transform.position;
+            startPos.y += config.bullRushLineYOffset;
+
+            // Direction: use bullRushDirection if available, otherwise forward
+            Vector3 lineDir = bullRushDirection;
+            if (lineDir.sqrMagnitude < 0.01f)
+            {
+                lineDir = transform.forward;
+            }
+            lineDir.y = 0f;
+            lineDir.Normalize();
+
+            Vector3 endPos = startPos + lineDir * config.bullRushLineLength;
+            endPos.y = startPos.y; // Keep same height
+
+            // Set positions
+            bullRushLineRenderer.SetPosition(0, startPos);
+            bullRushLineRenderer.SetPosition(1, endPos);
+
+            // Set color based on phase
+            Color lineColor = isBullRushActive ? config.bullRushLineColorRushing : config.bullRushLineColorCharging;
+            lineColor.a *= bullRushLineAlpha;
+
+            bullRushLineRenderer.startColor = lineColor;
+            bullRushLineRenderer.endColor = new Color(lineColor.r, lineColor.g, lineColor.b, lineColor.a * 0.3f); // Fade at end
+        }
+        else if (bullRushLineAlpha > 0f || bullRushLineFadingOut)
+        {
+            // Fade out
+            bullRushLineFadingOut = true;
+            float fadeSpeed = config.bullRushLineFadeOutTime > 0f ? (1f / config.bullRushLineFadeOutTime) : 10f;
+            bullRushLineAlpha = Mathf.MoveTowards(bullRushLineAlpha, 0f, dt * fadeSpeed);
+
+            if (bullRushLineAlpha <= 0f)
+            {
+                bullRushLineRenderer.enabled = false;
+                bullRushLineFadingOut = false;
+            }
+            else
+            {
+                // Update alpha during fade
+                Color lineColor = bullRushLineRenderer.startColor;
+                lineColor.a = config.bullRushLineColorCharging.a * bullRushLineAlpha;
+                bullRushLineRenderer.startColor = lineColor;
+                bullRushLineRenderer.endColor = new Color(lineColor.r, lineColor.g, lineColor.b, lineColor.a * 0.3f);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Immediately hides the bull rush telegraph line.
+    /// </summary>
+    protected void HideBullRushTelegraph()
+    {
+        if (bullRushLineRenderer != null)
+        {
+            bullRushLineRenderer.enabled = false;
+            bullRushLineAlpha = 0f;
+            bullRushLineFadingOut = false;
+        }
+    }
+
+    /// <summary>
+    /// Standard charging behavior (used when bull rush is disabled or for hunting creatures).
+    /// </summary>
+    protected virtual void UpdateStandardCharging(float dt, Transform target, bool huntingCreature)
+    {
         float speedMult = huntingCreature ? Mathf.Max(0.01f, config.aggressiveHuntSpeedMultiplier) : 1f;
         currentSpeed = Mathf.Max(0f, config.aggressiveChargeSpeed) * speedMult;
 
-        // -------- FIX: move in "track space" toward the target's distance-along-track --------
-        // The old dot-product weighting could go ~0 when the target was mostly lateral, causing the
-        // big creature to rotate toward the player but barely move.
+        // Move in "track space" toward the target's distance-along-track
         float targetDistAlong = spawner.GetDistanceAlongPath(target.position);
 
         float moveStep = currentSpeed * dt;
@@ -26632,7 +27167,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         desiredLateral = Mathf.Clamp(desiredLateral, -maxLateral, maxLateral);
 
-        // Smooth lateral steering so it feels like "chasing" instead of teleporting.
+        // Smooth lateral steering
         float lateralStep = moveStep * 1.5f;
         targetLateralOffset = Mathf.MoveTowards(targetLateralOffset, desiredLateral, lateralStep);
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, lateralStep);
@@ -26677,8 +27212,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         float step = moveSpeed * dt;
 
-        // Layer avoidance (steer moveDir so we don't run into / path through certain layers)
-        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f)
+        bool skipAvoidance = isBullRushActive || isBullRushCharging;
+
+        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidance)
         {
             moveDir = ApplyAvoidanceToMoveDir(moveDir, step, flatForward, right);
         }
@@ -27207,44 +27743,129 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
             CausePlayerCrash(playerCollider);
+            HideBullRushTelegraph(); 
         }
 
-        // NEW: comic popup for running them over
+        // Comic popup for running them over
         SpawnRunOverPopup();
 
         // ALL creatures die and give rewards when hit
         Die();
+
+        // Handle special despawn for aggressive creatures
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.despawnAfterHit)
+        {
+            CancelInvoke();
+            StopAllCoroutines();
+            Destroy(gameObject, config.despawnDelay);
+        }
     }
 
 
 
 
     /// <summary>
-    /// Causes the player to crash via code (not physics).
-    /// Uses ApplyExternalCrashDamage so all crash FX/penalties apply.
+    /// Causes the player to crash with knockback.
+    /// Impact is amplified if this occurs during a bull rush.
     /// </summary>
     protected virtual void CausePlayerCrash(Collider playerCollider)
     {
-        // Try to find CarController and trigger crash
         var carController = playerCollider.GetComponentInParent<CarController>();
-        if (carController != null)
+        if (carController == null) return;
+
+        Rigidbody carRb = carController.GetComponent<Rigidbody>();
+
+        // Determine if this is a bull rush hit
+        bool isBullRushHit = isBullRushActive && config.useBullRush;
+        float impactMultiplier = isBullRushHit ? Mathf.Max(1f, config.bullRushImpactMultiplier) : 1f;
+
+        // Calculate hit direction
+        Vector3 hitDirection;
+        if (isBullRushHit && bullRushDirection.sqrMagnitude > 0.01f)
         {
-            // Calculate hit direction from creature to car
-            Vector3 hitDirection = (carController.transform.position - transform.position).normalized;
+            // Use the bull rush direction (the way we were charging)
+            hitDirection = bullRushDirection;
+        }
+        else
+        {
+            // Use direction from creature to car
+            hitDirection = (carController.transform.position - transform.position).normalized;
+        }
+        hitDirection.y = 0f;
+        hitDirection.Normalize();
 
-            // Use the car's current speed as impact speed, or a minimum
-            Rigidbody carRb = carController.GetComponent<Rigidbody>();
-            float impactSpeed = carRb != null ? carRb.velocity.magnitude : 10f;
-            impactSpeed = Mathf.Max(impactSpeed, 8f); // Minimum impact for creature attacks
+        // Calculate impact speed
+        float baseImpactSpeed = isBullRushHit
+            ? config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier
+            : config.aggressiveChargeSpeed;
+        float impactSpeed = Mathf.Max(baseImpactSpeed, 8f);
 
-            // Contact point is the creature's position
-            Vector3 contactPoint = transform.position;
+        // Contact point is the creature's position
+        Vector3 contactPoint = transform.position;
 
-            // Severity based on config (0-1)
-            float severity = Mathf.Clamp01(config.aggressiveImpactDamage);
+        // Severity scales with multiplier for bull rush
+        float severity = Mathf.Clamp01(config.impactCrashSeverity * impactMultiplier);
 
-            // Call the proper crash method - this handles all FX, damage, etc.
-            carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+        // Trigger the crash (handles FX, damage, recovery state, etc.)
+        carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+
+        // Apply additional knockback force for impact feel
+        if (carRb != null)
+        {
+            ApplyImpactKnockback(carRb, hitDirection, impactMultiplier);
+        }
+
+        // Handle despawn
+        if (config.despawnAfterHit)
+        {
+            // Stop movement
+            if (isBullRushHit) EndBullRush();
+            currentSpeed = 0f;
+        }
+
+        if (isBullRushHit)
+        {
+            Debug.Log($"[TrackCreature] Bull rush HIT! Multiplier={impactMultiplier:F1}x, Severity={severity:F2}");
+        }
+    }
+
+    /// <summary>
+    /// Applies physics knockback to the car.
+    /// </summary>
+    protected virtual void ApplyImpactKnockback(Rigidbody carRb, Vector3 hitDirection, float multiplier)
+    {
+        if (carRb == null || config == null) return;
+
+        // Calculate knockback with multiplier
+        float knockbackForce = config.impactKnockbackForce * multiplier;
+        float lift = config.impactLift * multiplier;
+        float torque = config.impactTorque * multiplier;
+
+        // Build force direction with lift
+        Vector3 forceDir = hitDirection;
+        if (knockbackForce > 0.01f)
+        {
+            forceDir = hitDirection + Vector3.up * (lift / Mathf.Max(1f, knockbackForce));
+            forceDir.Normalize();
+        }
+
+        // Apply knockback impulse
+        if (knockbackForce > 0f)
+        {
+            carRb.AddForce(forceDir * knockbackForce, ForceMode.VelocityChange);
+        }
+
+        // Apply spin torque
+        if (torque > 0f)
+        {
+            Vector3 toCarLocal = carRb.transform.InverseTransformDirection(hitDirection);
+            float sideSign = Mathf.Sign(toCarLocal.x);
+            if (Mathf.Abs(sideSign) < 0.1f)
+            {
+                sideSign = Random.value > 0.5f ? 1f : -1f;
+            }
+
+            carRb.AddTorque(Vector3.up * torque * sideSign, ForceMode.VelocityChange);
         }
     }
 
@@ -27261,6 +27882,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected virtual void OnDeath()
     {
+
+        HideBullRushTelegraph();
+
         Vector3 effectPos = coinSpawnPoint != null ? coinSpawnPoint.position : transform.position;
 
         // Play appropriate death sound based on kill source
@@ -27291,8 +27915,10 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             spawner.RemoveCreature(gameObject);
         }
 
-        // Destroy after a short delay (allows death animation/effects)
-        Destroy(gameObject, 0.5f);
+        if (!IsInvoking() && gameObject != null)
+        {
+            Destroy(gameObject, 0.5f);
+        }
     }
 
     /// <summary>
@@ -33329,6 +33955,8 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private TMP_Text hpText;      // Shows "75 / 100" or "75%"
     [SerializeField] private bool showHPAsPercent = false;
 
+    private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
+
     [Header("In-Run UI")]
     [SerializeField] private TMP_Text runCoinsLiveText;      // e.g. "Coins: 0"
     [SerializeField] private TMP_Text runSprocketsLiveText;  // "Sprockets: 0"
@@ -33387,6 +34015,13 @@ public class UIManager_Racing : MonoBehaviour
 
     [Tooltip("Optional: Text label for max threshold.")]
     [SerializeField] private TMP_Text gaugeMaxLabel;
+
+    [Header("Crash Recovery - Smash Button")]
+    [SerializeField] private Button smashButton;
+    [SerializeField] private TMP_Text smashButtonLabel;
+
+    [Header("Controller UI")]
+    [SerializeField] private bool usePlayStationSymbols = true;
 
     private CarController car;
 
@@ -33453,7 +34088,41 @@ public class UIManager_Racing : MonoBehaviour
         }
 
         UpdateCrashRecoveryUI();
+
+        if (car != null && car.IsFlipMashActive)
+        {
+            if (smashButton != null)
+                smashButton.gameObject.SetActive(true);
+
+            if (smashButtonLabel != null)
+            {
+                string symbol = usePlayStationSymbols
+                    ? car.MashSymbolPS
+                    : car.MashSymbolXbox;
+
+                smashButtonLabel.text = $"SMASH {GetMashDisplaySymbol()}";
+            }
+
+            if (Input.GetKeyDown(car.MashFaceButtonKey) || Input.GetKeyDown(car.MashRequiredKey))
+            {
+                OnCrashRecoveryButtonClicked();
+            }
+
+#if UNITY_EDITOR
+    if (Input.GetKeyDown(KeyCode.Space))
+    {
+        OnCrashRecoveryButtonClicked();
     }
+#endif
+        }
+        else
+        {
+            if (smashButton != null)
+                smashButton.gameObject.SetActive(false);
+        }
+
+    }
+
 
     public void ShowRunComplete(
         int distanceMeters,
@@ -33796,6 +34465,41 @@ public class UIManager_Racing : MonoBehaviour
         if (crashRecoveryRoot != null)
             crashRecoveryRoot.SetActive(false);
     }
+
+    private string GetMashDisplaySymbol()
+    {
+        if (car == null) return "";
+
+        // Pick the intended display set (PS symbols vs Xbox letters)
+        string intended = usePlayStationSymbols ? car.MashSymbolPS : car.MashSymbolXbox;
+
+        // If we're not using PS symbols, just return the letter mapping.
+        if (!usePlayStationSymbols) return intended;
+
+        // PS symbols are Unicode. If the TMP font asset doesn't contain the glyph,
+        // TextMeshPro will show the "square" tofu fallback.
+        // So: detect missing glyph and fall back to safe text.
+        if (smashButtonLabel == null || smashButtonLabel.font == null) return intended;
+
+        // intended is 1 char for PS ("✕", "◯", "□", "△")
+        char c = intended.Length > 0 ? intended[0] : '?';
+
+        if (smashButtonLabel.font.HasCharacter(c))
+            return intended;
+
+        // Fallbacks that virtually all fonts have:
+        // Cross: X, Circle: O, Square: [ ], Triangle: ^
+        switch (car.RequiredMashButton)
+        {
+            case CarController.FaceButton.Cross: return "X";
+            case CarController.FaceButton.Circle: return "O";
+            case CarController.FaceButton.Square: return "[]";
+            case CarController.FaceButton.Triangle: return "^";
+            default: return "X";
+        }
+    }
+
+
 }
 
 ```
@@ -47182,6 +47886,358 @@ public class XPNumberStyleSO : ScriptableObject
     [Header("Update")]
     public bool useUnscaledTime = false;
 }
+```
+
+## Assets/SkillTreeVirtualCursor.cs
+
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+[DisallowMultipleComponent]
+public class SkillTreeVirtualCursor : MonoBehaviour
+{
+    private enum ControlMode { Mouse, Virtual }
+
+    [Header("Required")]
+    [SerializeField] private RectTransform cursorRect;           // your cursor Image rect
+    [SerializeField] private Canvas canvas;                      // the skill tree canvas
+    [SerializeField] private RectTransform clampArea;            // usually RacingSkillUI.treeViewport
+    [SerializeField] private RacingSkillDetailPanel detailPanel; // so we can close it on empty click
+
+    [Header("Input (Legacy Input Manager)")]
+    [SerializeField] private string axisX = "Horizontal";
+    [SerializeField] private string axisY = "Vertical";
+    [SerializeField] private KeyCode clickKey = KeyCode.JoystickButton1; // PS5 Cross (X)
+    [SerializeField] private float deadZone = 0.18f;
+
+    [Header("Motion")]
+    [SerializeField] private float cursorSpeedPixelsPerSecond = 1400f;
+    [SerializeField] private bool useUnscaledTime = true;
+
+    [Header("Behavior")]
+    [SerializeField] private bool closeDetailOnEmptyClick = true;
+
+    [Header("Click Cooldown")]
+    [SerializeField, Min(0f)] private float clickCooldown = 0.20f;
+    private float _nextAllowedClickTime = 0f;
+
+    [Header("Auto Switch (Mouse <-> Controller)")]
+    [SerializeField] private bool autoSwitchInput = true;
+    [SerializeField] private float mouseMovePixelsThreshold = 2.5f;   // how much mouse must move to count
+    [SerializeField] private float stickActivateThreshold = 0.22f;    // extra gate above deadZone
+
+    private GraphicRaycaster _raycaster;
+    private EventSystem _eventSystem;
+    private Camera _uiCam;
+
+    private Vector2 _screenPos;
+    private GameObject _currentHover;
+
+    private ControlMode _mode = ControlMode.Mouse;
+
+    private Vector2 _lastMousePos;
+    private float _lastMouseActivityTime;
+    private float _lastControllerActivityTime;
+
+    void Awake()
+    {
+        if (!canvas) canvas = GetComponentInParent<Canvas>();
+        if (!cursorRect) Debug.LogError("[SkillTreeVirtualCursor] cursorRect not set.");
+        if (!canvas) Debug.LogError("[SkillTreeVirtualCursor] canvas not set/found.");
+
+        _eventSystem = EventSystem.current;
+        if (_eventSystem == null) Debug.LogError("[SkillTreeVirtualCursor] No EventSystem in scene.");
+
+        _raycaster = canvas ? canvas.GetComponent<GraphicRaycaster>() : null;
+        if (_raycaster == null && canvas != null)
+            _raycaster = canvas.gameObject.AddComponent<GraphicRaycaster>();
+
+        _uiCam = (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay) ? canvas.worldCamera : null;
+    }
+
+    void OnEnable()
+    {
+        // Start in mouse mode (so desktop feels natural), but we can switch instantly on controller input.
+        _lastMousePos = Input.mousePosition;
+        _screenPos = ClampToArea(Input.mousePosition);
+        ApplyScreenPosToCursor(_screenPos);
+        SetMode(ControlMode.Mouse, snapVirtualToMouse: false);
+    }
+
+    void OnDisable()
+    {
+        Cursor.visible = true;
+        Cursor.lockState = CursorLockMode.None;
+
+        if (cursorRect) cursorRect.gameObject.SetActive(false);
+        SetHover(null, null);
+    }
+
+    void Update()
+    {
+        if (!_eventSystem || !_raycaster || !cursorRect || !canvas) return;
+
+        if (autoSwitchInput)
+            DetectAndSwitchMode();
+
+        if (_mode == ControlMode.Mouse)
+        {
+            // Let Unity's normal mouse pointer + EventSystem do its thing.
+            // We keep our virtual cursor hidden in this mode.
+            return;
+        }
+
+        // Virtual mode: drive pointer via stick.
+        float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
+
+        Vector2 stick = new Vector2(Input.GetAxisRaw(axisX), Input.GetAxisRaw(axisY));
+
+        // Deadzone shaping (same idea you already had)
+        float mag = stick.magnitude;
+        if (mag < deadZone) stick = Vector2.zero;
+        else
+        {
+            float t = Mathf.InverseLerp(deadZone, 1f, mag);
+            stick = stick.normalized * t;
+        }
+
+        if (stick != Vector2.zero)
+        {
+            _screenPos += stick * (cursorSpeedPixelsPerSecond * dt);
+            _screenPos = ClampToArea(_screenPos);
+            ApplyScreenPosToCursor(_screenPos);
+            RefreshHover();
+        }
+
+        if (Input.GetKeyDown(clickKey))
+        {
+            float now = useUnscaledTime ? Time.unscaledTime : Time.time;
+            if (now >= _nextAllowedClickTime)
+            {
+                _nextAllowedClickTime = now + clickCooldown;
+                ClickUnderCursor();
+            }
+        }
+    }
+
+    // ----------------------------
+    // Input mode switching
+    // ----------------------------
+    private void DetectAndSwitchMode()
+    {
+        // Mouse activity?
+        Vector2 mousePos = Input.mousePosition;
+        bool mouseMoved = (mousePos - _lastMousePos).sqrMagnitude >= (mouseMovePixelsThreshold * mouseMovePixelsThreshold);
+        _lastMousePos = mousePos;
+
+        bool mouseClicked =
+            Input.GetMouseButtonDown(0) ||
+            Input.GetMouseButtonDown(1) ||
+            Input.GetMouseButtonDown(2);
+
+        bool mouseScrolled = Mathf.Abs(Input.mouseScrollDelta.y) > 0.01f;
+
+        if (mouseMoved || mouseClicked || mouseScrolled)
+            _lastMouseActivityTime = Time.unscaledTime;
+
+        // Controller activity?
+        Vector2 stick = new Vector2(Input.GetAxisRaw(axisX), Input.GetAxisRaw(axisY));
+        bool stickActive = stick.magnitude >= Mathf.Max(deadZone, stickActivateThreshold);
+
+        // If you want more buttons later (Circle / Square), add them here.
+        bool controllerPressed = Input.GetKeyDown(clickKey);
+
+        if (stickActive || controllerPressed)
+            _lastControllerActivityTime = Time.unscaledTime;
+
+        // Decide winner (most recent activity)
+        if (_lastControllerActivityTime > _lastMouseActivityTime)
+        {
+            if (_mode != ControlMode.Virtual)
+                SetMode(ControlMode.Virtual, snapVirtualToMouse: true); // <- your requirement
+        }
+        else
+        {
+            if (_mode != ControlMode.Mouse)
+                SetMode(ControlMode.Mouse, snapVirtualToMouse: false);
+        }
+    }
+
+    private void SetMode(ControlMode mode, bool snapVirtualToMouse)
+    {
+        _mode = mode;
+
+        if (_mode == ControlMode.Mouse)
+        {
+            // Show real cursor, hide virtual cursor image.
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+            if (cursorRect) cursorRect.gameObject.SetActive(false);
+            SetHover(null, null);
+        }
+        else
+        {
+            // Hide real cursor, show virtual cursor image.
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.None;
+
+            if (cursorRect) cursorRect.gameObject.SetActive(true);
+
+            if (snapVirtualToMouse)
+            {
+                _screenPos = ClampToArea(Input.mousePosition); // snap to mouse position on switch
+                ApplyScreenPosToCursor(_screenPos);
+            }
+            else
+            {
+                _screenPos = ClampToArea(_screenPos);
+                ApplyScreenPosToCursor(_screenPos);
+            }
+
+            RefreshHover();
+        }
+    }
+
+    // ----------------------------
+    // Virtual cursor raycast + click
+    // ----------------------------
+    private void ClickUnderCursor()
+    {
+        var pointer = new PointerEventData(_eventSystem)
+        {
+            position = _screenPos,
+            button = PointerEventData.InputButton.Left,
+            pressPosition = _screenPos
+        };
+
+        var results = new List<RaycastResult>();
+        _eventSystem.RaycastAll(pointer, results);
+
+        if (results.Count == 0)
+        {
+            if (closeDetailOnEmptyClick && detailPanel != null && detailPanel.IsInfoVisible)
+                detailPanel.HideInfo();
+            return;
+        }
+
+        // IMPORTANT: choose a real clickable target (Button/Selectable/etc.), not a TMP child
+        GameObject target = FindFirstClickableFromResults(results);
+        if (!target) return;
+
+        pointer.pointerCurrentRaycast = results[0];
+
+        // Mirror the normal "selection" behavior
+        _eventSystem.SetSelectedGameObject(target);
+
+        ExecuteEvents.ExecuteHierarchy(target, pointer, ExecuteEvents.pointerDownHandler);
+        ExecuteEvents.ExecuteHierarchy(target, pointer, ExecuteEvents.pointerUpHandler);
+        ExecuteEvents.ExecuteHierarchy(target, pointer, ExecuteEvents.pointerClickHandler);
+    }
+
+
+
+    private void RefreshHover()
+    {
+        var pointer = new PointerEventData(_eventSystem) { position = _screenPos };
+
+        var results = new List<RaycastResult>();
+        _eventSystem.RaycastAll(pointer, results); // <-- IMPORTANT
+
+        GameObject newHover = (results.Count > 0) ? results[0].gameObject : null;
+        SetHover(newHover, pointer);
+    }
+
+    private void SetHover(GameObject newHover, PointerEventData pointer)
+    {
+        if (_currentHover == newHover) return;
+
+        if (_currentHover != null && pointer != null)
+            ExecuteEvents.Execute(_currentHover, pointer, ExecuteEvents.pointerExitHandler);
+
+        _currentHover = newHover;
+
+        if (_currentHover != null && pointer != null)
+            ExecuteEvents.Execute(_currentHover, pointer, ExecuteEvents.pointerEnterHandler);
+    }
+
+    // ----------------------------
+    // Clamping + positioning
+    // ----------------------------
+    private Vector2 ClampToArea(Vector2 screenPos)
+    {
+        if (!clampArea)
+        {
+            screenPos.x = Mathf.Clamp(screenPos.x, 0f, Screen.width);
+            screenPos.y = Mathf.Clamp(screenPos.y, 0f, Screen.height);
+            return screenPos;
+        }
+
+        Vector3[] corners = new Vector3[4];
+        clampArea.GetWorldCorners(corners);
+
+        Vector2 a = RectTransformUtility.WorldToScreenPoint(_uiCam, corners[0]); // bottom-left
+        Vector2 b = RectTransformUtility.WorldToScreenPoint(_uiCam, corners[2]); // top-right
+
+        float minX = Mathf.Min(a.x, b.x);
+        float maxX = Mathf.Max(a.x, b.x);
+        float minY = Mathf.Min(a.y, b.y);
+        float maxY = Mathf.Max(a.y, b.y);
+
+        screenPos.x = Mathf.Clamp(screenPos.x, minX, maxX);
+        screenPos.y = Mathf.Clamp(screenPos.y, minY, maxY);
+        return screenPos;
+    }
+
+    private static GameObject FindClickable(GameObject go)
+    {
+        if (!go) return null;
+
+        // Walk up to find something that actually handles UI clicks
+        Transform t = go.transform;
+        while (t != null)
+        {
+            var candidate = t.gameObject;
+
+            // Most of your UI is normal Buttons/Selectables
+            if (candidate.GetComponent<UnityEngine.UI.Selectable>() != null)
+                return candidate;
+
+            // Generic support for custom click handlers
+            if (candidate.GetComponent<IPointerClickHandler>() != null)
+                return candidate;
+
+            t = t.parent;
+        }
+
+        return null;
+    }
+
+    private static GameObject FindFirstClickableFromResults(List<RaycastResult> results)
+    {
+        for (int i = 0; i < results.Count; i++)
+        {
+            var go = results[i].gameObject;
+            var clickable = FindClickable(go);
+            if (clickable != null)
+                return clickable;
+        }
+        return null;
+    }
+
+
+    private void ApplyScreenPosToCursor(Vector2 screenPos)
+    {
+        RectTransform parent = cursorRect.parent as RectTransform;
+        if (!parent) return;
+
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, screenPos, _uiCam, out Vector2 local))
+            cursorRect.anchoredPosition = local;
+    }
+}
+
 ```
 
 ## Assets/TerrainDetailGrassPainter.cs

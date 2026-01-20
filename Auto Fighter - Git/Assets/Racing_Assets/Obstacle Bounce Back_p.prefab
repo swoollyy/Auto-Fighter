@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3081672520961261259}
-  m_Layer: 0
+  m_Layer: 18
   m_Name: Obstacle Bounce Back_p
   m_TagString: Untagged
   m_Icon: {fileID: 0}
