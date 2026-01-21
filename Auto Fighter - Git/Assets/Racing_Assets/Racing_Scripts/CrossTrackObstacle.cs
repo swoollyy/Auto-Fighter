@@ -343,9 +343,14 @@ public class CrossTrackObstacle : MonoBehaviour
         }
         else
         {
-            // treat static geometry as effectively infinite mass
-            otherMass = float.MaxValue;
-            otherMassSource = "static(infinite)";
+            // Static geometry with no Rigidbody - IGNORE IT instead of treating as infinite mass
+            // This prevents boost pads, track props, triggers, etc. from knocking us off path
+            if (debugMassComparison)
+            {
+                string otherName = other.transform.root != null ? other.transform.root.name : other.gameObject.name;
+                Debug.Log($"[CrossTrackObstacle] IGNORING static collider '{otherName}' (no Rigidbody) - not a valid obstacle.");
+            }
+            return; // EXIT EARLY - don't react to static geometry
         }
 
         if (debugMassComparison)
@@ -512,7 +517,11 @@ public class CrossTrackObstacle : MonoBehaviour
     private bool IsOnReactLayer(Collider col)
     {
         if (col == null) return false;
+
         int layer = col.gameObject.layer;
+
+
+        // Now check if it's in the react layers
         if (((reactLayers.value) & (1 << layer)) != 0) return true;
 
         // also check the root in case of nested colliders

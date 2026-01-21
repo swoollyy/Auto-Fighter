@@ -909,7 +909,7 @@ MonoBehaviour:
   perColliderCrashCooldown: 0.5
   skipSpeedClampWhileAirborne: 1
   enableLandingCarrySpeed: 1
-  landingExcessBleedPerSecond: 8
+  landingExcessBleedPerSecond: 7.17
   landingNoClampGraceSeconds: 0.08
   drainScalePerClickPower: 0.5
   drainScalePerPassiveStrength: 0.12
@@ -931,6 +931,8 @@ MonoBehaviour:
   coastHighSpeedFraction: 1
   useExponentialCoast: 0
   coastDampingPerSecond: 4.48
+  randomizeMashFaceButton: 1
+  allowSpaceMashInEditor: 1
   mashBaseFuelPerClick: 0
   mashFuelSpeedBonusMax: 2
   mashMaxSpeedThreshold: 0.05

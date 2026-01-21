@@ -1837,18 +1837,33 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// Called when the player car enters this creature's trigger.
     /// Handles differently based on behavior type.
     /// </summary>
+    /// <summary>
+    /// Called when the player car enters this creature's trigger.
+    /// Handles differently based on behavior type.
+    /// </summary>
     protected virtual void OnHitByPlayer(Collider playerCollider)
     {
         if (isDead) return;
 
+        // CHECK FOR ARMED FORCEFIELD FIRST
+        // If the car has an armed forcefield, don't cause a crash - let the forcefield handle it
+        var forcefield = playerCollider.GetComponentInParent<CarForcefield>();
+        if (forcefield != null && forcefield.IsArmed)
+        {
+            // The forcefield will handle this via its own trigger detection
+            // Just call KilledByForcefield directly to ensure it happens
+            KilledByForcefield();
+            return;
+        }
+
         // Mark as car kill for coin reward
         killSource = CreatureKillSource.Car;
 
-        // Aggressive creatures cause crash BEFORE dying
+        // Aggressive creatures cause crash BEFORE dying (only if no forcefield)
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
             CausePlayerCrash(playerCollider);
-            HideBullRushTelegraph(); 
+            HideBullRushTelegraph();
         }
 
         // Comic popup for running them over
@@ -1866,7 +1881,37 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
     }
 
+    /// <summary>
+    /// Called by CarForcefield when the creature is intercepted.
+    /// Kills the creature WITHOUT causing a crash. Awards coins.
+    /// </summary>
+    public virtual void KilledByForcefield()
+    {
+        if (isDead) return;
 
+        // Mark as car kill for coin reward (forcefield counts as car kill)
+        killSource = CreatureKillSource.Car;
+
+        // Hide bull rush telegraph if active
+        if (behaviorType == CreatureBehaviorType.Aggressive)
+        {
+            HideBullRushTelegraph();
+        }
+
+        // Comic popup
+        SpawnRunOverPopup();
+
+        // Die and give rewards - but NO crash
+        Die();
+
+        // Handle despawn for aggressive creatures
+        if (behaviorType == CreatureBehaviorType.Aggressive && config != null && config.despawnAfterHit)
+        {
+            CancelInvoke();
+            StopAllCoroutines();
+            Destroy(gameObject, config.despawnDelay);
+        }
+    }
 
 
     /// <summary>

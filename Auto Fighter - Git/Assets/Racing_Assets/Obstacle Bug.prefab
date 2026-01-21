@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 1741596697079727974}
   - component: {fileID: 4180077745294689445}
   - component: {fileID: 1368887419635751966}
-  m_Layer: 7
+  m_Layer: 21
   m_Name: Obstacle Bug
   m_TagString: Creature
   m_Icon: {fileID: 0}

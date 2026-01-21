@@ -234,6 +234,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ThrownObstacleDirector.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkidMaskClearer.cs" />
     <Compile Include="Assets\Scripts\PaddleElements.cs" />
+    <Compile Include="Assets\SkillTreeVirtualCursor.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossObstacleDirector.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUI.cs" />
     <Compile Include="Assets\Scripts\Tank.cs" />

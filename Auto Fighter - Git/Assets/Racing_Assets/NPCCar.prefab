@@ -191,10 +191,10 @@ MonoBehaviour:
   groundClearance: 0.02
   rotateToVelocity: 1
   alignToGround: 0
-  rotationSpeed: 27
-  velocitySmoothTime: 0.85
+  rotationSpeed: 100
+  velocitySmoothTime: 0.039
   minSpeedForRotation: 1
-  trackVelocityBlend: 0.754
+  trackVelocityBlend: 1
   crashLayers:
     serializedVersion: 2
     m_Bits: 788480

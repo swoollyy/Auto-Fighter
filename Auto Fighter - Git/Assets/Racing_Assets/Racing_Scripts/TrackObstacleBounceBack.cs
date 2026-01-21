@@ -748,7 +748,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (now < _nextAllowedCarHitTime) return;
         if (carDetectMask.value == 0) return;
 
-        Collider[] hits = Physics.OverlapSphere(_rb.position, carDetectRadius, carDetectMask, QueryTriggerInteraction.Collide);
+        Bounds b = _col.bounds;
+        Collider[] hits = Physics.OverlapBox(b.center, b.extents, _rb.rotation, carDetectMask, QueryTriggerInteraction.Collide);
         if (hits == null || hits.Length == 0) return;
 
         CarController car = null;

@@ -9547,7 +9547,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 25d4ece7811d5e1498ea2c720f06e68e, type: 2}
   - {fileID: 11400000, guid: 615c9e5ab1f95174caec575494646100, type: 2}
   skillsEnabled: 1
-  revealAllSkillsAtStart: 0
+  revealAllSkillsAtStart: 1
   playerCurrency: 0
   playerSprockets: 0
 --- !u!4 &1980186994

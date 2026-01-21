@@ -414,6 +414,64 @@ public sealed class CarForcefield : MonoBehaviour
             return;
         }
 
+        // NEW: Handle TrackCreature (aggressive creatures that would crash the car)
+        var creature = other.GetComponentInParent<TrackCreature>();
+        if (creature != null && !creature.IsDead)
+        {
+            // Avoid processing the same collider multiple times
+            if (_recentlyLaunched.Contains(other)) return;
+
+            // Kill the creature via forcefield (no crash, gives coins)
+            creature.KilledByForcefield();
+
+            // Mark as recently handled
+            _recentlyLaunched.Add(other);
+
+            // Temporarily ignore collisions between creature and car
+            Transform creatureRoot = creature.transform.root;
+            Collider[] creatureCols = creatureRoot.GetComponentsInChildren<Collider>(true);
+            Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+
+            foreach (var c in creatureCols)
+            {
+                if (!c) continue;
+                _recentlyLaunched.Add(c);
+                foreach (var carCol in carCols)
+                {
+                    if (carCol) Physics.IgnoreCollision(carCol, c, true);
+                }
+            }
+
+            if (ignoreWithCarSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, ignoreWithCarSeconds));
+
+            // FX at interception point
+            Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
+
+            if (launchVFX != null)
+            {
+                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
+                var vfx = Instantiate(launchVFX, fxPos, fxRot);
+                if (parentVfxToObstacle && vfx != null)
+                    vfx.transform.SetParent(creatureRoot, true);
+            }
+
+            if (enableLaunchSlowMo)
+                StartLaunchSlowMo();
+
+            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
+
+            if (postFX != null)
+                postFX.PlayBurst();
+
+            // Consume the forcefield
+            SetArmed(false);
+            _cooldownRemain = cooldownSeconds;
+            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+
+            return;
+        }
+
 
         if (_recentlyLaunched.Contains(other)) return;
 
