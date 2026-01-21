@@ -974,7 +974,6 @@ public class GameManager_Racing : MonoBehaviour
             carInstance.transform.SetPositionAndRotation(spawnPos, spawnRot);
 
         _deathStopBurstPlayed = false;
-        /*
         trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
@@ -982,7 +981,6 @@ public class GameManager_Racing : MonoBehaviour
         icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
-        */
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
 
