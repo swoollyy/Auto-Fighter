@@ -984,6 +984,7 @@ public class GameManager_Racing : MonoBehaviour
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
 
+
         if (terrainGrassPainter != null)
         {
             // coroutine version avoids a nasty spike

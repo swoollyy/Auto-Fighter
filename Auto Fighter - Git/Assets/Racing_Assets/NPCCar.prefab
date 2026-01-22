@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 8671616365038160896}
   - component: {fileID: 7645833144850340215}
   - component: {fileID: 5075446138171117537}
+  - component: {fileID: 730436427209060011}
   m_Layer: 19
   m_Name: NPCCar
   m_TagString: Untagged
@@ -110,7 +111,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.5, y: 1, z: 0.5}
+  m_Size: {x: 0.85, y: 1, z: 0.85}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &9137398506818108145
 MonoBehaviour:
@@ -186,22 +187,45 @@ MonoBehaviour:
   roadLayer:
     serializedVersion: 2
     m_Bits: 8192
-  raycastStartHeight: 6
+  raycastStartHeight: 0.5
   raycastDownDistance: 20
   groundClearance: 0.02
-  rotateToVelocity: 1
+  baseTurnRate: 140
+  minTurnRate: 50
+  turnRateFalloffSpeed: 2
+  accelerationRate: 8
+  decelerationRate: 16
+  steeringSmoothing: 0.15
+  obstacleDetectionLayers:
+    serializedVersion: 2
+    m_Bits: 788609
+  obstacleDetectionRange: 8
+  obstacleDetectionWidth: 2.75
+  obstacleRayCount: 10
+  obstacleDetectionAngle: 50
+  obstacleAvoidanceStrength: 0.95
+  criticalObstacleDistance: 3
+  avoidanceBlendSpeed: 8
+  dangerZoneAngle: 18
+  obstacleRayHeight: 0
+  slowDownOnAvoidance: 0
+  avoidanceSpeedMultiplier: 0.6
+  enableRoadBoundaryDetection: 1
+  roadEdgeDetectionWidth: 5
+  roadCorrectionStrength: 1
+  roadEdgeSoftMargin: 2.61
+  validateMovementOnRoad: 1
+  trackFollowingStrength: 0.15
+  drawRoadBoundaryDebug: 1
   alignToGround: 0
-  rotationSpeed: 100
-  velocitySmoothTime: 0.039
   minSpeedForRotation: 1
-  trackVelocityBlend: 1
   crashLayers:
     serializedVersion: 2
     m_Bits: 788480
   ignoreRoadAndTerrain: 1
-  enableOverlapDetection: 0
-  overlapCheckInterval: 0.05
-  overlapRadius: 0
+  enableOverlapDetection: 1
+  overlapCheckInterval: 0.1
+  overlapRadius: 0.5
   minTransferVelocity: 1
   crashBounceUp: 4
   crashBounceBack: 6
@@ -225,15 +249,6 @@ MonoBehaviour:
   boostPadSpeedBonus: 2.86
   boostPadDuration: 0.88
   boostPadThreshold: 1.3
-  verboseDebug: 0
-  drawDestinationGizmo: 1
-  enableAvoidanceBoost: 0
-  avoidanceSpeedMult: 1.52
-  avoidanceAccelMult: 1.67
-  avoidanceHoldSeconds: 0.21
-  avoidanceRampIn: 16
-  avoidanceRampOut: 8.55
-  maxSpawnSpeedForAvoidanceBoost: 5
   addNavmeshCutOnCrash: 1
   crashCutUsePrefab: 0
   crashCutPrefab: {fileID: 0}
@@ -242,6 +257,10 @@ MonoBehaviour:
   crashCutUpdateRotationDistance: 10
   crashCutUseRotationAndScale: 1
   crashCutCutsAddedGeometry: 1
+  verboseDebug: 0
+  drawDestinationGizmo: 1
+  drawObstacleRays: 1
+  drawSteeringDebug: 1
 --- !u!114 &5749575015671800831
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -393,6 +412,35 @@ MonoBehaviour:
   quality: 1
   splitAtEveryPortal: 0
   accountForGridPenalties: 0
+--- !u!114 &730436427209060011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4549579877093014160}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 1073741824
+  graphMask:
+    value: -1
+  type: 3
+  mesh: {fileID: 0}
+  rectangleSize: {x: 1.15, y: 1.15}
+  circleRadius: 1
+  circleResolution: 6
+  height: 1.5
+  meshScale: 1
+  center: {x: 0, y: 0, z: 0}
+  updateDistance: 0.4
+  isDual: 0
+  radiusExpansionMode: 0
+  cutsAddedGeom: 1
+  updateRotationDistance: 10
+  useRotationAndScale: 1
 --- !u!1 &8123480379425158355
 GameObject:
   m_ObjectHideFlags: 0

@@ -1017,9 +1017,9 @@ MonoBehaviour:
   debugSurfaceRays: 1
   surfaceSampleExtent: 1.13
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 10
-  fuelUsePerSecondBraking: 10
-  idleFuelUsePerSecond: 5
+  fuelUsePerSecondAtFullThrottle: 0
+  fuelUsePerSecondBraking: 0
+  idleFuelUsePerSecond: 0
   idleSpeedThreshold: 0.5
   crashLayers:
     serializedVersion: 2
