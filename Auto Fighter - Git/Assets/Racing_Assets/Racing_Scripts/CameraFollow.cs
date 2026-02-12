@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -491,20 +491,17 @@ public class CameraFollow : MonoBehaviour
     {
         if (cam == null) return;
 
-        if (Input.GetKeyDown(fovIncreaseKey))
+        bool fovHeld = (RacingInputReader.Instance != null && RacingInputReader.Instance.FovPeekHeld) || Input.GetKey(fovIncreaseKey);
+
+        if (fovHeld && !_mapPeekHeld)
         {
             _mapPeekHeld = true;
 
             if (_mapPeekCR != null) StopCoroutine(_mapPeekCR);
 
-            // Freeze APPLY (baseline still updates in LateUpdate)
             _suppressAutoFov = true;
-
-            // Baseline decides the TARGET (prevents stacking)
             _mapPeekPressBaseline = GetBaselineFov();
             _mapPeekPressTarget = Mathf.Min(mapPeekMaxFOV, _mapPeekPressBaseline * mapPeekMultiplier);
-
-            // Start from CURRENT FOV (prevents ugly snap when re-pressing mid-return)
             float from = cam.fieldOfView;
 
             _mapPeekCR = StartCoroutine(MapPeekHoldCoroutine(
@@ -514,7 +511,7 @@ public class CameraFollow : MonoBehaviour
             ));
         }
 
-        if (Input.GetKeyUp(fovIncreaseKey))
+        if (!fovHeld && _mapPeekHeld)
         {
             _mapPeekHeld = false;
 

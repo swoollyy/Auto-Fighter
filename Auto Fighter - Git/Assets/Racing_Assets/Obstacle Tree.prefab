@@ -227,12 +227,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5dcc88590aab2c0459c50f0bba784d7a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  obstacleType: 1
   destructible: 1
   maxHealth: 2
   scaleOnHit: 0.46
   scalePunchTime: 0.15
   destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 2
+  treeToppleDuration: 0.7
+  treeToppleEase: 6
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &-9222208852432572727

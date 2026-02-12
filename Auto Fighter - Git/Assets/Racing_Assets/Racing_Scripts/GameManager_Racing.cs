@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -273,9 +273,9 @@ public class GameManager_Racing : MonoBehaviour
 
         if (_finalizePending && !carController.IsFlipMashActive)
         {
-            bool restartPressed =
-                Input.GetKeyDown(KeyCode.R) ||                 // keep R always
-                (RestartAllowedNow() && Input.GetKeyDown(PAD_X)); // gate X until slowmo ends
+            bool restartPressed = RacingInputReader.Instance != null
+                ? RacingInputReader.Instance.RestartDown
+                : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
 
             if (restartPressed)
             {
@@ -353,9 +353,9 @@ public class GameManager_Racing : MonoBehaviour
 
         if (runEnded && !carController.IsFlipMashActive)
         {
-            bool restartPressed =
-                Input.GetKeyDown(KeyCode.R) ||
-                (RestartAllowedNow() && Input.GetKeyDown(PAD_X));
+            bool restartPressed = RacingInputReader.Instance != null
+                ? RacingInputReader.Instance.RestartDown
+                : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
 
             if (restartPressed)
             {

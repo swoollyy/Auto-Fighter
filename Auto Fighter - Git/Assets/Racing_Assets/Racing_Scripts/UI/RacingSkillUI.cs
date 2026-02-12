@@ -80,10 +80,12 @@ public class RacingSkillUI : MonoBehaviour
         RefreshAll();
         if (treeContent) _contentBaseScale = treeContent.localScale;
         AutoOpenFirstIfNeeded();
+        RacingInputReader.Instance?.SetSkillTreeMapEnabled(true);
     }
 
     private void OnDisable()
     {
+        RacingInputReader.Instance?.SetSkillTreeMapEnabled(false);
         UnwireEvents();
     }
 
@@ -197,19 +199,29 @@ public class RacingSkillUI : MonoBehaviour
         if (!treeViewport.gameObject.activeInHierarchy) return;
 
         float dt = Time.unscaledDeltaTime;
+        Vector2 stick = Vector2.zero;
+        float zoomInput = 0f;
 
-        // -------- PAN (Right Stick) --------
-        float x = 0f;
-        float y = 0f;
+        if (RacingInputReader.Instance != null)
+        {
+            stick = RacingInputReader.Instance.Pan;
+            if (invertRightStickY) stick.y = -stick.y;
+            zoomInput = RacingInputReader.Instance.Zoom;
+        }
+        else
+        {
+            float x = 0f, y = 0f;
+            if (!string.IsNullOrEmpty(gamepadPanAxisX)) x = Input.GetAxisRaw(gamepadPanAxisX);
+            if (!string.IsNullOrEmpty(gamepadPanAxisY)) y = Input.GetAxisRaw(gamepadPanAxisY);
+            if (invertRightStickY) y = -y;
+            stick = new Vector2(x, y);
+            if (stick.magnitude < gamepadStickDeadzone) stick = Vector2.zero;
+            else stick = stick.normalized * ((stick.magnitude - gamepadStickDeadzone) / (1f - gamepadStickDeadzone));
 
-        if (!string.IsNullOrEmpty(gamepadPanAxisX)) x = Input.GetAxisRaw(gamepadPanAxisX);
-        if (!string.IsNullOrEmpty(gamepadPanAxisY)) y = Input.GetAxisRaw(gamepadPanAxisY);
-
-        if (invertRightStickY) y = -y;
-
-        Vector2 stick = new Vector2(x, y);
-        if (stick.magnitude < gamepadStickDeadzone) stick = Vector2.zero;
-        else stick = stick.normalized * ((stick.magnitude - gamepadStickDeadzone) / (1f - gamepadStickDeadzone));
+            float rt = string.IsNullOrEmpty(gamepadZoomInAxis) ? 0f : Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomInAxis));
+            float lt = string.IsNullOrEmpty(gamepadZoomOutAxis) ? 0f : Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomOutAxis));
+            zoomInput = rt - lt;
+        }
 
         if (stick != Vector2.zero)
         {
@@ -217,15 +229,6 @@ public class RacingSkillUI : MonoBehaviour
             treeContent.anchoredPosition += deltaPixels * panSpeed;
         }
 
-        // -------- ZOOM (Triggers) --------
-        float rt = 0f;
-        float lt = 0f;
-
-        if (!string.IsNullOrEmpty(gamepadZoomInAxis)) rt = Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomInAxis));
-        if (!string.IsNullOrEmpty(gamepadZoomOutAxis)) lt = Mathf.Clamp01(Input.GetAxisRaw(gamepadZoomOutAxis));
-
-        // Right trigger zoom in, left trigger zoom out
-        float zoomInput = rt - lt; // + = zoom in, - = zoom out
         if (Mathf.Abs(zoomInput) > 0.001f)
         {
             float cur = treeContent.localScale.x;

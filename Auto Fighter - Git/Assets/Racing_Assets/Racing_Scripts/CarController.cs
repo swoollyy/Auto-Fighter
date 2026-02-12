@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -130,6 +130,68 @@ public class CarController : MonoBehaviour
                 _ => psCrossKey
             };
         }
+    }
+
+    private static RacingInputReader.FaceButton ToReaderFace(FaceButton fb)
+    {
+        return fb switch
+        {
+            FaceButton.Cross => RacingInputReader.FaceButton.South,
+            FaceButton.Circle => RacingInputReader.FaceButton.East,
+            FaceButton.Square => RacingInputReader.FaceButton.West,
+            FaceButton.Triangle => RacingInputReader.FaceButton.North,
+            _ => RacingInputReader.FaceButton.South
+        };
+    }
+
+    public bool GetMashRequiredButtonDown()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null)
+            return reader.GetMashDown(ToReaderFace(_requiredMashButton));
+        return Input.GetKeyDown(MashRequiredKey);
+    }
+
+    private bool GetBoostDown()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.BoostDown;
+        return Input.GetKeyDown(boostKey) || Input.GetKeyDown(boostButtonController);
+    }
+
+    private bool GetDriftHeld()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.DriftHeld;
+        return Input.GetKey(driftKey) || Input.GetKey(driftButtonController);
+    }
+
+    private float GetSteerRaw()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.Steer;
+        return Input.GetAxisRaw("Horizontal");
+    }
+
+    private bool GetAccelerateKeyOrTrigger()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.Accelerate > 0.1f;
+        return Input.GetKey(KeyCode.W) || Input.GetAxisRaw("RightTrigger") > 0.1f;
+    }
+
+    private bool GetBrakeKeyOrTrigger()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.Brake > 0.1f;
+        return Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f || Input.GetAxisRaw("LeftTrigger") > 0.1f;
+    }
+
+    private bool GetFireHeld()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.FireHeld;
+        return Input.GetKey(KeyCode.Mouse0) || Input.GetButton("Fire1");
     }
 
     private static readonly string[] PS_FACE_SYMBOLS = { "✕", "◯", "□", "△" };
@@ -1320,7 +1382,7 @@ public class CarController : MonoBehaviour
     private void Update()
     {
 
-        if (_flipMashActive && Input.GetKeyDown(KeyCode.Space))
+        if (_flipMashActive && (RacingInputReader.Instance != null ? RacingInputReader.Instance.AnyMashDown : Input.GetKeyDown(KeyCode.Space)))
         {
             RegisterFlipMashClick();
         }
@@ -1338,7 +1400,7 @@ public class CarController : MonoBehaviour
 
         HandleInput();
 
-        if ((Input.GetKeyDown(boostKey) || Input.GetKeyDown(boostButtonController)) && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
+        if (GetBoostDown() && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
             _boostRequested = true;
 
         if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
@@ -1361,7 +1423,7 @@ public class CarController : MonoBehaviour
             PlayDeathVFX();
         }
 
-        bool brakeHeldNow = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+        bool brakeHeldNow = GetBrakeKeyOrTrigger();
         if (brakeHeldNow)
         {
             // Kills active/queued boost + locks out boosts (your existing behavior)
@@ -2280,12 +2342,12 @@ public class CarController : MonoBehaviour
         if (_malfunctionCooldownRemain > 0f)
             _malfunctionCooldownRemain -= Time.deltaTime;
 
-        _rawSteer = Input.GetAxisRaw("Horizontal");
+        _rawSteer = GetSteerRaw();
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
-        driftButtonHeld = Input.GetKey(driftKey) || Input.GetKey(driftButtonController);
-        bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+        driftButtonHeld = GetDriftHeld();
+        bool brakeHeld = GetBrakeKeyOrTrigger();
 
         // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
         if (driftButtonHeld && !prevDriftKeyHeld)
@@ -2567,7 +2629,7 @@ public class CarController : MonoBehaviour
         if (!enableDriftHeldBoost) return;
         if (_inCrash) return; // prevent accidental boost trigger after a crash interruption
 
-        bool brakeHeld = Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f;
+        bool brakeHeld = GetBrakeKeyOrTrigger();
         if (brakeHeld) return;
         if (isOutOfHP || isOutOfFuel) return;
         if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame) return;
@@ -2893,7 +2955,7 @@ public class CarController : MonoBehaviour
 
 
             bool tryingToMove =
-                (!IsOutOfFuel && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S)))
+                (!IsOutOfFuel && (GetAccelerateKeyOrTrigger() || GetBrakeKeyOrTrigger()))
                 || IsOutOfFuel;
 
             if (speed < minSpeedToSteer && !(allowSteerWhenTryingToMove && tryingToMove))
@@ -2945,19 +3007,9 @@ public class CarController : MonoBehaviour
 
         Vector3 forward = transform.forward;
 
-        // Keyboard input
-        bool forwardKey = Input.GetKey(KeyCode.W);
-        bool reverseKey = Input.GetKey(KeyCode.S);
-
-        // Controller triggers: PS5/PS4 uses axes 4 (RT) and 5 (LT) typically
-        // Note: Triggers often rest at -1 and go to +1 when fully pressed
-        // Some setups have them at 0 to 1. We check both patterns.
-        float rightTrigger = Input.GetAxisRaw("RightTrigger");   // RT - Accelerate
-        float leftTrigger = Input.GetAxisRaw("LeftTrigger");     // LT - Brake/Reverse
-
-        // Apply trigger input (threshold to avoid drift)
-        if (rightTrigger > 0.1f) forwardKey = true;
-        if (leftTrigger > 0.1f) reverseKey = true;
+        // Keyboard + gamepad (via RacingInputReader or legacy)
+        bool forwardKey = GetAccelerateKeyOrTrigger();
+        bool reverseKey = GetBrakeKeyOrTrigger();
 
         if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame)
         {

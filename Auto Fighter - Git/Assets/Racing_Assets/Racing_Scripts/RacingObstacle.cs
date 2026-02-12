@@ -1,9 +1,25 @@
 using UnityEngine;
 using DG.Tweening;
 
+/// <summary>
+/// Obstacle type for behaviour and logic. Rock = default static/destructible; Tree = topples on collision; Cross/Shuttle/Bounce = for future or specialised behaviour.
+/// </summary>
+public enum ObstacleTyping
+{
+    Rock,
+    Tree,
+    Cross,
+    Shuttle,
+    Bounce
+}
+
 [DisallowMultipleComponent]
 public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 {
+    [Header("Obstacle Type")]
+    [Tooltip("Tree: topples over on collision in the direction of impact. Others: use for logic/spawning.")]
+    [SerializeField] private ObstacleTyping obstacleType = ObstacleTyping.Rock;
+
     [Header("Obstacle Settings")]
     [SerializeField] private bool destructible = true;
     [SerializeField] private float maxHealth = 50f;
@@ -11,6 +27,9 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     [SerializeField] private float scalePunchTime = 0.15f;
     [SerializeField] private GameObject destroyVFX;
     [SerializeField] private int rewardCurrency = 3;
+    [Header("Tree Topple (ObstacleType.Tree only)")]
+    [SerializeField, Min(0.1f)] private float treeToppleDuration = 0.7f;
+    [SerializeField] private Ease treeToppleEase = Ease.OutQuad;
 
     // NEW: Impact damage tuning
     [Header("Forcefield Impact Damage")]
@@ -26,6 +45,10 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 
     // Cooldown store per other obstacle
     private System.Collections.Generic.Dictionary<int, float> _lastImpactDamageTime = new System.Collections.Generic.Dictionary<int, float>();
+
+    private bool _treeToppled;
+
+    public ObstacleTyping Type => obstacleType;   
 
     private void Awake()
     {
@@ -98,9 +121,42 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         Destroy(gameObject);
     }
 
+    /// <summary>
+    /// Tree fall: topple in the direction the hitter is moving (opposite to impact source).
+    /// Omnidirectional: hit from left-front -> fall right-back, etc.
+    /// </summary>
+    private void ToppleTree(Collision collision)
+    {
+        if (_treeToppled) return;
+        _treeToppled = true;
+
+        // Fall direction = opposite to where the hit came from (so "hit from left -> fall right").
+        // Use relative velocity: impulse on us is along relativeVelocity; we fall in that direction.
+        Vector3 fallDir = collision.relativeVelocity;
+        if (fallDir.sqrMagnitude < 0.01f)
+            fallDir = transform.position - collision.transform.position;
+        fallDir.y = 0f;
+        if (fallDir.sqrMagnitude < 0.01f)
+            fallDir = transform.forward;
+        fallDir.Normalize();
+
+        // Final rotation: tree lies on ground with its up aligned to fall direction (toppled over that way).
+        Quaternion fallenRot = Quaternion.FromToRotation(Vector3.up, fallDir);
+
+        // Collider stays enabled so the toppled tree still acts as an obstacle (e.g. car can hit the fallen tree).
+        transform.DORotateQuaternion(fallenRot, treeToppleDuration).SetEase(treeToppleEase);
+    }
+
     // NEW: obstacle-on-obstacle impact damage when one was launched by the forcefield
     private void OnCollisionEnter(Collision collision)
     {
+        // Tree: topple on any collision, then skip damage logic.
+        if (obstacleType == ObstacleTyping.Tree && !_treeToppled)
+        {
+            ToppleTree(collision);
+            return;
+        }
+
         var otherRb = collision.rigidbody;
         if (!otherRb) return;
 
@@ -108,7 +164,7 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         var otherObstacle = otherRb.GetComponent<RacingObstacle>();
         if (!otherObstacle) return;
 
-        // Feature gate via skill unlock
+        // Feature gate via skill unlock (trees and all obstacles take damage when hit by forcefield-launched objects)
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr == null || !mgr.IsForcefieldImpactDamageUnlocked()) return;
 

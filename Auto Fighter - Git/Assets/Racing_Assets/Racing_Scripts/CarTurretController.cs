@@ -124,7 +124,7 @@ public class CarTurretController : MonoBehaviour
 
         bool wantsToFire = autoFire
                            ? true
-                           : Input.GetKey(fireKey) || Input.GetButton("Fire1");
+                           : (RacingInputReader.Instance != null ? RacingInputReader.Instance.FireHeld : (Input.GetKey(fireKey) || Input.GetButton("Fire1")));
 
         if (!wantsToFire || _cooldownTimer > 0f)
             return;

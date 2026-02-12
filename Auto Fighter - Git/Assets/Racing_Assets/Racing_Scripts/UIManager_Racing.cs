@@ -1,4 +1,4 @@
-﻿using TMPro;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -162,16 +162,16 @@ public class UIManager_Racing : MonoBehaviour
                 smashButtonLabel.text = $"SMASH {GetMashDisplaySymbol()}";
             }
 
-            if (Input.GetKeyDown(car.MashFaceButtonKey) || Input.GetKeyDown(car.MashRequiredKey))
+            if (car.GetMashRequiredButtonDown())
             {
                 OnCrashRecoveryButtonClicked();
             }
 
 #if UNITY_EDITOR
-    if (Input.GetKeyDown(KeyCode.Space))
-    {
-        OnCrashRecoveryButtonClicked();
-    }
+            if (RacingInputReader.Instance != null && RacingInputReader.Instance.AnyMashDown)
+            {
+                OnCrashRecoveryButtonClicked();
+            }
 #endif
         }
         else
