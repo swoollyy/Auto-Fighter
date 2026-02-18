@@ -2888,7 +2888,7 @@ MonoBehaviour:
     extraHeightOffset: 0
     extraLateralPadding: 0
   - id: Tree
-    prefab: {fileID: 3874382558013832276, guid: d007e7d16d56732489bab747b31c398a, type: 3}
+    prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
     baseWeight: 1
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
@@ -3549,7 +3549,7 @@ MonoBehaviour:
   environmentParent: {fileID: 796779768}
   environmentTypes:
   - id: Tree
-    prefab: {fileID: 3874382558013832276, guid: d007e7d16d56732489bab747b31c398a, type: 3}
+    prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
     baseWeight: 0.7
     extraHeightOffset: 0
     extraLateralPadding: 0

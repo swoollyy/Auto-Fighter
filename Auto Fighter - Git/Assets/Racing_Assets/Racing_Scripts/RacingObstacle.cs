@@ -28,6 +28,8 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     [SerializeField] private GameObject destroyVFX;
     [SerializeField] private int rewardCurrency = 3;
     [Header("Tree Topple (ObstacleType.Tree only)")]
+    [Tooltip("Minimum impact speed (m/s) to knock the tree down. Below this, the tree won't topple.")]
+    [Min(0f)] public float treeToppleMinVelocity = 2f;
     [SerializeField, Min(0.1f)] private float treeToppleDuration = 0.7f;
     [SerializeField] private Ease treeToppleEase = Ease.OutQuad;
 
@@ -124,14 +126,23 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     /// <summary>
     /// Tree fall: topple in the direction the hitter is moving (opposite to impact source).
     /// Omnidirectional: hit from left-front -> fall right-back, etc.
+    /// Rigidbody is set kinematic so physics doesn't reset the rotation back to upright.
     /// </summary>
     private void ToppleTree(Collision collision)
     {
         if (_treeToppled) return;
         _treeToppled = true;
 
+        // Stop physics from overwriting our rotation: make kinematic for the topple and keep it.
+        var rb = GetComponent<Rigidbody>();
+        bool wasKinematic = false;
+        if (rb != null)
+        {
+            wasKinematic = rb.isKinematic;
+            rb.isKinematic = true;
+        }
+
         // Fall direction = opposite to where the hit came from (so "hit from left -> fall right").
-        // Use relative velocity: impulse on us is along relativeVelocity; we fall in that direction.
         Vector3 fallDir = collision.relativeVelocity;
         if (fallDir.sqrMagnitude < 0.01f)
             fallDir = transform.position - collision.transform.position;
@@ -143,17 +154,31 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         // Final rotation: tree lies on ground with its up aligned to fall direction (toppled over that way).
         Quaternion fallenRot = Quaternion.FromToRotation(Vector3.up, fallDir);
 
-        // Collider stays enabled so the toppled tree still acts as an obstacle (e.g. car can hit the fallen tree).
-        transform.DORotateQuaternion(fallenRot, treeToppleDuration).SetEase(treeToppleEase);
+        // Kill any existing rotation tween on this transform so we don't get multiple tweens fighting.
+        transform.DOKill(complete: false);
+
+        transform.DORotateQuaternion(fallenRot, treeToppleDuration)
+            .SetEase(treeToppleEase)
+            .SetUpdate(UpdateType.Normal)
+            .OnComplete(() =>
+            {
+                // Snap to exact final rotation so nothing can drift it back.
+                transform.rotation = fallenRot;
+                // Keep rigidbody kinematic so physics never pushes the tree back upright.
+                if (rb != null && !wasKinematic)
+                    rb.isKinematic = true;
+            });
     }
 
     // NEW: obstacle-on-obstacle impact damage when one was launched by the forcefield
     private void OnCollisionEnter(Collision collision)
     {
-        // Tree: topple on any collision, then skip damage logic.
+        // Tree: topple on collision if impact is strong enough.
         if (obstacleType == ObstacleTyping.Tree && !_treeToppled)
         {
-            ToppleTree(collision);
+            float impactSpeed = collision.relativeVelocity.magnitude;
+            if (impactSpeed >= treeToppleMinVelocity)
+                ToppleTree(collision);
             return;
         }
 
