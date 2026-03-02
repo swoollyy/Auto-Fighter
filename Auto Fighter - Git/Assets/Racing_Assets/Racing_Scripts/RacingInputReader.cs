@@ -194,14 +194,19 @@ public class RacingInputReader : MonoBehaviour
 
     void OnEnable()
     {
-        _racingMap?.Enable();
-        _skillTreeMap?.Disable(); // enabled only when skill tree UI is active
+        // Maps must be contained in the asset's state: enable the asset first, then toggle maps.
+        if (actionAsset != null)
+        {
+            actionAsset.Enable();
+            _racingMap?.Enable();
+            _skillTreeMap?.Disable(); // enabled only when skill tree UI is active
+        }
     }
 
     void OnDisable()
     {
-        _racingMap?.Disable();
-        _skillTreeMap?.Disable();
+        if (actionAsset != null)
+            actionAsset.Disable();
     }
 
     public void SetSkillTreeMapEnabled(bool enabled)

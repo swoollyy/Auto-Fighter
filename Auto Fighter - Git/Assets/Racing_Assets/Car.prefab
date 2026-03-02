@@ -900,9 +900,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 4.7
-  baseMaxSpeed: 3.5
-  baseBrakingForce: 0.01
+  baseAcceleration: 5.2
+  baseMaxSpeed: 3.95
+  baseBrakingForce: 0.003
   turnSpeed: 11
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
@@ -926,7 +926,7 @@ MonoBehaviour:
   iceSteerRampDownRate: 1.83
   iceSteerMinFactor: 0.755
   iceSteerFlipPenalty: 0.35
-  coastLowDecelPerSecond: 0.81
+  coastLowDecelPerSecond: 0.39
   coastHighDecelPerSecond: 5.55
   coastHighSpeedFraction: 1
   useExponentialCoast: 0

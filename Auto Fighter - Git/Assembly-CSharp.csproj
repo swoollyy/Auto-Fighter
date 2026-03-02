@@ -62,6 +62,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\Level Up Rewards\BallShrinkRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleBounceBack.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPZoomEffect.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\LaunchImmunityMarker.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\VolumetricFogRendererFeatureLite.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProceduralTrackGenerator.cs" />
@@ -87,6 +88,7 @@
     <Compile Include="Assets\TerrainDetailGrassPainter.cs" />
     <Compile Include="Assets\Scripts\Druid.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextSelector_A.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\DialogueSequenceSO.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\ElectricPaddleRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ExhaustVFXController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CreatureTypeConfig.cs" />
@@ -108,11 +110,14 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeState.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\DemoController.cs" />
     <Compile Include="Assets\Scripts\TweenXPNumberSystem.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\NarrativeDirector.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_DigitValidator.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_FrameRateCounter.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPParabolaWaveEffect.cs" />
     <Compile Include="Assets\DullPad.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingUISoundManager.cs" />
     <Compile Include="Assets\Scripts\SpeedTrailFollower.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPLinkEffectHelper.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshSpawner.cs" />
     <Compile Include="Assets\Scripts\CombatSystem.cs" />
@@ -147,11 +152,13 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingObstacle.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark03.cs" />
     <Compile Include="Assets\Scripts\CameraFollowSimple.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPJitterEffect.cs" />
     <Compile Include="Assets\Scripts\Pinball.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundSurface.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\NPCTrafficCar.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\XPGravityRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\DialogueLineSO.cs" />
     <Compile Include="Assets\Scripts\XPCollectorRegistry.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarTurretController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireMarkPainter.cs" />
@@ -225,6 +232,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProjectileHitReceiver.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\CameraControllerUI.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingCurrencyCheat.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\DialogueManager.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleSpawner.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUIEntry.cs" />
@@ -268,6 +276,7 @@
     <Compile Include="Assets\Scripts\Level Up Rewards\PortalWarpRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackCoinSpawner.cs" />
     <Compile Include="Assets\Scripts\Test.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\DialogueUI.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ObstaclePathPreview.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextInfoDebugTool.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldSkillHook.cs" />

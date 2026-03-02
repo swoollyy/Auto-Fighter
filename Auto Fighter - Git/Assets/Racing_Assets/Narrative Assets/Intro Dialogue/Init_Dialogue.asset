@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2f00befe1fee4a4bb665e496d2a78fc, type: 3}
+  m_Name: Init_Dialogue
+  m_EditorClassIdentifier: 
+  sequenceId: intro
+  lines:
+  - speakerName: Overseer
+    text: Oh... heyyyyyyyyyyyy!
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: I'm- uhh.. not sure how ya got here, pal! You sure are lookin battered
+      and bruised, though...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: You
+    text: ...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: Never fret! I'll fix ya right up in no time!
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: ...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: You
+    text: ...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: Right as rain! You're lookin' like a brand new beast!
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  setStoryFlagOnComplete: init_done
+  pauseGameWhilePlaying: 1

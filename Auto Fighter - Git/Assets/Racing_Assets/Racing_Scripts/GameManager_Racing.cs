@@ -483,6 +483,8 @@ public class GameManager_Racing : MonoBehaviour
         _currencyAwarded = true;
         runEnded = true;
 
+        NarrativeDirector.NotifyRunCompleted();
+
         // Pause so player can read
         StartCoroutine(CoFreezeAfterRunComplete());
 
