@@ -5,88 +5,93 @@ using Debug = UnityEngine.Debug;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(CarMovementConfig))]
+[RequireComponent(typeof(CarSteeringConfig))]
+[RequireComponent(typeof(CarLandingConfig))]
+[RequireComponent(typeof(CarDriftConfig))]
+[RequireComponent(typeof(CarBoostConfig))]
+[RequireComponent(typeof(CarFuelConfig))]
+[RequireComponent(typeof(CarHealthConfig))]
+[RequireComponent(typeof(CarGroundConfig))]
+[RequireComponent(typeof(CarRampConfig))]
+[RequireComponent(typeof(CarCrashMashConfig))]
+[RequireComponent(typeof(CarVFXAudioConfig))]
 public class CarController : MonoBehaviour
 {
+    // Config components (read at Awake; base values applied so upgrades/surfaces work unchanged)
+    private CarMovementConfig _movementConfig;
+    private CarSteeringConfig _steeringConfig;
+    private CarLandingConfig _landingConfig;
+    private CarDriftConfig _driftConfig;
+    private CarBoostConfig _boostConfig;
+    private CarFuelConfig _fuelConfig;
+    private CarHealthConfig _healthConfig;
+    private CarGroundConfig _groundConfig;
+    private CarRampConfig _rampConfig;
+    private CarCrashMashConfig _crashMashConfig;
+    private CarVFXAudioConfig _vfxAudioConfig;
+
     [Header("Base Movement (on Default surface)")]
-    [SerializeField] private float baseAcceleration = 25f;
-    [SerializeField] private float baseMaxSpeed = 30f;
-    [SerializeField] private float baseBrakingForce = 40f;
+    private float baseAcceleration;
+    private float baseMaxSpeed;
+    private float baseBrakingForce;
 
     [Header("Steering")]
-    [SerializeField] private float turnSpeed = 90f;   // <<< THE ONE TURN SPEED SLIDER
+    private float turnSpeed;
 
-    [SerializeField] private float minSpeedToSteer = 0.6f; // tweak in Inspector
-    [SerializeField] private bool allowSteerWhenTryingToMove = true; // W/S lets you steer even if speed is tiny
+    private float minSpeedToSteer;
+    private bool allowSteerWhenTryingToMove;
 
     private readonly Dictionary<int, float> _perColliderCrashTime = new Dictionary<int, float>();
-    [SerializeField, Tooltip("Minimum seconds between crashes from the same collider.")]
-    private float perColliderCrashCooldown = 0.5f;
+    private float perColliderCrashCooldown;
 
     // Reference to forcefield for protection checks
     private CarForcefield _forcefield;
 
     [Header("Ramp / Airborne Speed Preservation")]
-    [SerializeField, Tooltip("If true, we do NOT hard-clamp horizontal speed while airborne.")]
-    private bool skipSpeedClampWhileAirborne = true;
-
-    [SerializeField, Tooltip("When you land with speed above cap, we let you keep the excess and bleed it off smoothly.")]
-    private bool enableLandingCarrySpeed = true;
-
-    [SerializeField, Min(0f), Tooltip("How fast excess landing speed bleeds away (m/s per second).")]
-    private float landingExcessBleedPerSecond = 18f;
-
-    [SerializeField, Min(0f), Tooltip("Extra seconds after touchdown where we still avoid any hard clamp (lets suspension settle).")]
-    private float landingNoClampGraceSeconds = 0.08f;
+    private bool skipSpeedClampWhileAirborne;
+    private bool enableLandingCarrySpeed;
+    private float landingExcessBleedPerSecond;
+    private float landingNoClampGraceSeconds;
+    private bool enableLandingBoost;
+    private float landingBoostStrength;
+    private float landingBoostDuration;
+    private float landingBoostFalloff;
 
     [Header("Mash Gauge Skill Scaling")]
-    [Tooltip("How much to scale drain per point of effective clicks above base. E.g., 0.15 means +15% drain per extra click power.")]
-    [SerializeField, Range(0f, 0.5f)] private float drainScalePerClickPower = 0.12f;
-
-    [Tooltip("How much to scale drain per point of passive click strength above base. Usually lower since passive is already gated.")]
-    [SerializeField, Range(0f, 0.3f)] private float drainScalePerPassiveStrength = 0.08f;
-
-    [Tooltip("Maximum drain multiplier from skill scaling (prevents it from becoming impossible).")]
-    [SerializeField, Range(1f, 5f)] private float maxSkillDrainMultiplier = 3f;
-
-    [Tooltip("Minimum drain multiplier (floor, in case player somehow has negative bonuses).")]
-    [SerializeField, Range(0.5f, 1f)] private float minSkillDrainMultiplier = 1f;
+    private float drainScalePerClickPower;
+    private float drainScalePerPassiveStrength;
+    private float maxSkillDrainMultiplier;
+    private float minSkillDrainMultiplier;
 
     [Header("Steering Feel")]
-    [SerializeField] private float lowSpeedSteerMultiplier = 1.2f;
-    [SerializeField] private float highSpeedSteerMultiplier = 0.4f;
-    [SerializeField] private float speedForSteerCurve = 25f;
-    [SerializeField] private float steeringInputSmooth = 12f;
+    private float lowSpeedSteerMultiplier;
+    private float highSpeedSteerMultiplier;
+    private float speedForSteerCurve;
+    private float steeringInputSmooth;
 
     [Header("Arcade Steering Extras")]
-    [SerializeField] private bool useAutoAlignToVelocity = false;
-    [SerializeField] private float autoAlignStrength = 3f;
+    private bool useAutoAlignToVelocity;
+    private float autoAlignStrength;
 
     [Header("Ice Steering Ramp")]
-    [SerializeField] private bool enableIceSteerRamp = true;
-    [SerializeField] private float iceSteerRampUpRate = 2.5f;     // how fast steering "builds"
-    [SerializeField] private float iceSteerRampDownRate = 6.0f;   // how fast it falls off when you stop steering
-    [SerializeField, Range(0f, 1f)] private float iceSteerMinFactor = 0.15f; // starting steering on ice
-    [SerializeField, Range(0f, 1f)] private float iceSteerFlipPenalty = 0.35f;
+    private bool enableIceSteerRamp;
+    private float iceSteerRampUpRate;
+    private float iceSteerRampDownRate;
+    private float iceSteerMinFactor;
+    private float iceSteerFlipPenalty;
 
     [Header("Arcade Coasting")]
-    [SerializeField, Tooltip("Base deceleration (m/s per second) applied when you release W and are not braking or drifting.")]
-    private float coastLowDecelPerSecond = 1.2f;
-    [SerializeField, Tooltip("Extra deceleration at high speed (m/s per second) blended in as speed approaches max.")]
-    private float coastHighDecelPerSecond = 3.5f;
-    [SerializeField, Tooltip("Speed fraction (0..1) where high speed decel fully applies.")]
-    private float coastHighSpeedFraction = 0.8f;
-    [SerializeField, Tooltip("If true, use exponential damping instead of linear MoveTowards (slightly smoother).")]
-    private bool useExponentialCoast = false;
-    [SerializeField, Tooltip("Exponential damping factor (per second) when useExponentialCoast=true.")]
-    private float coastDampingPerSecond = 2.0f;
+    private float coastLowDecelPerSecond;
+    private float coastHighDecelPerSecond;
+    private float coastHighSpeedFraction;
+    private bool useExponentialCoast;
+    private float coastDampingPerSecond;
 
 
     [Header("Flip Recovery (Mash) - Input")]
-    [SerializeField, Tooltip("If true, each mash recovery chooses a random controller face button (0-3).")]
-    private bool randomizeMashFaceButton = true;
-
-    [SerializeField, Tooltip("If true, Space will still work for mash in Editor (in addition to the chosen face button).")]
-    private bool allowSpaceMashInEditor = true;
+    private bool randomizeMashFaceButton;
+    private bool allowSpaceMashInEditor;
 
     // 0..3 => Unity: JoystickButton0..3
     // (PS) 0=Cross(✕) 1=Circle(◯) 2=Square(□) 3=Triangle(△)
@@ -215,62 +220,39 @@ public class CarController : MonoBehaviour
     }
 
     [Header("Flip Mash Rewards")]
-    [SerializeField, Tooltip("Base fuel recovered per click.")]
-    private float mashBaseFuelPerClick = 0.3f;
-
-    [SerializeField, Tooltip("Bonus fuel multiplier at max mash speed.")]
-    private float mashFuelSpeedBonusMax = 2f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) to achieve max speed bonus.")]
-    private float mashMaxSpeedThreshold = 0.1f;
-
-    [SerializeField, Tooltip("Time between clicks (seconds) where no speed bonus applies.")]
-    private float mashMinSpeedThreshold = 0.5f;
+    private float mashBaseFuelPerClick;
+    private float mashFuelSpeedBonusMax;
+    private float mashMaxSpeedThreshold;
+    private float mashMinSpeedThreshold;
 
     [Header("Arcade Movement Tuning")]
-    [SerializeField] private float coastDecelFactor = 0.1f;
-    [SerializeField] private float brakeForwardFactor = 0.7f;
-    [SerializeField] private float reverseAccelFactor = 0.8f;
-    [SerializeField] private float brakeToReverseSpeed = 0.5f;
+    private float coastDecelFactor;
+    private float brakeForwardFactor;
+    private float reverseAccelFactor;
+    private float brakeToReverseSpeed;
 
     // NEW: caps so braking can’t be insanely hard at low max speeds
-    [SerializeField, Tooltip("Maximum forward braking decel (m/s^2) when holding S. Lower = softer, longer stops.")]
-    private float maxBrakeDecelPerSecond = 5f;
-    [SerializeField, Tooltip("Maximum reverse acceleration (m/s^2) when transitioning into reverse.")]
-    private float maxReverseAccelPerSecond = 4f;
+    private float maxBrakeDecelPerSecond;
+    private float maxReverseAccelPerSecond;
 
-    [SerializeField] private float baseSteeringDamp = 1f;
+    private float baseSteeringDamp;
     private float currentSteeringDamp;
 
 
     // ─────────────────────────────────────────────
     // NEW: Steering traction while coasting (no throttle/brake, no drift)
     // ─────────────────────────────────────────────
-    [Header("Steer Rolling Traction")]
-    [SerializeField, Tooltip("Enable steering traction/forward roll while coasting.")]
-    private bool enableSteerTraction = true;
-    [SerializeField, Tooltip("How fast velocity direction blends toward forward when steering without throttle. Higher = snappier.")]
-    private float steerTractionReorientRate = 6f;
-    [SerializeField, Tooltip("Small forward acceleration applied while steering with no throttle, to mimic tires rolling.")]
-    private float steerRollingAccel = 2.25f;
-    [SerializeField, Tooltip("Minimum speed required to apply steer traction.")]
-    private float minSpeedForSteerTraction = 0.1f;
-    [SerializeField, Tooltip("Extra lateral damping while steering with no throttle (reduces sideways slip).")]
-    private float lateralFrictionWhileSteering = 3.5f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades IN (per second).")]
-    private float steerTractionBlendIn = 10f;
-
-    [SerializeField, Tooltip("How quickly coasting-steer traction fades OUT (per second).")]
-    private float steerTractionBlendOut = 14f;
-
+    [Header("Steer Rolling Traction (from CarSteeringConfig)")]
+    private bool enableSteerTraction;
+    private float steerTractionReorientRate;
+    private float steerRollingAccel;
+    private float minSpeedForSteerTraction;
+    private float lateralFrictionWhileSteering;
+    private float steerTractionBlendIn;
+    private float steerTractionBlendOut;
     private float _steerTractionBlend = 0f;
-
-    [SerializeField, Range(0f, 2f), Tooltip("Scales steerRollingAccel when NOT holding throttle/brake. 1 = current behavior.")]
-    private float steerRollingAccelCoastMultiplier = 1f;
-
-    [SerializeField, Tooltip("If true, steerRollingAccel is also applied on ice. If false, coasting-steer won't add forward push on ice.")]
-    private bool applySteerRollingAccelOnIce = false;
+    private float steerRollingAccelCoastMultiplier;
+    private bool applySteerRollingAccelOnIce;
 
     private bool _inputsSuppressedThisFrame = false;
 
@@ -279,87 +261,51 @@ public class CarController : MonoBehaviour
     private bool _suppressSteeringThisFrame = false;
 
     [Header("Drift Unlock")]
-    [SerializeField] private bool requireDriftUnlock = true; // if true, drift only works after skill unlocked
-    private bool driftUnlocked; // runtime flag
+    private bool requireDriftUnlock;
+    private bool driftUnlocked;
 
     [Header("Drift (Arcade)")]
-    [SerializeField] private KeyCode driftKey = KeyCode.LeftShift;
+    private KeyCode driftKey;
     private KeyCode driftButtonController = KeyCode.JoystickButton2;
-    [SerializeField] private float driftMinSpeed = 5f;
-    [SerializeField] private float maxDriftSteerMultiplier = 2.5f;
-    [SerializeField] private float driftBuildRate = 1.8f;
-    [SerializeField] private float driftReleaseRate = 3.5f;
-    [SerializeField] private float driftSideForce = 6f;
-    [SerializeField] private float driftSpeedDecayPerSecond = 1.5f;
-    [SerializeField, Tooltip("Very small decay while drift key is held (ice feel).")]
-    private float driftHeldSpeedDecayPerSecond = 0.15f;
-    [SerializeField, Tooltip("Forward acceleration multiplier while drifting or gliding. 1 = same as normal.")]
-    private float driftForwardAccelMultiplier = 0.85f; // NEW
-    [SerializeField, Tooltip("Use full forward acceleration while holding drift + W (prevents perceived slowdown).")]
-    private bool useFullAccelWhileDrifting = true; // NEW
-    [SerializeField, Tooltip("Preserve highest speed reached during current drift/glide while drift key held.")]
-    private bool lockToDriftPeakSpeed = true; // NEW
+    private float driftMinSpeed;
+    private float maxDriftSteerMultiplier;
+    private float driftBuildRate;
+    private float driftReleaseRate;
+    private float driftSideForce;
+    private float driftSpeedDecayPerSecond;
+    private float driftHeldSpeedDecayPerSecond;
+    private float driftForwardAccelMultiplier;
+    private bool useFullAccelWhileDrifting;
+    private bool lockToDriftPeakSpeed;
 
     [Header("Crash Recovery Click Model (Multiplicative)")]
-    [Tooltip("If true, mash clicks are computed as: baseClicks * distanceFactor * severityFactor * crashFactor * (optional multipliers).")]
-    [SerializeField] private bool useMultiplicativeMashClicks = true;
-
-    [Tooltip("Starting click count before factors (keep this fairly small; distance scaling is meant to do the heavy lifting).")]
-    [SerializeField, Min(1)] private int mashBaseClicks = 15;
-
-    [Tooltip("How strongly run progress ramps clicks. This should be BIG (this is your primary difficulty driver).")]
-    [SerializeField, Min(0f)] private float mashDistanceWeight = 450f;
-
-    [Tooltip("Power applied to progress (after curve). Higher = stays low early, explodes near the end.")]
-    [SerializeField, Min(0.1f)] private float mashDistanceExponent = 4.0f;
-
-    [Tooltip("Additional multiplier based on last crash severity (0..1).")]
-    [SerializeField, Min(0f)] private float mashSeverityWeight = 1.75f;
-
-    [Tooltip("Power applied to last crash severity. >1 means small crashes barely add anything.")]
-    [SerializeField, Min(0.1f)] private float mashSeverityExponent = 1.25f;
-
-    [Tooltip("Extra multiplier per crash count (monotonic). Example: 0.35 = ~35% more per crash.")]
-    [SerializeField, Min(0f)] private float mashCrashCountWeight = 0.35f;
-
-    [Tooltip("Extra multiplier based on cumulative crash severities this run. Makes repeated crashing ramp fast.")]
-    [SerializeField, Min(0f)] private float mashSeveritySumWeight = 0.80f;
+    private bool useMultiplicativeMashClicks;
+    private int mashBaseClicks;
+    private float mashDistanceWeight;
+    private float mashDistanceExponent;
+    private float mashSeverityWeight;
+    private float mashSeverityExponent;
+    private float mashCrashCountWeight;
+    private float mashSeveritySumWeight;
 
     [Header("Crash Recovery Multipliers")]
-    [Tooltip("If true, mash recovery triggers on ANY crash, not just flips.")]
-    [SerializeField] private bool enableCrashRecoveryAlways = true;
+    private bool enableCrashRecoveryAlways;
+    private float flippedClickMultiplier;
+    private float airborneClickMultiplier;
 
-    [Tooltip("Click multiplier when car is flipped (e.g., 1.5 = 50% more clicks).")]
-    [SerializeField, Min(1f)] private float flippedClickMultiplier = 1.5f;
-
-    [Tooltip("Click multiplier when airborne during crash.")]
-    [SerializeField, Min(1f)] private float airborneClickMultiplier = 1.25f;
-
-    // NEW: gentle deceleration while drifting if S is held (softer than normal braking)
     [Header("Drift Braking")]
-    [SerializeField, Tooltip("Per-second speed decay while drifting and holding S. Lower = softer, preserves ice feel.")]
-    private float driftBrakeDecayPerSecond = 0.6f;
+    private float driftBrakeDecayPerSecond;
 
     [Header("Close Call Speed Boost (Skill-Based)")]
-    [Tooltip("Base duration of speed boost when close call skill is unlocked.")]
-    [SerializeField] private float closeCallBoostBaseDuration = 0.8f;
+    private float closeCallBoostBaseDuration;
+    private float closeCallBoostForce;
+    private ForceMode closeCallBoostForceMode;
+    private float closeCallBoostMaxSpeedMult;
 
-    [Tooltip("Force applied during close call boost.")]
-    [SerializeField] private float closeCallBoostForce = 40f;
-
-    [Tooltip("How the boost force is applied.")]
-    [SerializeField] private ForceMode closeCallBoostForceMode = ForceMode.VelocityChange;
-
-    [Tooltip("Maximum speed multiplier during close call boost.")]
-    [SerializeField] private float closeCallBoostMaxSpeedMult = 2f;
-
-    [Header("Close Call Invincibility (Skill-Based)")]
-    [Tooltip("Visual effect color tint during invincibility.")]
-    [SerializeField] private Color closeCallInvincibilityTint = new Color(0.5f, 0.8f, 1f, 0.5f);
-
-    [Header("Close Call Visuals")]
-    [SerializeField] private Color closeCallTintColor = new Color(0.3f, 0.6f, 1f, 1f);
-    [SerializeField] private float closeCallTintStrength = 0.6f; // 0–1
+    [Header("Close Call Invincibility / Visuals")]
+    private Color closeCallInvincibilityTint;
+    private Color closeCallTintColor;
+    private float closeCallTintStrength;
 
     private Renderer[] _renderers;
     private MaterialPropertyBlock _mpb;
@@ -367,69 +313,41 @@ public class CarController : MonoBehaviour
     // Cache original colors per renderer
     private Dictionary<Renderer, Color> _originalColors = new Dictionary<Renderer, Color>();
 
-    [Tooltip("Lateral force applied to obstacles when hit during invincibility.")]
-    [SerializeField] private float invincibilityBumpForceAway = 15f;
-
-    [Tooltip("Upward force applied to obstacles when hit during invincibility.")]
-    [SerializeField] private float invincibilityBumpForceUp = 8f;
-
-    [Tooltip("Torque applied to obstacles for spin effect.")]
-    [SerializeField] private float invincibilityBumpTorque = 5f;
+    private float invincibilityBumpForceAway;
+    private float invincibilityBumpForceUp;
+    private float invincibilityBumpTorque;
 
     [Header("Drift Neutral Behavior")]
-    [Tooltip("Require a non-zero steering input (above steerFlipThreshold) to build/maintain drift charge. Releasing steering while holding drift will drain the charge.")]
-    [SerializeField] private bool requireDirectionalInputForDriftCharge = true;
-    [Tooltip("Drain rate while drift key held but no steering (if requireDirectionalInputForDriftCharge = true). If <= 0 uses driftReleaseRate.")]
-    [SerializeField] private float driftNeutralDrainRate = 4.2f;
+    private bool requireDirectionalInputForDriftCharge;
+    private float driftNeutralDrainRate;
 
     [Header("Drift Neutral Reset")]
-    [Tooltip("If you let go of steering for this long while holding drift, driftCharge fully resets so re-engaging is a fresh drift.")]
-    [SerializeField] private float driftNeutralFullResetDelay = 0.15f;
+    private float driftNeutralFullResetDelay;
 
     [Header("Drift Direction Change Reset")]
     [Tooltip("If true, changing steering direction while holding drift will reset (or reduce) drift charge so direction change isn’t a snap turn.")]
-    [SerializeField] private bool resetDriftChargeOnSteerFlip = true;
-    [Tooltip("Portion of drift charge retained after a direction flip (0 = full reset).")]
-    [SerializeField, Range(0f, 1f)] private float steerFlipRetainedCharge = 0f;
-    [Tooltip("Minimum absolute steering input required to read a sign (+/-) for flip detection.")]
-    [SerializeField, Range(0f, 1f)] private float steerFlipThreshold = 0.20f;
-    [Tooltip("Minimum drift charge required before a direction flip can trigger a reset (prevents tiny wiggles).")]
-    [SerializeField, Range(0f, 1f)] private float minChargeForFlipReset = 0.15f;
-    [Tooltip("Delay after a flip before drift can start rebuilding (seconds).")]
-    [SerializeField, Range(0f, 1f)] private float steerFlipRebuildDelay = 0.15f;
+    private bool resetDriftChargeOnSteerFlip;
+    private float steerFlipRetainedCharge;
+    private float steerFlipThreshold;
+    private float minChargeForFlipReset;
+    private float steerFlipRebuildDelay;
 
     [Header("Drift Glide (Ice Feel)")]
-    [Tooltip("Allow holding the drift key without steering to preserve most of entry speed (ice-like glide).")]
-    [SerializeField] private bool allowDriftGlideWithoutSteer = true;
-    [Tooltip("Per-second decay while gliding (very small to keep speed).")]
-    [SerializeField] private float driftGlideDecayPerSecond = 0.05f;
+    private bool allowDriftGlideWithoutSteer;
+    private float driftGlideDecayPerSecond;
 
     [Header("Close-Call Near-Miss (global)")]
-    [SerializeField, Tooltip("Enable near-miss slow-mo/postFX when driving close to any obstacle.")]
-    private bool enableCloseCallNearMisses = true;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Distance (meters) within which a passing obstacle is considered a close call.")]
-    private float closeCallDistance = 3.5f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Minimum car forward speed (m/s) required to consider a close call (reduces false positives when standing).")]
-    private float closeCallMinSpeed = 4f;
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle to avoid repeated close-call triggers (legacy per-collider fallback).")]
-    private float closeCallCooldown = 1.0f;
-
-    [SerializeField, UnityEngine.Min(0f), Tooltip("Cooldown (seconds) per obstacle ROOT to avoid repeated close-call triggers (preferred).")]
-    private float closeCallRootCooldown = 3.0f;
+    private bool enableCloseCallNearMisses;
+    private float closeCallDistance;
+    private float closeCallMinSpeed;
+    private float closeCallCooldown;
+    private float closeCallRootCooldown;
 
     [Header("Ice Surface Transition")]
-    [Tooltip("How fast friction lerps to/from ice values (higher = faster transition).")]
-    [SerializeField] private float iceFrictionTransitionSpeed = 3f;
-
-    [Tooltip("How fast handling lerps to/from ice values (higher = faster transition).")]
-    [SerializeField] private float iceHandlingTransitionSpeed = 4f;
-
-    // NEW: Ice drift-like physics
-    [Tooltip("Lateral force applied when steering on ice (mimics drift slide).")]
-    [SerializeField] private float iceLateralSlideForce = 4f;
-
-    [Tooltip("How strongly velocity aligns to car forward when on ice (lower = more slide).")]
-    [SerializeField] private float iceVelocityAlignmentStrength = 2f;
+    private float iceFrictionTransitionSpeed;
+    private float iceHandlingTransitionSpeed;
+    private float iceLateralSlideForce;
+    private float iceVelocityAlignmentStrength;
 
     private bool _driftGlideActive;          // NEW: glide mode (holding drift, no steer)
 
@@ -439,312 +357,170 @@ public class CarController : MonoBehaviour
     private int _driftCurrentSteerSign = 0;
     private float _driftFlipBlockUntil = 0f;
 
-    [Header("Base Physics")]
-    [SerializeField] private float baseDrag = 0.08f;
+    [Header("Base Physics (from CarMovementConfig)")]
+    private float baseDrag;
 
-    [Header("Ground Detection")]
-    [SerializeField] private LayerMask groundLayers = ~0;
-    [SerializeField] private int samplesX = 2;
-    [SerializeField] private int samplesZ = 4;
-    [SerializeField] private float raycastHeightOffset = 0.5f;
-    [SerializeField] private float raycastExtraDistance = 2f;
-    [SerializeField] private bool debugSurfaceRays = false;
+    [Header("Ground Detection (from CarGroundConfig)")]
+    private LayerMask groundLayers;
+    private int samplesX;
+    private int samplesZ;
+    private float raycastHeightOffset;
+    private float raycastExtraDistance;
+    private bool debugSurfaceRays;
+    private float surfaceSampleExtent;
 
-    [Tooltip("How far ground samples stretch from the collider center.\n0.5 = inner half, 1 = full collider extents, 1.5 = 50% beyond the collider, etc.")]
-    [SerializeField] private float surfaceSampleExtent = 1f;
+    [Header("Fuel (from CarFuelConfig)")]
+    private float maxFuel;
+    private float fuelUsePerSecondAtFullThrottle;
+    private float fuelUsePerSecondBraking;
+    private float idleFuelUsePerSecond;
+    private float idleSpeedThreshold;
 
-    [Header("Fuel Settings")]
-    [SerializeField] private float maxFuel = 100f;
-    [SerializeField] private float fuelUsePerSecondAtFullThrottle = 5f;
-    [SerializeField] private float fuelUsePerSecondBraking = 3f;
-    [SerializeField] private float idleFuelUsePerSecond = 0.5f;
-    [Tooltip("Speed (m/s) below which we consider the car 'idle' for idle fuel consumption.")]
-    [SerializeField] private float idleSpeedThreshold = 0.5f;
+    [Header("Crash / Hit (from CarCrashMashConfig)")]
+    private LayerMask crashLayers;
+    private float minImpactSpeed;
+    private float maxImpactSpeed;
+    private float minCrashDuration;
+    private float maxCrashDuration;
+    private float impulsePerUnitSpeed;
+    private float torquePerUnitSpeed;
+    private float crashDragMultiplier;
+    private float crashAngularDrag;
 
-    [Header("Crash / Hit Reaction")]
-    [SerializeField] private LayerMask crashLayers;
-    [SerializeField] private float minImpactSpeed = 4f;
-    [SerializeField] private float maxImpactSpeed = 25f;
-    [SerializeField] private float minCrashDuration = 0.15f;
-    [SerializeField] private float maxCrashDuration = 1.1f;
-    [SerializeField] private float impulsePerUnitSpeed = 0.6f;
-    [SerializeField] private float torquePerUnitSpeed = 0.45f;
-    [SerializeField] private float crashDragMultiplier = 2f;
-    [SerializeField] private float crashAngularDrag = 1.5f;
-
-    [Header("Popup Text Settings")]
-    [Tooltip("Enable floating popup text for damage, fuel, coins, etc.")]
-    [SerializeField] private bool enablePopupText = true;
-
-    [Tooltip("Vertical offset above car for popup spawn position.")]
-    [SerializeField] private float popupVerticalOffset = 2f;
-
-    [Tooltip("Minimum HP damage to show popup (prevents spam from tiny hits).")]
-    [SerializeField] private float minHPDamageForPopup = 1f;
-
-    [Tooltip("Minimum fuel loss to show popup.")]
-    [SerializeField] private float minFuelLossForPopup = 1f;
-
-    [Tooltip("Minimum fuel gain to show popup.")]
-    [SerializeField] private float minFuelGainForPopup = 0.5f;
-
-    [Header("Mash Fuel Popup (Random Screen Spawn)")]
-    [SerializeField] private Vector2 mashFuelPopupHorizontalRange = new Vector2(-1.2f, 1.2f);
-    [SerializeField] private Vector2 mashFuelPopupVerticalRange = new Vector2(-0.6f, 0.6f);
+    [Header("Popup / Mash Shake / Crash Spin (from CarCrashMashConfig)")]
+    private bool enablePopupText;
+    private float popupVerticalOffset;
+    private float minHPDamageForPopup;
+    private float minFuelLossForPopup;
+    private float minFuelGainForPopup;
+    private Vector2 mashFuelPopupHorizontalRange;
+    private Vector2 mashFuelPopupVerticalRange;
+    private bool enableMashScreenShake;
+    private float mashShakeDuration;
+    private float mashShakeStrength;
+    private int mashShakeVibrato;
+    private float mashShakeRandomness;
+    private float crashYawTorqueMultiplier;
+    private float crashRollTorqueMultiplier;
+    private float crashPitchTorqueMultiplier;
+    private float reorientDuration;
+    private float groundedDurationRequired;
+    private float groundCheckDistance;
+    private LayerMask groundCheckLayers;
 
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
 
-    [Header("Mash Screen Shake")]
-    [SerializeField] private bool enableMashScreenShake = true;
-    [SerializeField] private float mashShakeDuration = 0.08f;
-    [SerializeField] private float mashShakeStrength = 0.15f;
-    [SerializeField] private int mashShakeVibrato = 10;
-    [SerializeField] private float mashShakeRandomness = 0.5f;
+    [Header("Steering Direction (from CarSteeringConfig)")]
+    private bool invertSteeringWhenReversing;
+    private float reverseSteerMultiplier;
 
-    [Header("Crash Spin Tuning")]
-    [SerializeField] private float crashYawTorqueMultiplier = 1f;
-    [SerializeField] private float crashRollTorqueMultiplier = 0.6f;
-    [SerializeField] private float crashPitchTorqueMultiplier = 0.35f;
-
-    [Header("Crash Recovery")]
-    [SerializeField] private float reorientDuration = 0.6f;
-    [SerializeField, Tooltip("Time (seconds) the car must remain grounded before crash recovery begins.")]
-    private float groundedDurationRequired = 0.5f;
-    [SerializeField, Tooltip("Distance threshold for ground check raycast.")]
-    private float groundCheckDistance = 0.3f;
-    [SerializeField, Tooltip("Layers considered as ground for recovery check.")]
-    private LayerMask groundCheckLayers = ~0;
-
-    [Header("Steering Direction")]
-    [SerializeField] private bool invertSteeringWhenReversing = false;
-    [SerializeField] private float reverseSteerMultiplier = 1f;
-
-    // ─────────────────────────────────────────────
-    // HEALTH SYSTEM
-    // ─────────────────────────────────────────────
-    [Header("Health")]
-    [SerializeField] private float maxHP = 100f;
-    [SerializeField] private float hpCrashDamageAtSeverity1 = 40f;
-
+    [Header("Health (from CarHealthConfig)")]
+    private float maxHP;
+    private float hpCrashDamageAtSeverity1;
     private float baseMaxHP;
-
-    [SerializeField, Tooltip("Base HP regenerated per second (before skills).")]
-    private float baseHpRegenPerSecond = 0f;
-
-    // Runtime (after skills applied)
+    private float baseHpRegenPerSecond;
     private float hpRegenPerSecond = 0f;
 
-    [Header("Performance Degradation (vs HP)")]
-    [SerializeField, Range(0.1f, 1f)] private float performanceAtZeroHP = 0.35f;
-    [SerializeField, Range(0f, 1f)] private float degradeStartHPFraction = 0.75f;
+    private float performanceAtZeroHP;
+    private float degradeStartHPFraction;
+    private bool enableDamageMalfunction;
+    private float maxMalfunctionChancePerSecond;
+    private Vector2 malfunctionBurstDuration;
+    private Vector2 malfunctionCooldown;
+    private float malfunctionThrottleMultiplier;
+    private bool useSmoothMalfunction;
+    private float minimumAccelerationFloor;
+    private float minimumMaxSpeedFloor;
+    private float fuelLossAtSeverity1;
+    private float minHpLossPerCrash;
+    private float minFuelLossPerCrash;
+    private float crashDamageCooldown;
+    private float _nextCrashAllowedTime = 0f;
 
-    [Header("Input Malfunction (Low HP)")]
-    [SerializeField] private bool enableDamageMalfunction = true;
-    [SerializeField, Range(0f, 1f)] private float maxMalfunctionChancePerSecond = 0.5f;
-    [SerializeField] private Vector2 malfunctionBurstDuration = new Vector2(0.2f, 0.8f);
-    [SerializeField] private Vector2 malfunctionCooldown = new Vector2(0.4f, 1.2f);
+    private GameObject crashImpactVFX;
+    private float crashImpactVFXLifetime;
+    private ParticleSystem damageSmokeVFX;
+    private float smokeStartHPFraction;
+    private float smokeMinRate;
+    private float smokeMaxRate;
+    private float smokeMinSize;
+    private float smokeMaxSize;
+    private Color smokeColorAtThreshold;
+    private Color smokeColorAtZeroHP;
+    private bool invertSmokeColorLerp;
 
-    [Header("Malfunction Behavior (Improved)")]
-    [Tooltip("Instead of fully blocking throttle, malfunctions reduce effectiveness to this multiplier (0.35 = 35% throttle during malfunction).")]
-    [SerializeField, Range(0f, 1f)] private float malfunctionThrottleMultiplier = 0.35f;
-    [Tooltip("If true, malfunctions reduce throttle instead of blocking it entirely. Much smoother feel.")]
-    [SerializeField] private bool useSmoothMalfunction = true;
-    [Tooltip("Minimum acceleration (m/s²) the car can ever have, regardless of HP or malfunctions. Prevents total immobility.")]
-    [SerializeField, Min(0f)] private float minimumAccelerationFloor = 4f;
-    [Tooltip("Minimum max speed (m/s) the car can ever have. Ensures car can always move at some speed.")]
-    [SerializeField, Min(0f)] private float minimumMaxSpeedFloor = 6f;
-
-    [Header("Crash Penalties")]
-    [SerializeField] private float fuelLossAtSeverity1 = 20f;
-    [SerializeField, Tooltip("Minimum HP deducted per crash (applies after severity scaling).")]
-    private float minHpLossPerCrash = 10f;
-    [SerializeField, Tooltip("Minimum fuel deducted per crash (applies after severity scaling).")]
-    private float minFuelLossPerCrash = 10f;
-
-    [Header("Crash Cooldown")]
-    [SerializeField, Tooltip("Seconds of invulnerability after taking crash damage.")]
-    private float crashDamageCooldown = 0.75f;
-    private float _nextCrashAllowedTime = 0f; // runtime timer gate
-
-    [Header("Crash Impact VFX")]
-    [Tooltip("Optional explosion/impact VFX prefab to spawn at the car collision point.")]
-    [SerializeField] private GameObject crashImpactVFX;
-    [Tooltip("Lifetime of the spawned VFX (seconds) when instantiated or returned to pool).")]
-    [SerializeField] private float crashImpactVFXLifetime = 4f;
-
-    [Header("Damage Smoke (VFX)")]
-    [Tooltip("Smoke VFX that scales with damage.")]
-    [SerializeField] private ParticleSystem damageSmokeVFX;
-    [Tooltip("HP fraction where smoke begins (e.g. 0.75 = starts below 75% HP).")]
-    [SerializeField, Range(0f, 1f)] private float smokeStartHPFraction = 0.75f;
-    [SerializeField] private float smokeMinRate = 4f;
-    [SerializeField] private float smokeMaxRate = 60f;
-    [Tooltip("Particle start size at threshold HP (first appearance).")]
-    [SerializeField] private float smokeMinSize = 0.5f;
-    [Tooltip("Particle start size at 0 HP.")]
-    [SerializeField] private float smokeMaxSize = 2.0f;
-    [Tooltip("Color when smoke first appears (higher HP side).")]
-    [SerializeField] private Color smokeColorAtThreshold = Color.white;
-    [Tooltip("Color when car is at 0 HP (fully damaged).")]
-    [SerializeField] private Color smokeColorAtZeroHP = Color.gray;
-    [Tooltip("Invert color lerp direction if you want threshold to be gray and low HP to be white.")]
-    [SerializeField] private bool invertSmokeColorLerp = false;
+    /// <summary> True only after config and skill effects have been applied in Awake. Gates stat-dependent VFX and logic until then. </summary>
+    private bool _statsInitialized;
+    private bool _damageSmokeActive;
+    private GameObject _damageSmokeRootGO;
+    private ParticleSystem[] _damageSmokeSystems;
 
     // ─────────────────────────────────────────────
     // BOOST SYSTEM
     // ─────────────────────────────────────────────
 
-    // Unlock gating
-    [Header("Boost Unlock")]
-    [SerializeField] private bool requireBoostUnlock = true;
+    [Header("Boost (from CarBoostConfig)")]
+    private bool requireBoostUnlock;
     private bool boostUnlocked;
-
-    [Header("Boost Screen Flash")]
-    [SerializeField] private float boostFlashSpeedThreshold = 2f; // Flash when speed multiplier exceeds this
-    [SerializeField] private float boostFlashCooldown = 0.3f; // Prevent spam
+    private float boostFlashSpeedThreshold;
+    private float boostFlashCooldown;
     private bool _wasOnBoost;
     private float _lastBoostFlashTime;
+    private KeyCode boostKey;
+    private KeyCode boostButtonController = KeyCode.JoystickButton1;
+    private float boostForce;
+    private float boostSustainAcceleration;
+    private float boostDuration;
+    private float boostMaxSpeedMultiplier;
+    private float postBoostSlowdownDuration;
+    private float boostCooldown;
+    private float boostFuelCost;
+    private float driftBoostSustainAcceleration;
+    private bool enableDriftHeldBoost;
+    private float driftBoostMinHoldSeconds;
+    private float driftBoostMaxHoldSeconds;
+    private Vector2 driftBoostForceRange;
+    private Vector2 driftBoostDurationRange;
+    private Vector2 driftBoostMaxSpeedMultRange;
+    private float driftBoostFuelCost;
+    private float driftBoostCooldown;
 
-    [Header("Boost")]
-    [SerializeField] private KeyCode boostKey = KeyCode.Space;
-    private KeyCode boostButtonController = KeyCode.JoystickButton1; // X on PS5
-    [SerializeField] private float boostForce = 50f;
-    [SerializeField] private float boostSustainAcceleration = 0f;
-    [SerializeField] private float boostDuration = 1.2f;
-    [SerializeField] private float boostMaxSpeedMultiplier = 1.35f;
-    [SerializeField] private float postBoostSlowdownDuration = 0.75f;
-    [SerializeField] private float boostCooldown = 1.25f;
-    [SerializeField] private float boostFuelCost = 0f;
-    [SerializeField] private float driftBoostSustainAcceleration = 30f;
-
-    // NEW: Drift-held Boost configuration
-    [Header("Drift-held Boost")]
-    [SerializeField, Tooltip("Enable boost scaling based on how long drift is held in one direction.")]
-    private bool enableDriftHeldBoost = true;
-    [SerializeField, Tooltip("Minimum drift hold time (s) before any boost reward applies.")]
-    private float driftBoostMinHoldSeconds = 0.35f;
-    [SerializeField, Tooltip("Maximum drift hold time (s) that maps to max rewards.")]
-    private float driftBoostMaxHoldSeconds = 2.00f;
-    [SerializeField, Tooltip("Boost force range mapped from min→max hold.")]
-    private Vector2 driftBoostForceRange = new Vector2(25f, 75f);
-    [SerializeField, Tooltip("Boost duration range mapped from min→max hold.")]
-    private Vector2 driftBoostDurationRange = new Vector2(0.35f, 1.50f);
-    [SerializeField, Tooltip("Max speed multiplier range mapped from min→max hold.")]
-    private Vector2 driftBoostMaxSpeedMultRange = new Vector2(1.10f, 1.60f);
-    [SerializeField, Tooltip("Fuel cost applied when drift boost triggers (currently ignored: drift boost is free).")]
-    private float driftBoostFuelCost = 0f;
-
-    [Header("Drift-held Boost Cooldown")]
-    [SerializeField, Tooltip("Cooldown (seconds) applied after using a drift-held boost (separate from normal boost cooldown).")]
-    private float driftBoostCooldown = 1.25f; // default; can be overridden via skill tree
-
-    // -------------------- SCREEN SHAKE (receiver) --------------------
-    [Header("Screen Shake (Receiver)")]
-    [SerializeField, Tooltip("Best: assign a camera pivot/rig that is NOT overwritten by your follow script. Fallback: Camera.main.")]
+    [Header("Screen Shake / Ramp / Death (from CarVFXAudioConfig, CarRampConfig)")]
     private Transform cameraShakeTarget;
-
-    [SerializeField, Tooltip("Overall multiplier for ALL shakes (0 = off).")]
-    private float screenShakeGlobalMultiplier = 1f;
-
-    [SerializeField, Tooltip("How quickly shake eases back to zero when no requests come in.")]
-    private float screenShakeReturnSpeed = 18f;
-
-    [Header("Verticality / Ramp Alignment")]
-    [SerializeField] private bool enableRampAlignment = true;
-
-    [SerializeField, Tooltip("How fast we align to ground normal while grounded.")]
-    private float groundAlignSpeed = 10f;
-
-    [SerializeField, Tooltip("How fast we align in air when we can predict the landing normal.")]
-    private float airAlignSpeed = 6f;
-
-    [SerializeField, Tooltip("Spherecast radius for ground normal sampling.")]
-    private float groundNormalCastRadius = 0.35f;
-
-    [SerializeField, Tooltip("How far down we check for ground normal (grounded case).")]
-    private float groundNormalCheckDistance = 2.0f;
-
-    [SerializeField, Tooltip("How far ahead/under we look for an upcoming landing surface while airborne.")]
-    private float landingPredictDistance = 6.0f;
-
-    [SerializeField, Tooltip("Only start 'landing normal' alignment when we're within this distance to the ground hit.")]
-    private float landingAlignStartDistance = 3.0f;
-
-    [Header("Death VFX")]
-    [SerializeField] private GameObject deathVFX;
-    [SerializeField, Tooltip("Lifetime of death VFX before cleanup.")]
-    private float deathVFXLifetime = 8f;
-
-    // ===================== DEATH / EXPLOSION SFX =====================
-    [Header("Death Explosion SFX")]
-    [SerializeField, Tooltip("One-shot played when the car explodes (end-of-run).")]
+    private float screenShakeGlobalMultiplier;
+    private float screenShakeReturnSpeed;
+    private bool enableRampAlignment;
+    private float groundAlignSpeed;
+    private float airAlignSpeed;
+    private float groundNormalCastRadius;
+    private float groundNormalCheckDistance;
+    private float landingPredictDistance;
+    private float landingAlignStartDistance;
+    private GameObject deathVFX;
+    private float deathVFXLifetime;
     private AudioClip deathExplodeClip;
+    private float deathExplodeVolume;
 
-    [SerializeField, Range(0f, 1f)]
-    private float deathExplodeVolume = 1f;
-
-    [Header("Flip Recovery (Mash)")]
-    [SerializeField] private bool enableFlipRecoveryMash = true;
-
-    // If dot < threshold, we consider the car "flipped enough" to require recovery.
-    // dot = 1 means perfectly upright, 0 means sideways, -1 means upside down.
-    [SerializeField, Range(-1f, 1f)] private float flipDotThreshold = 0.25f;
-
-    // Optional: also require an angle beyond this many degrees before we trigger recovery.
-    [SerializeField, Range(0f, 180f)] private float flipAngleThreshold = 80f;
-
-    [Header("Crash Recovery Click Calculation")]
-    [Tooltip("Minimum clicks required for recovery (light tap at 0 severity).")]
-    [SerializeField, Min(1)] private int mashClicksMin = 3;
-
-    [Tooltip("Maximum clicks from severity alone (massive crash at 1.0 severity).")]
-    [SerializeField, Min(1)] private int mashClicksMaxFromSeverity = 15;
-
-    [Tooltip("Extra clicks added per crash this run.")]
-    [SerializeField, Min(0)] private int mashClicksPerCrash = 2;
-
-    [Tooltip("Maximum extra clicks from crash count.")]
-    [SerializeField, Min(0)] private int mashClicksMaxFromCrashCount = 10;
-
-    [Tooltip("Clicks added per X meters traveled (scales difficulty over time).")]
-    [SerializeField] private float mashClicksPerDistanceUnit = 0.01f;
-
-    [Tooltip("Distance unit in meters (e.g., 100 = 1 click per 100m).")]
-    [SerializeField] private float mashDistanceUnit = 100f;
-
-    [Tooltip("Maximum extra clicks from distance.")]
-    [SerializeField, Min(0)] private int mashClicksMaxFromDistance = 8;
-
-
-    [Header("Crash Recovery Progress Scaling")]
-    [Tooltip("Curve applied to normalized run progress (0=start, 1=end) to shape how aggressively mash clicks ramp up over the run.\n\nTypical: very low early, spikes hard near the end.")]
-    [SerializeField] private AnimationCurve mashClicksByProgress = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-
-    [Tooltip("Fallback total track length (meters) used if GameManager_Racing doesn't expose a total track length. Set this to your typical full-run distance so progress scaling behaves correctly.")]
-    [SerializeField, Min(1f)] private float mashProgressTotalDistanceFallback = 1000f;
-
-    [Tooltip("Random variance added/subtracted to final click count.")]
-    [SerializeField, Min(0)] private int mashClicksRandomVariance = 2;
-
-    [Tooltip("Absolute minimum clicks (never go below this).")]
-    [SerializeField, Min(1)] private int mashClicksAbsoluteMin = 2;
-
-    [Tooltip("Absolute maximum clicks (never exceed this). Set this very high if you want late-run requirements like 10k+ clicks.")]
-    [SerializeField, Min(1)] private int mashClicksAbsoluteMax = 500000;
-
-
-
-
-    [Header("Mash Click Skills")]
-    [Tooltip("Base clicks registered per button press (before skills).")]
-    [SerializeField] private int baseClicksPerClick = 1;
-
-    [Tooltip("Base passive auto-clicks per second while mashing (0 = disabled).")]
-    [SerializeField] private float basePassiveClickRate = 0f;
-
-    [Tooltip("Base clicks added per passive tick.")]
-    [SerializeField] private int basePassiveClickStrength = 1;
+    [Header("Flip Recovery / Mash (from CarCrashMashConfig)")]
+    private bool enableFlipRecoveryMash;
+    private float flipDotThreshold;
+    private float flipAngleThreshold;
+    private int mashClicksMin;
+    private int mashClicksMaxFromSeverity;
+    private int mashClicksPerCrash;
+    private int mashClicksMaxFromCrashCount;
+    private float mashClicksPerDistanceUnit;
+    private float mashDistanceUnit;
+    private int mashClicksMaxFromDistance;
+    private AnimationCurve mashClicksByProgress;
+    private float mashProgressTotalDistanceFallback;
+    private int mashClicksRandomVariance;
+    private int mashClicksAbsoluteMin;
+    private int mashClicksAbsoluteMax;
+    private int baseClicksPerClick;
+    private float basePassiveClickRate;
+    private int basePassiveClickStrength;
 
     // Runtime (after skills applied)
     private int effectiveClicksPerClick = 1;
@@ -757,109 +533,47 @@ public class CarController : MonoBehaviour
 
 
 
-    [Header("Mash Progress Gauge")]
-    [Tooltip("Enable the progress gauge that drains over time during mashing.")]
-    [SerializeField] private bool enableMashProgressGauge = true;
-
-    [Tooltip("Base drain rate per second (0-1 range). Increases with each crash.")]
-    [SerializeField, Range(0.05f, 0.5f)] private float gaugeDrainRateBase = 0.12f;
-
-    [Tooltip("Additional drain rate added per crash (makes it harder each time).")]
-    [SerializeField, Range(0f, 0.1f)] private float gaugeDrainRatePerCrash = 0.015f;
-
-    [Tooltip("Maximum drain rate cap.")]
-    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainRateMax = 0.4f;
-
-    [Tooltip("How much each click fills the gauge (0-1 range).")]
-    [SerializeField, Range(0.01f, 0.2f)] private float gaugeFillPerClick = 0.05f;
-
-    [Tooltip("Bonus fill multiplier at max mash speed.")]
-    [SerializeField, Range(1f, 3f)] private float gaugeFillSpeedBonus = 1.5f;
-
-    [Header("Mash Gauge Reward Tiers")]
-    [Tooltip("Gauge threshold for 'good' tier bonus (0-1). Marker line will show here.")]
-    [SerializeField, Range(0.5f, 0.9f)] private float gaugeGoodThreshold = 0.70f;
-
-    [Tooltip("Gauge threshold for 'max' tier bonus (0-1). Marker line will show here.")]
+    [Header("Mash Gauge / Drain (from CarCrashMashConfig)")]
+    private bool enableMashProgressGauge;
+    private float gaugeDrainRateBase;
+    private float gaugeDrainRatePerCrash;
+    private float gaugeDrainRateMax;
+    private float gaugeFillPerClick;
+    private float gaugeFillSpeedBonus;
+    private float gaugeGoodThreshold;
     private float gaugeMaxThreshold = 0.92f;
+    private float gaugeMultiplierAtZero;
+    private float gaugeMultiplierAtGood;
+    private float gaugeMultiplierAtMax;
+    private bool mashDrainsHealth;
+    private bool mashDrainsFuel;
+    private float mashHealthDrainAtMinSeverity;
+    private float mashHealthDrainAtMaxSeverity;
+    private float mashHealthDrainPerCrash;
+    private float mashHealthDrainCap;
+    private float mashFuelDrainAtMinSeverity;
 
-    [Tooltip("Fuel/sprocket multiplier when gauge is at 0%.")]
-    [SerializeField, Range(0.25f, 1f)] private float gaugeMultiplierAtZero = 0.75f;
+    private float mashFuelDrainAtMaxSeverity;
+    private float mashFuelDrainPerCrash;
+    private float mashFuelDrainCap;
 
-    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'good' threshold.")]
-    [SerializeField, Range(1f, 2f)] private float gaugeMultiplierAtGood = 1.5f;
-
-    [Tooltip("Fuel/sprocket multiplier when gauge reaches 'max' threshold.")]
-    [SerializeField, Range(1.5f, 3f)] private float gaugeMultiplierAtMax = 2.5f;
-
-    [Header("Mash Resource Drain")]
-    [Tooltip("If true, drain health during mash recovery.")]
-    [SerializeField] private bool mashDrainsHealth = true;
-
-    [Tooltip("If true, drain fuel during mash recovery.")]
-    [SerializeField] private bool mashDrainsFuel = true;
-
-    [Header("Mash Health Drain (Severity-Based)")]
-    [Tooltip("Health drain per second at minimum severity (light tap).")]
-    [SerializeField, Range(0f, 10f)] private float mashHealthDrainAtMinSeverity = 2f;
-
-    [Tooltip("Health drain per second at maximum severity (huge crash).")]
-    [SerializeField, Range(1f, 30f)] private float mashHealthDrainAtMaxSeverity = 12f;
-
-    [Tooltip("Additional health drain per crash count (stacks with severity).")]
-    [SerializeField, Range(0f, 3f)] private float mashHealthDrainPerCrash = 0.5f;
-
-    [Tooltip("Absolute maximum health drain per second cap.")]
-    [SerializeField, Range(1f, 50f)] private float mashHealthDrainCap = 20f;
-
-    [Header("Mash Fuel Drain (Severity-Based)")]
-    [Tooltip("Fuel drain per second at minimum severity (light tap).")]
-    [SerializeField, Range(0f, 5f)] private float mashFuelDrainAtMinSeverity = 1f;
-
-    [Tooltip("Fuel drain per second at maximum severity (huge crash).")]
-    [SerializeField, Range(1f, 15f)] private float mashFuelDrainAtMaxSeverity = 6f;
-
-    [Tooltip("Additional fuel drain per crash count (stacks with severity).")]
-    [SerializeField, Range(0f, 1f)] private float mashFuelDrainPerCrash = 0.2f;
-
-    [Tooltip("Absolute maximum fuel drain per second cap.")]
-    [SerializeField, Range(1f, 20f)] private float mashFuelDrainCap = 10f;
-
-    [Header("Mash Gauge Drain (Severity-Based)")]
-    [Tooltip("Gauge drain per second at minimum severity.")]
-    [SerializeField, Range(0.05f, 0.3f)] private float gaugeDrainAtMinSeverity = 0.08f;
-
-    [Tooltip("Gauge drain per second at maximum severity.")]
-    [SerializeField, Range(0.1f, 0.6f)] private float gaugeDrainAtMaxSeverity = 0.25f;
-
-    [Tooltip("Additional gauge drain per crash count.")]
-    [SerializeField, Range(0f, 0.05f)] private float gaugeDrainPerCrash = 0.01f;
-
-    [Tooltip("Absolute maximum gauge drain per second cap.")]
-    [SerializeField, Range(0.1f, 1f)] private float gaugeDrainCap = 0.5f;
+    [Header("Mash Gauge Drain (from CarCrashMashConfig)")]
+    private float gaugeDrainAtMinSeverity;
+    private float gaugeDrainAtMaxSeverity;
+    private float gaugeDrainPerCrash;
+    private float gaugeDrainCap;
 
     // Public properties for UI to position threshold markers
     public float GaugeGoodThreshold => gaugeGoodThreshold;
     public float GaugeMaxThreshold => gaugeMaxThreshold;
 
-    [Header("Sprocket Rewards")]
-    [Tooltip("Enable sprocket currency rewards from mash minigame.")]
-    [SerializeField] private bool enableSprocketRewards = true;
-
-    [Tooltip("Base percentage of total clicks converted to sprockets.")]
-    [SerializeField, Range(0.05f, 0.5f)] private float sprocketBasePercent = 0.2f;
-
-    [Tooltip("Bonus sprocket multiplier at max gauge fill (stacks with base).")]
-    [SerializeField, Range(1f, 3f)] private float sprocketGaugeBonusMax = 2f;
-
-    [Tooltip("Extra sprocket multiplier when gauge was maxed.")]
-    [SerializeField, Range(1f, 2f)] private float sprocketMaxedBonusMultiplier = 1.25f;
-
-    [Tooltip("Minimum sprockets awarded (even if calculations result in 0).")]
-    [SerializeField, Min(0)] private int sprocketMinReward = 1;
-
-    [Tooltip("Maximum sprockets per mash session (prevents exploits).")]
-    [SerializeField, Min(1)] private int sprocketMaxReward = 50;
+    [Header("Sprocket (from CarCrashMashConfig)")]
+    private bool enableSprocketRewards;
+    private float sprocketBasePercent;
+    private float sprocketGaugeBonusMax;
+    private float sprocketMaxedBonusMultiplier;
+    private int sprocketMinReward;
+    private int sprocketMaxReward;
 
     // Runtime gauge state
     private float _mashGaugeValue;           // 0 to 1
@@ -881,7 +595,7 @@ public class CarController : MonoBehaviour
 
 
     // Small lift to avoid sticking into ground when you snap upright.
-    [SerializeField, Min(0f)] private float flipUprightLift = 0.20f;
+    private float flipUprightLift;
 
     // Runtime
     private bool _flipMashActive;
@@ -905,29 +619,16 @@ public class CarController : MonoBehaviour
     private float _lastCrashSeverity;           // severity of the most recent crash (0-1)
     private bool _wasAirborneDuringCrash;       // was car airborne when crash happened
 
-    [Header("Death Explosion Spatialization")]
-    [SerializeField, Tooltip("If true, explosion plays spatial (3D). If false it plays 2D.")]
-    private bool deathExplodeUseSpatial = true;
-
-    [SerializeField, Range(0f, 1f), Tooltip("0 = 2D, 1 = full 3D (when spatial).")]
-    private float deathExplodeSpatialBlend = 1f;
-
-    [SerializeField]
-    private AudioRolloffMode deathExplodeRolloff = AudioRolloffMode.Logarithmic;
-
-    [SerializeField] private float deathExplodeMinDistance = 2f;
-    [SerializeField] private float deathExplodeMaxDistance = 70f;
-
-    [SerializeField, Range(0f, 3f), Tooltip("Extra gain if your clip is quiet.")]
-    private float deathExplodeVolumeMultiplier = 1.6f;
-
-    [Header("Death Explosion Pitch Variation")]
-    [SerializeField, Range(0.5f, 2f)] private float deathExplodePitchMin = 0.95f;
-    [SerializeField, Range(0.5f, 2f)] private float deathExplodePitchMax = 1.05f;
-
-    [Header("Death Explosion Spam Guard")]
-    [SerializeField, Min(0f), Tooltip("Minimum seconds between explosion SFX calls (protects against double-calls).")]
-    private float deathExplodeSfxCooldown = 0.08f;
+    [Header("Death Explosion (from CarVFXAudioConfig)")]
+    private bool deathExplodeUseSpatial;
+    private float deathExplodeSpatialBlend;
+    private AudioRolloffMode deathExplodeRolloff;
+    private float deathExplodeMinDistance;
+    private float deathExplodeMaxDistance;
+    private float deathExplodeVolumeMultiplier;
+    private float deathExplodePitchMin;
+    private float deathExplodePitchMax;
+    private float deathExplodeSfxCooldown;
 
 
 
@@ -935,6 +636,10 @@ public class CarController : MonoBehaviour
     private bool _wasGroundedLastFrame = false;
     private float _landingExcessSpeed = 0f;      // extra cap allowance that decays
     private float _lastLandedTime = -999f;
+    private float _takeoffHorizSpeed = 0f;       // horizontal speed when we went airborne (for landing boost)
+    private float _landingBoostTimeLeft = 0f;
+    private float _landingBoostDuration = 1f;
+    private float _landingBoostTargetMagnitude = 0f;
 
     private float _lastDeathExplodeSfxTime = -999f;
 
@@ -1064,15 +769,10 @@ public class CarController : MonoBehaviour
     // Active speed boosts list
     private List<SpeedBoostEntry> _activeSpeedBoosts = new List<SpeedBoostEntry>();
 
-    [Header("Speed Boost Ramp-Down Settings")]
-    [SerializeField, Tooltip("Default fraction of boost duration where ramp-down begins (0.3 = last 30%).")]
-    private float defaultBoostRampDownFraction = 0.35f;
-
-    [SerializeField, Tooltip("Ramp-down fraction specifically for close call boosts.")]
-    private float closeCallBoostRampDownFraction = 0.5f;
-
-    [SerializeField, Tooltip("Ramp-down fraction for regular/drift boosts.")]
-    private float regularBoostRampDownFraction = 0.25f;
+    [Header("Speed Boost Ramp-Down (from CarVFXAudioConfig)")]
+    private float defaultBoostRampDownFraction;
+    private float closeCallBoostRampDownFraction;
+    private float regularBoostRampDownFraction;
 
     // Speed boost IDs for easy reference
     private const string BOOST_ID_REGULAR = "regular_boost";
@@ -1125,8 +825,8 @@ public class CarController : MonoBehaviour
     private float _tempHandlingMultiplier = 1f;
     private float _tempHandlingExpireAt = 0f;
 
-    [Header("Fuel Modifiers by Surface")]
-    [SerializeField] private float grassFuelUseMultiplier = 1.5f;
+    [Header("Fuel Modifiers (from CarVFXAudioConfig)")]
+    private float grassFuelUseMultiplier;
 
     private float currentAcceleration;
     private float currentMaxSpeed;
@@ -1164,9 +864,9 @@ public class CarController : MonoBehaviour
     private float _malfunctionCooldownRemain;
     private float _currentMalfunctionMultiplier = 1f; // 1.0 = no malfunction, lower = reduced throttle
 
-    [Header("Debug (read-only)")]
-    [SerializeField] private float offDefaultFraction = 0f;
-    [SerializeField] private float grassFraction = 0f;
+    [Header("Debug Surface (from CarVFXAudioConfig)")]
+    private float offDefaultFraction;
+    private float grassFraction;
 
     private SkillApplicationMode accelMode;
     private float accelValue;
@@ -1189,35 +889,21 @@ public class CarController : MonoBehaviour
     private bool _closeCallBoosting;
     private float _closeCallBoostEndTime;
 
-    [Header("Crash Sound Effects")]
-    [SerializeField] private AudioClip crashClipDefault;
-    [SerializeField] private AudioClip crashClipHonk; // used for CrossTrackObstacle collisions
-    [SerializeField, Range(0f, 1f)] private float crashSfxVolume = 1f;
+    [Header("Crash SFX (from CarVFXAudioConfig)")]
+    private AudioClip crashClipDefault;
+    private AudioClip crashClipHonk;
+    private float crashSfxVolume;
+    private bool crashUseSpatial;
+    private float crashSpatialBlend;
+    private AudioRolloffMode crashRolloff;
+    private float crashMinDistance;
+    private float crashMaxDistance;
+    private float crashVolumeMultiplier;
+    private float crashPitchMin;
+    private float crashPitchMax;
 
-    // Add these serialized fields near the "Crash Sound Effects" group (where crashClipDefault/crashClipHonk are declared)
-    [Header("Crash Sound Spatialization")]
-    [SerializeField, Tooltip("If true, crash sounds are spatial (3D). If false they play as 2D UI-like sounds.")]
-    private bool crashUseSpatial = true;
-    [SerializeField, Range(0f, 1f), Tooltip("When spatial, how much 3D panning is applied (0 = 2D, 1 = full 3D).")]
-    private float crashSpatialBlend = 1f;
-    [SerializeField, Tooltip("Rolloff mode used for crash SFX when spatialized.")]
-    private AudioRolloffMode crashRolloff = AudioRolloffMode.Logarithmic;
-    [SerializeField, Tooltip("Min distance for spatial attenuation.")]
-    private float crashMinDistance = 1f;
-    [SerializeField, Tooltip("Max distance for spatial attenuation.")]
-    private float crashMaxDistance = 50f;
-    [SerializeField, Range(0f, 3f), Tooltip("Global multiplier for crash SFX loudness to compensate for quiet audio.")]
-    private float crashVolumeMultiplier = 1.6f;
-
-    [Header("Crash Pitch Variation")]
-    [SerializeField, Range(0.5f, 2f), Tooltip("Minimum random pitch applied to crash SFX.")]
-    private float crashPitchMin = 0.95f;
-    [SerializeField, Range(0.5f, 2f), Tooltip("Maximum random pitch applied to crash SFX.")]
-    private float crashPitchMax = 1.05f;
-
-    [Header("Surface Transition Smoothing")]
-    [SerializeField, Tooltip("How fast the surface max speed lerps toward a new, slower surface. Higher = faster, 0 = snap instantly.")]
-    private float surfaceMaxSpeedLerpRate = 2.0f;  // try 1.5–4 for a nice slide
+    [Header("Surface (from CarCrashMashConfig)")]
+    private float surfaceMaxSpeedLerpRate;
 
     private float _smoothedSurfaceMaxSpeed = -1f;
 
@@ -1250,15 +936,455 @@ public class CarController : MonoBehaviour
     private float _lastCloseCallSweep = 0f;
     private float _closeCallSweepInterval = 0.18f;
 
-    [Header("Close-Call vs Crash Resolution")]
-    [SerializeField, UnityEngine.Min(0f), Tooltip("After crashing into an obstacle, block near-miss rewards for that root for this many seconds.")]
-    private float closeCallAfterCrashBlockTime = 1.0f;
+    [Header("Close-Call vs Crash (from CarCrashMashConfig)")]
+    private float closeCallAfterCrashBlockTime;
+
+    /// <summary>
+    /// Copy base/default values from config components into CarController fields at Awake.
+    /// Ensures upgrades (ApplySurfaceMultipliers / ApplySkillEffects) still use the same pipeline.
+    /// </summary>
+    private void ApplyConfigToFields()
+    {
+        if (_movementConfig != null)
+        {
+            baseAcceleration = _movementConfig.BaseAcceleration;
+            baseMaxSpeed = _movementConfig.BaseMaxSpeed;
+            baseBrakingForce = _movementConfig.BaseBrakingForce;
+            baseDrag = _movementConfig.BaseDrag;
+            coastLowDecelPerSecond = _movementConfig.CoastLowDecelPerSecond;
+            coastHighDecelPerSecond = _movementConfig.CoastHighDecelPerSecond;
+            coastHighSpeedFraction = _movementConfig.CoastHighSpeedFraction;
+            useExponentialCoast = _movementConfig.UseExponentialCoast;
+            coastDampingPerSecond = _movementConfig.CoastDampingPerSecond;
+            coastDecelFactor = _movementConfig.CoastDecelFactor;
+            brakeForwardFactor = _movementConfig.BrakeForwardFactor;
+            reverseAccelFactor = _movementConfig.ReverseAccelFactor;
+            brakeToReverseSpeed = _movementConfig.BrakeToReverseSpeed;
+            maxBrakeDecelPerSecond = _movementConfig.MaxBrakeDecelPerSecond;
+            maxReverseAccelPerSecond = _movementConfig.MaxReverseAccelPerSecond;
+        }
+        else
+        {
+            baseAcceleration = 5.2f; baseMaxSpeed = 3.95f; baseBrakingForce = 0.003f; baseDrag = 0.13f;
+            coastLowDecelPerSecond = 0.39f; coastHighDecelPerSecond = 5.55f; coastHighSpeedFraction = 1f;
+            useExponentialCoast = false; coastDampingPerSecond = 4.48f; coastDecelFactor = 0.74f;
+            brakeForwardFactor = 0.7f; reverseAccelFactor = 1.06f; brakeToReverseSpeed = 0.5f;
+            maxBrakeDecelPerSecond = 1f; maxReverseAccelPerSecond = 5.06f;
+        }
+
+        if (_steeringConfig != null)
+        {
+            turnSpeed = _steeringConfig.TurnSpeed;
+            minSpeedToSteer = _steeringConfig.MinSpeedToSteer;
+            allowSteerWhenTryingToMove = _steeringConfig.AllowSteerWhenTryingToMove;
+            lowSpeedSteerMultiplier = _steeringConfig.LowSpeedSteerMultiplier;
+            highSpeedSteerMultiplier = _steeringConfig.HighSpeedSteerMultiplier;
+            speedForSteerCurve = _steeringConfig.SpeedForSteerCurve;
+            steeringInputSmooth = _steeringConfig.SteeringInputSmooth;
+            useAutoAlignToVelocity = _steeringConfig.UseAutoAlignToVelocity;
+            autoAlignStrength = _steeringConfig.AutoAlignStrength;
+            enableIceSteerRamp = _steeringConfig.EnableIceSteerRamp;
+            iceSteerRampUpRate = _steeringConfig.IceSteerRampUpRate;
+            iceSteerRampDownRate = _steeringConfig.IceSteerRampDownRate;
+            iceSteerMinFactor = _steeringConfig.IceSteerMinFactor;
+            iceSteerFlipPenalty = _steeringConfig.IceSteerFlipPenalty;
+            invertSteeringWhenReversing = _steeringConfig.InvertSteeringWhenReversing;
+            reverseSteerMultiplier = _steeringConfig.ReverseSteerMultiplier;
+            baseSteeringDamp = _steeringConfig.BaseSteeringDamp;
+            enableSteerTraction = _steeringConfig.EnableSteerTraction;
+            steerTractionReorientRate = _steeringConfig.SteerTractionReorientRate;
+            steerRollingAccel = _steeringConfig.SteerRollingAccel;
+            minSpeedForSteerTraction = _steeringConfig.MinSpeedForSteerTraction;
+            lateralFrictionWhileSteering = _steeringConfig.LateralFrictionWhileSteering;
+            steerTractionBlendIn = _steeringConfig.SteerTractionBlendIn;
+            steerTractionBlendOut = _steeringConfig.SteerTractionBlendOut;
+            steerRollingAccelCoastMultiplier = _steeringConfig.SteerRollingAccelCoastMultiplier;
+            applySteerRollingAccelOnIce = _steeringConfig.ApplySteerRollingAccelOnIce;
+        }
+        else
+        {
+            turnSpeed = 11f; minSpeedToSteer = 0.4f; allowSteerWhenTryingToMove = true;
+            lowSpeedSteerMultiplier = 8f; highSpeedSteerMultiplier = 1.3f; speedForSteerCurve = 3.45f;
+            steeringInputSmooth = 9f; useAutoAlignToVelocity = false; autoAlignStrength = 3f;
+            enableIceSteerRamp = true; iceSteerRampUpRate = 10f; iceSteerRampDownRate = 1.83f;
+            iceSteerMinFactor = 0.755f; iceSteerFlipPenalty = 0.35f;
+            invertSteeringWhenReversing = true; reverseSteerMultiplier = 1f;
+            baseSteeringDamp = 8f; enableSteerTraction = true; steerTractionReorientRate = 5.59f;
+            steerRollingAccel = 2.25f; minSpeedForSteerTraction = 0.1f; lateralFrictionWhileSteering = 2.46f;
+            steerTractionBlendIn = 8.21f; steerTractionBlendOut = 7.1f; steerRollingAccelCoastMultiplier = 0.441f;
+            applySteerRollingAccelOnIce = false;
+        }
+
+        if (_landingConfig != null)
+        {
+            skipSpeedClampWhileAirborne = _landingConfig.SkipSpeedClampWhileAirborne;
+            enableLandingCarrySpeed = _landingConfig.EnableLandingCarrySpeed;
+            landingExcessBleedPerSecond = _landingConfig.LandingExcessBleedPerSecond;
+            landingNoClampGraceSeconds = _landingConfig.LandingNoClampGraceSeconds;
+            enableLandingBoost = _landingConfig.EnableLandingBoost;
+            landingBoostStrength = _landingConfig.LandingBoostStrength;
+            landingBoostDuration = _landingConfig.LandingBoostDuration;
+            landingBoostFalloff = _landingConfig.LandingBoostFalloff;
+        }
+        else
+        {
+            skipSpeedClampWhileAirborne = true; enableLandingCarrySpeed = true;
+            landingExcessBleedPerSecond = 7.17f; landingNoClampGraceSeconds = 0.08f;
+            enableLandingBoost = true; landingBoostStrength = 1f; landingBoostDuration = 1.2f; landingBoostFalloff = 1.5f;
+        }
+
+        if (_driftConfig != null)
+        {
+            requireDriftUnlock = _driftConfig.RequireDriftUnlock;
+            driftKey = _driftConfig.DriftKey;
+            driftMinSpeed = _driftConfig.DriftMinSpeed;
+            maxDriftSteerMultiplier = _driftConfig.MaxDriftSteerMultiplier;
+            driftBuildRate = _driftConfig.DriftBuildRate;
+            driftReleaseRate = _driftConfig.DriftReleaseRate;
+            driftSideForce = _driftConfig.DriftSideForce;
+            driftSpeedDecayPerSecond = _driftConfig.DriftSpeedDecayPerSecond;
+            driftHeldSpeedDecayPerSecond = _driftConfig.DriftHeldSpeedDecayPerSecond;
+            driftForwardAccelMultiplier = _driftConfig.DriftForwardAccelMultiplier;
+            useFullAccelWhileDrifting = _driftConfig.UseFullAccelWhileDrifting;
+            lockToDriftPeakSpeed = _driftConfig.LockToDriftPeakSpeed;
+            driftBrakeDecayPerSecond = _driftConfig.DriftBrakeDecayPerSecond;
+            requireDirectionalInputForDriftCharge = _driftConfig.RequireDirectionalInputForDriftCharge;
+            driftNeutralDrainRate = _driftConfig.DriftNeutralDrainRate;
+            driftNeutralFullResetDelay = _driftConfig.DriftNeutralFullResetDelay;
+            resetDriftChargeOnSteerFlip = _driftConfig.ResetDriftChargeOnSteerFlip;
+            steerFlipRetainedCharge = _driftConfig.SteerFlipRetainedCharge;
+            steerFlipThreshold = _driftConfig.SteerFlipThreshold;
+            minChargeForFlipReset = _driftConfig.MinChargeForFlipReset;
+            steerFlipRebuildDelay = _driftConfig.SteerFlipRebuildDelay;
+            allowDriftGlideWithoutSteer = _driftConfig.AllowDriftGlideWithoutSteer;
+            driftGlideDecayPerSecond = _driftConfig.DriftGlideDecayPerSecond;
+            closeCallBoostBaseDuration = _driftConfig.CloseCallBoostBaseDuration;
+            closeCallBoostForce = _driftConfig.CloseCallBoostForce;
+            closeCallBoostForceMode = _driftConfig.CloseCallBoostForceMode;
+            closeCallBoostMaxSpeedMult = _driftConfig.CloseCallBoostMaxSpeedMult;
+            closeCallInvincibilityTint = _driftConfig.CloseCallInvincibilityTint;
+            closeCallTintColor = _driftConfig.CloseCallTintColor;
+            closeCallTintStrength = _driftConfig.CloseCallTintStrength;
+            invincibilityBumpForceAway = _driftConfig.InvincibilityBumpForceAway;
+            invincibilityBumpForceUp = _driftConfig.InvincibilityBumpForceUp;
+            invincibilityBumpTorque = _driftConfig.InvincibilityBumpTorque;
+            enableCloseCallNearMisses = _driftConfig.EnableCloseCallNearMisses;
+            closeCallDistance = _driftConfig.CloseCallDistance;
+            closeCallMinSpeed = _driftConfig.CloseCallMinSpeed;
+            closeCallCooldown = _driftConfig.CloseCallCooldown;
+            closeCallRootCooldown = _driftConfig.CloseCallRootCooldown;
+            iceFrictionTransitionSpeed = _driftConfig.IceFrictionTransitionSpeed;
+            iceHandlingTransitionSpeed = _driftConfig.IceHandlingTransitionSpeed;
+            iceLateralSlideForce = _driftConfig.IceLateralSlideForce;
+            iceVelocityAlignmentStrength = _driftConfig.IceVelocityAlignmentStrength;
+        }
+        else
+        {
+            requireDriftUnlock = true; driftKey = KeyCode.LeftShift; driftMinSpeed = 2.15f;
+            maxDriftSteerMultiplier = 3.1f; driftBuildRate = 0.7f; driftReleaseRate = 12.2f;
+            driftSideForce = 0.41f; driftSpeedDecayPerSecond = 0.06f; driftHeldSpeedDecayPerSecond = 0f;
+            driftForwardAccelMultiplier = 0f; useFullAccelWhileDrifting = true; lockToDriftPeakSpeed = true;
+            driftBrakeDecayPerSecond = 0.001f; requireDirectionalInputForDriftCharge = false;
+            driftNeutralDrainRate = 2.6f; driftNeutralFullResetDelay = 3.65f; resetDriftChargeOnSteerFlip = true;
+            steerFlipRetainedCharge = 0.055f; steerFlipThreshold = 0.15f; minChargeForFlipReset = 0f;
+            steerFlipRebuildDelay = 0.1f; allowDriftGlideWithoutSteer = true; driftGlideDecayPerSecond = 0.15f;
+            closeCallBoostBaseDuration = 0.9f; closeCallBoostForce = 9f; closeCallBoostForceMode = ForceMode.VelocityChange;
+            closeCallBoostMaxSpeedMult = 1.3f; enableCloseCallNearMisses = true; closeCallDistance = 0.45f;
+            closeCallMinSpeed = 2.88f; closeCallCooldown = 1.42f; closeCallRootCooldown = 4.39f;
+            iceFrictionTransitionSpeed = 3f; iceHandlingTransitionSpeed = 4f; iceLateralSlideForce = 0.1f;
+            iceVelocityAlignmentStrength = 0.02f;
+        }
+
+        if (_boostConfig != null)
+        {
+            requireBoostUnlock = _boostConfig.RequireBoostUnlock;
+            boostFlashSpeedThreshold = _boostConfig.BoostFlashSpeedThreshold;
+            boostFlashCooldown = _boostConfig.BoostFlashCooldown;
+            boostKey = _boostConfig.BoostKey;
+            boostForce = _boostConfig.BoostForce;
+            boostSustainAcceleration = _boostConfig.BoostSustainAcceleration;
+            boostDuration = _boostConfig.BoostDuration;
+            boostMaxSpeedMultiplier = _boostConfig.BoostMaxSpeedMultiplier;
+            postBoostSlowdownDuration = _boostConfig.PostBoostSlowdownDuration;
+            boostCooldown = _boostConfig.BoostCooldown;
+            boostFuelCost = _boostConfig.BoostFuelCost;
+            driftBoostSustainAcceleration = _boostConfig.DriftBoostSustainAcceleration;
+            enableDriftHeldBoost = _boostConfig.EnableDriftHeldBoost;
+            driftBoostMinHoldSeconds = _boostConfig.DriftBoostMinHoldSeconds;
+            driftBoostMaxHoldSeconds = _boostConfig.DriftBoostMaxHoldSeconds;
+            driftBoostForceRange = _boostConfig.DriftBoostForceRange;
+            driftBoostDurationRange = _boostConfig.DriftBoostDurationRange;
+            driftBoostMaxSpeedMultRange = _boostConfig.DriftBoostMaxSpeedMultRange;
+            driftBoostFuelCost = _boostConfig.DriftBoostFuelCost;
+            driftBoostCooldown = _boostConfig.DriftBoostCooldown;
+        }
+        else
+        {
+            requireBoostUnlock = true; boostFlashSpeedThreshold = 2f; boostFlashCooldown = 0.3f;
+            boostKey = KeyCode.Space; boostForce = 30f; boostSustainAcceleration = 30f; boostDuration = 0.35f;
+            boostMaxSpeedMultiplier = 1.65f; postBoostSlowdownDuration = 2f; boostCooldown = 5f; boostFuelCost = 15f;
+            driftBoostSustainAcceleration = 30f; enableDriftHeldBoost = true; driftBoostMinHoldSeconds = 0.8f;
+            driftBoostMaxHoldSeconds = 2.5f; driftBoostCooldown = 3.3f;
+        }
+
+        if (_fuelConfig != null)
+        {
+            maxFuel = _fuelConfig.MaxFuel;
+            fuelUsePerSecondAtFullThrottle = _fuelConfig.FuelUsePerSecondAtFullThrottle;
+            fuelUsePerSecondBraking = _fuelConfig.FuelUsePerSecondBraking;
+            idleFuelUsePerSecond = _fuelConfig.IdleFuelUsePerSecond;
+            idleSpeedThreshold = _fuelConfig.IdleSpeedThreshold;
+        }
+        else
+        {
+            maxFuel = 100f; fuelUsePerSecondAtFullThrottle = 0f; fuelUsePerSecondBraking = 0f;
+            idleFuelUsePerSecond = 0f; idleSpeedThreshold = 0.5f;
+        }
+
+        if (_healthConfig != null)
+        {
+            maxHP = _healthConfig.MaxHP;
+            hpCrashDamageAtSeverity1 = _healthConfig.HpCrashDamageAtSeverity1;
+            baseHpRegenPerSecond = _healthConfig.BaseHpRegenPerSecond;
+            performanceAtZeroHP = _healthConfig.PerformanceAtZeroHP;
+            degradeStartHPFraction = _healthConfig.DegradeStartHPFraction;
+            enableDamageMalfunction = _healthConfig.EnableDamageMalfunction;
+            maxMalfunctionChancePerSecond = _healthConfig.MaxMalfunctionChancePerSecond;
+            malfunctionBurstDuration = _healthConfig.MalfunctionBurstDuration;
+            malfunctionCooldown = _healthConfig.MalfunctionCooldown;
+            malfunctionThrottleMultiplier = _healthConfig.MalfunctionThrottleMultiplier;
+            useSmoothMalfunction = _healthConfig.UseSmoothMalfunction;
+            minimumAccelerationFloor = _healthConfig.MinimumAccelerationFloor;
+            minimumMaxSpeedFloor = _healthConfig.MinimumMaxSpeedFloor;
+            fuelLossAtSeverity1 = _healthConfig.FuelLossAtSeverity1;
+            minHpLossPerCrash = _healthConfig.MinHpLossPerCrash;
+            minFuelLossPerCrash = _healthConfig.MinFuelLossPerCrash;
+            crashDamageCooldown = _healthConfig.CrashDamageCooldown;
+            crashImpactVFX = _healthConfig.CrashImpactVFX;
+            crashImpactVFXLifetime = _healthConfig.CrashImpactVFXLifetime;
+            damageSmokeVFX = _healthConfig.DamageSmokeVFX;
+            smokeStartHPFraction = _healthConfig.SmokeStartHPFraction;
+            smokeMinRate = _healthConfig.SmokeMinRate;
+            smokeMaxRate = _healthConfig.SmokeMaxRate;
+            smokeMinSize = _healthConfig.SmokeMinSize;
+            smokeMaxSize = _healthConfig.SmokeMaxSize;
+            smokeColorAtThreshold = _healthConfig.SmokeColorAtThreshold;
+            smokeColorAtZeroHP = _healthConfig.SmokeColorAtZeroHP;
+            invertSmokeColorLerp = _healthConfig.InvertSmokeColorLerp;
+        }
+        else
+        {
+            maxHP = 20f; hpCrashDamageAtSeverity1 = 100f; baseHpRegenPerSecond = 0f;
+            performanceAtZeroHP = 0.455f; degradeStartHPFraction = 0.422f; enableDamageMalfunction = true;
+            maxMalfunctionChancePerSecond = 0.326f; minimumAccelerationFloor = 4f; minimumMaxSpeedFloor = 6f;
+            fuelLossAtSeverity1 = 50f; minHpLossPerCrash = 10f; minFuelLossPerCrash = 10f;
+            crashDamageCooldown = 0.35f; smokeStartHPFraction = 0.5f; smokeMinRate = 5f; smokeMaxRate = 30f;
+            smokeMinSize = 0.5f; smokeMaxSize = 1.6f; invertSmokeColorLerp = false;
+        }
+
+        if (_groundConfig != null)
+        {
+            groundLayers = _groundConfig.GroundLayers;
+            samplesX = _groundConfig.SamplesX;
+            samplesZ = _groundConfig.SamplesZ;
+            raycastHeightOffset = _groundConfig.RaycastHeightOffset;
+            raycastExtraDistance = _groundConfig.RaycastExtraDistance;
+            debugSurfaceRays = _groundConfig.DebugSurfaceRays;
+            surfaceSampleExtent = _groundConfig.SurfaceSampleExtent;
+        }
+        else
+        {
+            samplesX = 6; samplesZ = 6; raycastHeightOffset = 0.5f; raycastExtraDistance = -0.72f;
+            debugSurfaceRays = true; surfaceSampleExtent = 1.13f;
+        }
+
+        if (_rampConfig != null)
+        {
+            enableRampAlignment = _rampConfig.EnableRampAlignment;
+            groundAlignSpeed = _rampConfig.GroundAlignSpeed;
+            airAlignSpeed = _rampConfig.AirAlignSpeed;
+            groundNormalCastRadius = _rampConfig.GroundNormalCastRadius;
+            groundNormalCheckDistance = _rampConfig.GroundNormalCheckDistance;
+            landingPredictDistance = _rampConfig.LandingPredictDistance;
+            landingAlignStartDistance = _rampConfig.LandingAlignStartDistance;
+        }
+        else
+        {
+            enableRampAlignment = true; groundAlignSpeed = 10f; airAlignSpeed = 6f;
+            groundNormalCastRadius = 0.35f; groundNormalCheckDistance = 1.23f;
+            landingPredictDistance = 2.75f; landingAlignStartDistance = 1.97f;
+        }
+
+        if (_crashMashConfig != null)
+        {
+            drainScalePerClickPower = _crashMashConfig.DrainScalePerClickPower;
+            drainScalePerPassiveStrength = _crashMashConfig.DrainScalePerPassiveStrength;
+            maxSkillDrainMultiplier = _crashMashConfig.MaxSkillDrainMultiplier;
+            minSkillDrainMultiplier = _crashMashConfig.MinSkillDrainMultiplier;
+            randomizeMashFaceButton = _crashMashConfig.RandomizeMashFaceButton;
+            allowSpaceMashInEditor = _crashMashConfig.AllowSpaceMashInEditor;
+            mashBaseFuelPerClick = _crashMashConfig.MashBaseFuelPerClick;
+            mashFuelSpeedBonusMax = _crashMashConfig.MashFuelSpeedBonusMax;
+            mashMaxSpeedThreshold = _crashMashConfig.MashMaxSpeedThreshold;
+            mashMinSpeedThreshold = _crashMashConfig.MashMinSpeedThreshold;
+            useMultiplicativeMashClicks = _crashMashConfig.UseMultiplicativeMashClicks;
+            mashBaseClicks = _crashMashConfig.MashBaseClicks;
+            mashDistanceWeight = _crashMashConfig.MashDistanceWeight;
+            mashDistanceExponent = _crashMashConfig.MashDistanceExponent;
+            mashSeverityWeight = _crashMashConfig.MashSeverityWeight;
+            mashSeverityExponent = _crashMashConfig.MashSeverityExponent;
+            mashCrashCountWeight = _crashMashConfig.MashCrashCountWeight;
+            mashSeveritySumWeight = _crashMashConfig.MashSeveritySumWeight;
+            enableCrashRecoveryAlways = _crashMashConfig.EnableCrashRecoveryAlways;
+            flippedClickMultiplier = _crashMashConfig.FlippedClickMultiplier;
+            airborneClickMultiplier = _crashMashConfig.AirborneClickMultiplier;
+            crashLayers = _crashMashConfig.CrashLayers;
+            minImpactSpeed = _crashMashConfig.MinImpactSpeed;
+            maxImpactSpeed = _crashMashConfig.MaxImpactSpeed;
+            minCrashDuration = _crashMashConfig.MinCrashDuration;
+            maxCrashDuration = _crashMashConfig.MaxCrashDuration;
+            impulsePerUnitSpeed = _crashMashConfig.ImpulsePerUnitSpeed;
+            torquePerUnitSpeed = _crashMashConfig.TorquePerUnitSpeed;
+            crashDragMultiplier = _crashMashConfig.CrashDragMultiplier;
+            crashAngularDrag = _crashMashConfig.CrashAngularDrag;
+            enablePopupText = _crashMashConfig.EnablePopupText;
+            popupVerticalOffset = _crashMashConfig.PopupVerticalOffset;
+            minHPDamageForPopup = _crashMashConfig.MinHPDamageForPopup;
+            minFuelLossForPopup = _crashMashConfig.MinFuelLossForPopup;
+            minFuelGainForPopup = _crashMashConfig.MinFuelGainForPopup;
+            mashFuelPopupHorizontalRange = _crashMashConfig.MashFuelPopupHorizontalRange;
+            mashFuelPopupVerticalRange = _crashMashConfig.MashFuelPopupVerticalRange;
+            enableMashScreenShake = _crashMashConfig.EnableMashScreenShake;
+            mashShakeDuration = _crashMashConfig.MashShakeDuration;
+            mashShakeStrength = _crashMashConfig.MashShakeStrength;
+            mashShakeVibrato = _crashMashConfig.MashShakeVibrato;
+            mashShakeRandomness = _crashMashConfig.MashShakeRandomness;
+            crashYawTorqueMultiplier = _crashMashConfig.CrashYawTorqueMultiplier;
+            crashRollTorqueMultiplier = _crashMashConfig.CrashRollTorqueMultiplier;
+            crashPitchTorqueMultiplier = _crashMashConfig.CrashPitchTorqueMultiplier;
+            reorientDuration = _crashMashConfig.ReorientDuration;
+            groundedDurationRequired = _crashMashConfig.GroundedDurationRequired;
+            groundCheckDistance = _crashMashConfig.GroundCheckDistance;
+            groundCheckLayers = _crashMashConfig.GroundCheckLayers;
+            enableFlipRecoveryMash = _crashMashConfig.EnableFlipRecoveryMash;
+            flipDotThreshold = _crashMashConfig.FlipDotThreshold;
+            flipAngleThreshold = _crashMashConfig.FlipAngleThreshold;
+            mashClicksMin = _crashMashConfig.MashClicksMin;
+            mashClicksMaxFromSeverity = _crashMashConfig.MashClicksMaxFromSeverity;
+            mashClicksPerCrash = _crashMashConfig.MashClicksPerCrash;
+            mashClicksMaxFromCrashCount = _crashMashConfig.MashClicksMaxFromCrashCount;
+            mashClicksPerDistanceUnit = _crashMashConfig.MashClicksPerDistanceUnit;
+            mashDistanceUnit = _crashMashConfig.MashDistanceUnit;
+            mashClicksMaxFromDistance = _crashMashConfig.MashClicksMaxFromDistance;
+            mashClicksByProgress = _crashMashConfig.MashClicksByProgress;
+            mashProgressTotalDistanceFallback = _crashMashConfig.MashProgressTotalDistanceFallback;
+            mashClicksRandomVariance = _crashMashConfig.MashClicksRandomVariance;
+            mashClicksAbsoluteMin = _crashMashConfig.MashClicksAbsoluteMin;
+            mashClicksAbsoluteMax = _crashMashConfig.MashClicksAbsoluteMax;
+            baseClicksPerClick = _crashMashConfig.BaseClicksPerClick;
+            basePassiveClickRate = _crashMashConfig.BasePassiveClickRate;
+            basePassiveClickStrength = _crashMashConfig.BasePassiveClickStrength;
+            enableMashProgressGauge = _crashMashConfig.EnableMashProgressGauge;
+            gaugeDrainRateBase = _crashMashConfig.GaugeDrainRateBase;
+            gaugeDrainRatePerCrash = _crashMashConfig.GaugeDrainRatePerCrash;
+            gaugeDrainRateMax = _crashMashConfig.GaugeDrainRateMax;
+            gaugeFillPerClick = _crashMashConfig.GaugeFillPerClick;
+            gaugeFillSpeedBonus = _crashMashConfig.GaugeFillSpeedBonus;
+            gaugeGoodThreshold = _crashMashConfig.GaugeGoodThreshold;
+            gaugeMultiplierAtZero = _crashMashConfig.GaugeMultiplierAtZero;
+            gaugeMultiplierAtGood = _crashMashConfig.GaugeMultiplierAtGood;
+            gaugeMultiplierAtMax = _crashMashConfig.GaugeMultiplierAtMax;
+            mashDrainsHealth = _crashMashConfig.MashDrainsHealth;
+            mashDrainsFuel = _crashMashConfig.MashDrainsFuel;
+            mashHealthDrainAtMinSeverity = _crashMashConfig.MashHealthDrainAtMinSeverity;
+            mashHealthDrainAtMaxSeverity = _crashMashConfig.MashHealthDrainAtMaxSeverity;
+            mashHealthDrainPerCrash = _crashMashConfig.MashHealthDrainPerCrash;
+            mashHealthDrainCap = _crashMashConfig.MashHealthDrainCap;
+            mashFuelDrainAtMinSeverity = _crashMashConfig.MashFuelDrainAtMinSeverity;
+            mashFuelDrainAtMaxSeverity = _crashMashConfig.MashFuelDrainAtMaxSeverity;
+            mashFuelDrainPerCrash = _crashMashConfig.MashFuelDrainPerCrash;
+            mashFuelDrainCap = _crashMashConfig.MashFuelDrainCap;
+            gaugeDrainAtMinSeverity = _crashMashConfig.GaugeDrainAtMinSeverity;
+            gaugeDrainAtMaxSeverity = _crashMashConfig.GaugeDrainAtMaxSeverity;
+            gaugeDrainPerCrash = _crashMashConfig.GaugeDrainPerCrash;
+            gaugeDrainCap = _crashMashConfig.GaugeDrainCap;
+            enableSprocketRewards = _crashMashConfig.EnableSprocketRewards;
+            sprocketBasePercent = _crashMashConfig.SprocketBasePercent;
+            sprocketGaugeBonusMax = _crashMashConfig.SprocketGaugeBonusMax;
+            sprocketMaxedBonusMultiplier = _crashMashConfig.SprocketMaxedBonusMultiplier;
+            sprocketMinReward = _crashMashConfig.SprocketMinReward;
+            sprocketMaxReward = _crashMashConfig.SprocketMaxReward;
+            flipUprightLift = _crashMashConfig.FlipUprightLift;
+            surfaceMaxSpeedLerpRate = _crashMashConfig.SurfaceMaxSpeedLerpRate;
+            closeCallAfterCrashBlockTime = _crashMashConfig.CloseCallAfterCrashBlockTime;
+            perColliderCrashCooldown = _crashMashConfig.PerColliderCrashCooldown;
+        }
+        else
+        {
+            perColliderCrashCooldown = 0.5f; surfaceMaxSpeedLerpRate = 2.78f; closeCallAfterCrashBlockTime = 1f;
+        }
+
+        if (_vfxAudioConfig != null)
+        {
+            cameraShakeTarget = _vfxAudioConfig.CameraShakeTarget;
+            screenShakeGlobalMultiplier = _vfxAudioConfig.ScreenShakeGlobalMultiplier;
+            screenShakeReturnSpeed = _vfxAudioConfig.ScreenShakeReturnSpeed;
+            deathVFX = _vfxAudioConfig.DeathVFX;
+            deathVFXLifetime = _vfxAudioConfig.DeathVFXLifetime;
+            deathExplodeClip = _vfxAudioConfig.DeathExplodeClip;
+            deathExplodeVolume = _vfxAudioConfig.DeathExplodeVolume;
+            deathExplodeUseSpatial = _vfxAudioConfig.DeathExplodeUseSpatial;
+            deathExplodeSpatialBlend = _vfxAudioConfig.DeathExplodeSpatialBlend;
+            deathExplodeRolloff = _vfxAudioConfig.DeathExplodeRolloff;
+            deathExplodeMinDistance = _vfxAudioConfig.DeathExplodeMinDistance;
+            deathExplodeMaxDistance = _vfxAudioConfig.DeathExplodeMaxDistance;
+            deathExplodeVolumeMultiplier = _vfxAudioConfig.DeathExplodeVolumeMultiplier;
+            deathExplodePitchMin = _vfxAudioConfig.DeathExplodePitchMin;
+            deathExplodePitchMax = _vfxAudioConfig.DeathExplodePitchMax;
+            deathExplodeSfxCooldown = _vfxAudioConfig.DeathExplodeSfxCooldown;
+            defaultBoostRampDownFraction = _vfxAudioConfig.DefaultBoostRampDownFraction;
+            closeCallBoostRampDownFraction = _vfxAudioConfig.CloseCallBoostRampDownFraction;
+            regularBoostRampDownFraction = _vfxAudioConfig.RegularBoostRampDownFraction;
+            grassFuelUseMultiplier = _vfxAudioConfig.GrassFuelUseMultiplier;
+            offDefaultFraction = _vfxAudioConfig.OffDefaultFraction;
+            grassFraction = _vfxAudioConfig.GrassFraction;
+            crashClipDefault = _vfxAudioConfig.CrashClipDefault;
+            crashClipHonk = _vfxAudioConfig.CrashClipHonk;
+            crashSfxVolume = _vfxAudioConfig.CrashSfxVolume;
+            crashUseSpatial = _vfxAudioConfig.CrashUseSpatial;
+            crashSpatialBlend = _vfxAudioConfig.CrashSpatialBlend;
+            crashRolloff = _vfxAudioConfig.CrashRolloff;
+            crashMinDistance = _vfxAudioConfig.CrashMinDistance;
+            crashMaxDistance = _vfxAudioConfig.CrashMaxDistance;
+            crashVolumeMultiplier = _vfxAudioConfig.CrashVolumeMultiplier;
+            crashPitchMin = _vfxAudioConfig.CrashPitchMin;
+            crashPitchMax = _vfxAudioConfig.CrashPitchMax;
+        }
+        else
+        {
+            screenShakeGlobalMultiplier = 1f; screenShakeReturnSpeed = 18f;
+            defaultBoostRampDownFraction = 0.35f; closeCallBoostRampDownFraction = 0.5f; regularBoostRampDownFraction = 0.25f;
+            grassFuelUseMultiplier = 1.5f; offDefaultFraction = 0f; grassFraction = 0f;
+        }
+    }
 
     // NEW: split for steering traction code etc.
     private void Awake()
     {
-
-
+        _movementConfig = GetComponent<CarMovementConfig>();
+        _steeringConfig = GetComponent<CarSteeringConfig>();
+        _landingConfig = GetComponent<CarLandingConfig>();
+        _driftConfig = GetComponent<CarDriftConfig>();
+        _boostConfig = GetComponent<CarBoostConfig>();
+        _fuelConfig = GetComponent<CarFuelConfig>();
+        _healthConfig = GetComponent<CarHealthConfig>();
+        _groundConfig = GetComponent<CarGroundConfig>();
+        _rampConfig = GetComponent<CarRampConfig>();
+        _crashMashConfig = GetComponent<CarCrashMashConfig>();
+        _vfxAudioConfig = GetComponent<CarVFXAudioConfig>();
+        ApplyConfigToFields();
+        CacheDamageSmokeSystems();
+        ForceDisableDamageSmokeVFXImmediate();
 
         Instance = this;
 
@@ -1359,6 +1485,15 @@ public class CarController : MonoBehaviour
         groundCheckLayers = groundLayers;
         RefreshSkillEffects();
         ApplySkillEffects();
+
+        // Ensure we never leave stats invalid (e.g. skill chain returned 0 before ready)
+        if (maxHP <= 0f && baseMaxHP > 0f)
+        {
+            maxHP = baseMaxHP;
+            currentHP = maxHP;
+        }
+        _statsInitialized = true;
+
         UpdateDamageVFXImmediate();
 
         _smoothedSurfaceMaxSpeed = -1f;
@@ -1658,6 +1793,8 @@ public class CarController : MonoBehaviour
                 _currentBoostMaxSpeed = 0f;
                 _closeCallBoosting = false;
                 _landingExcessSpeed = 0f;
+                _landingBoostTimeLeft = 0f;
+                _landingBoostTargetMagnitude = 0f;
 
                 if (IsDeadForAutoUpright)
                 {
@@ -2198,7 +2335,20 @@ public class CarController : MonoBehaviour
         if (enableLandingCarrySpeed && _landingExcessSpeed > 0f)
             cap += _landingExcessSpeed;
 
+        cap += GetLandingBoostCapAdd();
+
         return cap;
+    }
+
+    /// <summary>Extra speed cap from landing boost (decays over duration with falloff).</summary>
+    private float GetLandingBoostCapAdd()
+    {
+        if (!enableLandingBoost || _landingBoostTimeLeft <= 0f || _landingBoostDuration <= 0f)
+            return 0f;
+
+        float t = Mathf.Clamp01(_landingBoostTimeLeft / _landingBoostDuration);
+        float factor = Mathf.Pow(t, landingBoostFalloff);
+        return _landingBoostTargetMagnitude * factor;
     }
 
     private float GetCurrentSpeedCap_NoLandingCarry()
@@ -2578,7 +2728,7 @@ public class CarController : MonoBehaviour
         suppressInputs = false;
         _currentMalfunctionMultiplier = 1f; // Reset each frame
 
-        if (enableDamageMalfunction)
+        if (enableDamageMalfunction && _statsInitialized)
         {
             float hpFrac = HPPercent;
             float dmgT = Mathf.Clamp01((degradeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, degradeStartHPFraction));
@@ -3071,23 +3221,40 @@ public class CarController : MonoBehaviour
                 else if (brakingOrReverse)
                 {
                     float dt = Time.fixedDeltaTime;
-                    float currentLong = Vector3.Dot(rb.velocity, forward);
 
-                    if (currentLong > 0f)
+                    // In air: only reduce speed magnitude (don't apply reverse – that would flip velocity backward).
+                    if (!groundedNow)
                     {
-                        float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 1.0f;
-                        float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
-                        SetLongitudinalVelocityClamped(forward, newLong);
+                        Vector3 v = rb.velocity;
+                        float mag = v.magnitude;
+                        if (mag > 0.01f)
+                        {
+                            float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 12f;
+                            float newMag = Mathf.Max(0f, mag - decel * dt);
+                            rb.velocity = v.normalized * newMag;
+                        }
+                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
                     }
                     else
                     {
-                        float reverseAccel = maxReverseAccelPerSecond > 0f ? maxReverseAccelPerSecond : 1.0f;
-                        float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
-                        float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
-                        SetLongitudinalVelocityClamped(forward, newLong);
-                    }
+                        float currentLong = Vector3.Dot(rb.velocity, forward);
 
-                    ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                        if (currentLong > 0f)
+                        {
+                            float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 1.0f;
+                            float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
+                            SetLongitudinalVelocityClamped(forward, newLong);
+                        }
+                        else
+                        {
+                            float reverseAccel = maxReverseAccelPerSecond > 0f ? maxReverseAccelPerSecond : 1.0f;
+                            float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
+                            float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
+                            SetLongitudinalVelocityClamped(forward, newLong);
+                        }
+
+                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                    }
                 }
                 else
                 {
@@ -3493,7 +3660,7 @@ public class CarController : MonoBehaviour
             GroundSurface surface = hit.collider.GetComponent<GroundSurface>()
                                  ?? hit.collider.GetComponentInParent<GroundSurface>();
 
-            if (surface != null && surface.surfaceType == SurfaceType.Boost)
+            if (surface != null && (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp))
             {
                 _onBoostSurface = true;
                 _currentBoostAccel = surface.boostAcceleration;
@@ -4569,6 +4736,8 @@ public class CarController : MonoBehaviour
 
         // Also kill any leftover landing carry allowance so you can't "keep" boosted cap as excess speed
         _landingExcessSpeed = 0f;
+        _landingBoostTimeLeft = 0f;
+        _landingBoostTargetMagnitude = 0f;
 
         // Force surface max speed to re-sample cleanly next tick (prevents stale smoothed value)
         _smoothedSurfaceMaxSpeed = -1f;
@@ -4625,6 +4794,8 @@ public class CarController : MonoBehaviour
 
     private void ApplyDamageDegradationToPerformance()
     {
+        if (!_statsInitialized) return;
+
         // NOTE: keep degradation strictly to performance (accel/maxSpeed/turn).
         // Do NOT alter drag, physics materials or anything that can freeze motion.
         float hpFrac = HPPercent;
@@ -4661,11 +4832,26 @@ public class CarController : MonoBehaviour
         if (rb == null) return;
 
         bool groundedNow = CheckIfGrounded();
+        float dt = Time.fixedDeltaTime;
+
+        // Store takeoff speed when we leave the ground (e.g. off a ramp)
+        if (_wasGroundedLastFrame && !groundedNow)
+        {
+            Vector3 v = rb.velocity;
+            _takeoffHorizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
+        }
 
         // Detect landing: was airborne last frame, grounded now
         if (!_wasGroundedLastFrame && groundedNow)
         {
             _lastLandedTime = Time.time;
+
+            if (enableLandingBoost && _takeoffHorizSpeed > 0.1f)
+            {
+                _landingBoostTimeLeft = landingBoostDuration;
+                _landingBoostDuration = landingBoostDuration;
+                _landingBoostTargetMagnitude = _takeoffHorizSpeed * landingBoostStrength;
+            }
 
             if (enableLandingCarrySpeed)
             {
@@ -4684,13 +4870,20 @@ public class CarController : MonoBehaviour
             }
         }
 
+        // Decay landing boost timer
+        if (_landingBoostTimeLeft > 0f)
+        {
+            _landingBoostTimeLeft -= dt;
+            if (_landingBoostTimeLeft < 0f) _landingBoostTimeLeft = 0f;
+        }
+
         // Bleed off excess allowance over time while grounded
         if (enableLandingCarrySpeed && _landingExcessSpeed > 0f && groundedNow)
         {
             _landingExcessSpeed = Mathf.MoveTowards(
                 _landingExcessSpeed,
                 0f,
-                landingExcessBleedPerSecond * Time.fixedDeltaTime
+                landingExcessBleedPerSecond * dt
             );
         }
 
@@ -5708,34 +5901,115 @@ public class CarController : MonoBehaviour
         return Mathf.Max(0f, actual);
     }
 
+    private void CacheDamageSmokeSystems()
+    {
+        _damageSmokeSystems = null;
+        _damageSmokeRootGO = null;
+        _damageSmokeActive = false;
+
+        if (!damageSmokeVFX) return;
+
+        // The reference may point to a child ParticleSystem inside a prefab (e.g. `SmokeVFX`).
+        // Cache the whole prefab root so we can reliably disable/enable the entire smoke VFX.
+        Transform root = damageSmokeVFX.transform;
+        Transform t = root;
+        while (t != null)
+        {
+            string n = t.name;
+            if (!string.IsNullOrEmpty(n) &&
+                (n.IndexOf("SmokeVFX", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 n.IndexOf("DamageSmoke", System.StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                root = t;
+                break;
+            }
+            t = t.parent;
+        }
+
+        _damageSmokeRootGO = root.gameObject;
+        _damageSmokeSystems = root.GetComponentsInChildren<ParticleSystem>(true);
+    }
+
+    private void ForceDisableDamageSmokeVFXImmediate()
+    {
+        _damageSmokeActive = false;
+
+        if (_damageSmokeRootGO != null && _damageSmokeRootGO.activeSelf)
+            _damageSmokeRootGO.SetActive(false);
+
+        if (_damageSmokeSystems == null) return;
+
+        // Ensure nothing is still emitting if something else re-activates it.
+        for (int i = 0; i < _damageSmokeSystems.Length; i++)
+        {
+            var ps = _damageSmokeSystems[i];
+            if (!ps) continue;
+            var e = ps.emission;
+            e.enabled = false;
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+    }
+
+    private void ForceEnableDamageSmokeVFX()
+    {
+        if (_damageSmokeRootGO != null && !_damageSmokeRootGO.activeSelf)
+            _damageSmokeRootGO.SetActive(true);
+
+        if (_damageSmokeSystems == null) return;
+        for (int i = 0; i < _damageSmokeSystems.Length; i++)
+        {
+            var ps = _damageSmokeSystems[i];
+            if (!ps) continue;
+            ps.Play(true);
+        }
+    }
+
     private void UpdateDamageVFXImmediate()
     {
         if (!damageSmokeVFX) return;
 
+        if (_damageSmokeRootGO == null && _damageSmokeSystems == null)
+            CacheDamageSmokeSystems();
+
+        // Don't run any stat-dependent VFX until config and skills have been applied
+        if (!_statsInitialized)
+        {
+            ForceDisableDamageSmokeVFXImmediate();
+            return;
+        }
+
         float hpFrac = HPPercent;
+        bool shouldBeOn = hpFrac <= smokeStartHPFraction;
+
+        if (!shouldBeOn)
+        {
+            if (_damageSmokeActive)
+                ForceDisableDamageSmokeVFXImmediate();
+            return;
+        }
+
+        // Enable root once when we cross the threshold
+        if (!_damageSmokeActive)
+        {
+            ForceEnableDamageSmokeVFX();
+            _damageSmokeActive = true;
+        }
+
+        // Damage progress 0..1 from threshold → zero HP
+        float tDamage = Mathf.Clamp01((smokeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, smokeStartHPFraction));
+
+        // Apply tuning to the configured system (this is the one designers tweak in the prefab/config)
         var emission = damageSmokeVFX.emission;
         var main = damageSmokeVFX.main;
+        emission.enabled = true;
+        emission.rateOverTime = Mathf.Lerp(smokeMinRate, smokeMaxRate, tDamage);
 
-        if (hpFrac <= smokeStartHPFraction)
-        {
-            // Damage progress 0..1 from threshold → zero HP
-            float tDamage = Mathf.Clamp01((smokeStartHPFraction - hpFrac) / Mathf.Max(0.0001f, smokeStartHPFraction));
+        float size = Mathf.Lerp(smokeMinSize, smokeMaxSize, tDamage);
+        main.startSize = new ParticleSystem.MinMaxCurve(size);
 
-            emission.enabled = true;
-            emission.rateOverTime = Mathf.Lerp(smokeMinRate, smokeMaxRate, tDamage);
-
-            float size = Mathf.Lerp(smokeMinSize, smokeMaxSize, tDamage);
-            main.startSize = new ParticleSystem.MinMaxCurve(size);
-
-            // Color interpolation – invert if requested (handles ambiguous request)
-            float colorT = invertSmokeColorLerp ? (1f - tDamage) : tDamage;
-            Color currentColor = Color.Lerp(smokeColorAtThreshold, smokeColorAtZeroHP, colorT);
-            main.startColor = new ParticleSystem.MinMaxGradient(currentColor);
-        }
-        else
-        {
-            emission.enabled = false;
-        }
+        float colorT = invertSmokeColorLerp ? (1f - tDamage) : tDamage;
+        Color currentColor = Color.Lerp(smokeColorAtThreshold, smokeColorAtZeroHP, colorT);
+        main.startColor = new ParticleSystem.MinMaxGradient(currentColor);
     }
 
     public static CarController Instance { get; private set; }

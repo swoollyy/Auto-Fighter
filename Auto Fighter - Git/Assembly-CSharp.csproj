@@ -70,6 +70,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackEnvironmentSpawner.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventHandler.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\DamagePerBounceRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarBoostConfig.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\VintageTVController.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexShakeA.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\FPSDisplay.cs" />
@@ -97,6 +98,7 @@
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SimpleScript.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark04.cs" />
     <Compile Include="Assets\Scripts\EndGame.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPEffectCoordinator.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\VolumetricFogControllerLite.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\ChatController.cs" />
     <Compile Include="Assets\Scripts\RewardCatalogSO.cs" />
@@ -111,6 +113,7 @@
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\DemoController.cs" />
     <Compile Include="Assets\Scripts\TweenXPNumberSystem.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\NarrativeDirector.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarGroundConfig.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_DigitValidator.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_FrameRateCounter.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPParabolaWaveEffect.cs" />
@@ -118,6 +121,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingUISoundManager.cs" />
     <Compile Include="Assets\Scripts\SpeedTrailFollower.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPLinkEffectHelper.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarFuelConfig.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\Benchmark01.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshSpawner.cs" />
     <Compile Include="Assets\Scripts\CombatSystem.cs" />
@@ -128,11 +132,13 @@
     <Compile Include="Assets\URPDecalTelegraph.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackGuideBeacon.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\WheelSkidSpawner.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarVFXAudioConfig.cs" />
     <Compile Include="Assets\Scripts\StatModifier.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\CameraController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\NPCCarSpawner.cs" />
     <Compile Include="Assets\Scripts\XPNumberStyleSO.cs" />
     <Compile Include="Assets\Scripts\Mage.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarLandingConfig.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingPopupStyleSO.cs" />
     <Compile Include="Assets\Scripts\GreenPad.cs" />
     <Compile Include="Assets\Scripts\PortalWarpRewardRuntime.cs" />
@@ -155,6 +161,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPJitterEffect.cs" />
     <Compile Include="Assets\Scripts\Pinball.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\GroundSurface.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPRainbowColorEffect.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\NPCTrafficCar.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\XPMultiplierRewardSO.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\XPGravityRewardSO.cs" />
@@ -162,6 +169,7 @@
     <Compile Include="Assets\Scripts\XPCollectorRegistry.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarTurretController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TireMarkPainter.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarHealthConfig.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldLaunchTag.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UIManager_Racing.cs" />
     <Compile Include="Assets\Scripts\PostFXController.cs" />
@@ -214,6 +222,7 @@
     <Compile Include="Assets\Scripts\BaseCharacter.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexJitter.cs" />
     <Compile Include="Assets\Scripts\IRunContext.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\TMPEffectUploader.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\IRacingPopupSystem.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\HPPickup.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextConsoleSimulator.cs" />
@@ -224,6 +233,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ShuttleTrackObstacle.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingPopupSystem.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_TextEventCheck.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarDriftConfig.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TMP_UiFrameRateCounter.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker1.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\VertexZoom.cs" />
@@ -232,6 +242,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ProjectileHitReceiver.cs" />
     <Compile Include="Assets\Scenes\Mirza Beig\Volumetric Fog (Lite)\Scripts\CameraControllerUI.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingCurrencyCheat.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarSteeringConfig.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Narrative\DialogueManager.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackObstacleSpawner.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SkillTreeGlobalClickTracker.cs" />
@@ -246,11 +257,13 @@
     <Compile Include="Assets\SkillTreeVirtualCursor.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\CrossObstacleDirector.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\UI\RacingSkillUI.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarMovementConfig.cs" />
     <Compile Include="Assets\Scripts\Tank.cs" />
     <Compile Include="Assets\Scripts\RicochetPowerup.cs" />
     <Compile Include="Assets\Scripts\IDamageNumberSystem.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\SkewTextExample.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\Debug\SkidDebugStamp.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarRampConfig.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\WarpTextExample.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\TextMeshProFloatingText.cs" />
     <Compile Include="Assets\Scripts\BluePad.cs" />
@@ -273,6 +286,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\RacingBullet.cs" />
     <Compile Include="Assets\Scripts\Warrior.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\EarthPaddleRewardSO.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\CarCrashMashConfig.cs" />
     <Compile Include="Assets\Scripts\Level Up Rewards\PortalWarpRewardSO.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackCoinSpawner.cs" />
     <Compile Include="Assets\Scripts\Test.cs" />

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -887,10 +887,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         currentSpeed = currentFleeSpeed;
 
-        // Calculate flee direction (away from player)
-        Vector3 fleeDirection = GetFleeDirection();
-
-        // Convert flee direction to track movement
+        // Path basis for track + lateral (needed before we apply avoidance)
         spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
         Vector3 flatForward = pathForward;
         flatForward.y = 0f;
@@ -898,7 +895,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
 
-        // Determine if we should run forward or backward along track
+        // Flee direction (away from player/threats), then steer around obstacles so we don't run into them
+        Vector3 fleeDirection = GetFleeDirection();
+        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && fleeDirection.sqrMagnitude > 0.0001f)
+        {
+            float step = currentSpeed * dt;
+            fleeDirection = ApplyAvoidanceToMoveDir(fleeDirection, step, flatForward, right);
+        }
+
+        // Convert flee direction to track movement
         float forwardDot = Vector3.Dot(fleeDirection, flatForward);
         float trackDirection = forwardDot >= 0 ? 1f : -1f;
 

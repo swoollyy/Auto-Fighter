@@ -15,7 +15,7 @@ MonoBehaviour:
   sequenceId: intro
   lines:
   - speakerName: Overseer
-    text: Oh... heyyyyyyyyyyyy!
+    text: Oh... <link="wave"><link="rainbow">heyyyyyyyyyyyy!</link></link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -28,31 +28,92 @@ MonoBehaviour:
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerName: You
-    text: ...
+    text: <link="jitter">...</link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerName: Overseer
-    text: Never fret! I'll fix ya right up in no time!
-    portrait: {fileID: 0}
-    delayBeforeShow: 0
-    autoAdvance: 0
-    autoAdvanceSeconds: 0
-  - speakerName: Overseer
-    text: ...
+    text: Don't you worry! I'll patch you up in no time! How 'bout it!?
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerName: You
+    text: <link="jitter">...</link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: Not much of a talker, are ya!? Well.. since ya gotta head back from wherever
+      ya came from.. I'll patch ya right up! Gimme a second here...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: You
+    text: <link="jitter">...</link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
     text: ...
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerName: Overseer
-    text: Right as rain! You're lookin' like a brand new beast!
+    text: Allllright... you're lookin' right as rain! Brand spankin' new!
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: Again.. I'm really not sure how you ended up in this place.. Though, it
+      ain't gonna be no picnic tryna get outta here. These roads ain't no joke...
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: You
+    text: <link="jitter">...</link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: 'I''d be more than happy to guide you through on your journey. You randomly
+      arriving in this world has me <link="jitter">ECSTATIC</link> '
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: 'Along with the necessary surgery, I''ve provided new parts that are <link="wave">extremmeelllyyyy</link>
+      modifyable. Though, these modifications come with a fee... '
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: You can find coins spread all throughout the road... Heard the further
+      you go, the more coins you'll bound to come across... even higher <link="wave"><link="rainbow">rarities</link></link>
+      of coins, too.
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: You
+    text: <link="jitter">...</link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: Overseer
+    text: Well enough with all that talkin'! Let's get you accustomed to your new
+      framework.
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0

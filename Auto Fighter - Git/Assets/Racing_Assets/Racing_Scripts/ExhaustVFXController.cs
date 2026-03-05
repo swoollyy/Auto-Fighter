@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 [DisallowMultipleComponent]
 public class ExhaustVFXController : MonoBehaviour
@@ -25,10 +25,17 @@ public class ExhaustVFXController : MonoBehaviour
 
     private void Awake()
     {
+        // Guard against bad prefab overrides (negative makes exhaust always-on at standstill)
+        minSpeedForSmoke = Mathf.Max(0f, minSpeedForSmoke);
+
         // CarController can be on this GameObject or a parent
         car = GetComponent<CarController>();
         if (car == null)
             car = GetComponentInParent<CarController>();
+
+        // Prevent a PlayOnAwake burst before the first LateUpdate decides emission state
+        ForceDisable(leftExhaust);
+        ForceDisable(rightExhaust);
     }
 
     private void LateUpdate()
@@ -56,7 +63,14 @@ public class ExhaustVFXController : MonoBehaviour
         emission.enabled = shouldEmit;
 
         if (!shouldEmit)
+        {
+            if (ps.isPlaying)
+                ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
             return;
+        }
+
+        if (!ps.isPlaying)
+            ps.Play(true);
 
         // Lerp startSpeed based on car speed
         var main = ps.main;
@@ -65,5 +79,13 @@ public class ExhaustVFXController : MonoBehaviour
         // Optional: more speed → more emission
         float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, t);
         emission.rateOverTime = rate;
+    }
+
+    private static void ForceDisable(ParticleSystem ps)
+    {
+        if (ps == null) return;
+        var emission = ps.emission;
+        emission.enabled = false;
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
     }
 }

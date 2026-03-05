@@ -44,6 +44,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Leaves
       objectReference: {fileID: 0}
+    - target: {fileID: 3314179452664020840, guid: d007e7d16d56732489bab747b31c398a, type: 3}
+      propertyPath: treeToppleImpulseMax
+      value: 10
+      objectReference: {fileID: 0}
     - target: {fileID: 3874382558013832276, guid: d007e7d16d56732489bab747b31c398a, type: 3}
       propertyPath: m_Name
       value: Stump

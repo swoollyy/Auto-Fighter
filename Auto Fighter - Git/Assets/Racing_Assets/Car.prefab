@@ -781,6 +781,17 @@ GameObject:
   - component: {fileID: 3055004073125483376}
   - component: {fileID: 3332605381436512579}
   - component: {fileID: 4449800069960607024}
+  - component: {fileID: 121786672632953379}
+  - component: {fileID: 4457387338141855682}
+  - component: {fileID: 6905870851410593353}
+  - component: {fileID: 632556853857277878}
+  - component: {fileID: 1364268315715001057}
+  - component: {fileID: 8275495873616421884}
+  - component: {fileID: 5175522973251198462}
+  - component: {fileID: 9073605621726631199}
+  - component: {fileID: 2359635645306560026}
+  - component: {fileID: 5501037321091204196}
+  - component: {fileID: 2399475850178820915}
   m_Layer: 0
   m_Name: Car
   m_TagString: Untagged
@@ -900,341 +911,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 5.2
-  baseMaxSpeed: 3.95
-  baseBrakingForce: 0.003
-  turnSpeed: 11
-  minSpeedToSteer: 0.4
-  allowSteerWhenTryingToMove: 1
-  perColliderCrashCooldown: 0.5
-  skipSpeedClampWhileAirborne: 1
-  enableLandingCarrySpeed: 1
-  landingExcessBleedPerSecond: 7.17
-  landingNoClampGraceSeconds: 0.08
-  drainScalePerClickPower: 0.5
-  drainScalePerPassiveStrength: 0.12
-  maxSkillDrainMultiplier: 5
-  minSkillDrainMultiplier: 1
-  lowSpeedSteerMultiplier: 8
-  highSpeedSteerMultiplier: 1.3
-  speedForSteerCurve: 3.45
-  steeringInputSmooth: 9
-  useAutoAlignToVelocity: 0
-  autoAlignStrength: 3
-  enableIceSteerRamp: 1
-  iceSteerRampUpRate: 10
-  iceSteerRampDownRate: 1.83
-  iceSteerMinFactor: 0.755
-  iceSteerFlipPenalty: 0.35
-  coastLowDecelPerSecond: 0.39
-  coastHighDecelPerSecond: 5.55
-  coastHighSpeedFraction: 1
-  useExponentialCoast: 0
-  coastDampingPerSecond: 4.48
-  randomizeMashFaceButton: 1
-  allowSpaceMashInEditor: 1
-  mashBaseFuelPerClick: 0
-  mashFuelSpeedBonusMax: 2
-  mashMaxSpeedThreshold: 0.05
-  mashMinSpeedThreshold: 0.5
-  coastDecelFactor: 0.74
-  brakeForwardFactor: 0.7
-  reverseAccelFactor: 1.06
-  brakeToReverseSpeed: 0.5
-  maxBrakeDecelPerSecond: 1
-  maxReverseAccelPerSecond: 5.06
-  baseSteeringDamp: 8
-  enableSteerTraction: 1
-  steerTractionReorientRate: 5.59
-  steerRollingAccel: 2.25
-  minSpeedForSteerTraction: 0.1
-  lateralFrictionWhileSteering: 2.46
-  steerTractionBlendIn: 8.21
-  steerTractionBlendOut: 7.1
-  steerRollingAccelCoastMultiplier: 0.441
-  applySteerRollingAccelOnIce: 0
-  requireDriftUnlock: 1
-  driftKey: 304
-  driftMinSpeed: 2.15
-  maxDriftSteerMultiplier: 3.1
-  driftBuildRate: 0.7
-  driftReleaseRate: 12.2
-  driftSideForce: 0.41
-  driftSpeedDecayPerSecond: 0.06
-  driftHeldSpeedDecayPerSecond: 0
-  driftForwardAccelMultiplier: 0
-  useFullAccelWhileDrifting: 1
-  lockToDriftPeakSpeed: 1
-  useMultiplicativeMashClicks: 1
-  mashBaseClicks: 15
-  mashDistanceWeight: 350
-  mashDistanceExponent: 1.34
-  mashSeverityWeight: 1.75
-  mashSeverityExponent: 1.25
-  mashCrashCountWeight: 1.5
-  mashSeveritySumWeight: 1
-  enableCrashRecoveryAlways: 1
-  flippedClickMultiplier: 1.5
-  airborneClickMultiplier: 1.25
-  driftBrakeDecayPerSecond: 0.001
-  closeCallBoostBaseDuration: 0.9
-  closeCallBoostForce: 9
-  closeCallBoostForceMode: 5
-  closeCallBoostMaxSpeedMult: 1.3
-  closeCallInvincibilityTint: {r: 0.5, g: 0.8, b: 1, a: 0.5}
-  closeCallTintColor: {r: 0.3, g: 0.6, b: 1, a: 1}
-  closeCallTintStrength: 0.6
-  invincibilityBumpForceAway: 12
-  invincibilityBumpForceUp: 3
-  invincibilityBumpTorque: 5
-  requireDirectionalInputForDriftCharge: 0
-  driftNeutralDrainRate: 2.6
-  driftNeutralFullResetDelay: 3.65
-  resetDriftChargeOnSteerFlip: 1
-  steerFlipRetainedCharge: 0.055
-  steerFlipThreshold: 0.15
-  minChargeForFlipReset: 0
-  steerFlipRebuildDelay: 0.1
-  allowDriftGlideWithoutSteer: 1
-  driftGlideDecayPerSecond: 0.15
-  enableCloseCallNearMisses: 1
-  closeCallDistance: 0.45
-  closeCallMinSpeed: 2.88
-  closeCallCooldown: 1.42
-  closeCallRootCooldown: 4.39
-  iceFrictionTransitionSpeed: 3
-  iceHandlingTransitionSpeed: 4
-  iceLateralSlideForce: 0.1
-  iceVelocityAlignmentStrength: 0.02
-  baseDrag: 0.13
-  groundLayers:
-    serializedVersion: 2
-    m_Bits: 90112
-  samplesX: 6
-  samplesZ: 6
-  raycastHeightOffset: 0.5
-  raycastExtraDistance: -0.72
-  debugSurfaceRays: 1
-  surfaceSampleExtent: 1.13
-  maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 0
-  fuelUsePerSecondBraking: 0
-  idleFuelUsePerSecond: 0
-  idleSpeedThreshold: 0.5
-  crashLayers:
-    serializedVersion: 2
-    m_Bits: 1837056
-  minImpactSpeed: 1.6
-  maxImpactSpeed: 14
-  minCrashDuration: 1.08
-  maxCrashDuration: 2.13
-  impulsePerUnitSpeed: 1.12
-  torquePerUnitSpeed: 18.8
-  crashDragMultiplier: 1
-  crashAngularDrag: 1
-  enablePopupText: 1
-  popupVerticalOffset: 0.25
-  minHPDamageForPopup: 0.1
-  minFuelLossForPopup: 0.1
-  minFuelGainForPopup: 0.1
-  mashFuelPopupHorizontalRange: {x: -0.6, y: 0.6}
-  mashFuelPopupVerticalRange: {x: -0.6, y: 0.6}
-  enableMashScreenShake: 1
-  mashShakeDuration: 0.08
-  mashShakeStrength: 0.15
-  mashShakeVibrato: 10
-  mashShakeRandomness: 0.5
-  crashYawTorqueMultiplier: 10.58
-  crashRollTorqueMultiplier: 7.47
-  crashPitchTorqueMultiplier: 9.17
-  reorientDuration: 0.25
-  groundedDurationRequired: 0.5
-  groundCheckDistance: 0.3
-  groundCheckLayers:
-    serializedVersion: 2
-    m_Bits: 24576
-  invertSteeringWhenReversing: 1
-  reverseSteerMultiplier: 1
-  maxHP: 20
-  hpCrashDamageAtSeverity1: 100
-  baseHpRegenPerSecond: 0
-  performanceAtZeroHP: 0.455
-  degradeStartHPFraction: 0.422
-  enableDamageMalfunction: 1
-  maxMalfunctionChancePerSecond: 0.326
-  malfunctionBurstDuration: {x: 0.2, y: 0.72}
-  malfunctionCooldown: {x: 0.5, y: 5}
-  malfunctionThrottleMultiplier: 0.35
-  useSmoothMalfunction: 1
-  minimumAccelerationFloor: 4
-  minimumMaxSpeedFloor: 6
-  fuelLossAtSeverity1: 50
-  minHpLossPerCrash: 10
-  minFuelLossPerCrash: 10
-  crashDamageCooldown: 0.35
-  crashImpactVFX: {fileID: 208115153821778408, guid: fd8c411fa565e1c479a780420a1f5983, type: 3}
-  crashImpactVFXLifetime: 0.4
-  damageSmokeVFX: {fileID: 3246868859361284785}
-  smokeStartHPFraction: 0.5
-  smokeMinRate: 5
-  smokeMaxRate: 30
-  smokeMinSize: 0.5
-  smokeMaxSize: 1.6
-  smokeColorAtThreshold: {r: 1, g: 1, b: 1, a: 1}
-  smokeColorAtZeroHP: {r: 0.3773585, g: 0.3773585, b: 0.3773585, a: 1}
-  invertSmokeColorLerp: 0
-  requireBoostUnlock: 1
-  boostFlashSpeedThreshold: 2
-  boostFlashCooldown: 0.3
-  boostKey: 32
-  boostForce: 30
-  boostSustainAcceleration: 30
-  boostDuration: 0.35
-  boostMaxSpeedMultiplier: 1.65
-  postBoostSlowdownDuration: 2
-  boostCooldown: 5
-  boostFuelCost: 15
-  driftBoostSustainAcceleration: 30
-  enableDriftHeldBoost: 1
-  driftBoostMinHoldSeconds: 0.8
-  driftBoostMaxHoldSeconds: 2.5
-  driftBoostForceRange: {x: 0.5, y: 0.5}
-  driftBoostDurationRange: {x: 0.4, y: 0.7}
-  driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.25}
-  driftBoostFuelCost: 0
-  driftBoostCooldown: 3.3
-  cameraShakeTarget: {fileID: 0}
-  screenShakeGlobalMultiplier: 1
-  screenShakeReturnSpeed: 18
-  enableRampAlignment: 1
-  groundAlignSpeed: 10
-  airAlignSpeed: 6
-  groundNormalCastRadius: 0.35
-  groundNormalCheckDistance: 1.23
-  landingPredictDistance: 2.75
-  landingAlignStartDistance: 1.97
-  deathVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
-  deathVFXLifetime: 8
-  deathExplodeClip: {fileID: 8300000, guid: d043ec2d89c1b1d4daea2ea20a2457d5, type: 3}
-  deathExplodeVolume: 1
-  enableFlipRecoveryMash: 1
-  flipDotThreshold: 0
-  flipAngleThreshold: 80
-  mashClicksMin: 6
-  mashClicksMaxFromSeverity: 3000
-  mashClicksPerCrash: 25
-  mashClicksMaxFromCrashCount: 20000
-  mashClicksPerDistanceUnit: 0
-  mashDistanceUnit: 0
-  mashClicksMaxFromDistance: 0
-  mashClicksByProgress:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0.08576329
-      outSlope: 0.08576329
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.4583333
-    - serializedVersion: 3
-      time: 0.6
-      value: 0.05
-      inSlope: 0.28075472
-      outSlope: 0.28075472
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.3402778
-      outWeight: 0.83333325
-    - serializedVersion: 3
-      time: 0.85
-      value: 0.3
-      inSlope: 2.4082353
-      outSlope: 2.4082353
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.3666668
-      outWeight: 0.3055553
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 4.6666675
-      outSlope: 4.6666675
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  mashProgressTotalDistanceFallback: 1000
-  mashClicksRandomVariance: 0
-  mashClicksAbsoluteMin: 2
-  mashClicksAbsoluteMax: 500000
-  baseClicksPerClick: 1
-  basePassiveClickRate: 0
-  basePassiveClickStrength: 1
-  enableMashProgressGauge: 1
-  gaugeDrainRateBase: 0.12
-  gaugeDrainRatePerCrash: 0.06
-  gaugeDrainRateMax: 0.86
-  gaugeFillPerClick: 0.05
-  gaugeFillSpeedBonus: 2
-  gaugeGoodThreshold: 0.7
-  gaugeMultiplierAtZero: 0.5
-  gaugeMultiplierAtGood: 1.5
-  gaugeMultiplierAtMax: 2
-  mashDrainsHealth: 1
-  mashDrainsFuel: 1
-  mashHealthDrainAtMinSeverity: 2
-  mashHealthDrainAtMaxSeverity: 12
-  mashHealthDrainPerCrash: 0.5
-  mashHealthDrainCap: 50
-  mashFuelDrainAtMinSeverity: 2
-  mashFuelDrainAtMaxSeverity: 12
-  mashFuelDrainPerCrash: 0.25
-  mashFuelDrainCap: 30
-  gaugeDrainAtMinSeverity: 0.08
-  gaugeDrainAtMaxSeverity: 0.25
-  gaugeDrainPerCrash: 0.02
-  gaugeDrainCap: 0.75
-  enableSprocketRewards: 1
-  sprocketBasePercent: 0.2
-  sprocketGaugeBonusMax: 1.5
-  sprocketMaxedBonusMultiplier: 1.25
-  sprocketMinReward: 5
-  sprocketMaxReward: 5000000
-  flipUprightLift: 0.2
-  deathExplodeUseSpatial: 1
-  deathExplodeSpatialBlend: 1
-  deathExplodeRolloff: 0
-  deathExplodeMinDistance: 2
-  deathExplodeMaxDistance: 70
-  deathExplodeVolumeMultiplier: 1.6
-  deathExplodePitchMin: 0.7
-  deathExplodePitchMax: 1
-  deathExplodeSfxCooldown: 0.08
-  defaultBoostRampDownFraction: 0.35
-  closeCallBoostRampDownFraction: 0.5
-  regularBoostRampDownFraction: 0.25
-  grassFuelUseMultiplier: 1.5
-  offDefaultFraction: 0
-  grassFraction: 0
-  crashClipDefault: {fileID: 8300000, guid: aaede3ddebda1c04f86f7a075ecad0b7, type: 3}
-  crashClipHonk: {fileID: 8300000, guid: f872c86f5efa11742ad39e82fc14cb6f, type: 3}
-  crashSfxVolume: 1
-  crashUseSpatial: 1
-  crashSpatialBlend: 0.38
-  crashRolloff: 0
-  crashMinDistance: 1
-  crashMaxDistance: 50
-  crashVolumeMultiplier: 2.63
-  crashPitchMin: 0.976
-  crashPitchMax: 1.141
-  surfaceMaxSpeedLerpRate: 2.78
-  closeCallAfterCrashBlockTime: 1
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1580,6 +1256,455 @@ MonoBehaviour:
   cutsAddedGeom: 1
   updateRotationDistance: 10
   useRotationAndScale: 1
+--- !u!114 &121786672632953379
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8b5b3e22a58bf94a83288c2181a771f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  baseAcceleration: 5.2
+  baseMaxSpeed: 3.95
+  baseBrakingForce: 0.003
+  baseDrag: 0.13
+  coastLowDecelPerSecond: 0.39
+  coastHighDecelPerSecond: 5.55
+  coastHighSpeedFraction: 1
+  useExponentialCoast: 0
+  coastDampingPerSecond: 4.48
+  coastDecelFactor: 0.74
+  brakeForwardFactor: 0.7
+  reverseAccelFactor: 1.06
+  brakeToReverseSpeed: 0.5
+  maxBrakeDecelPerSecond: 1
+  maxReverseAccelPerSecond: 5.06
+--- !u!114 &4457387338141855682
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3b650392f965134c887430e8a592a46, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  turnSpeed: 11
+  minSpeedToSteer: 0.4
+  allowSteerWhenTryingToMove: 1
+  lowSpeedSteerMultiplier: 9
+  highSpeedSteerMultiplier: 1.75
+  speedForSteerCurve: 3.45
+  steeringInputSmooth: 9
+  useAutoAlignToVelocity: 0
+  autoAlignStrength: 3
+  enableIceSteerRamp: 1
+  iceSteerRampUpRate: 10
+  iceSteerRampDownRate: 1.83
+  iceSteerMinFactor: 0.755
+  iceSteerFlipPenalty: 0.35
+  invertSteeringWhenReversing: 1
+  reverseSteerMultiplier: 1
+  baseSteeringDamp: 8
+  enableSteerTraction: 1
+  steerTractionReorientRate: 5.59
+  steerRollingAccel: 2.25
+  minSpeedForSteerTraction: 0.1
+  lateralFrictionWhileSteering: 2.46
+  steerTractionBlendIn: 8.21
+  steerTractionBlendOut: 7.1
+  steerRollingAccelCoastMultiplier: 0.441
+  applySteerRollingAccelOnIce: 0
+--- !u!114 &6905870851410593353
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31244efd17804424bbc273b8ecd1a6e0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  skipSpeedClampWhileAirborne: 1
+  enableLandingCarrySpeed: 1
+  landingExcessBleedPerSecond: 7.17
+  landingNoClampGraceSeconds: 0.5
+--- !u!114 &632556853857277878
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1871c78573a1f2b46a626afb7e764a4c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  requireDriftUnlock: 1
+  driftKey: 304
+  driftMinSpeed: 2.15
+  maxDriftSteerMultiplier: 3.1
+  driftBuildRate: 0.7
+  driftReleaseRate: 12.2
+  driftSideForce: 0.41
+  driftSpeedDecayPerSecond: 0.06
+  driftHeldSpeedDecayPerSecond: 0
+  driftForwardAccelMultiplier: 0
+  useFullAccelWhileDrifting: 1
+  lockToDriftPeakSpeed: 1
+  driftBrakeDecayPerSecond: 0.001
+  requireDirectionalInputForDriftCharge: 0
+  driftNeutralDrainRate: 2.6
+  driftNeutralFullResetDelay: 3.65
+  resetDriftChargeOnSteerFlip: 1
+  steerFlipRetainedCharge: 0.055
+  steerFlipThreshold: 0.15
+  minChargeForFlipReset: 0
+  steerFlipRebuildDelay: 0.1
+  allowDriftGlideWithoutSteer: 1
+  driftGlideDecayPerSecond: 0.15
+  closeCallBoostBaseDuration: 0.9
+  closeCallBoostForce: 9
+  closeCallBoostForceMode: 2
+  closeCallBoostMaxSpeedMult: 1.3
+  closeCallInvincibilityTint: {r: 0.5, g: 0.8, b: 1, a: 0.5}
+  closeCallTintColor: {r: 0.3, g: 0.6, b: 1, a: 1}
+  closeCallTintStrength: 0.6
+  invincibilityBumpForceAway: 12
+  invincibilityBumpForceUp: 3
+  invincibilityBumpTorque: 5
+  enableCloseCallNearMisses: 1
+  closeCallDistance: 0.45
+  closeCallMinSpeed: 2.88
+  closeCallCooldown: 1.42
+  closeCallRootCooldown: 4.39
+  iceFrictionTransitionSpeed: 3
+  iceHandlingTransitionSpeed: 4
+  iceLateralSlideForce: 0.1
+  iceVelocityAlignmentStrength: 0.02
+--- !u!114 &1364268315715001057
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31ab260e3f285de438b2f2211f69ca8c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  requireBoostUnlock: 1
+  boostFlashSpeedThreshold: 2
+  boostFlashCooldown: 0.3
+  boostKey: 32
+  boostForce: 30
+  boostSustainAcceleration: 30
+  boostDuration: 0.35
+  boostMaxSpeedMultiplier: 1.65
+  postBoostSlowdownDuration: 2
+  boostCooldown: 5
+  boostFuelCost: 15
+  driftBoostSustainAcceleration: 30
+  enableDriftHeldBoost: 1
+  driftBoostMinHoldSeconds: 0.8
+  driftBoostMaxHoldSeconds: 2.5
+  driftBoostForceRange: {x: 0.5, y: 0.5}
+  driftBoostDurationRange: {x: 0.4, y: 0.7}
+  driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.25}
+  driftBoostFuelCost: 0
+  driftBoostCooldown: 3.3
+--- !u!114 &8275495873616421884
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9730bba7a4a2fba4285a14f312f64975, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxFuel: 100
+  fuelUsePerSecondAtFullThrottle: 0
+  fuelUsePerSecondBraking: 0
+  idleFuelUsePerSecond: 0
+  idleSpeedThreshold: 0.5
+--- !u!114 &5175522973251198462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e6bbd04e98284d4aa7d7d4ab95ec2b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHP: 20
+  hpCrashDamageAtSeverity1: 100
+  baseHpRegenPerSecond: 0
+  performanceAtZeroHP: 0.455
+  degradeStartHPFraction: 0.422
+  enableDamageMalfunction: 1
+  maxMalfunctionChancePerSecond: 0.326
+  malfunctionBurstDuration: {x: 0.2, y: 0.72}
+  malfunctionCooldown: {x: 0.5, y: 5}
+  malfunctionThrottleMultiplier: 0.35
+  useSmoothMalfunction: 1
+  minimumAccelerationFloor: 4
+  minimumMaxSpeedFloor: 6
+  fuelLossAtSeverity1: 50
+  minHpLossPerCrash: 10
+  minFuelLossPerCrash: 10
+  crashDamageCooldown: 0.35
+  crashImpactVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  crashImpactVFXLifetime: 0.4
+  damageSmokeVFX: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+  smokeStartHPFraction: 0.5
+  smokeMinRate: 5
+  smokeMaxRate: 30
+  smokeMinSize: 0.5
+  smokeMaxSize: 1.6
+  smokeColorAtThreshold: {r: 1, g: 1, b: 1, a: 1}
+  smokeColorAtZeroHP: {r: 1, g: 0, b: 0, a: 1}
+  invertSmokeColorLerp: 0
+--- !u!114 &9073605621726631199
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2963f24dfab73704ca727f2ffda90d46, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 90112
+  samplesX: 6
+  samplesZ: 6
+  raycastHeightOffset: 0.5
+  raycastExtraDistance: -0.72
+  debugSurfaceRays: 1
+  surfaceSampleExtent: 1.13
+--- !u!114 &2359635645306560026
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b56103a53c32b9a49a2adc9e309ba6f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableRampAlignment: 1
+  groundAlignSpeed: 10
+  airAlignSpeed: 6
+  groundNormalCastRadius: 0.35
+  groundNormalCheckDistance: 1.23
+  landingPredictDistance: 2.75
+  landingAlignStartDistance: 1.97
+--- !u!114 &5501037321091204196
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f0b8a721845265428754a028a1f8248, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  drainScalePerClickPower: 0.5
+  drainScalePerPassiveStrength: 0.12
+  maxSkillDrainMultiplier: 5
+  minSkillDrainMultiplier: 1
+  randomizeMashFaceButton: 1
+  allowSpaceMashInEditor: 1
+  mashBaseFuelPerClick: 0
+  mashFuelSpeedBonusMax: 2
+  mashMaxSpeedThreshold: 0.05
+  mashMinSpeedThreshold: 0.5
+  useMultiplicativeMashClicks: 1
+  mashBaseClicks: 15
+  mashDistanceWeight: 350
+  mashDistanceExponent: 1.34
+  mashSeverityWeight: 1.75
+  mashSeverityExponent: 1.25
+  mashCrashCountWeight: 1.5
+  mashSeveritySumWeight: 1
+  enableCrashRecoveryAlways: 1
+  flippedClickMultiplier: 1.5
+  airborneClickMultiplier: 1.25
+  crashLayers:
+    serializedVersion: 2
+    m_Bits: 1837056
+  minImpactSpeed: 1.6
+  maxImpactSpeed: 14
+  minCrashDuration: 1.08
+  maxCrashDuration: 2.13
+  impulsePerUnitSpeed: 1.12
+  torquePerUnitSpeed: 18.8
+  crashDragMultiplier: 1
+  crashAngularDrag: 1
+  enablePopupText: 1
+  popupVerticalOffset: 0.25
+  minHPDamageForPopup: 0.1
+  minFuelLossForPopup: 0.1
+  minFuelGainForPopup: 0.1
+  mashFuelPopupHorizontalRange: {x: -0.6, y: 0.6}
+  mashFuelPopupVerticalRange: {x: -0.6, y: 0.6}
+  enableMashScreenShake: 1
+  mashShakeDuration: 0.08
+  mashShakeStrength: 0.15
+  mashShakeVibrato: 10
+  mashShakeRandomness: 0.5
+  crashYawTorqueMultiplier: 10.58
+  crashRollTorqueMultiplier: 7.47
+  crashPitchTorqueMultiplier: 9.17
+  reorientDuration: 0.25
+  groundedDurationRequired: 0.5
+  groundCheckDistance: 0.3
+  groundCheckLayers:
+    serializedVersion: 2
+    m_Bits: 24576
+  enableFlipRecoveryMash: 1
+  flipDotThreshold: 0
+  flipAngleThreshold: 80
+  mashClicksMin: 6
+  mashClicksMaxFromSeverity: 3000
+  mashClicksPerCrash: 25
+  mashClicksMaxFromCrashCount: 20000
+  mashClicksPerDistanceUnit: 0
+  mashDistanceUnit: 0
+  mashClicksMaxFromDistance: 0
+  mashClicksByProgress:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  mashProgressTotalDistanceFallback: 1000
+  mashClicksRandomVariance: 0
+  mashClicksAbsoluteMin: 2
+  mashClicksAbsoluteMax: 500000
+  baseClicksPerClick: 1
+  basePassiveClickRate: 0
+  basePassiveClickStrength: 1
+  enableMashProgressGauge: 1
+  gaugeDrainRateBase: 0.12
+  gaugeDrainRatePerCrash: 0.06
+  gaugeDrainRateMax: 0.86
+  gaugeFillPerClick: 0.05
+  gaugeFillSpeedBonus: 2
+  gaugeGoodThreshold: 0.7
+  gaugeMultiplierAtZero: 0.5
+  gaugeMultiplierAtGood: 1.5
+  gaugeMultiplierAtMax: 2
+  mashDrainsHealth: 1
+  mashDrainsFuel: 1
+  mashHealthDrainAtMinSeverity: 2
+  mashHealthDrainAtMaxSeverity: 12
+  mashHealthDrainPerCrash: 0.5
+  mashHealthDrainCap: 50
+  mashFuelDrainAtMinSeverity: 2
+  mashFuelDrainAtMaxSeverity: 12
+  mashFuelDrainPerCrash: 0.25
+  mashFuelDrainCap: 30
+  gaugeDrainAtMinSeverity: 0.08
+  gaugeDrainAtMaxSeverity: 0.25
+  gaugeDrainPerCrash: 0.02
+  gaugeDrainCap: 0.75
+  enableSprocketRewards: 1
+  sprocketBasePercent: 0.2
+  sprocketGaugeBonusMax: 1.5
+  sprocketMaxedBonusMultiplier: 1.25
+  sprocketMinReward: 5
+  sprocketMaxReward: 5000000
+  flipUprightLift: 0.2
+  surfaceMaxSpeedLerpRate: 2.78
+  closeCallAfterCrashBlockTime: 1
+  perColliderCrashCooldown: 0.5
+--- !u!114 &2399475850178820915
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d7f3f5dcde5c52449768c012600fff2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cameraShakeTarget: {fileID: 0}
+  screenShakeGlobalMultiplier: 1
+  screenShakeReturnSpeed: 18
+  deathVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
+  deathVFXLifetime: 8
+  deathExplodeClip: {fileID: 8300000, guid: d043ec2d89c1b1d4daea2ea20a2457d5, type: 3}
+  deathExplodeVolume: 1
+  deathExplodeUseSpatial: 1
+  deathExplodeSpatialBlend: 1
+  deathExplodeRolloff: 0
+  deathExplodeMinDistance: 2
+  deathExplodeMaxDistance: 70
+  deathExplodeVolumeMultiplier: 1.6
+  deathExplodePitchMin: 0.7
+  deathExplodePitchMax: 1
+  deathExplodeSfxCooldown: 0.08
+  defaultBoostRampDownFraction: 0.35
+  closeCallBoostRampDownFraction: 0.5
+  regularBoostRampDownFraction: 0.25
+  grassFuelUseMultiplier: 1.5
+  offDefaultFraction: 0
+  grassFraction: 0
+  crashClipDefault: {fileID: 8300000, guid: aaede3ddebda1c04f86f7a075ecad0b7, type: 3}
+  crashClipHonk: {fileID: 8300000, guid: f872c86f5efa11742ad39e82fc14cb6f, type: 3}
+  crashSfxVolume: 1
+  crashUseSpatial: 1
+  crashSpatialBlend: 0.38
+  crashRolloff: 0
+  crashMinDistance: 1
+  crashMaxDistance: 50
+  crashVolumeMultiplier: 2.63
+  crashPitchMin: 0.976
+  crashPitchMax: 1.141
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0
@@ -1820,11 +1945,19 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: EmissionModule.enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2955223996555018916, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
       propertyPath: m_Name
       value: SmokeVFX
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    - target: {fileID: 2955223996555018916, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+  m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
@@ -1832,11 +1965,6 @@ PrefabInstance:
 --- !u!4 &1156056499681092424 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1575796833876989887, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
-  m_PrefabInstance: {fileID: 420375859517043959}
-  m_PrefabAsset: {fileID: 0}
---- !u!198 &3246868859361284785 stripped
-ParticleSystem:
-  m_CorrespondingSourceObject: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
   m_PrefabInstance: {fileID: 420375859517043959}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &3026898324425350654

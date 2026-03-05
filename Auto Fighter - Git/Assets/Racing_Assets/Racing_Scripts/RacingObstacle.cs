@@ -30,8 +30,12 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     [Header("Tree Topple (ObstacleType.Tree only)")]
     [Tooltip("Minimum impact speed (m/s) to knock the tree down. Below this, the tree won't topple.")]
     [Min(0f)] public float treeToppleMinVelocity = 2f;
-    [SerializeField, Min(0.1f)] private float treeToppleDuration = 0.7f;
-    [SerializeField] private Ease treeToppleEase = Ease.OutQuad;
+    [Tooltip("Impulse force = impactSpeed * this scale, then clamped to min/max. Higher = tree falls harder.")]
+    [SerializeField, Min(0f)] private float treeToppleImpulseScale = 2f;
+    [SerializeField, Min(0f)] private float treeToppleImpulseMin = 3f;
+    [SerializeField, Min(0f)] private float treeToppleImpulseMax = 25f;
+    [Tooltip("Height above pivot (meters) where the push force is applied. Higher = more rotation, less slide.")]
+    [SerializeField, Min(0.1f)] private float treeToppleForceHeight = 2f;
 
     // NEW: Impact damage tuning
     [Header("Forcefield Impact Damage")]
@@ -124,50 +128,42 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// Tree fall: topple in the direction the hitter is moving (opposite to impact source).
-    /// Omnidirectional: hit from left-front -> fall right-back, etc.
-    /// Rigidbody is set kinematic so physics doesn't reset the rotation back to upright.
+    /// Tree fall: apply a physics impulse so the tree topples in the impact direction. No animation – pure physics.
     /// </summary>
     private void ToppleTree(Collision collision)
     {
         if (_treeToppled) return;
         _treeToppled = true;
 
-        // Stop physics from overwriting our rotation: make kinematic for the topple and keep it.
-        var rb = GetComponent<Rigidbody>();
-        bool wasKinematic = false;
-        if (rb != null)
-        {
-            wasKinematic = rb.isKinematic;
-            rb.isKinematic = true;
-        }
+        var bounceBack = GetComponent<TrackObstacleBounceBack>();
+        if (bounceBack != null)
+            bounceBack.enabled = false;
 
-        // Fall direction = opposite to where the hit came from (so "hit from left -> fall right").
+        var rb = GetComponentInParent<Rigidbody>();
+        if (rb == null) return;
+
+        Transform pivot = rb.transform;
+
+        // Fall direction = direction of impact (tree falls away from the hitter).
         Vector3 fallDir = collision.relativeVelocity;
         if (fallDir.sqrMagnitude < 0.01f)
-            fallDir = transform.position - collision.transform.position;
+            fallDir = pivot.position - collision.transform.position;
         fallDir.y = 0f;
         if (fallDir.sqrMagnitude < 0.01f)
-            fallDir = transform.forward;
+            fallDir = pivot.forward;
         fallDir.Normalize();
 
-        // Final rotation: tree lies on ground with its up aligned to fall direction (toppled over that way).
-        Quaternion fallenRot = Quaternion.FromToRotation(Vector3.up, fallDir);
+        float impactSpeed = collision.relativeVelocity.magnitude;
+        float impulse = Mathf.Clamp(impactSpeed * treeToppleImpulseScale, treeToppleImpulseMin, treeToppleImpulseMax);
 
-        // Kill any existing rotation tween on this transform so we don't get multiple tweens fighting.
-        transform.DOKill(complete: false);
+        rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.constraints = RigidbodyConstraints.None;
 
-        transform.DORotateQuaternion(fallenRot, treeToppleDuration)
-            .SetEase(treeToppleEase)
-            .SetUpdate(UpdateType.Normal)
-            .OnComplete(() =>
-            {
-                // Snap to exact final rotation so nothing can drift it back.
-                transform.rotation = fallenRot;
-                // Keep rigidbody kinematic so physics never pushes the tree back upright.
-                if (rb != null && !wasKinematic)
-                    rb.isKinematic = true;
-            });
+        // Apply force at a point above the base so the tree rotates around its base instead of just sliding.
+        Vector3 applyPoint = pivot.position + Vector3.up * treeToppleForceHeight;
+        rb.AddForceAtPosition(fallDir * impulse, applyPoint, ForceMode.Impulse);
     }
 
     // NEW: obstacle-on-obstacle impact damage when one was launched by the forcefield

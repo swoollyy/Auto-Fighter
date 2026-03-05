@@ -6,7 +6,8 @@ public enum SurfaceType
     Grass,
     Dirt,
     Ice,
-    Boost   // NEW: Auto-acceleration surface
+    Boost,  // Flat auto-acceleration pad
+    Ramp    // Elevated ramp (obstacles avoid spawning here; bounce-back jumps higher when landing on it)
 }
 
 [DisallowMultipleComponent]
@@ -42,12 +43,12 @@ public class GroundSurface : MonoBehaviour
     [Range(0f, 1f)]
     public float iceHandlingMultiplier = 0.3f;
 
-    // NEW: Boost-specific properties
-    [Header("Boost Properties (when surfaceType = Boost)")]
+    // Boost & Ramp: same effects (auto accel, boost accel, boost max speed). Ramp = elevated; Boost = flat.
+    [Header("Boost / Ramp Properties (surfaceType = Boost or Ramp)")]
     [Tooltip("If true, car automatically accelerates forward on this surface (no input needed).")]
     public bool autoAccelerate = true;
 
-    [Tooltip("Forward acceleration force applied (m/s≤). Higher = faster push.")]
+    [Tooltip("Forward acceleration force applied (m/sù). Higher = faster push.")]
     public float boostAcceleration = 15f;
 
     [Tooltip("Maximum speed the boost can push you to. 0 = no limit (uses car's max).")]

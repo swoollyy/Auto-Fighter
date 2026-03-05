@@ -266,30 +266,33 @@ public class GameManager_Racing : MonoBehaviour
             }
         }
 
+        // Restart can be pressed after run has ended even if car was destroyed; handle it without requiring carController.
+        bool canCheckRestart = _finalizePending || runEnded;
+        if (canCheckRestart)
+        {
+            bool notInFlipMash = carController == null || !carController.IsFlipMashActive;
+            if (notInFlipMash)
+            {
+                bool restartPressed = RacingInputReader.Instance != null
+                    ? RacingInputReader.Instance.RestartDown
+                    : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
+
+                if (restartPressed)
+                {
+                    if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+                    _finalizeRunCR = null;
+                    _finalizePending = false;
+                    TryPlayDepositSoundOnReset();
+                    RestartRun();
+                    return;
+                }
+            }
+        }
+
         if (carController == null)
             return;
 
         Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
-
-        if (_finalizePending && !carController.IsFlipMashActive)
-        {
-            bool restartPressed = RacingInputReader.Instance != null
-                ? RacingInputReader.Instance.RestartDown
-                : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
-
-            if (restartPressed)
-            {
-                if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
-                _finalizeRunCR = null;
-                _finalizePending = false;
-
-                TryPlayDepositSoundOnReset();
-                RestartRun();
-                return;
-            }
-        }
-
-
 
         // Finalize run only when out of fuel AND forward/overall speed is tiny
         if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
@@ -348,20 +351,6 @@ public class GameManager_Racing : MonoBehaviour
                     StopCoroutine(_finalizeRunCR);
                     _finalizeRunCR = null;
                 }
-            }
-        }
-
-        if (runEnded && !carController.IsFlipMashActive)
-        {
-            bool restartPressed = RacingInputReader.Instance != null
-                ? RacingInputReader.Instance.RestartDown
-                : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
-
-            if (restartPressed)
-            {
-                TryPlayDepositSoundOnReset();
-                RestartRun();
-                return;
             }
         }
     }

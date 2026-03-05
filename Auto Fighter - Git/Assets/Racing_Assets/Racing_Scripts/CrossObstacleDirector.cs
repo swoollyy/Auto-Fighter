@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -50,6 +50,12 @@ public sealed class CrossObstacleDirector : MonoBehaviour
     [Header("Cross Path Length")]
     [SerializeField, Tooltip("How far beyond each road edge the obstacle starts/ends (meters). Higher = longer path.")]
     private float offRoadPadding = 12f;  // was hardcoded via + 5.0f
+
+    [Header("Ramp Avoidance")]
+    [Tooltip("Don't spawn a cross if a ramp (SurfaceType.Ramp) is within this radius of the cross center. Prevents crosses from intersecting ramps. Flat boost pads are not affected.")]
+    [SerializeField, Min(0f)] private float avoidRampRadius = 4f;
+    [Tooltip("Layers to check for ramps (GroundSurface with SurfaceType.Ramp). 0 = check all colliders in sphere.")]
+    [SerializeField] private LayerMask rampCheckLayers = ~0;
 
     [Header("Curvature Sampling")]
     [SerializeField] private float curvatureSampleLength = 12f;
@@ -316,6 +322,13 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         float sideSign = startLeft ? -1f : 1f;
 
         // Create horizontal positions first
+        // Don't spawn if a ramp is in the way (cross would intersect the ramp). Flat boost pads are ignored.
+        if (avoidRampRadius > 0f && WouldCrossIntersectRamp(spawnSurface, halfRoad))
+        {
+            _cooldownRemain = effectiveCooldown;
+            return;
+        }
+
         Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
         Vector3 targetHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) - lateral * sideSign * offTrackOffset;
 
@@ -370,6 +383,23 @@ public sealed class CrossObstacleDirector : MonoBehaviour
                       $"vCross={crossSpeed:F2}, yawBase={yawErrorDeg:F1}, yawFinal={appliedYaw:F1}, " +
                       $"size={finalScale:F2}, curvature={curvatureFactor:F2}");
         }
+    }
+
+    /// <summary>Returns true if a ramp (GroundSurface.Ramp) is within the cross area so we should not spawn.</summary>
+    private bool WouldCrossIntersectRamp(Vector3 spawnSurface, float halfRoad)
+    {
+        float radius = halfRoad + avoidRampRadius;
+        Collider[] hits = Physics.OverlapSphere(spawnSurface, radius, rampCheckLayers, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i] == null) continue;
+            GroundSurface surface = hits[i].GetComponent<GroundSurface>() ?? hits[i].GetComponentInParent<GroundSurface>();
+            if (surface != null && surface.surfaceType == SurfaceType.Ramp)
+                return true;
+        }
+        return false;
     }
 
     private float SampleCurvature(float sCenter, float sampleLength)

@@ -1,4 +1,4 @@
-﻿using DG.Tweening;
+using DG.Tweening;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -45,6 +45,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Header("Bounce Arc")]
     [Tooltip("Peak hop height during a bounce (meters).")]
     [SerializeField, Min(0f)] private float bounceJumpHeight = 1.0f;
+    [Tooltip("When landing on a ramp (SurfaceType.Ramp), multiply jump height by this so the hop clears the ramp. Flat boost pads do not get this extra height.")]
+    [SerializeField, Min(1f)] private float bounceJumpHeightRampMultiplier = 1.8f;
 
     [Header("Lateral Clamp")]
     [SerializeField] private bool clampToRoadWidth = true;
@@ -175,6 +177,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     // DOTween drives this
     private float _bounceT;
     private Tween _bounceTween;
+    private bool _landingOnRamp;
 
     // gating
     private float _nextAllowedCarHitTime;
@@ -306,10 +309,11 @@ public class TrackObstacleBounceBack : MonoBehaviour
             groundY = _rb.position.y;
         }
 
-        // Arc (parabola): 4h t(1-t)
+        // Arc (parabola): 4h t(1-t). Use higher jump only when landing on a ramp so we clear it; flat boost pads unchanged.
+        float effectiveHeight = _landingOnRamp ? bounceJumpHeight * bounceJumpHeightRampMultiplier : bounceJumpHeight;
         float arc = 0f;
-        if (bounceJumpHeight > 0f)
-            arc = 4f * bounceJumpHeight * t01 * (1f - t01);
+        if (effectiveHeight > 0f)
+            arc = 4f * effectiveHeight * t01 * (1f - t01);
 
         Vector3 desired = new Vector3(basePos.x, groundY + arc, basePos.z);
 
@@ -447,8 +451,16 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
         // project to surface (use hit.point for decal placement)
         Vector3 landingPoint = landingXZ;
+        _landingOnRamp = false;
         if (RaycastGroundY(landingXZ, out RaycastHit hit))
+        {
             landingPoint = hit.point;
+            if (hit.collider != null)
+            {
+                GroundSurface surface = hit.collider.GetComponent<GroundSurface>() ?? hit.collider.GetComponentInParent<GroundSurface>();
+                _landingOnRamp = surface != null && surface.surfaceType == SurfaceType.Ramp;
+            }
+        }
 
         // show for (almost) the bounce duration
         float holdSeconds = Mathf.Max(0.05f, bounceDuration - 0.02f);

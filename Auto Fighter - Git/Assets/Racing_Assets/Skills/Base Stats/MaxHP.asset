@@ -50,7 +50,4 @@ MonoBehaviour:
   usesSprockets: 0
   baseSprocketCost: 5
   sprocketCostPerLevel: 3
-  progressiveUnlocks:
-  - requiredLevel: 3
-    unlocks:
-    - {fileID: 11400000, guid: 06419b338e835904abeb70c909862cce, type: 2}
+  progressiveUnlocks: []

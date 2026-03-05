@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -230,22 +230,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         var preview = GetComponent<ObstaclePathPreview>();
         if (preview) { preview.SetEndpoints(_leftWS, _rightWS); preview.FadeIn(0.2f); }
 
-        if (randomizePathLength)
-        {
-            float minF = Mathf.Clamp01(minPathFraction);
-            float maxF = Mathf.Clamp01(maxPathFraction);
-            if (maxF < minF)
-            {
-                float tmp = minF;
-                minF = maxF;
-                maxF = tmp;
-            }
-
-            float f = Random.Range(minF, maxF);
-            Vector3 mid = (_leftWS + _rightWS) * 0.5f;
-            _leftWS = Vector3.Lerp(mid, _leftWS, f);
-            _rightWS = Vector3.Lerp(mid, _rightWS, f);
-        }
+        // Always use full lane width: shuttle travels entire length before reversing (no path shortening).
 
         Vector3 startWS = startOnLeft ? _leftWS : _rightWS;
         Vector3 targetWS = startOnLeft ? _rightWS : _leftWS;

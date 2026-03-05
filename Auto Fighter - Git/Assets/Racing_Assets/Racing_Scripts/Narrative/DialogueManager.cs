@@ -13,6 +13,8 @@ public class DialogueManager : MonoBehaviour
 
     [Header("UI Reference")]
     [SerializeField] private DialogueUI dialogueUI;
+    [Tooltip("Optional: enable this (e.g. main game canvas) when any dialogue sequence finishes. Use so the screen isn't blank after init narrative.")]
+    [SerializeField] private GameObject gameCanvasToEnableWhenSequenceEnds;
 
     [Header("Input")]
     [Tooltip("Key to advance to next line (when not auto-advancing).")]
@@ -184,6 +186,13 @@ public class DialogueManager : MonoBehaviour
 
         if (!string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
             NarrativeDirector.SetStoryFlag(completed.setStoryFlagOnComplete);
+
+        if (gameCanvasToEnableWhenSequenceEnds != null)
+            gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+
+        // After run complete, narrative often plays; when it ends, ensure we return to skill tree so the screen isn't blank.
+        if (GameManager_Racing.Instance != null)
+            GameManager_Racing.Instance.ReturnToSkillTree();
 
         OnSequenceCompleted?.Invoke(completed);
     }

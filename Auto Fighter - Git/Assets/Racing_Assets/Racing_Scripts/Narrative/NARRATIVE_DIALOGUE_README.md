@@ -33,6 +33,14 @@ Dialogue lines are drawn with **TextMeshPro**, so you can use TMP’s **rich tex
 
 Typewriter effect (if enabled on DialogueUI) works with all of these: text is parsed first, then revealed character-by-character, so bold/colors stay correct.
 
+### Using size/color on only certain words
+
+You can mix tags in a single line:
+
+- Bigger word: `This is a <size=140%>BIG</size> word.`
+- Colored word: `This is <color=#00FFAA>mint</color>.`
+- Combined: `This is <b><size=130%><color=#FFCC00>IMPORTANT</color></size></b>.`
+
 ### How per-word vertex effects work (like many indie games)
 
 Yes – having **one effect component per type** (parabola, jitter, shrink/enlarge) is how it’s often done. Each effect runs on the same TMP_Text, but **only certain words** get that effect. The rest of the text stays at default.
@@ -49,6 +57,18 @@ Each effect component has a **Link Tag** field (e.g. `wave`, `jitter`, `pop`). T
 
 **Summary:** You add one component per effect type. You set the Link Tag on each component to match the ID you use in the text. In your dialogue lines you wrap only the words that should have that effect. No extra setup in Unity beyond adding the components and typing the link tags in the dialogue.
 
+### Why a Coordinator and Uploader? (Layman’s version)
+
+All the text effects (wave, jitter, zoom, rainbow) change the same mesh: they move vertices or change colors. If each effect does its own “refresh” or “draw” step, they can undo each other or fight over when the mesh is reset.
+
+- **The problem:** Something has to tell TMP “recompute the base text layout” (that’s **ForceMeshUpdate**). If more than one script does that, the mesh gets reset in the middle of the frame and other effects’ work is wiped. Similarly, something has to send the final mesh to the GPU (**UpdateGeometry**). If every effect does that, order and overwrites get messy.
+- **The fix:** Two “traffic cop” components:
+  - **TMP Effect Coordinator** runs first. It is the **only** place that calls ForceMeshUpdate (and only when the text actually changes). It keeps one shared “rest” snapshot (positions and colors) that all effects use as their base. So no effect ever resets the mesh; they all read from the same rest state.
+  - **TMP Effect Uploader** runs last. It is the **only** place that pushes the final mesh (vertices + colors) to the GPU. Effects only change data in memory; they never call UpdateGeometry. At the end of the frame the uploader does one push, so what you see is the combined result of all effects.
+- **Result:** You can add or remove effects without them breaking each other. New effects you add later should: (1) get the rest cache from the coordinator when present, and (2) never call UpdateGeometry when the uploader is present. Then expansion stays safe and predictable.
+
+**Setup:** On the same GameObject as your Dialogue Text (TMP_Text), add **TMP Effect Coordinator** and **TMP Effect Uploader** once. Then add whichever effect components you want (wave, jitter, zoom, rainbow). The coordinator and uploader are optional: if you don’t add them, each effect falls back to its own cache and upload, but using both is recommended so all effects play nicely together.
+
 ### Vertex effects (parabola, jitter, zoom)
 
 Add these components to the **Dialogue Text** (or any TMP_Text) GameObject. Each effect can apply to the **whole line** (leave **Link Tag** empty) or **only words you wrap** in the matching link tag.
@@ -58,10 +78,21 @@ Add these components to the **Dialogue Text** (or any TMP_Text) GameObject. Each
 | Traveling parabola | **TMP Parabola Wave Effect** | `<link="wave">word</link>` | Wave that moves across the word, then resets. |
 | Shake / jitter | **TMP Jitter Effect** | `<link="jitter">word</link>` | Shaky, nervous, or glitchy words. |
 | Shrink / enlarge (pulse) | **TMP Zoom Effect** | `<link="pop">word</link>` | Words that pulse or "pop" in size. |
+| Rainbow colors (cycle) | **TMP Rainbow Color Effect** | `<link="rainbow">word</link>` | Rainbow cycling colors over time. |
 
 **Example dialogue line:**  
 `This is <link="jitter">shaky</link> and <link="wave">smooth</link> and <link="pop">big</link>.`  
 – "shaky" jitters, "smooth" gets the parabola wave, "big" pulses; the rest is normal.
+
+**Example with rich text + link effects combined:**  
+`This is <link="rainbow"><size=130%>RAINBOW</size></link> and <link="wave"><color=#66CCFF>wavy</color></link>.`  
+- `RAINBOW` cycles colors and is bigger (size tag is static).
+- `wavy` uses your wave vertex effect and is tinted light-blue via TMP rich text.
+
+**Nested link tags (multiple effects on the same word):**  
+Use both opening and closing tags so the same text is inside multiple links. Example:  
+`<link="wave"><link="rainbow">heyyyy!</link></link>`  
+– "heyyyy!" gets both the wave and the rainbow effect. (Both `</link>` are required.)
 
 **Setup:** Select the Dialogue Text GameObject → **Add Component** → the effect (e.g. **TMP Parabola Wave Effect**). Set **Link Tag** to the ID you use in the text (e.g. `wave`). Leave **Link Tag** empty to apply that effect to the entire line. Tune amplitude, speed, etc. in the Inspector. You can add **all three** components to the same TMP_Text; each will only touch the characters inside its link tag.
 
@@ -76,9 +107,12 @@ Add these components to the **Dialogue Text** (or any TMP_Text) GameObject. Each
 | **DialogueManager** | Singleton: plays a sequence, shows UI, advances on key/click or auto-advance. Restores time scale when done. |
 | **DialogueUI** | UI component: wires speaker text, dialogue text, optional portrait. Optional typewriter effect. |
 | **TMPLinkEffectHelper** | Static helper: tells if a character is inside a &lt;link="id"&gt; range (used by the effect scripts). |
+| **TMPEffectCoordinator** | Single place that calls ForceMeshUpdate and holds the “rest” mesh cache; effects use this when present. |
+| **TMPEffectUploader** | Single place that pushes the final mesh to the GPU (UpdateGeometry); effects skip uploading when this is present. |
 | **TMPParabolaWaveEffect** | Vertex animation: parabolic wave (only on &lt;link="wave"&gt; words, or whole line if Link Tag empty). |
 | **TMPJitterEffect** | Vertex animation: jitter/shake (only on &lt;link="jitter"&gt; words, or whole line if Link Tag empty). |
 | **TMPZoomEffect** | Vertex animation: shrink/enlarge pulse (only on &lt;link="pop"&gt; words, or whole line if Link Tag empty). |
+| **TMPRainbowColorEffect** | Vertex animation: cycles vertex colors (only on &lt;link="rainbow"&gt; words, or whole line if Link Tag empty). |
 | **NarrativeDirector** | Tracks story flags and run count; can auto-trigger dialogue (e.g. intro on first run, “after first run” dialogue). |
 
 ---
@@ -111,14 +145,15 @@ Add these components to the **Dialogue Text** (or any TMP_Text) GameObject. Each
    - **Panel Root** → the GameObject to show/hide (usually this same object or its parent).
    - **Canvas Group** → the Canvas Group on this object (or leave empty to use the one on the same GameObject).
    - **Advance Hint** → optional text or GameObject for “Space to continue”.
-4. (Optional) For **per-word vertex effects**: select the **Dialogue Text** GameObject → **Add Component** → **TMP Parabola Wave Effect**, **TMP Jitter Effect**, and/or **TMP Zoom Effect**. Set each component’s **Link Tag** (e.g. `wave`, `jitter`, `pop`) and in your dialogue lines wrap words like: `<link="jitter">shaky</link>`. Leave Link Tag empty to apply that effect to the whole line.
+4. (Optional) For **per-word vertex effects**: select the **Dialogue Text** GameObject → add **TMP Effect Coordinator** and **TMP Effect Uploader** (so all effects share one rest cache and one final upload), then add **TMP Parabola Wave Effect**, **TMP Jitter Effect**, **TMP Zoom Effect**, and/or **TMP Rainbow Color Effect**. Set each effect’s **Link Tag** (e.g. `wave`, `jitter`, `pop`, `rainbow`) and in your dialogue lines wrap words like: `<link="jitter">shaky</link>`. Leave Link Tag empty to apply that effect to the whole line.
 
 ### Step 3: DialogueManager GameObject
 
 1. Create an **empty GameObject** (e.g. **DialogueManager**).
 2. **Add Component** → **Dialogue Manager**.
 3. Assign **Dialogue UI** → the GameObject that has the **DialogueUI** component (your DialoguePanel).
-4. Optionally change **Advance Key** (default Space) or leave **Advance On Click Or South** checked for mouse/gamepad.
+4. **Game Canvas To Enable When Sequence Ends** (optional) → assign your main game canvas or UI root so it’s turned on when any dialogue sequence finishes (e.g. after init narrative; avoids a blank screen).
+5. Optionally change **Advance Key** (default Space) or leave **Advance On Click Or South** checked for mouse/gamepad.
 
 ### Step 4: Create a Dialogue Sequence (ScriptableObject)
 

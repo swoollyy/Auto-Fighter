@@ -2,28 +2,31 @@ using UnityEngine;
 using TMPro;
 
 /// <summary>
-/// Vertex animation: a parabolic "wave" that travels left-to-right over the line (rainbow/arc effect).
-/// Applies to the whole line. Uses unscaled time when paused. Run after Jitter (order: Jitter -200, Parabola -100, Zoom 0).
+/// Vertex animation: traveling wave. Only words in &lt;link="wave"&gt;...&lt;/link&gt; (or whole line if link tag empty).
+/// Uses coordinator rest cache when present; otherwise manages its own. Never uploads if TMPEffectUploader is present.
 /// </summary>
-[DefaultExecutionOrder(-100)]
+[DefaultExecutionOrder(-150)]
 [RequireComponent(typeof(TMP_Text))]
 public class TMPParabolaWaveEffect : MonoBehaviour
 {
+    [Header("Which words get this effect")]
+    [Tooltip("Link tag in your text, e.g. wave. Only characters inside <link=\"wave\">word</link> wave. Empty = whole line.")]
+    [SerializeField] private string linkTag = "wave";
+
     [Header("Wave shape")]
-    [SerializeField] private float amplitude = 3f;
-    [SerializeField] private float waveHalfWidth = 25f;
+    [SerializeField] private float amplitude = 5f;
+    [SerializeField] private float wavelength = 40f;
 
     [Header("Motion")]
-    [SerializeField] private float speed = 80f;
+    [SerializeField] private float speed = 2f;
     [SerializeField] private bool useUnscaledTime = true;
     [SerializeField] private bool leftToRight = true;
 
     private TMP_Text _text;
-    private TMP_MeshInfo[] _cachedMeshInfo;
+    private TMP_MeshInfo[] _ownCache;
     private bool _textChanged = true;
-    private float _textMinX, _textMaxX;
-    private float _waveCenter;
-    private float _accumulatedTime;
+    private float _time;
+    private float _textMinX = float.MaxValue, _textMaxX = float.MinValue;
 
     private void Awake()
     {
@@ -33,6 +36,7 @@ public class TMPParabolaWaveEffect : MonoBehaviour
     private void OnEnable()
     {
         TMPro_EventManager.TEXT_CHANGED_EVENT.Add(OnTextChanged);
+        _textChanged = true;
     }
 
     private void OnDisable()
@@ -52,90 +56,65 @@ public class TMPParabolaWaveEffect : MonoBehaviour
 
         TMP_TextInfo textInfo = _text.textInfo;
         int characterCount = textInfo.characterCount;
-
         if (characterCount == 0) return;
 
-        // When Jitter is present it runs first and writes rest+jitter; we add wave on top. When alone, we reset to rest then add wave.
-        bool jitterActive = TryGetComponent<TMPJitterEffect>(out var jitter) && jitter.enabled;
-        if (!jitterActive)
-        {
-            _text.ForceMeshUpdate();
-            textInfo = _text.textInfo;
-            characterCount = textInfo.characterCount;
-            if (characterCount == 0) return;
-        }
-
-        if (_textChanged || _cachedMeshInfo == null)
-        {
-            _text.ForceMeshUpdate();
-            textInfo = _text.textInfo;
-            characterCount = textInfo.characterCount;
-            if (characterCount == 0) return;
-            _cachedMeshInfo = textInfo.CopyMeshInfoVertexData();
-            ComputeTextBounds(textInfo, _cachedMeshInfo, out _textMinX, out _textMaxX);
-            _textChanged = false;
-            _accumulatedTime = 0f;
-        }
-
-        if (_cachedMeshInfo == null) return;
+        TMP_MeshInfo[] rest = GetRestCache(textInfo, ref characterCount);
+        if (rest == null) return;
 
         float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
-        float textSpan = _textMaxX - _textMinX;
-        float travel = textSpan + 2f * waveHalfWidth;
-        if (travel <= 0f) travel = 1f;
-
-        _accumulatedTime += dt * speed;
-        float t = Mathf.Repeat(_accumulatedTime, travel);
-        _waveCenter = leftToRight
-            ? _textMinX - waveHalfWidth + t
-            : _textMaxX + waveHalfWidth - t;
-
-        // Scale offset by transform so effect is visible at any canvas scale
-        float scale = _text.transform.lossyScale.y;
-        if (scale < 0.001f) scale = 1f;
-        float effectiveAmplitude = amplitude * scale;
+        _time += dt * speed * (leftToRight ? 1f : -1f);
+        float span = Mathf.Max(_textMaxX - _textMinX, 1f);
+        float k = (Mathf.PI * 2f) / (wavelength > 0.01f ? wavelength : span);
 
         for (int i = 0; i < characterCount; i++)
         {
             TMP_CharacterInfo charInfo = textInfo.characterInfo[i];
             if (!charInfo.isVisible) continue;
+            if (!TMPLinkEffectHelper.IsCharacterInLink(_text, i, linkTag)) continue;
 
             int materialIndex = charInfo.materialReferenceIndex;
             int vertexIndex = charInfo.vertexIndex;
-            Vector3[] sourceVertices = _cachedMeshInfo[materialIndex].vertices;
+            Vector3[] restVerts = rest[materialIndex].vertices;
             Vector3[] destVertices = textInfo.meshInfo[materialIndex].vertices;
 
-            // centerX from rest (cache) so wave position is consistent
-            float centerX = (sourceVertices[vertexIndex + 0].x + sourceVertices[vertexIndex + 2].x) * 0.5f;
-            float dx = centerX - _waveCenter;
-            float normalized = waveHalfWidth > 0.0001f ? (dx / waveHalfWidth) : 0f;
-            float factor = Mathf.Clamp01(1f - normalized * normalized);
-            float offsetY = effectiveAmplitude * factor;
-            Vector3 waveOffset = new Vector3(0, offsetY, 0);
+            // Phase from rest position so wave is consistent; add offset on top of CURRENT vertices so wave stacks with jitter etc.
+            float centerX = (restVerts[vertexIndex + 0].x + restVerts[vertexIndex + 2].x) * 0.5f;
+            float offsetY = Mathf.Sin((centerX - _textMinX) * k + _time) * amplitude;
+            Vector3 offset = new Vector3(0f, offsetY, 0f);
 
-            if (jitterActive)
-            {
-                // Add wave on top of current mesh (rest + jitter)
-                destVertices[vertexIndex + 0] = destVertices[vertexIndex + 0] + waveOffset;
-                destVertices[vertexIndex + 1] = destVertices[vertexIndex + 1] + waveOffset;
-                destVertices[vertexIndex + 2] = destVertices[vertexIndex + 2] + waveOffset;
-                destVertices[vertexIndex + 3] = destVertices[vertexIndex + 3] + waveOffset;
-            }
-            else
-            {
-                // Parabola alone: write rest + wave
-                destVertices[vertexIndex + 0] = sourceVertices[vertexIndex + 0] + waveOffset;
-                destVertices[vertexIndex + 1] = sourceVertices[vertexIndex + 1] + waveOffset;
-                destVertices[vertexIndex + 2] = sourceVertices[vertexIndex + 2] + waveOffset;
-                destVertices[vertexIndex + 3] = sourceVertices[vertexIndex + 3] + waveOffset;
-            }
+            destVertices[vertexIndex + 0] = destVertices[vertexIndex + 0] + offset;
+            destVertices[vertexIndex + 1] = destVertices[vertexIndex + 1] + offset;
+            destVertices[vertexIndex + 2] = destVertices[vertexIndex + 2] + offset;
+            destVertices[vertexIndex + 3] = destVertices[vertexIndex + 3] + offset;
         }
 
-        for (int i = 0; i < textInfo.meshInfo.Length; i++)
+        if (GetComponent<TMPEffectUploader>() == null)
+            UploadMesh(textInfo);
+    }
+
+    private TMP_MeshInfo[] GetRestCache(TMP_TextInfo textInfo, ref int characterCount)
+    {
+        var coord = GetComponent<TMPEffectCoordinator>();
+        if (coord != null && coord.HasRestCache())
         {
-            textInfo.meshInfo[i].mesh.vertices = textInfo.meshInfo[i].vertices;
-            _text.UpdateGeometry(textInfo.meshInfo[i].mesh, i);
+            TMP_MeshInfo[] rest = coord.GetRestCache();
+            if (rest != null && _textMinX > _textMaxX)
+                ComputeTextBounds(textInfo, rest, out _textMinX, out _textMaxX);
+            return rest;
         }
+
+        if (_textChanged || _ownCache == null)
+        {
+            _text.ForceMeshUpdate();
+            textInfo = _text.textInfo;
+            characterCount = textInfo.characterCount;
+            if (characterCount == 0) return null;
+            _ownCache = textInfo.CopyMeshInfoVertexData();
+            ComputeTextBounds(textInfo, _ownCache, out _textMinX, out _textMaxX);
+            _textChanged = false;
+            _time = 0f;
+        }
+        return _ownCache;
     }
 
     private void ComputeTextBounds(TMP_TextInfo textInfo, TMP_MeshInfo[] meshInfo, out float minX, out float maxX)
@@ -146,13 +125,22 @@ public class TMPParabolaWaveEffect : MonoBehaviour
         {
             TMP_CharacterInfo charInfo = textInfo.characterInfo[i];
             if (!charInfo.isVisible) continue;
-            int materialIndex = charInfo.materialReferenceIndex;
-            int vertexIndex = charInfo.vertexIndex;
-            Vector3[] verts = meshInfo[materialIndex].vertices;
-            float cx = (verts[vertexIndex + 0].x + verts[vertexIndex + 2].x) * 0.5f;
+            int mat = charInfo.materialReferenceIndex;
+            int vi = charInfo.vertexIndex;
+            Vector3[] v = meshInfo[mat].vertices;
+            float cx = (v[vi + 0].x + v[vi + 2].x) * 0.5f;
             if (cx < minX) minX = cx;
             if (cx > maxX) maxX = cx;
         }
         if (minX > maxX) { minX = 0f; maxX = 0f; }
+    }
+
+    private void UploadMesh(TMP_TextInfo textInfo)
+    {
+        for (int i = 0; i < textInfo.meshInfo.Length; i++)
+        {
+            textInfo.meshInfo[i].mesh.vertices = textInfo.meshInfo[i].vertices;
+            _text.UpdateGeometry(textInfo.meshInfo[i].mesh, i);
+        }
     }
 }

@@ -7,8 +7,10 @@ using UnityEngine.UI;
 /// Dialogue box UI: speaker name, dialogue text (supports TMP rich text and optional typewriter).
 /// Assign this component to the same GameObject that has the dialogue panel, or to a child.
 /// Wire up the fields in the Inspector. Enable "Rich Text" on your TMP_Text components for bold/italic/color/size tags.
+/// Typewriter reveals by vertex alpha so link-tag effects stay stable (no mesh rebuild each frame).
 /// </summary>
 [RequireComponent(typeof(CanvasGroup))]
+[DefaultExecutionOrder(300)] // After TMP link effects (0, 50) so we mask unrevealed chars last
 public class DialogueUI : MonoBehaviour
 {
     [Header("Text")]
@@ -40,6 +42,8 @@ public class DialogueUI : MonoBehaviour
 
     private Coroutine _typewriterRoutine;
     private bool _typewriterComplete;
+    /// <summary>When using typewriter, we reveal by vertex alpha; this is the number of characters currently visible. Mesh is built once (full text) so link effects don't restart.</summary>
+    private int _visibleCharacterCount;
 
     /// <summary>True when the current line is fully revealed (or when typewriter is disabled).</summary>
     public bool IsTypewriterComplete => !useTypewriterEffect || _typewriterComplete;
@@ -99,19 +103,20 @@ public class DialogueUI : MonoBehaviour
         if (dialogueText != null)
         {
             dialogueText.text = text ?? "";
+            dialogueText.maxVisibleCharacters = int.MaxValue; // Full mesh once so link/effect layout is stable
             dialogueText.ForceMeshUpdate(true, true);
 
             if (useTypewriterEffect)
             {
                 _typewriterComplete = false;
-                dialogueText.maxVisibleCharacters = 0;
+                _visibleCharacterCount = 0;
                 if (_typewriterRoutine != null)
                     StopCoroutine(_typewriterRoutine);
                 _typewriterRoutine = StartCoroutine(TypewriterRevealRoutine());
             }
             else
             {
-                dialogueText.maxVisibleCharacters = int.MaxValue;
+                _visibleCharacterCount = int.MaxValue;
                 _typewriterComplete = true;
             }
         }
@@ -139,8 +144,42 @@ public class DialogueUI : MonoBehaviour
             _typewriterRoutine = null;
         }
         if (dialogueText != null)
-            dialogueText.maxVisibleCharacters = int.MaxValue;
+        {
+            _visibleCharacterCount = dialogueText.textInfo.characterCount;
+            dialogueText.ForceMeshUpdate(true, true); // Restore full mesh/alpha so link effects show on all text
+        }
         _typewriterComplete = true;
+    }
+
+    /// <summary>Set vertex alpha to 0 for characters >= _visibleCharacterCount so link effects see a stable mesh.</summary>
+    private void ApplyTypewriterAlphaMask()
+    {
+        if (dialogueText == null) return;
+        TMP_TextInfo textInfo = dialogueText.textInfo;
+        int characterCount = textInfo.characterCount;
+        for (int i = _visibleCharacterCount; i < characterCount; i++)
+        {
+            TMP_CharacterInfo ch = textInfo.characterInfo[i];
+            if (!ch.isVisible) continue;
+            int matIndex = ch.materialReferenceIndex;
+            int vertexIndex = ch.vertexIndex;
+            Color32[] colors = textInfo.meshInfo[matIndex].colors32;
+            if (colors == null || vertexIndex + 3 >= colors.Length) continue;
+            byte a0 = 0;
+            colors[vertexIndex + 0].a = a0;
+            colors[vertexIndex + 1].a = a0;
+            colors[vertexIndex + 2].a = a0;
+            colors[vertexIndex + 3].a = a0;
+        }
+        dialogueText.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
+    }
+
+    private void LateUpdate()
+    {
+        if (!useTypewriterEffect || _typewriterComplete || dialogueText == null) return;
+        // Do NOT ForceMeshUpdate here – it runs after link effects and would wipe their vertex changes.
+        // Only mask unrevealed characters so effects stay visible on the revealed portion.
+        ApplyTypewriterAlphaMask();
     }
 
     private IEnumerator TypewriterRevealRoutine()
@@ -157,10 +196,10 @@ public class DialogueUI : MonoBehaviour
         while (revealed < total)
         {
             revealed += typewriterCharsPerSecond * Time.unscaledDeltaTime;
-            dialogueText.maxVisibleCharacters = Mathf.Min(Mathf.FloorToInt(revealed), total);
+            _visibleCharacterCount = Mathf.Min(Mathf.FloorToInt(revealed), total);
             yield return null;
         }
-        dialogueText.maxVisibleCharacters = total;
+        _visibleCharacterCount = total;
         _typewriterComplete = true;
         _typewriterRoutine = null;
     }
