@@ -52,6 +52,8 @@ public class CameraFollow : MonoBehaviour
 
     [Tooltip("How quickly the *camera's forward* catches up to the car's forward.\nLower = more lag, more looseness.")]
     [SerializeField] private float rotationLag = 4f;
+    [Tooltip("When drifting, multiply rotation lag by this (camera lags more). Falls off with drift charge like drift turn.")]
+    [SerializeField, Min(0.01f)] private float driftRotationLagMultiplier = 1.5f;
 
     private Vector3 smoothedForward = Vector3.zero;
 
@@ -332,7 +334,13 @@ public class CameraFollow : MonoBehaviour
         if (smoothedForward == Vector3.zero)
             smoothedForward = targetForwardFlat;
 
-        smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, rotationLag * Time.deltaTime);
+        float effectiveRotationLag = rotationLag;
+        if (car != null && driftRotationLagMultiplier > 1f)
+        {
+            float charge = car.DriftCharge;
+            effectiveRotationLag = rotationLag / Mathf.Lerp(1f, driftRotationLagMultiplier, charge);
+        }
+        smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, effectiveRotationLag * Time.deltaTime);
         Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
 
         // Position follow

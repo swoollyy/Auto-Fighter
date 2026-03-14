@@ -911,6 +911,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  maxTotalVelocityMagnitude: 25
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -919,7 +920,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5657100606639614825}
   serializedVersion: 4
-  m_Mass: 1
+  m_Mass: 20
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -1269,7 +1270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseAcceleration: 5.2
-  baseMaxSpeed: 3.95
+  baseMaxSpeed: 3
   baseBrakingForce: 0.003
   baseDrag: 0.13
   coastLowDecelPerSecond: 0.39
@@ -1295,13 +1296,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3b650392f965134c887430e8a592a46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  turnSpeed: 11
+  turnSpeed: 28
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
-  lowSpeedSteerMultiplier: 9
-  highSpeedSteerMultiplier: 1.75
+  lowSpeedSteerMultiplier: 2.25
+  highSpeedSteerMultiplier: 1.5
   speedForSteerCurve: 3.45
-  steeringInputSmooth: 9
+  steeringInputSmooth: 6.76
+  steeringReturnSmooth: 3.5
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
   enableIceSteerRamp: 1
@@ -1311,12 +1313,12 @@ MonoBehaviour:
   iceSteerFlipPenalty: 0.35
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
-  baseSteeringDamp: 8
+  baseSteeringDamp: 10
   enableSteerTraction: 1
   steerTractionReorientRate: 5.59
   steerRollingAccel: 2.25
   minSpeedForSteerTraction: 0.1
-  lateralFrictionWhileSteering: 2.46
+  lateralFrictionWhileSteering: 0.76
   steerTractionBlendIn: 8.21
   steerTractionBlendOut: 7.1
   steerRollingAccelCoastMultiplier: 0.441
@@ -1335,8 +1337,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skipSpeedClampWhileAirborne: 1
   enableLandingCarrySpeed: 1
-  landingExcessBleedPerSecond: 7.17
+  landingExcessBleedPerSecond: 5.5
   landingNoClampGraceSeconds: 0.5
+  enableLandingBoost: 1
+  landingBoostStrength: 0.65
+  landingBoostDuration: 0.25
+  landingBoostFalloff: 1.5
 --- !u!114 &632556853857277878
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1436,9 +1442,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 0
-  fuelUsePerSecondBraking: 0
-  idleFuelUsePerSecond: 0
+  fuelUsePerSecondAtFullThrottle: 10
+  fuelUsePerSecondBraking: 10
+  idleFuelUsePerSecond: 5
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:
@@ -1453,7 +1459,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxHP: 20
-  hpCrashDamageAtSeverity1: 100
+  hpCrashDamageAtSeverity1: 19
   baseHpRegenPerSecond: 0
   performanceAtZeroHP: 0.455
   degradeStartHPFraction: 0.422
@@ -1465,7 +1471,7 @@ MonoBehaviour:
   useSmoothMalfunction: 1
   minimumAccelerationFloor: 4
   minimumMaxSpeedFloor: 6
-  fuelLossAtSeverity1: 50
+  fuelLossAtSeverity1: 30
   minHpLossPerCrash: 10
   minFuelLossPerCrash: 10
   crashDamageCooldown: 0.35
@@ -1562,6 +1568,7 @@ MonoBehaviour:
   maxCrashDuration: 2.13
   impulsePerUnitSpeed: 1.12
   torquePerUnitSpeed: 18.8
+  maxCrashFlingSpeed: 12
   crashDragMultiplier: 1
   crashAngularDrag: 1
   enablePopupText: 1
@@ -1638,14 +1645,14 @@ MonoBehaviour:
   gaugeMultiplierAtMax: 2
   mashDrainsHealth: 1
   mashDrainsFuel: 1
-  mashHealthDrainAtMinSeverity: 2
-  mashHealthDrainAtMaxSeverity: 12
-  mashHealthDrainPerCrash: 0.5
-  mashHealthDrainCap: 50
-  mashFuelDrainAtMinSeverity: 2
-  mashFuelDrainAtMaxSeverity: 12
+  mashHealthDrainAtMinSeverity: 0.3
+  mashHealthDrainAtMaxSeverity: 4
+  mashHealthDrainPerCrash: 0.25
+  mashHealthDrainCap: 25
+  mashFuelDrainAtMinSeverity: 0.3
+  mashFuelDrainAtMaxSeverity: 5
   mashFuelDrainPerCrash: 0.25
-  mashFuelDrainCap: 30
+  mashFuelDrainCap: 15
   gaugeDrainAtMinSeverity: 0.08
   gaugeDrainAtMaxSeverity: 0.25
   gaugeDrainPerCrash: 0.02
@@ -1949,6 +1956,22 @@ PrefabInstance:
       propertyPath: EmissionModule.enabled
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: InitialModule.startSize.scalar
+      value: 0.88798255
+      objectReference: {fileID: 0}
+    - target: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: EmissionModule.rateOverTime.scalar
+      value: 13.817784
+      objectReference: {fileID: 0}
+    - target: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: InitialModule.startColor.maxColor.b
+      value: 0.6472886
+      objectReference: {fileID: 0}
+    - target: {fileID: 2943748437950621254, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
+      propertyPath: InitialModule.startColor.maxColor.g
+      value: 0.6472886
+      objectReference: {fileID: 0}
     - target: {fileID: 2955223996555018916, guid: 93d767b00fc463342a7746f691e760ca, type: 3}
       propertyPath: m_Name
       value: SmokeVFX
@@ -1957,7 +1980,7 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
-  m_RemovedComponents: []
+    m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []

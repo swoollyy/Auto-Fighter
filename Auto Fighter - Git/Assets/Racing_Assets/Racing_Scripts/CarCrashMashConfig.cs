@@ -44,6 +44,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private float maxCrashDuration = 2.13f;
     [SerializeField] private float impulsePerUnitSpeed = 1.12f;
     [SerializeField] private float torquePerUnitSpeed = 18.8f;
+    [Tooltip("Cap on how fast the car can be flung after a crash (velocity magnitude).")]
+    [SerializeField, Min(0.1f)] private float maxCrashFlingSpeed = 20f;
     [SerializeField] private float crashDragMultiplier = 1f;
     [SerializeField] private float crashAngularDrag = 1f;
 
@@ -172,6 +174,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public float MaxCrashDuration => maxCrashDuration;
     public float ImpulsePerUnitSpeed => impulsePerUnitSpeed;
     public float TorquePerUnitSpeed => torquePerUnitSpeed;
+    public float MaxCrashFlingSpeed => maxCrashFlingSpeed;
     public float CrashDragMultiplier => crashDragMultiplier;
     public float CrashAngularDrag => crashAngularDrag;
     public bool EnablePopupText => enablePopupText;

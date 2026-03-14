@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
@@ -68,6 +69,10 @@ public class GameManager_Racing : MonoBehaviour
 
     private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
 
+    [Header("TEST - Remove when done testing")]
+    [Tooltip("Press Start (Options) on PS5 controller to spawn one NPC traffic car ahead.")]
+    [SerializeField] private bool enableTestSpawnCar = false;
+
 
     [SerializeField, Min(0.05f)]
     private float xHoldSeconds = 0.35f; // tap vs hold threshold (realtime)
@@ -113,12 +118,6 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Range(-100f, 100f)] private float closeCallLens = -12f;
     [SerializeField, Range(0f, 10f)] private float closeCallZoomDeltaFOV = 2f; // how many degrees to zoom in
     [SerializeField, Range(0.05f, 1f)] private float closeCallZoomDuration = 0.25f;
-
-    [Header("Close-Call Handling Boost")]
-    [Tooltip("Multiplier applied to car turn speed/handling when a close-call occurs (1.0 = no change).")]
-    [SerializeField, Range(1f, 2.5f)] private float closeCallHandlingTurnMultiplier = 1.15f;
-    [SerializeField, Min(0f), Tooltip("Duration (seconds) of the temporary handling boost applied to the car on close-call.")]
-    private float closeCallHandlingDuration = 2.0f;
 
     [Header("Close-Call Audio")]
     [SerializeField, Tooltip("One-shot SFX played when a close-call (near miss) occurs.")]
@@ -250,6 +249,14 @@ public class GameManager_Racing : MonoBehaviour
 
     void Update()
     {
+        // TEST: Start button (PS5 Options) spawns one NPC car. Remove this block when done testing.
+        if (enableTestSpawnCar && npcCarSpawner != null &&
+            Gamepad.current != null && Gamepad.current.startButton.wasPressedThisFrame)
+        {
+            npcCarSpawner.SpawnOneNPCCarForTest();
+            return;
+        }
+
         // Accumulate planar distance (XZ) while the car exists
         if (carInstance != null)
         {
@@ -738,12 +745,6 @@ public class GameManager_Racing : MonoBehaviour
         {
             cameraFollow.ZoomPulse(closeCallZoomDeltaFOV, closeCallZoomDuration);
         }
-
-        // Temporarily boost car handling/turn speed (existing feature)
-        if (car != null && closeCallHandlingTurnMultiplier > 1f && closeCallHandlingDuration > 0f)
-        {
-            car.ApplyTemporaryHandlingBoost(closeCallHandlingTurnMultiplier, closeCallHandlingDuration);
-        }
     }
 
     private IEnumerator CloseCallSlowMoRoutine()
@@ -901,6 +902,9 @@ public class GameManager_Racing : MonoBehaviour
     /// </summary>
     public void ReturnToSkillTree()
     {
+        // Ensure game canvas is on so player can see skill tree and interact (fixes canvas staying off after run/dialogue).
+        uiManager?.SetGameCanvasVisible(true);
+
         // Show the skill tree root (same as existing flow)
         if (skillTreeRoot != null)
             skillTreeRoot.SetActive(true);
@@ -956,11 +960,24 @@ public class GameManager_Racing : MonoBehaviour
         Quaternion spawnRot = Quaternion.LookRotation(startForward, Vector3.up);
 
 
-        if (carInstance == null)
-        {
-            carInstance = Instantiate(carPrefab, spawnPos, spawnRot);
+        RespawnCarAtTrackStart(spawnPos, spawnRot);
 
+        if (terrainGrassPainter != null)
+        {
+            // coroutine version avoids a nasty spike
+            StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
         }
+
+        StartCoroutine(CoHideLoadingNextFrame());
+    }
+
+    /// <summary>Spawn or reposition the car at the given position/rotation and bind all systems. Used by normal track flow and by TEST spawn hotkey.</summary>
+    private void RespawnCarAtTrackStart(Vector3 spawnPos, Quaternion spawnRot)
+    {
+        if (carPrefab == null) return;
+
+        if (carInstance == null)
+            carInstance = Instantiate(carPrefab, spawnPos, spawnRot);
         else
             carInstance.transform.SetPositionAndRotation(spawnPos, spawnRot);
 
@@ -975,15 +992,6 @@ public class GameManager_Racing : MonoBehaviour
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
 
-
-        if (terrainGrassPainter != null)
-        {
-            // coroutine version avoids a nasty spike
-            StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
-        }
-
-        StartCoroutine(CoHideLoadingNextFrame());
-
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
         {
@@ -996,7 +1004,6 @@ public class GameManager_Racing : MonoBehaviour
         thrownObstacleDirector.SetCar(carController);
         iceScreenFlashDriver.SetCarController(carController);
 
-        // NEW: reset distance tracking for the new run
         runDistanceMeters = 0f;
         _carRb = carInstance.GetComponent<Rigidbody>();
         _currencyAwarded = false;
@@ -1004,25 +1011,21 @@ public class GameManager_Racing : MonoBehaviour
         Time.timeScale = 1f;
         uiManager?.HideRunComplete();
 
-        // Re-acquire any missing refs (in case objects were inactive and just got enabled)
         EnsureRefs();
 
-        // Bind distance meter robustly (set generator + car, rebuild path, resubscribe)
-        if (distanceSystem != null)
-            distanceSystem.Configure(gen, carInstance.transform);
+        if (distanceSystem != null && trackGenerator != null)
+            distanceSystem.Configure(trackGenerator, carInstance.transform);
 
-        // Bind camera using API to reset smoothing
         if (cameraFollow != null)
             cameraFollow.SetTarget(carInstance.transform);
 
-        // Bind UI to car (fuel UI, etc.)
         if (uiManager != null && carController != null)
             uiManager.BindCar(carController);
 
-        // Now hide the skill tree
-        if (skillTreeRoot != null) skillTreeRoot.SetActive(false);
-
+        if (skillTreeRoot != null)
+            skillTreeRoot.SetActive(false);
     }
+
 
     private bool RestartAllowedNow()
     {

@@ -13,7 +13,9 @@ public class DialogueManager : MonoBehaviour
 
     [Header("UI Reference")]
     [SerializeField] private DialogueUI dialogueUI;
-    [Tooltip("Optional: enable this (e.g. main game canvas) when any dialogue sequence finishes. Use so the screen isn't blank after init narrative.")]
+    [Tooltip("Optional: when set, game/dialogue canvas show-hide is driven through here (recommended). Otherwise use Game Canvas To Enable When Sequence Ends below.")]
+    [SerializeField] private UIManager_Racing uiManagerRacing;
+    [Tooltip("Fallback: enable this when a sequence finishes if UIManager Racing is not set. Use so the screen isn't blank after init narrative.")]
     [SerializeField] private GameObject gameCanvasToEnableWhenSequenceEnds;
 
     [Header("Input")]
@@ -105,6 +107,13 @@ public class DialogueManager : MonoBehaviour
         }
 
         dialogueUI?.Show();
+
+        // Hide game canvas so only dialogue is visible during the sequence
+        if (uiManagerRacing != null)
+            uiManagerRacing.SetGameCanvasVisible(false);
+        else if (gameCanvasToEnableWhenSequenceEnds != null)
+            gameCanvasToEnableWhenSequenceEnds.SetActive(false);
+
         _playRoutine = StartCoroutine(PlaySequenceRoutine());
     }
 
@@ -187,7 +196,10 @@ public class DialogueManager : MonoBehaviour
         if (!string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
             NarrativeDirector.SetStoryFlag(completed.setStoryFlagOnComplete);
 
-        if (gameCanvasToEnableWhenSequenceEnds != null)
+        // Show game canvas when dialogue ends (skill tree / in-game UI)
+        if (uiManagerRacing != null)
+            uiManagerRacing.SetGameCanvasVisible(true);
+        else if (gameCanvasToEnableWhenSequenceEnds != null)
             gameCanvasToEnableWhenSequenceEnds.SetActive(true);
 
         // After run complete, narrative often plays; when it ends, ensure we return to skill tree so the screen isn't blank.
@@ -218,5 +230,10 @@ public class DialogueManager : MonoBehaviour
             _playRoutine = null;
         }
         dialogueUI?.Hide();
+
+        if (uiManagerRacing != null)
+            uiManagerRacing.SetGameCanvasVisible(true);
+        else if (gameCanvasToEnableWhenSequenceEnds != null)
+            gameCanvasToEnableWhenSequenceEnds.SetActive(true);
     }
 }

@@ -79,6 +79,9 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
     [SerializeField, Min(0.01f)] private float carDetectRadius = 0.6f;
 
+    [Tooltip("When the obstacle is in the air (bounce arc), use this sphere radius for car hit instead of the full collider. Stops hits registering when the car is clear of the visible mesh.")]
+    [SerializeField, Min(0.1f)] private float carHitRadiusWhenAirborne = 0.5f;
+
     [Header("Landing Preview (Decal / GroundRing)")]
     [SerializeField, Tooltip("Use the SAME prefab you use for ThrownObstacleDirector.groundRingPrefab (pooled).")]
     private GameObject landingTelegraphPrefab;
@@ -132,8 +135,11 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("Crash FX severity used for presentation only (shake/slowmo/crash handling). Damage is fixed by hitHpDamage/hitFuelPercent.")]
     [SerializeField, Range(0f, 1f)] private float crashFxSeverity = 0.65f;
 
-    [Tooltip("ImpactSpeed fed into crash sim (controls fling/torque). Usually feels good around 20–45.")]
-    [SerializeField, Min(0f)] private float crashImpactSpeed = 32f;
+    [Tooltip("ImpactSpeed fed into crash sim (controls fling/torque). Car also caps final velocity with Max Crash Fling Speed; keep this modest (e.g. 12–16) so bounce-back doesn't fling harder than other obstacles.")]
+    [SerializeField, Min(0f)] private float crashImpactSpeed = 14f;
+
+    [Tooltip("When the obstacle hits the car, it loses pathing and reacts with physics. Impulse magnitude applied to the obstacle away from the car (0 = use estimated speed).")]
+    [SerializeField, Min(0f)] private float carHitDetachImpulse = 0f;
 
     [Header("Per-Instance Ignore (Fix global ignore)")]
     [SerializeField, Min(0f), Tooltip("How long to ignore collisions with a masked collider after contact.")]
@@ -754,14 +760,59 @@ public class TrackObstacleBounceBack : MonoBehaviour
         return _cumLengths[bestIdx] + bestT * segLen;
     }
 
+    /// <summary>Overlap using the collider's actual shape (box/sphere/capsule) so hitbox matches the visual; avoids inflated AABB when rotated.</summary>
+    private static Collider[] OverlapColliderShape(Collider col, LayerMask layerMask)
+    {
+        if (col == null) return null;
+
+        Transform t = col.transform;
+        Vector3 scale = t.lossyScale;
+
+        switch (col)
+        {
+            case BoxCollider box:
+            {
+                Vector3 center = t.TransformPoint(box.center);
+                Vector3 halfExtents = Vector3.Scale(box.size * 0.5f, scale);
+                return Physics.OverlapBox(center, halfExtents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
+            }
+            case SphereCollider sphere:
+            {
+                Vector3 center = t.TransformPoint(sphere.center);
+                float radius = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * sphere.radius;
+                return Physics.OverlapSphere(center, radius, layerMask, QueryTriggerInteraction.Collide);
+            }
+            case CapsuleCollider cap:
+            {
+                float height = cap.height;
+                float radius = cap.radius;
+                int axis = cap.direction; // 0=X, 1=Y, 2=Z
+                Vector3 axisDir = axis == 0 ? Vector3.right : (axis == 1 ? Vector3.up : Vector3.forward);
+                float halfHeight = Mathf.Max(0f, height * 0.5f - radius);
+                Vector3 p1 = t.TransformPoint(cap.center + axisDir * halfHeight);
+                Vector3 p2 = t.TransformPoint(cap.center - axisDir * halfHeight);
+                float r = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * radius;
+                return Physics.OverlapCapsule(p1, p2, r, layerMask, QueryTriggerInteraction.Collide);
+            }
+            default:
+                // MeshCollider or other: fall back to bounds (may still be slightly generous)
+                Bounds b = col.bounds;
+                return Physics.OverlapBox(b.center, b.extents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
+        }
+    }
+
     private void CheckCarHitQuery(float now)
     {
         if (!damagePlayerOnHit) return;
         if (now < _nextAllowedCarHitTime) return;
         if (carDetectMask.value == 0) return;
 
-        Bounds b = _col.bounds;
-        Collider[] hits = Physics.OverlapBox(b.center, b.extents, _rb.rotation, carDetectMask, QueryTriggerInteraction.Collide);
+        // When airborne (bounce arc), use a small sphere so we don't hit the car from the full collider floating in the air.
+        Collider[] hits;
+        if (_state == State.Bouncing && carHitRadiusWhenAirborne > 0f)
+            hits = Physics.OverlapSphere(_rb.position, carHitRadiusWhenAirborne, carDetectMask, QueryTriggerInteraction.Collide);
+        else
+            hits = OverlapColliderShape(_col, carDetectMask);
         if (hits == null || hits.Length == 0) return;
 
         CarController car = null;
@@ -799,9 +850,17 @@ public class TrackObstacleBounceBack : MonoBehaviour
             crashFxSeverity
         );
 
-        // Immediate bounce again after player hit
-        _frozenUntil = now;
-        _state = State.FrozenCooldown;
+        // Lose pathing and react with physics from the collision (same as forcefield detach)
+        Vector3 awayFromCar = (_rb.position - car.transform.position);
+        awayFromCar.y = 0f;
+        if (awayFromCar.sqrMagnitude < 0.0001f) awayFromCar = -hitDir;
+        awayFromCar.Normalize();
+
+        float impulseMag = carHitDetachImpulse > 0f ? carHitDetachImpulse : _estimatedVel.magnitude;
+        if (impulseMag < 1f) impulseMag = 5f; // minimum so it visibly reacts
+
+        DetachForForcefieldLaunch();
+        _rb.AddForce(awayFromCar * impulseMag + Vector3.up * 2f, ForceMode.Impulse);
 
         _nextAllowedCarHitTime = now + hitDamageCooldown;
     }

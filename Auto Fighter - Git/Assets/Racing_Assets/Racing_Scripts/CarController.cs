@@ -69,6 +69,7 @@ public class CarController : MonoBehaviour
     private float highSpeedSteerMultiplier;
     private float speedForSteerCurve;
     private float steeringInputSmooth;
+    private float steeringReturnSmooth;
 
     [Header("Arcade Steering Extras")]
     private bool useAutoAlignToVelocity;
@@ -384,8 +385,13 @@ public class CarController : MonoBehaviour
     private float maxCrashDuration;
     private float impulsePerUnitSpeed;
     private float torquePerUnitSpeed;
+    private float maxCrashFlingSpeed;
     private float crashDragMultiplier;
     private float crashAngularDrag;
+
+    [Header("Velocity Safety")]
+    [Tooltip("Optional total velocity magnitude cap after crash launches (0 = disabled). Prevents ridiculous flings while still allowing a launch.")]
+    [SerializeField, Min(0f)] private float maxTotalVelocityMagnitude = 0f;
 
     [Header("Popup / Mash Shake / Crash Spin (from CarCrashMashConfig)")]
     private bool enablePopupText;
@@ -637,6 +643,7 @@ public class CarController : MonoBehaviour
     private float _landingExcessSpeed = 0f;      // extra cap allowance that decays
     private float _lastLandedTime = -999f;
     private float _takeoffHorizSpeed = 0f;       // horizontal speed when we went airborne (for landing boost)
+    private Vector3 _takeoffHorizDir = Vector3.forward; // direction when we went airborne (for landing velocity injection)
     private float _landingBoostTimeLeft = 0f;
     private float _landingBoostDuration = 1f;
     private float _landingBoostTargetMagnitude = 0f;
@@ -907,6 +914,8 @@ public class CarController : MonoBehaviour
 
     private float _smoothedSurfaceMaxSpeed = -1f;
 
+    /// <summary>After mash recovery, ignore boost/surface speed for this long so we resume at run-start stats, not boosted.</summary>
+    private float _postMashRecoveryIgnoreBoostUntil = 0f;
 
     // "Dead" for mash = no minigame if out of fuel OR out of HP
     private bool IsDeadForMashRecovery => IsOutOfFuel || IsOutOfHP;
@@ -981,6 +990,7 @@ public class CarController : MonoBehaviour
             highSpeedSteerMultiplier = _steeringConfig.HighSpeedSteerMultiplier;
             speedForSteerCurve = _steeringConfig.SpeedForSteerCurve;
             steeringInputSmooth = _steeringConfig.SteeringInputSmooth;
+            steeringReturnSmooth = _steeringConfig.SteeringReturnSmooth;
             useAutoAlignToVelocity = _steeringConfig.UseAutoAlignToVelocity;
             autoAlignStrength = _steeringConfig.AutoAlignStrength;
             enableIceSteerRamp = _steeringConfig.EnableIceSteerRamp;
@@ -1005,7 +1015,7 @@ public class CarController : MonoBehaviour
         {
             turnSpeed = 11f; minSpeedToSteer = 0.4f; allowSteerWhenTryingToMove = true;
             lowSpeedSteerMultiplier = 8f; highSpeedSteerMultiplier = 1.3f; speedForSteerCurve = 3.45f;
-            steeringInputSmooth = 9f; useAutoAlignToVelocity = false; autoAlignStrength = 3f;
+            steeringInputSmooth = 9f; steeringReturnSmooth = 0f; useAutoAlignToVelocity = false; autoAlignStrength = 3f;
             enableIceSteerRamp = true; iceSteerRampUpRate = 10f; iceSteerRampDownRate = 1.83f;
             iceSteerMinFactor = 0.755f; iceSteerFlipPenalty = 0.35f;
             invertSteeringWhenReversing = true; reverseSteerMultiplier = 1f;
@@ -1245,6 +1255,7 @@ public class CarController : MonoBehaviour
             maxCrashDuration = _crashMashConfig.MaxCrashDuration;
             impulsePerUnitSpeed = _crashMashConfig.ImpulsePerUnitSpeed;
             torquePerUnitSpeed = _crashMashConfig.TorquePerUnitSpeed;
+            maxCrashFlingSpeed = _crashMashConfig.MaxCrashFlingSpeed;
             crashDragMultiplier = _crashMashConfig.CrashDragMultiplier;
             crashAngularDrag = _crashMashConfig.CrashAngularDrag;
             enablePopupText = _crashMashConfig.EnablePopupText;
@@ -2963,6 +2974,17 @@ public class CarController : MonoBehaviour
         // Apply the crash impulse with vertical pop
         rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
 
+        // Cap velocity so the car can't be flung too fast
+        float speed = rb.velocity.magnitude;
+        if (speed > maxCrashFlingSpeed && maxCrashFlingSpeed > 0f)
+            rb.velocity = rb.velocity.normalized * maxCrashFlingSpeed;
+        if (maxTotalVelocityMagnitude > 0f)
+        {
+            float s = rb.velocity.magnitude;
+            if (s > maxTotalVelocityMagnitude)
+                rb.velocity = rb.velocity * (maxTotalVelocityMagnitude / s);
+        }
+
         // --- Torque (spin) stays as you had it ---
 
         Vector3 toObstacleWorld = -hitDirection;
@@ -3498,6 +3520,26 @@ public class CarController : MonoBehaviour
     {
         if (carCollider == null) return;
 
+        // After mash recovery, force default (non-boost) surface so we don't keep boosted speed/accel from before crash.
+        if (_postMashRecoveryIgnoreBoostUntil > 0f && Time.time < _postMashRecoveryIgnoreBoostUntil)
+        {
+            ApplySurfaceMultipliers(1f, 1f, 1f, 1f);
+            _onBoostSurface = false;
+            _currentBoostAccel = 0f;
+            _currentBoostMaxSpeed = 0f;
+            _currentBoostDuringCrash = false;
+            _currentBoostCrashMultiplier = 0.5f;
+            currentSteeringDamp = baseSteeringDamp;
+            offDefaultFraction = 0f;
+            grassFraction = 0f;
+            currentFuelUseMultiplier = 1f;
+            _onIceSurface = false;
+            _iceDynamicFrictionTarget = 1f;
+            _iceStaticFrictionTarget = 1f;
+            _iceHandlingTarget = 1f;
+            return;
+        }
+
         int totalSamples = samplesX * samplesZ;
         if (totalSamples <= 0)
         {
@@ -3524,6 +3566,13 @@ public class CarController : MonoBehaviour
         int samplesCounted = 0;
         int nonDefaultSamples = 0;
         int grassSamplesLocal = 0;
+
+        // Boost/Ramp: take best from any sample so we don't miss ramp when only one wheel hits
+        bool anyBoostRamp = false;
+        float bestBoostAccel = 0f;
+        float bestBoostMaxSpeed = 0f;
+        bool boostDuringCrash = false;
+        float boostCrashMult = 0.5f;
 
         // NEW: Ice tracking
         int iceSamples = 0;
@@ -3561,7 +3610,8 @@ public class CarController : MonoBehaviour
                         ref sumMaxSpeedMul, ref sumAccelMul, ref sumTurnMul,
                         ref sumDragMul, ref sumFuelMul,
                         ref samplesCounted, ref nonDefaultSamples, ref grassSamplesLocal,
-                        ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling);
+                        ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling,
+                        ref anyBoostRamp, ref bestBoostAccel, ref bestBoostMaxSpeed, ref boostDuringCrash, ref boostCrashMult);
                 }
             }
         }
@@ -3591,7 +3641,8 @@ public class CarController : MonoBehaviour
                         ref sumMaxSpeedMul, ref sumAccelMul, ref sumTurnMul,
                         ref sumDragMul, ref sumFuelMul,
                         ref samplesCounted, ref nonDefaultSamples, ref grassSamplesLocal,
-                        ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling);
+                        ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling,
+                        ref anyBoostRamp, ref bestBoostAccel, ref bestBoostMaxSpeed, ref boostDuringCrash, ref boostCrashMult);
                 }
             }
         }
@@ -3643,17 +3694,29 @@ public class CarController : MonoBehaviour
                 _onIceSurface = false;
                 _iceDynamicFrictionTarget = 1f;
                 _iceStaticFrictionTarget = 1f;
-                _iceHandlingTarget = 1f;
-            }
+            _iceHandlingTarget = 1f;
+        }
         }
 
-        CheckForBoostSurface();
+        // Use boost from multi-sample if any (more reliable than single ray on ramps); else fallback to single ray
+        if (anyBoostRamp)
+        {
+            _onBoostSurface = true;
+            _currentBoostAccel = bestBoostAccel;
+            _currentBoostMaxSpeed = bestBoostMaxSpeed;
+            _currentBoostDuringCrash = boostDuringCrash;
+            _currentBoostCrashMultiplier = boostCrashMult;
+        }
+        else
+        {
+            CheckForBoostSurface();
+        }
     }
 
     private void CheckForBoostSurface()
     {
         Vector3 origin = transform.position + Vector3.up * 0.5f;
-        float rayDist = 2f;
+        float rayDist = 4f;
 
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDist, groundLayers, QueryTriggerInteraction.Collide))
         {
@@ -3838,7 +3901,12 @@ public class CarController : MonoBehaviour
         ref int iceSamples,
         ref float sumIceDynamicFriction,
         ref float sumIceStaticFriction,
-        ref float sumIceHandling)
+        ref float sumIceHandling,
+        ref bool anyBoostRamp,
+        ref float bestBoostAccel,
+        ref float bestBoostMaxSpeed,
+        ref bool boostDuringCrash,
+        ref float boostCrashMult)
     {
         float maxMul = 1f;
         float accelMul = 1f;
@@ -3879,6 +3947,16 @@ public class CarController : MonoBehaviour
                     sumIceDynamicFriction += surface.iceDynamicFrictionMultiplier;
                     sumIceStaticFriction += surface.iceStaticFrictionMultiplier;
                     sumIceHandling += surface.iceHandlingMultiplier;
+                }
+
+                // Boost/Ramp: take best across samples so ramp is detected when any wheel hits it
+                if (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp)
+                {
+                    anyBoostRamp = true;
+                    if (surface.boostAcceleration > bestBoostAccel) bestBoostAccel = surface.boostAcceleration;
+                    if (surface.boostMaxSpeed > bestBoostMaxSpeed) bestBoostMaxSpeed = surface.boostMaxSpeed;
+                    boostDuringCrash = surface.boostDuringCrash;
+                    boostCrashMult = surface.boostCrashMultiplier;
                 }
             }
         }
@@ -4017,6 +4095,10 @@ public class CarController : MonoBehaviour
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
+
+        // Direct hits (e.g. bounce-back) can pass high impactSpeedOverride; cap impulse so we don't exceed fling cap
+        if (maxCrashFlingSpeed > 0f)
+            impulseMag = Mathf.Min(impulseMag, maxCrashFlingSpeed);
 
         // applyDamage = false so TriggerCrash runs the crash state/physics
         // without applying your severity-based HP/fuel logic.
@@ -4742,7 +4824,15 @@ public class CarController : MonoBehaviour
         // Force surface max speed to re-sample cleanly next tick (prevents stale smoothed value)
         _smoothedSurfaceMaxSpeed = -1f;
 
-        // Re-evaluate currentMaxSpeed -> effectiveMaxSpeed right now
+        // For a short period after recovery, ignore boost surface so we resume at run-start max speed/accel, not boosted.
+        _postMashRecoveryIgnoreBoostUntil = Time.time + 0.5f;
+
+        // Clear boost surface state so we don't use ramp/boost pad stats until the ignore window ends
+        _onBoostSurface = false;
+        _currentBoostAccel = 0f;
+        _currentBoostMaxSpeed = 0f;
+
+        // Re-evaluate currentMaxSpeed -> effectiveMaxSpeed right now (will use default surface due to ignore window)
         SampleGroundAndUpdateMultipliers();
         ApplySkillEffects();
 
@@ -4834,11 +4924,13 @@ public class CarController : MonoBehaviour
         bool groundedNow = CheckIfGrounded();
         float dt = Time.fixedDeltaTime;
 
-        // Store takeoff speed when we leave the ground (e.g. off a ramp)
+        // Store takeoff speed and direction when we leave the ground (e.g. off a ramp)
         if (_wasGroundedLastFrame && !groundedNow)
         {
             Vector3 v = rb.velocity;
-            _takeoffHorizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+            _takeoffHorizSpeed = horiz.magnitude;
+            _takeoffHorizDir = _takeoffHorizSpeed > 0.1f ? horiz.normalized : transform.forward;
         }
 
         // Detect landing: was airborne last frame, grounded now
@@ -4851,6 +4943,24 @@ public class CarController : MonoBehaviour
                 _landingBoostTimeLeft = landingBoostDuration;
                 _landingBoostDuration = landingBoostDuration;
                 _landingBoostTargetMagnitude = _takeoffHorizSpeed * landingBoostStrength;
+
+                // Immediate velocity injection: landing often kills velocity, so restore horizontal speed so the car keeps going fast
+                float targetSpeed = _takeoffHorizSpeed * landingBoostStrength;
+                Vector3 currentHoriz = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+                float currentSpeed = currentHoriz.magnitude;
+                if (currentSpeed < targetSpeed - 0.1f)
+                {
+                    // Forward-only boost: never add left/right push. Preserve existing lateral, only raise forward component.
+                    Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+                    if (flatForward.sqrMagnitude < 0.001f) flatForward = _takeoffHorizDir;
+                    flatForward.Normalize();
+
+                    float currentForwardSpeed = Vector3.Dot(currentHoriz, flatForward);
+                    float newForwardSpeed = Mathf.Max(currentForwardSpeed, targetSpeed);
+                    Vector3 lateral = currentHoriz - flatForward * currentForwardSpeed;
+                    Vector3 newHoriz = flatForward * newForwardSpeed + lateral;
+                    rb.velocity = new Vector3(newHoriz.x, rb.velocity.y, newHoriz.z);
+                }
             }
 
             if (enableLandingCarrySpeed)
@@ -5590,6 +5700,9 @@ public class CarController : MonoBehaviour
         float targetSteer = _suppressSteeringThisFrame ? 0f : _rawSteer;
 
         float smoothRate = steeringInputSmooth;
+        bool returningToCenter = Mathf.Abs(targetSteer) < 0.01f;
+        if (returningToCenter && steeringReturnSmooth > 0f)
+            smoothRate = steeringReturnSmooth;
         if (isDrifting)
             smoothRate *= 1.4f;
 
@@ -6050,6 +6163,10 @@ public class CarController : MonoBehaviour
     public float MaxFuel => maxFuel;
 
     public bool IsOnIceSurface => _onIceSurface;
+
+    /// <summary>Current drift charge 0–1; falls off when not steering or when releasing drift (same as used for drift turn).</summary>
+    public float DriftCharge => driftCharge;
+    public bool IsDrifting => isDrifting;
 
     public float FuelPercent => maxFuel > 0f ? currentFuel / maxFuel : 0f;
     public float OffDefaultFraction => offDefaultFraction;

@@ -139,40 +139,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
             return;
 
         if (Input.GetKeyDown(KeyCode.P))
-        {
-            if (_totalLength <= 0f || !HasAnyValidCarType())
-                return;
-
-            // pick a random distance along the track
-            float dist = UnityEngine.Random.Range(0.2f, 0.8f) * _totalLength;
-
-            // choose prefab using existing weighting logic
-            GameObject prefab = ChooseCarPrefab(dist);
-            if (prefab == null)
-                return;
-
-            // sample path (this is how your system is designed)
-            SampleAlongPath(dist, out Vector3 pos, out Vector3 forward);
-
-            // ground snap (same as normal spawn)
-            Vector3 origin = pos + Vector3.up * raycastStartHeight;
-            float maxRay = raycastStartHeight + raycastDownDistance;
-            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
-                return;
-
-            Quaternion rot = Quaternion.LookRotation(forward.sqrMagnitude > 0.001f ? forward : Vector3.forward, Vector3.up);
-            Transform parent = carParent != null ? carParent : transform;
-
-            GameObject car = Instantiate(prefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
-
-            var npc = car.GetComponent<NPCTrafficCar>();
-            if (npc != null)
-                npc.SetGenerator(trackGenerator);
-
-            if (verboseDebug)
-                Debug.Log($"[TEST SPAWN] Spawned {prefab.name} at dist {dist:F1}");
-        }
-
+            SpawnOneNPCCarForTest();
 
         _updateTimer += Time.deltaTime;
         if (_updateTimer < updateInterval) return;
@@ -208,6 +175,41 @@ public class NPCTrafficCarSpawner : MonoBehaviour
     public void SetPlayerTransform(Transform player)
     {
         playerTransform = player;
+    }
+
+    /// <summary>TEST only. Spawns one NPC traffic car at a random distance along the track (e.g. from Start button hotkey). Remove when done testing.</summary>
+    public void SpawnOneNPCCarForTest()
+    {
+        if (_path.Count < 2 || trackGenerator == null || !HasAnyValidCarType())
+            return;
+
+        if (_totalLength <= 0f)
+            return;
+
+        float dist = UnityEngine.Random.Range(0.2f, 0.8f) * _totalLength;
+
+        GameObject prefab = ChooseCarPrefab(dist);
+        if (prefab == null)
+            return;
+
+        SampleAlongPath(dist, out Vector3 pos, out Vector3 forward);
+
+        Vector3 origin = pos + Vector3.up * raycastStartHeight;
+        float maxRay = raycastStartHeight + raycastDownDistance;
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+            return;
+
+        Quaternion rot = Quaternion.LookRotation(forward.sqrMagnitude > 0.001f ? forward : Vector3.forward, Vector3.up);
+        Transform parent = carParent != null ? carParent : transform;
+
+        GameObject car = Instantiate(prefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
+
+        var npc = car.GetComponent<NPCTrafficCar>();
+        if (npc != null)
+            npc.SetGenerator(trackGenerator);
+
+        if (verboseDebug)
+            Debug.Log($"[NPCTrafficCarSpawner] TEST SPAWN: {prefab.name} at dist {dist:F1}m");
     }
 
     // -------- Path Building --------

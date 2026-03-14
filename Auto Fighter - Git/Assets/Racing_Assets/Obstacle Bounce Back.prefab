@@ -121,12 +121,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5dcc88590aab2c0459c50f0bba784d7a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  obstacleType: 4
   destructible: 1
   maxHealth: 2
   scaleOnHit: 0.25
   scalePunchTime: 0.15
   destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
+  treeToppleMinVelocity: 2
+  treeToppleImpulseScale: 2
+  treeToppleImpulseMin: 3
+  treeToppleImpulseMax: 25
+  treeToppleForceHeight: 2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &6906296771749627853
@@ -178,6 +184,7 @@ MonoBehaviour:
   initialCooldownRange: {x: 0, y: 1.58}
   useUnscaledTime: 1
   bounceJumpHeight: 1
+  bounceJumpHeightRampMultiplier: 1.8
   clampToRoadWidth: 1
   lateralClampFraction: 0.95
   groundMask:

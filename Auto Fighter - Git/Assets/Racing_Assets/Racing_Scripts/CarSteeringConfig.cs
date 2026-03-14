@@ -14,7 +14,10 @@ public class CarSteeringConfig : MonoBehaviour
     [SerializeField] private float lowSpeedSteerMultiplier = 8f;
     [SerializeField] private float highSpeedSteerMultiplier = 1.3f;
     [SerializeField] private float speedForSteerCurve = 3.45f;
+    [Tooltip("How quickly steering input follows your stick (turn-in). Higher = snappier.")]
     [SerializeField] private float steeringInputSmooth = 9f;
+    [Tooltip("How quickly steering returns to center when you release the stick. Lower = slower, less snap-back. If 0, uses Steering Input Smooth for both.")]
+    [SerializeField, Min(0f)] private float steeringReturnSmooth = 0f;
 
     [Header("Arcade Steering Extras")]
     [SerializeField] private bool useAutoAlignToVelocity = false;
@@ -50,6 +53,7 @@ public class CarSteeringConfig : MonoBehaviour
     public float HighSpeedSteerMultiplier => highSpeedSteerMultiplier;
     public float SpeedForSteerCurve => speedForSteerCurve;
     public float SteeringInputSmooth => steeringInputSmooth;
+    public float SteeringReturnSmooth => steeringReturnSmooth;
     public bool UseAutoAlignToVelocity => useAutoAlignToVelocity;
     public float AutoAlignStrength => autoAlignStrength;
     public bool EnableIceSteerRamp => enableIceSteerRamp;

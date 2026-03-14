@@ -4,6 +4,12 @@ using UnityEngine.UI;
 
 public class UIManager_Racing : MonoBehaviour
 {
+    [Header("Canvases")]
+    [Tooltip("Dialogue canvas (shown during init_dialogue and other sequences).")]
+    [SerializeField] private GameObject dialogueCanvas;
+    [Tooltip("Game canvas (in-game HUD + skill tree). Disabled during init_dialogue, enabled when dialogue ends.")]
+    [SerializeField] private GameObject gameCanvas;
+
     [Header("Fuel UI")]
     [SerializeField] private Image fuelFillImage;  // Image set to Filled (Horizontal)
     [SerializeField] private TMP_Text fuelText;    // Shows "85 / 100" or "85%"
@@ -103,6 +109,9 @@ public class UIManager_Racing : MonoBehaviour
 
     private void Start()
     {
+        // During init_dialogue only the dialogue canvas should show; game canvas is enabled when dialogue ends (DialogueManager).
+        SetGameCanvasVisible(false);
+
         HideRunComplete();
         HideRunCoins();
         HideCrashRecoveryUI();
@@ -162,17 +171,8 @@ public class UIManager_Racing : MonoBehaviour
                 smashButtonLabel.text = $"SMASH {GetMashDisplaySymbol()}";
             }
 
-            if (car.GetMashRequiredButtonDown())
-            {
-                OnCrashRecoveryButtonClicked();
-            }
-
-#if UNITY_EDITOR
-            if (RacingInputReader.Instance != null && RacingInputReader.Instance.AnyMashDown)
-            {
-                OnCrashRecoveryButtonClicked();
-            }
-#endif
+            // Do NOT poll gamepad/keyboard here — CarController.Update already does and calls RegisterFlipMashClick().
+            // Only the smash Button's onClick (below) should fire for the on-screen button tap; otherwise we get 2–3 clicks per press.
         }
         else
         {
@@ -524,6 +524,26 @@ public class UIManager_Racing : MonoBehaviour
         if (crashRecoveryRoot != null)
             crashRecoveryRoot.SetActive(false);
     }
+
+    /// <summary>Show or hide the game canvas (in-game HUD + skill tree). Called by DialogueManager when dialogue starts/ends.</summary>
+    public void SetGameCanvasVisible(bool visible)
+    {
+        if (gameCanvas != null)
+            gameCanvas.SetActive(visible);
+    }
+
+    /// <summary>Show or hide the dialogue canvas.</summary>
+    public void SetDialogueCanvasVisible(bool visible)
+    {
+        if (dialogueCanvas != null)
+            dialogueCanvas.SetActive(visible);
+    }
+
+    /// <summary>Game canvas reference (for DialogueManager or others that need to enable it when dialogue ends).</summary>
+    public GameObject GameCanvas => gameCanvas;
+
+    /// <summary>Dialogue canvas reference.</summary>
+    public GameObject DialogueCanvas => dialogueCanvas;
 
     private string GetMashDisplaySymbol()
     {

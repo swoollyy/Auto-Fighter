@@ -756,6 +756,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c998f4f49415d48b734776402a5716, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  dialogueCanvas: {fileID: 302604729}
+  gameCanvas: {fileID: 663395613}
   fuelFillImage: {fileID: 1236887647}
   fuelText: {fileID: 1944056501}
   showFuelAsPercent: 0
@@ -2018,9 +2020,10 @@ MonoBehaviour:
   fovAtMinSpeed: 45
   fovAtMaxSpeed: 130
   speedFovSmooth: 3.25
-  positionFollowSpeed: 4.67
-  rotationFollowSpeed: 13.89
-  rotationLag: 4.75
+  positionFollowSpeed: 3.67
+  rotationFollowSpeed: 7.5
+  rotationLag: 1.23
+  driftRotationLagMultiplier: 0.1
   boostVFXObject: {fileID: 115066103}
   boostZoomOutDeltaFOV: 6.57
   boostZoomOutDuration: 0.82
@@ -3200,7 +3203,7 @@ MonoBehaviour:
   maxSpeedMultiplier: 1
   accelerationMultiplier: 1
   turnSpeedMultiplier: 1
-  dragMultiplier: 1
+  dragMultiplier: 2
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -3941,6 +3944,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  enableTestSpawnCar: 1
   xHoldSeconds: 0.35
   skillTreeRoot: {fileID: 663395613}
   skillTreeUI: {fileID: 277147485}
@@ -3962,8 +3966,6 @@ MonoBehaviour:
   closeCallLens: 0
   closeCallZoomDeltaFOV: 1.24
   closeCallZoomDuration: 0.801
-  closeCallHandlingTurnMultiplier: 1.7
-  closeCallHandlingDuration: 1.5
   closeCallClip: {fileID: 8300000, guid: 384c765ebdc60d54c94210079f976a1d, type: 3}
   closeCallVolume: 0.376
   runCompleteCoinClip: {fileID: 8300000, guid: 7284a8bf3288ca74f8b3bf4c3b5c4f39, type: 3}
@@ -7569,6 +7571,10 @@ MonoBehaviour:
   initialSpawnDelayRange: {x: 6, y: 15}
   useActualPathLengthForPrediction: 1
   offRoadPadding: 7
+  avoidRampRadius: 4
+  rampCheckLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
   curvatureSampleLength: 12
   highCurvatureThreshold: 0.35
   enableYawWeightedMisses: 1
@@ -9078,6 +9084,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   dialogueUI: {fileID: 302604730}
+  uiManagerRacing: {fileID: 277147483}
   gameCanvasToEnableWhenSequenceEnds: {fileID: 863292878}
   advanceKey: 32
   advanceOnClickOrSouth: 1
@@ -10513,7 +10520,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 25d4ece7811d5e1498ea2c720f06e68e, type: 2}
   - {fileID: 11400000, guid: 615c9e5ab1f95174caec575494646100, type: 2}
   skillsEnabled: 1
-  revealAllSkillsAtStart: 0
+  revealAllSkillsAtStart: 1
   playerCurrency: 0
   playerSprockets: 0
 --- !u!4 &1980186994

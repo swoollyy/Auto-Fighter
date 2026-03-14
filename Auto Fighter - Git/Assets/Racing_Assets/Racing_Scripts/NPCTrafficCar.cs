@@ -1,4 +1,4 @@
-﻿using Pathfinding;
+using Pathfinding;
 using Pathfinding.RVO;
 using System;
 using System.Collections.Generic;
@@ -61,6 +61,8 @@ public class NPCTrafficCar : MonoBehaviour
     // ============================================
     [Header("Grounding")]
     [SerializeField] private LayerMask roadLayer;
+    [Tooltip("Optional: Road + Grass (or same as Road). Used for movement validation and ground snap so NPC can drive on grass to return to track. If 0, uses roadLayer only.")]
+    [SerializeField] private LayerMask driveableLayer;
     [SerializeField] private float raycastStartHeight = 5f;
     [SerializeField] private float raycastDownDistance = 15f;
     [SerializeField] private float groundClearance = 0.05f;
@@ -85,7 +87,20 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private float decelerationRate = 25f;
 
     [Tooltip("Smooth steering input changes over this time.")]
-    [SerializeField] private float steeringSmoothing = 0.15f;
+    [SerializeField] private float steeringSmoothing = 0.2f;
+
+    [Tooltip("Smooth speed changes over this time (reduces jitter).")]
+    [SerializeField] private float speedSmoothing = 0.12f;
+
+    [Header("Predictive alignment (reduces S‑slither overcorrection)")]
+    [Tooltip("Target time (seconds) to align with track/target direction. Steering is scaled so we reorient in this time instead of full‑lock.")]
+    [SerializeField, Min(0.1f)] private float alignmentTime = 0.4f;
+
+    [Tooltip("Angle (degrees) below which steering is zeroed to avoid jitter and overcorrect.")]
+    [SerializeField, Range(0f, 10f)] private float steeringDeadZoneDeg = 2.5f;
+
+    [Tooltip("Damping when already turning toward target (0=none, ~0.3=less overshoot).")]
+    [SerializeField, Range(0f, 0.6f)] private float steeringDamping = 0.25f;
 
     // ============================================
     // OBSTACLE DETECTION (NEW - replaces instant RVO dodge)
@@ -95,28 +110,31 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private LayerMask obstacleDetectionLayers;
 
     [Tooltip("How far ahead to scan for obstacles.")]
-    [SerializeField] private float obstacleDetectionRange = 15f;
+    [SerializeField] private float obstacleDetectionRange = 24f;
 
     [Tooltip("Width of the detection zone (car width + margin).")]
     [SerializeField] private float obstacleDetectionWidth = 2.5f;
 
-    [Tooltip("Number of rays to cast in the fan pattern.")]
-    [SerializeField, Range(3, 15)] private int obstacleRayCount = 7;
+    [Tooltip("Number of rays to cast in the fan pattern (more = better coverage).")]
+    [SerializeField, Range(3, 15)] private int obstacleRayCount = 11;
 
     [Tooltip("Fan angle for obstacle detection (degrees).")]
-    [SerializeField] private float obstacleDetectionAngle = 45f;
+    [SerializeField] private float obstacleDetectionAngle = 55f;
 
     [Tooltip("How strongly to steer away from obstacles (0-1).")]
-    [SerializeField, Range(0f, 1f)] private float obstacleAvoidanceStrength = 0.8f;
+    [SerializeField, Range(0f, 1f)] private float obstacleAvoidanceStrength = 0.85f;
 
     [Tooltip("Distance at which avoidance reaches maximum strength.")]
-    [SerializeField] private float criticalObstacleDistance = 5f;
+    [SerializeField] private float criticalObstacleDistance = 6f;
 
     [Tooltip("How quickly to blend into avoidance steering.")]
-    [SerializeField] private float avoidanceBlendSpeed = 8f;
+    [SerializeField] private float avoidanceBlendSpeed = 10f;
 
-    [Tooltip("Angle of the center 'danger zone' that triggers avoidance (degrees). Obstacles outside this zone only influence steering direction.")]
+    [Tooltip("Angle of the center 'danger zone' that triggers full avoidance (degrees).")]
     [SerializeField] private float dangerZoneAngle = 15f;
+
+    [Tooltip("Start gentle avoidance when side obstacles are within this distance.")]
+    [SerializeField] private float sideObstacleSoftDistance = 10f;
 
     [Tooltip("Height offset for obstacle detection rays.")]
     [SerializeField] private float obstacleRayHeight = 0.5f;
@@ -144,11 +162,17 @@ public class NPCTrafficCar : MonoBehaviour
     [Tooltip("Distance from edge where correction starts.")]
     [SerializeField] private float roadEdgeSoftMargin = 1.5f;
 
-    [Tooltip("If true, validate each movement step stays on road layer.")]
+    [Tooltip("If true, block movement when not on driveable (road/grass). No teleport - car must drive back.")]
     [SerializeField] private bool validateMovementOnRoad = true;
 
-    [Tooltip("How much to blend track-following vs free steering (0=pure track, 1=free).")]
-    [SerializeField, Range(0f, 1f)] private float trackFollowingStrength = 0.7f;
+    [Tooltip("How much to blend track-following vs A* (0=tight track, 1=freer). Lower = tighter turns.")]
+    [SerializeField, Range(0f, 1f)] private float trackFollowingStrength = 0.4f;
+
+    [Tooltip("When off track, steer this strongly toward track center (0-1).")]
+    [SerializeField, Range(0f, 1f)] private float offTrackRecoveryStrength = 0.9f;
+
+    [Tooltip("Track direction look-ahead distance (m). Slightly higher helps tight turns.")]
+    [SerializeField] private float trackLookAhead = 8f;
 
     [Tooltip("Show road boundary debug rays.")]
     [SerializeField] private bool drawRoadBoundaryDebug = true;
@@ -270,6 +294,8 @@ public class NPCTrafficCar : MonoBehaviour
     private float _currentSteeringInput;   // -1 to 1 steering
     private float _smoothedSteeringInput;  // Smoothed version
     private float _steeringVelocity;       // For SmoothDamp
+    private float _speedVelocity;          // For speed SmoothDamp
+    private float _prevAngleToTarget;      // For damping (reduce overshoot)
 
     // ============================================
     // INTERNALS - Avoidance State (NEW)
@@ -288,6 +314,8 @@ public class NPCTrafficCar : MonoBehaviour
     private bool _rightEdgeDetected;
     private float _leftEdgeDistance;
     private float _rightEdgeDistance;
+    private bool _isOnRoad;                // Current position on road layer (for recovery)
+    private Vector3 _trackCenterAtDist;    // Track center at our path distance (for off-track steer)
 
     // ============================================
     // INTERNALS - State
@@ -345,6 +373,7 @@ public class NPCTrafficCar : MonoBehaviour
         _currentForward = transform.forward;
         _currentSteeringInput = 0f;
         _smoothedSteeringInput = 0f;
+        _prevAngleToTarget = 0f;
         _avoidanceUrgency = 0f;
         _avoidanceBlend = 0f;
         _isAvoiding = false;
@@ -378,30 +407,10 @@ public class NPCTrafficCar : MonoBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
-        // Update our track distance based on current position
-        _dist = GetDistanceAlongPath(transform.position);
-
-        // Update destination for A* (advisory only now)
-        _destTimer -= dt;
-        if (_destTimer <= 0f)
-        {
-            float dynInterval = Mathf.Lerp(0.06f, destinationUpdateInterval, Mathf.InverseLerp(4f, 12f, speed));
-            _destTimer = dynInterval;
-            UpdateAStarDestination();
-        }
-
         if (enableSurfaceEffects)
         {
             UpdateSurfaceEffects(dt);
         }
-
-        // ============================================
-        // NEW: Vehicle steering-based movement
-        // ============================================
-        UpdateObstacleDetection();
-        UpdateRoadBoundaryDetection();
-        UpdateSteering(dt);
-        UpdateMovement(dt);
 
         // Update engine audio
         UpdateEngineAudio();
@@ -418,22 +427,41 @@ public class NPCTrafficCar : MonoBehaviour
         }
     }
 
+    private void FixedUpdate()
+    {
+        if (_crashed) return;
+        if (!InitializeIfNeeded()) return;
+
+        float dt = Time.fixedDeltaTime;
+        if (dt <= 0f) return;
+
+        // Update track distance from current position (fixed step = consistent simulation)
+        _dist = GetDistanceAlongPath(transform.position);
+
+        // Update destination for A* (advisory only)
+        _destTimer -= dt;
+        if (_destTimer <= 0f)
+        {
+            float dynInterval = Mathf.Lerp(0.06f, destinationUpdateInterval, Mathf.InverseLerp(4f, 12f, speed));
+            _destTimer = dynInterval;
+            UpdateAStarDestination();
+        }
+
+        // Vehicle steering and movement at fixed timestep for smooth, non-jittery motion
+        UpdateObstacleDetection();
+        UpdateRoadBoundaryDetection();
+        UpdateSteering(dt);
+        UpdateMovement(dt);
+    }
+
     private void LateUpdate()
     {
         if (_crashed) return;
         if (!_initialized) return;
 
-        float dt = Time.deltaTime;
-        if (dt <= 0f) return;
-
-        // Ground snap (Y only)
-        Vector3 pos = transform.position;
-        if (RaycastGround(pos, out RaycastHit hit))
-        {
-            pos.y = hit.point.y + _pivotToBottom + groundClearance;
-            transform.position = pos;
+        // Ground normal for alignToGround (position is already snapped in FixedUpdate)
+        if (RaycastGround(transform.position, out RaycastHit hit))
             _groundNormal = hit.normal;
-        }
 
         // Store velocity for crash physics
         _lastVelocity = _currentForward * _currentSpeed;
@@ -456,11 +484,9 @@ public class NPCTrafficCar : MonoBehaviour
         Vector3 forward = _currentForward;
         forward.y = 0f;
         forward.Normalize();
-
         if (forward.sqrMagnitude < 0.01f)
             forward = transform.forward;
 
-        // Track hits separately for center (danger zone) and sides
         float closestCenterHit = float.MaxValue;
         float closestLeftHit = float.MaxValue;
         float closestRightHit = float.MaxValue;
@@ -471,10 +497,8 @@ public class NPCTrafficCar : MonoBehaviour
         float halfAngle = obstacleDetectionAngle * 0.5f;
         float angleStep = obstacleDetectionAngle / (obstacleRayCount - 1);
         float halfDangerZone = dangerZoneAngle * 0.5f;
-
-        // Scale detection range based on speed
         float range = Mathf.Lerp(obstacleDetectionRange * 0.5f, obstacleDetectionRange,
-                                  Mathf.InverseLerp(5f, 20f, _currentSpeed));
+            Mathf.InverseLerp(5f, 20f, _currentSpeed));
 
         for (int i = 0; i < obstacleRayCount; i++)
         {
@@ -483,7 +507,6 @@ public class NPCTrafficCar : MonoBehaviour
 
             if (Physics.Raycast(origin, rayDir, out RaycastHit hit, range, obstacleDetectionLayers, QueryTriggerInteraction.Ignore))
             {
-                // Ignore self
                 if (hit.collider.transform.IsChildOf(transform)) continue;
 
                 bool isInDangerZone = Mathf.Abs(angle) <= halfDangerZone;
@@ -492,21 +515,18 @@ public class NPCTrafficCar : MonoBehaviour
 
                 if (isInDangerZone)
                 {
-                    // CENTER hit - this is a real threat
                     centerBlocked = true;
                     if (hit.distance < closestCenterHit)
                         closestCenterHit = hit.distance;
                 }
                 else if (isLeftSide)
                 {
-                    // LEFT side hit - don't steer left
                     leftHits++;
                     if (hit.distance < closestLeftHit)
                         closestLeftHit = hit.distance;
                 }
                 else if (isRightSide)
                 {
-                    // RIGHT side hit - don't steer right
                     rightHits++;
                     if (hit.distance < closestRightHit)
                         closestRightHit = hit.distance;
@@ -516,64 +536,91 @@ public class NPCTrafficCar : MonoBehaviour
                     Debug.DrawLine(origin, hit.point, isInDangerZone ? Color.red : Color.yellow);
             }
             else if (drawObstacleRays)
-            {
                 Debug.DrawRay(origin, rayDir * range, Color.green);
-            }
         }
 
-        // ONLY trigger avoidance if CENTER is blocked
         if (centerBlocked)
         {
-            // Calculate urgency based on center obstacle distance
             _avoidanceUrgency = Mathf.Clamp01(1f - (closestCenterHit - criticalObstacleDistance) /
-                                              (obstacleDetectionRange - criticalObstacleDistance));
-
-            // Decide which way to steer based on side clearance
-            float avoidAngle;
+                (obstacleDetectionRange - criticalObstacleDistance));
 
             bool leftClear = (leftHits == 0) || (closestLeftHit > closestCenterHit * 1.5f);
             bool rightClear = (rightHits == 0) || (closestRightHit > closestCenterHit * 1.5f);
 
+            float avoidAngle;
             if (leftClear && !rightClear)
-            {
-                // Left is clear, right is blocked - steer left
                 avoidAngle = -35f;
-            }
             else if (rightClear && !leftClear)
-            {
-                // Right is clear, left is blocked - steer right
                 avoidAngle = 35f;
-            }
             else if (leftClear && rightClear)
             {
-                // Both sides clear - pick based on road edge distance
-                avoidAngle = (_rightEdgeDistance >= _leftEdgeDistance) ? 35f : -35f;
+                // Both sides clear: dodge toward track center so we don't go further off track
+                if (_distanceFromTrackCenter < -0.5f)
+                    avoidAngle = 35f;
+                else if (_distanceFromTrackCenter > 0.5f)
+                    avoidAngle = -35f;
+                else
+                    avoidAngle = (_rightEdgeDistance >= _leftEdgeDistance) ? 35f : -35f;
             }
             else
             {
-                // Both sides blocked - pick the one with more distance
                 if (closestLeftHit > closestRightHit)
-                    avoidAngle = -30f; // Left has more room
+                    avoidAngle = -30f;
                 else
-                    avoidAngle = 30f;  // Right has more room
+                    avoidAngle = 30f;
             }
 
-            // Scale avoidance angle by urgency
             avoidAngle *= Mathf.Lerp(0.5f, 1f, _avoidanceUrgency);
-
             _avoidanceDirection = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
             _isAvoiding = true;
 
             if (drawObstacleRays)
-            {
                 Debug.DrawRay(origin + Vector3.up * 0.5f, _avoidanceDirection * 5f, Color.magenta);
-            }
         }
         else
         {
-            // Center is clear - no avoidance needed even if sides detect something
-            _avoidanceUrgency = 0f;
-            _isAvoiding = false;
+            float softLeft = closestLeftHit < float.MaxValue ? closestLeftHit : float.MaxValue;
+            float softRight = closestRightHit < float.MaxValue ? closestRightHit : float.MaxValue;
+            bool bothSidesHaveObstacles = sideObstacleSoftDistance > 0f && softLeft < sideObstacleSoftDistance && softRight < sideObstacleSoftDistance;
+
+            if (bothSidesHaveObstacles)
+            {
+                // Clear path in the middle – go straight, don't pick a side
+                _avoidanceUrgency = 0f;
+                _isAvoiding = false;
+                if (drawObstacleRays)
+                    Debug.DrawRay(origin + Vector3.up * 0.5f, forward * 4f, Color.cyan);
+            }
+            else if (sideObstacleSoftDistance > 0f && (softLeft < sideObstacleSoftDistance || softRight < sideObstacleSoftDistance))
+            {
+                float urgency;
+                float avoidAngle;
+                if (softLeft < sideObstacleSoftDistance && softRight < sideObstacleSoftDistance)
+                {
+                    urgency = Mathf.Lerp(0.25f, 0.5f, 1f - Mathf.Min(softLeft, softRight) / sideObstacleSoftDistance);
+                    avoidAngle = (softRight >= softLeft) ? 25f : -25f;
+                }
+                else if (softLeft < sideObstacleSoftDistance)
+                {
+                    urgency = Mathf.Lerp(0.2f, 0.45f, 1f - softLeft / sideObstacleSoftDistance);
+                    avoidAngle = 25f;
+                }
+                else
+                {
+                    urgency = Mathf.Lerp(0.2f, 0.45f, 1f - softRight / sideObstacleSoftDistance);
+                    avoidAngle = -25f;
+                }
+                _avoidanceUrgency = urgency;
+                _avoidanceDirection = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
+                _isAvoiding = true;
+                if (drawObstacleRays)
+                    Debug.DrawRay(origin + Vector3.up * 0.5f, _avoidanceDirection * 4f, Color.Lerp(Color.yellow, Color.magenta, urgency));
+            }
+            else
+            {
+                _avoidanceUrgency = 0f;
+                _isAvoiding = false;
+            }
         }
     }
 
@@ -593,8 +640,16 @@ public class NPCTrafficCar : MonoBehaviour
 
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
 
+        float rayHeight = 0.3f;
+        float rayDownDist = raycastStartHeight + raycastDownDistance;
+        Vector3 rayOrigin = pos + Vector3.up * rayHeight;
+
         // Get track center position at our current distance
         SampleAlongPath(_dist, out Vector3 trackCenter, out Vector3 trackForward);
+        _trackCenterAtDist = trackCenter;
+
+        // Detect if we're on road (for off-track recovery; no teleport)
+        _isOnRoad = roadLayer.value != 0 && Physics.Raycast(rayOrigin, Vector3.down, rayDownDist, roadLayer, QueryTriggerInteraction.Ignore);
 
         // Calculate how far we are from track center (lateral offset)
         Vector3 toUs = pos - trackCenter;
@@ -605,9 +660,6 @@ public class NPCTrafficCar : MonoBehaviour
         float halfRoadWidth = GetHalfRoadWidth();
 
         // Cast rays to detect road edges on left and right
-        float rayHeight = 0.3f;
-        Vector3 rayOrigin = pos + Vector3.up * rayHeight;
-        float rayDownDist = raycastStartHeight + raycastDownDistance;
 
         // Left edge detection
         _leftEdgeDetected = false;
@@ -665,15 +717,11 @@ public class NPCTrafficCar : MonoBehaviour
                 Debug.DrawRay(pos + Vector3.up, -right * 2f, Color.magenta);
         }
 
-        // Method 2: Center-seeking correction (gentle pull toward track center)
-        float normalizedOffset = _distanceFromTrackCenter / halfRoadWidth;
-        float centerCorrection = -normalizedOffset * 0.3f * roadCorrectionStrength;
-
-        // Only apply center correction if we're not already correcting for an edge
-        if (Mathf.Abs(_roadCorrectionInput) < 0.1f)
-        {
-            _roadCorrectionInput += centerCorrection;
-        }
+        // Method 2: Center-seeking (pull toward track center) - always apply for tighter turns
+        float normalizedOffset = halfRoadWidth > 0.01f ? (_distanceFromTrackCenter / halfRoadWidth) : 0f;
+        float centerStrength = 0.65f * roadCorrectionStrength; // stronger so 1.0 actually pulls hard
+        float centerCorrection = -normalizedOffset * centerStrength;
+        _roadCorrectionInput += centerCorrection;
 
         _roadCorrectionInput = Mathf.Clamp(_roadCorrectionInput, -1f, 1f);
 
@@ -690,13 +738,28 @@ public class NPCTrafficCar : MonoBehaviour
         // Get target direction from A* path (advisory)
         Vector3 desiredDirection = GetDesiredDirection();
 
-        // Blend desired direction with track direction for better lane-keeping
-        SampleAlongPath(_dist + 5f, out Vector3 _, out Vector3 trackFwd);
+        // Track direction with configurable look-ahead (helps tight turns)
+        SampleAlongPath(_dist + trackLookAhead, out Vector3 _, out Vector3 trackFwd);
         trackFwd.y = 0f;
         trackFwd.Normalize();
+
+        float effectiveTrackStrength = trackFollowingStrength;
+        if (!_isOnRoad && offTrackRecoveryStrength > 0f)
+        {
+            // Off track: steer strongly toward track center and track direction (drive back, no teleport)
+            effectiveTrackStrength = 0.05f; // almost pure track direction
+            Vector3 toTrack = _trackCenterAtDist - transform.position;
+            toTrack.y = 0f;
+            if (toTrack.sqrMagnitude > 0.5f)
+            {
+                toTrack.Normalize();
+                desiredDirection = Vector3.Slerp(desiredDirection, toTrack, offTrackRecoveryStrength);
+            }
+        }
+
         if (trackFwd.sqrMagnitude > 0.01f)
         {
-            desiredDirection = Vector3.Slerp(trackFwd, desiredDirection, trackFollowingStrength);
+            desiredDirection = Vector3.Slerp(trackFwd, desiredDirection, effectiveTrackStrength);
         }
 
         float targetBlend = _isAvoiding ? _avoidanceUrgency * obstacleAvoidanceStrength : 0f;
@@ -723,14 +786,39 @@ public class NPCTrafficCar : MonoBehaviour
         targetDirection.y = 0f;
         targetDirection.Normalize();
 
-        // Calculate steering input (-1 to 1) based on angle to target direction
+        // Angle error: how much we're turned away from target (track/desired direction)
         float angleToTarget = Vector3.SignedAngle(_currentForward, targetDirection, Vector3.up);
-        _currentSteeringInput = Mathf.Clamp(angleToTarget / 45f, -1f, 1f);
+
+        // Dead zone: no steering when nearly aligned (stops jitter and S‑slither)
+        float rawSteering;
+        if (Mathf.Abs(angleToTarget) <= steeringDeadZoneDeg)
+        {
+            rawSteering = 0f;
+        }
+        else
+        {
+            // Predictive steering: request exactly enough turn to align in alignmentTime seconds
+            // So we don't over-apply and overshoot; steering tapers as angle shrinks
+            float speedFactor = Mathf.InverseLerp(0f, turnRateFalloffSpeed, _currentSpeed);
+            float currentTurnRate = Mathf.Lerp(baseTurnRate, minTurnRate, speedFactor);
+            float turnCapacity = currentTurnRate * alignmentTime; // degrees we could turn in align time
+            if (turnCapacity < 1f) turnCapacity = 1f;
+            float idealSteering = angleToTarget / turnCapacity;
+            rawSteering = Mathf.Clamp(idealSteering, -1f, 1f);
+
+            // Damping: reduce steering when we're already turning toward target (angle shrinking)
+            float angleRate = (angleToTarget - _prevAngleToTarget) / Mathf.Max(dt, 0.001f);
+            bool alreadyCorrecting = (angleToTarget > 0f && angleRate < 0f) || (angleToTarget < 0f && angleRate > 0f);
+            if (steeringDamping > 0f && alreadyCorrecting)
+                rawSteering *= (1f - steeringDamping);
+        }
+        _prevAngleToTarget = angleToTarget;
+
+        _currentSteeringInput = rawSteering;
 
         // Add road boundary correction (higher priority than normal steering)
         if (enableRoadBoundaryDetection && Mathf.Abs(_roadCorrectionInput) > 0.05f)
         {
-            // Road correction overrides normal steering proportionally to its urgency
             float correctionWeight = Mathf.Abs(_roadCorrectionInput);
             _currentSteeringInput = Mathf.Lerp(_currentSteeringInput, _roadCorrectionInput, correctionWeight);
         }
@@ -764,6 +852,10 @@ public class NPCTrafficCar : MonoBehaviour
         // Update target speed
         _targetSpeed = speed;
 
+        // Reduce speed when off track so NPC can steer back instead of overshooting
+        if (!_isOnRoad && offTrackRecoveryStrength > 0f)
+            _targetSpeed *= 0.7f;
+
         // Reduce speed during avoidance
         if (slowDownOnAvoidance && _avoidanceBlend > 0.01f)
         {
@@ -771,72 +863,66 @@ public class NPCTrafficCar : MonoBehaviour
             _targetSpeed *= speedReduction;
         }
 
-        // Accelerate/decelerate toward target speed
-        if (_currentSpeed < _targetSpeed)
-        {
-            _currentSpeed = Mathf.MoveTowards(_currentSpeed, _targetSpeed, accelerationRate * dt);
-        }
-        else
-        {
-            _currentSpeed = Mathf.MoveTowards(_currentSpeed, _targetSpeed, decelerationRate * dt);
-        }
+        // Smooth speed toward target (reduces jitter from abrupt speed changes)
+        float maxSpeedPerSecond = Mathf.Max(accelerationRate, decelerationRate);
+        _currentSpeed = Mathf.SmoothDamp(_currentSpeed, _targetSpeed, ref _speedVelocity, speedSmoothing, maxSpeedPerSecond);
 
         // Move the car
         Vector3 movement = _currentForward * _currentSpeed * dt;
         Vector3 newPosition = transform.position + movement;
 
-        // Validate movement stays on road
-        if (validateMovementOnRoad && roadLayer.value != 0)
+        // Validate movement: allow only on driveable (road or road+grass). No teleport - car must drive back.
+        LayerMask moveCheckLayers = driveableLayer.value != 0 ? driveableLayer : roadLayer;
+        if (validateMovementOnRoad && moveCheckLayers.value != 0)
         {
             Vector3 checkOrigin = newPosition + Vector3.up * raycastStartHeight;
-            if (!Physics.Raycast(checkOrigin, Vector3.down, raycastStartHeight + raycastDownDistance, roadLayer, QueryTriggerInteraction.Ignore))
+            if (!Physics.Raycast(checkOrigin, Vector3.down, raycastStartHeight + raycastDownDistance, moveCheckLayers, QueryTriggerInteraction.Ignore))
             {
-                // New position is NOT on road - try to correct
-                // First, try moving along track direction instead
-                SampleAlongPath(_dist + _currentSpeed * dt, out Vector3 trackPos, out Vector3 trackFwd);
-
-                // Apply our lateral offset to stay in lane
-                Vector3 trackRight = Vector3.Cross(Vector3.up, trackFwd).normalized;
-                float halfWidth = GetHalfRoadWidth();
-                float maxLateral = Mathf.Max(0f, halfWidth * lateralFraction - edgeMargin);
-                float clampedOffset = Mathf.Clamp(_lateralOffset, -maxLateral, maxLateral);
-
-                Vector3 correctedPosition = trackPos + trackRight * clampedOffset;
-
-                // Verify corrected position is on road
-                Vector3 correctedCheckOrigin = correctedPosition + Vector3.up * raycastStartHeight;
-                if (Physics.Raycast(correctedCheckOrigin, Vector3.down, raycastStartHeight + raycastDownDistance, roadLayer, QueryTriggerInteraction.Ignore))
-                {
-                    newPosition = correctedPosition;
-                    // Also correct our forward direction toward track
-                    _currentForward = Vector3.Slerp(_currentForward, trackFwd, 0.3f);
-                    _currentForward.y = 0f;
-                    _currentForward.Normalize();
-                }
-                else
-                {
-                    // Even corrected position is off road - don't move, slow down
-                    _currentSpeed *= 0.9f;
-                    return; // Skip this frame's movement
-                }
+                // Not on driveable (e.g. void) - don't move, slow down; steering will try to bring us back
+                _currentSpeed *= 0.92f;
+                return;
             }
+            // On driveable (road or grass): allow move; off-track recovery steering will steer back to track
         }
 
-        transform.position = newPosition;
-
-        // Update rotation to face movement direction
-        if (_currentSpeed > minSpeedForRotation)
+        // Ground snap: set height from raycast so interpolated position is correct
+        if (RaycastGround(newPosition, out RaycastHit groundHit))
         {
-            Quaternion targetRot = Quaternion.LookRotation(_currentForward, Vector3.up);
+            newPosition.y = groundHit.point.y + _pivotToBottom + groundClearance;
+            _groundNormal = groundHit.normal;
+        }
 
-            if (alignToGround && _groundNormal != Vector3.up)
+        // Use Rigidbody move so Unity interpolates between fixed steps (smooth visuals)
+        if (_rb != null)
+        {
+            _rb.MovePosition(newPosition);
+
+            if (_currentSpeed > minSpeedForRotation)
             {
-                Vector3 groundForward = Vector3.ProjectOnPlane(_currentForward, _groundNormal).normalized;
-                if (groundForward.sqrMagnitude > 0.01f)
-                    targetRot = Quaternion.LookRotation(groundForward, _groundNormal);
+                Quaternion targetRot = Quaternion.LookRotation(_currentForward, Vector3.up);
+                if (alignToGround && _groundNormal != Vector3.up)
+                {
+                    Vector3 groundForward = Vector3.ProjectOnPlane(_currentForward, _groundNormal).normalized;
+                    if (groundForward.sqrMagnitude > 0.01f)
+                        targetRot = Quaternion.LookRotation(groundForward, _groundNormal);
+                }
+                _rb.MoveRotation(targetRot);
             }
-
-            transform.rotation = targetRot;
+        }
+        else
+        {
+            transform.position = newPosition;
+            if (_currentSpeed > minSpeedForRotation)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(_currentForward, Vector3.up);
+                if (alignToGround && _groundNormal != Vector3.up)
+                {
+                    Vector3 groundForward = Vector3.ProjectOnPlane(_currentForward, _groundNormal).normalized;
+                    if (groundForward.sqrMagnitude > 0.01f)
+                        targetRot = Quaternion.LookRotation(groundForward, _groundNormal);
+                }
+                transform.rotation = targetRot;
+            }
         }
     }
 
@@ -1195,7 +1281,9 @@ public class NPCTrafficCar : MonoBehaviour
     {
         Vector3 origin = pos + Vector3.up * raycastStartHeight;
         float maxDist = raycastStartHeight + raycastDownDistance;
-        return Physics.Raycast(origin, Vector3.down, out hit, maxDist, roadLayer, QueryTriggerInteraction.Ignore);
+        LayerMask groundLayers = driveableLayer.value != 0 ? driveableLayer : roadLayer;
+        if (groundLayers.value == 0) groundLayers = roadLayer;
+        return Physics.Raycast(origin, Vector3.down, out hit, maxDist, groundLayers, QueryTriggerInteraction.Ignore);
     }
 
     private static void GenerateSmoothedPath(List<Vector3> src, int subdivisions, List<Vector3> outList)
