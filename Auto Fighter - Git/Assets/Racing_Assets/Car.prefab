@@ -911,7 +911,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxTotalVelocityMagnitude: 25
+  maxTotalVelocityMagnitude: 9
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1245,7 +1245,7 @@ MonoBehaviour:
     value: -1
   type: 3
   mesh: {fileID: 0}
-  rectangleSize: {x: 1.55, y: 1.5}
+  rectangleSize: {x: 1.35, y: 1.35}
   circleRadius: 1
   circleResolution: 6
   height: 1
@@ -1299,7 +1299,7 @@ MonoBehaviour:
   turnSpeed: 28
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
-  lowSpeedSteerMultiplier: 2.25
+  lowSpeedSteerMultiplier: 4.5
   highSpeedSteerMultiplier: 1.5
   speedForSteerCurve: 3.45
   steeringInputSmooth: 6.76
@@ -1442,9 +1442,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 10
-  fuelUsePerSecondBraking: 10
-  idleFuelUsePerSecond: 5
+  fuelUsePerSecondAtFullThrottle: 0
+  fuelUsePerSecondBraking: 0
+  idleFuelUsePerSecond: 0
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:

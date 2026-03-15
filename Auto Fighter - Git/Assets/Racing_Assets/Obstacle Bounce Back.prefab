@@ -202,6 +202,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1
   carDetectRadius: 0.01
+  carHitRadiusWhenAirborne: 0.15
   landingTelegraphPrefab: {fileID: 4108758772899792739, guid: 6e526491afa36544aa8130216c672992, type: 3}
   telegraphRadiusFromCollider: 1
   telegraphRadiusOverride: 1.5
@@ -216,11 +217,12 @@ MonoBehaviour:
   obstacleUpImpulse: 2.8
   obstacleImpactCooldown: 0.08
   damagePlayerOnHit: 1
-  hitHpDamage: 30
-  hitFuelPercent: 0.155
+  hitHpDamage: 20
+  hitFuelPercent: 0.66
   hitDamageCooldown: 1.01
   crashFxSeverity: 0.752
-  crashImpactSpeed: 13.5
+  crashImpactSpeed: 5
+  carHitDetachImpulse: 0
   ignoreCollisionSeconds: 0.25
 --- !u!114 &375196817257799255
 MonoBehaviour:

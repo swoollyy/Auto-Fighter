@@ -215,7 +215,7 @@ MonoBehaviour:
   obstacleDetectionRange: 8
   obstacleDetectionWidth: 2.75
   obstacleRayCount: 13
-  obstacleDetectionAngle: 120
+  obstacleDetectionAngle: 200
   obstacleAvoidanceStrength: 0.979
   criticalObstacleDistance: 6
   avoidanceBlendSpeed: 8
@@ -374,7 +374,7 @@ MonoBehaviour:
   autoRepath:
     mode: 2
     period: 0.5
-    sensitivity: 3.49
+    sensitivity: 6.8
     maximumPeriod: 0.55
     visualizeSensitivity: 1
   acceleration: 20
@@ -445,7 +445,7 @@ MonoBehaviour:
     value: -1
   type: 3
   mesh: {fileID: 0}
-  rectangleSize: {x: 1, y: 1}
+  rectangleSize: {x: 1.45, y: 1.45}
   circleRadius: 1
   circleResolution: 6
   height: 1.5
