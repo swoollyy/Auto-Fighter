@@ -132,14 +132,18 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
     private void Update()
     {
+        // P key: always allow test spawn (bypasses streamSpawnDuringRun and all other restrictions)
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            SpawnOneNPCCarForTest();
+            return;
+        }
+
         if (_path.Count < 2 || playerTransform == null || !HasAnyValidCarType())
             return;
 
         if (!streamSpawnDuringRun)
             return;
-
-        if (Input.GetKeyDown(KeyCode.P))
-            SpawnOneNPCCarForTest();
 
         _updateTimer += Time.deltaTime;
         if (_updateTimer < updateInterval) return;
@@ -177,7 +181,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
         playerTransform = player;
     }
 
-    /// <summary>TEST only. Spawns one NPC traffic car at a random distance along the track (e.g. from Start button hotkey). Remove when done testing.</summary>
+    /// <summary>TEST only. Spawns one NPC traffic car at the beginning of the track (P key). Bypasses camera viewport, blocker checks, and ground raycast — always spawns if path and prefab exist.</summary>
     public void SpawnOneNPCCarForTest()
     {
         if (_path.Count < 2 || trackGenerator == null || !HasAnyValidCarType())
@@ -186,7 +190,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
         if (_totalLength <= 0f)
             return;
 
-        float dist = UnityEngine.Random.Range(0.2f, 0.8f) * _totalLength;
+        float dist = 0f; // Spawn at start of track for AI testing (P key)
 
         GameObject prefab = ChooseCarPrefab(dist);
         if (prefab == null)
@@ -194,15 +198,19 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         SampleAlongPath(dist, out Vector3 pos, out Vector3 forward);
 
+        // P spawn bypasses all restrictions: no camera viewport check, no blocker check. Prefer ground raycast but fallback to path position.
+        Vector3 spawnPos;
         Vector3 origin = pos + Vector3.up * raycastStartHeight;
         float maxRay = raycastStartHeight + raycastDownDistance;
-        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
-            return;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+            spawnPos = hit.point + Vector3.up * carHeightOffset;
+        else
+            spawnPos = pos + Vector3.up * Mathf.Max(1f, carHeightOffset); // Fallback so we always spawn
 
         Quaternion rot = Quaternion.LookRotation(forward.sqrMagnitude > 0.001f ? forward : Vector3.forward, Vector3.up);
         Transform parent = carParent != null ? carParent : transform;
 
-        GameObject car = Instantiate(prefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
+        GameObject car = Instantiate(prefab, spawnPos, rot, parent);
 
         var npc = car.GetComponent<NPCTrafficCar>();
         if (npc != null)

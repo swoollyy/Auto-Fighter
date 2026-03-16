@@ -911,7 +911,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxTotalVelocityMagnitude: 9
+  maxTotalVelocityMagnitude: 12
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0

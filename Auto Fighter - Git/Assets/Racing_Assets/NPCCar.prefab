@@ -15,11 +15,6 @@ GameObject:
   - component: {fileID: 9137398506818108145}
   - component: {fileID: 6594867958862897716}
   - component: {fileID: 2781239470516158656}
-  - component: {fileID: 5749575015671800831}
-  - component: {fileID: 8671616365038160896}
-  - component: {fileID: 7645833144850340215}
-  - component: {fileID: 5075446138171117537}
-  - component: {fileID: 730436427209060011}
   m_Layer: 19
   m_Name: NPCCar
   m_TagString: Untagged
@@ -181,14 +176,14 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  destinationLookAhead: 20
+  destinationLookAhead: 5
   destinationUpdateInterval: 0.15
-  destinationMoveThreshold: 2.24
+  destinationMoveThreshold: 1.2
   speed: 3
   randomizeSpeed: 1
-  speedRange: {x: 3, y: 5.5}
-  lateralFraction: 0.907
-  edgeMargin: 0.92
+  speedRange: {x: 1.5, y: 3.5}
+  lateralFraction: 1
+  edgeMargin: 0
   randomizeLane: 1
   roadLayer:
     serializedVersion: 2
@@ -199,8 +194,8 @@ MonoBehaviour:
   raycastStartHeight: 0.5
   raycastDownDistance: 20
   groundClearance: 0.02
-  baseTurnRate: 550
-  minTurnRate: 120
+  baseTurnRate: 450
+  minTurnRate: 60
   turnRateFalloffSpeed: 2
   accelerationRate: 8
   decelerationRate: 16
@@ -208,26 +203,30 @@ MonoBehaviour:
   speedSmoothing: 0.12
   alignmentTime: 0.6
   steeringDeadZoneDeg: 2.5
-  steeringDamping: 0.25
+  steeringDamping: 0.433
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 788609
-  obstacleDetectionRange: 8
-  obstacleDetectionWidth: 2.75
-  obstacleRayCount: 13
+  obstacleDetectionRange: 3
+  obstacleDetectionWidth: 4.5
+  obstacleRayCount: 21
   obstacleDetectionAngle: 200
-  obstacleAvoidanceStrength: 0.979
-  criticalObstacleDistance: 6
-  avoidanceBlendSpeed: 8
-  dangerZoneAngle: 15
-  sideObstacleSoftDistance: 10
+  obstacleAvoidanceStrength: 1
+  criticalObstacleDistance: 8
+  avoidanceBlendSpeed: 14
+  dangerZoneAngle: 21
+  sideObstacleSoftDistance: 12
   obstacleRayHeight: 0
+  useLaneProbe: 1
+  laneProbeCount: 9
+  laneProbeSpread: 0.5
+  laneProbeMinAdvantage: 1
   slowDownOnAvoidance: 1
-  avoidanceSpeedMultiplier: 0.468
+  avoidanceSpeedMultiplier: 0.59
   enableRoadBoundaryDetection: 1
   roadEdgeDetectionWidth: 6
   roadCorrectionStrength: 0.658
-  roadEdgeSoftMargin: 1.5
+  roadEdgeSoftMargin: 0.25
   validateMovementOnRoad: 1
   trackFollowingStrength: 0.048
   offTrackRecoveryStrength: 0.384
@@ -277,186 +276,6 @@ MonoBehaviour:
   drawDestinationGizmo: 1
   drawObstacleRays: 1
   drawSteeringDebug: 1
---- !u!114 &5749575015671800831
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 373b52eb9bf8c40f785bb6947a1aee66, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  drawGizmos: 1
-  detailedGizmos: 0
-  startEndModifier:
-    addPoints: 1
-    exactStartPoint: 3
-    exactEndPoint: 3
-    useRaycasting: 0
-    mask:
-      serializedVersion: 2
-      m_Bits: 4294967295
-    useGraphRaycasting: 0
-  traversableTags: -1
-  tagCostMultipliers:
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  tagEntryCosts: 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  graphMask:
-    value: -1
---- !u!114 &8671616365038160896
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ce11ea984e202491d9271f53021d8b89, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  radius: 0.55
-  height: 0.5
-  simulateMovement: 1
-  maxSpeed: 20
-  gravity: {x: NaN, y: NaN, z: NaN}
-  groundMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  endReachedDistance: 2
-  whenCloseToDestination: 1
-  rvoDensityBehavior:
-    enabled: 0
-    densityThreshold: 0.5
-    returnAfterBeingPushedAway: 1
-    progressAverage: 0
-    lastJobDensityResult: 0
-  repathRateCompatibility: NaN
-  canSearchCompability: 0
-  orientation: 0
-  enableRotation: 0
-  autoRepath:
-    mode: 2
-    period: 0.5
-    sensitivity: 6.8
-    maximumPeriod: 0.55
-    visualizeSensitivity: 1
-  acceleration: 20
-  rotationSpeed: 360
-  slowdownTime: 0
-  wallForce: 3
-  wallDist: 1
-  funnelSimplification: 0
-  slowWhenNotFacingTarget: 1
-  preventMovingBackwards: 0
---- !u!114 &7645833144850340215
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 560112f876f5746c780eca0d404e7139, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  radiusBackingField: 0.5
-  heightBackingField: 2
-  centerBackingField: 1
-  locked: 0
-  lockWhenNotMoving: 0
-  agentTimeHorizon: 0.8
-  obstacleTimeHorizon: 0.8
-  maxNeighbours: 15
-  layer: 1
-  collidesWith: -1
-  wallAvoidForce: 1
-  wallAvoidFalloff: 1
-  priority: 0.462
-  debug: 0
---- !u!114 &5075446138171117537
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 77f586f285b3847808d79083bd19ef1f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  quality: 1
-  splitAtEveryPortal: 0
-  accountForGridPenalties: 0
---- !u!114 &730436427209060011
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  graphMask:
-    value: -1
-  type: 3
-  mesh: {fileID: 0}
-  rectangleSize: {x: 1.45, y: 1.45}
-  circleRadius: 1
-  circleResolution: 6
-  height: 1.5
-  meshScale: 1
-  center: {x: 0, y: 0, z: 0}
-  updateDistance: 0.4
-  isDual: 0
-  radiusExpansionMode: 0
-  cutsAddedGeom: 1
-  updateRotationDistance: 10
-  useRotationAndScale: 1
 --- !u!1 &8123480379425158355
 GameObject:
   m_ObjectHideFlags: 0
