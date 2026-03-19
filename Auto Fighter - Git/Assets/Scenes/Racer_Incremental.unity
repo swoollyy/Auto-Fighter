@@ -3958,7 +3958,7 @@ MonoBehaviour:
   explosionShakeBaseStrength: 0.45
   explosionShakeDistanceFalloff: 2
   explosionChromaticMultiplier: 2
-  explosionLensMultiplier: -0.15
+  explosionLensMultiplier: -0.01
   closeCallSlowMoScale: 0.78
   closeCallSlowMoHold: 0.5
   closeCallSlowMoEaseOut: 1.08
@@ -5431,7 +5431,7 @@ MonoBehaviour:
   destroyReward: 12
   debugDraw: 1
   spawnTestKey: 113
-  baseAccuracy: 0.045
+  baseAccuracy: 0.125
   accuracyByDistance:
     serializedVersion: 2
     m_Curve:

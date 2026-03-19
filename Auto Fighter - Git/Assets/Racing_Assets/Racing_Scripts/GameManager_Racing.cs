@@ -651,7 +651,7 @@ public class GameManager_Racing : MonoBehaviour
             float chroma = Mathf.Clamp01(explosionChromaticMultiplier * proximity);
             float lens = Mathf.Lerp(0f, explosionLensMultiplier * proximity * 1.0f, proximity);
             float hold = Mathf.Lerp(0.05f, 0.25f, proximity);
-            postFX.PlayBurstCustom(chroma, lens, hold, 0.06f, 0.18f);
+            postFX.PlayBurstCustom(chroma, 0f, hold, 0.06f, 0.18f);
         }
 
         // NEW: trigger a scaled slow-motion based on proximity (reuses crash slow-mo routine)

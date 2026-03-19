@@ -324,6 +324,24 @@ public class NPCTrafficCar : MonoBehaviour
     private int _obstacleInPathConfirmCount;  // Frames we've seen obstacle in path
     private int _avoidanceClearCount;         // Frames path has been clear (while we were avoiding)
 
+    [Header("Avoidance Stabilization")]
+    [Tooltip("While avoiding, update the dodge direction when new avoidance evidence differs by more than this angle.")]
+    [SerializeField, Range(1f, 45f)] private float avoidanceDirectionUpdateAngleDeg = 12f;
+
+    [Tooltip("While avoiding, update the dodge direction when new urgency spikes above this factor.")]
+    [SerializeField, Range(1f, 1.5f)] private float avoidanceUrgencyUpdateFactor = 1.12f;
+
+    // For gizmos: world position of the obstacle that is currently driving avoidance.
+    private Vector3 _avoidanceObstaclePoint;
+    private bool _avoidanceObstaclePointValid;
+
+    [Header("Avoidance Exit Hysteresis")]
+    [Tooltip("While avoiding, only stop avoidance when the center probe lane is clear by at least this fraction of ray range.")]
+    [SerializeField, Range(0.8f, 1f)] private float avoidanceExitLaneCenterClearFraction = 0.98f;
+
+    [Tooltip("While avoiding (fan rays), only stop avoidance when both side distances are clear by this multiplier.")]
+    [SerializeField, Range(1f, 2f)] private float avoidanceExitSoftDistanceMultiplier = 1.25f;
+
     // ============================================
     // INTERNALS - Road Boundary State (NEW)
     // ============================================
@@ -490,6 +508,7 @@ public class NPCTrafficCar : MonoBehaviour
             _isAvoiding = false;
             _obstacleInPathConfirmCount = 0;
             _avoidanceClearCount = 0;
+            _avoidanceObstaclePointValid = false;
             return;
         }
 
@@ -503,12 +522,22 @@ public class NPCTrafficCar : MonoBehaviour
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
         float range = obstacleDetectionRange;
 
+        // Values used for "exit avoidance" hysteresis.
+        bool usedLaneProbeForExitEval = false;
+        float centerClearDistForExit = range;
+        bool centerBlockedForExitEval = false;
+        float leftClearDistForExit = range * 2f;
+        float rightClearDistForExit = range * 2f;
+
         // Path check: only react to obstacles in our lane (band ahead of car)
         SampleAlongPath(_dist, out Vector3 trackCenter, out Vector3 trackFwd);
         trackFwd.y = 0f;
         if (trackFwd.sqrMagnitude < 0.01f) trackFwd = forward;
         trackFwd.Normalize();
         Vector3 trackRight = Vector3.Cross(Vector3.up, trackFwd).normalized;
+
+        Vector3 avoidanceTriggerPoint = transform.position;
+        bool avoidanceTriggerPointValid = false;
 
         bool IsHitInPath(Vector3 hitPoint)
         {
@@ -532,6 +561,9 @@ public class NPCTrafficCar : MonoBehaviour
             int bestIdx = centerIdxI;
             float centerClearDist = 0f;
 
+            Vector3 laneProbeCenterHitPoint = Vector3.zero;
+            bool laneProbeHasCenterHitPoint = false;
+
             for (int i = 0; i < n; i++)
             {
                 float offset = -laneProbeSpread + step * i;
@@ -554,13 +586,25 @@ public class NPCTrafficCar : MonoBehaviour
                 }
 
                 if (i == centerIdxI && clearDist < range)
-                    centerClearDist = IsHitInPath(hit.point) ? clearDist : range;
+                {
+                    bool inPath = IsHitInPath(hit.point);
+                    centerClearDist = inPath ? clearDist : range;
+                    if (inPath)
+                    {
+                        laneProbeCenterHitPoint = hit.point;
+                        laneProbeHasCenterHitPoint = true;
+                    }
+                }
                 if (clearDist > bestClearDist)
                 {
                     bestClearDist = clearDist;
                     bestIdx = i;
                 }
             }
+
+            // Cache center-lane "clear" value even if we don't end up choosing to dodge this frame.
+            usedLaneProbeForExitEval = true;
+            centerClearDistForExit = centerClearDist;
 
             // Use lane-probe when center is blocked and another lane is clearer – only if that lane stays on track
             bool centerBlockedEnough = centerClearDist < range * 0.9f;
@@ -575,6 +619,8 @@ public class NPCTrafficCar : MonoBehaviour
                 avoidDir = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
                 avoidUrg = Mathf.Max(0.25f, Mathf.Clamp01(1f - (bestClearDist / range)));
                 laneProbeChoseDirection = true;
+                avoidanceTriggerPoint = laneProbeHasCenterHitPoint ? laneProbeCenterHitPoint : avoidanceTriggerPoint;
+                avoidanceTriggerPointValid = laneProbeHasCenterHitPoint;
                 if (drawObstacleRays)
                     Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 6f, Color.cyan);
             }
@@ -586,6 +632,12 @@ public class NPCTrafficCar : MonoBehaviour
             float closestCenterHit = float.MaxValue;
             float closestLeftHit = float.MaxValue;
             float closestRightHit = float.MaxValue;
+            Vector3 closestCenterHitPoint = Vector3.zero;
+            Vector3 closestLeftHitPoint = Vector3.zero;
+            Vector3 closestRightHitPoint = Vector3.zero;
+            bool hasClosestCenterHitPoint = false;
+            bool hasClosestLeftHitPoint = false;
+            bool hasClosestRightHitPoint = false;
             bool centerBlocked = false;
             float halfAngle = obstacleDetectionAngle * 0.5f;
             float angleStep = (obstacleRayCount > 1) ? (obstacleDetectionAngle / (obstacleRayCount - 1)) : 0f;
@@ -598,7 +650,11 @@ public class NPCTrafficCar : MonoBehaviour
                 {
                     centerBlocked = true;
                     if (centerHit.distance < closestCenterHit)
+                    {
                         closestCenterHit = centerHit.distance;
+                        closestCenterHitPoint = centerHit.point;
+                        hasClosestCenterHitPoint = true;
+                    }
                 }
             }
 
@@ -620,17 +676,29 @@ public class NPCTrafficCar : MonoBehaviour
                     {
                         centerBlocked = true;
                         if (hit.distance < closestCenterHit)
+                        {
                             closestCenterHit = hit.distance;
+                            closestCenterHitPoint = hit.point;
+                            hasClosestCenterHitPoint = true;
+                        }
                     }
                     else if (isLeftSide)
                     {
                         if (hit.distance < closestLeftHit)
+                        {
                             closestLeftHit = hit.distance;
+                            closestLeftHitPoint = hit.point;
+                            hasClosestLeftHitPoint = true;
+                        }
                     }
                     else if (isRightSide)
                     {
                         if (hit.distance < closestRightHit)
+                        {
                             closestRightHit = hit.distance;
+                            closestRightHitPoint = hit.point;
+                            hasClosestRightHitPoint = true;
+                        }
                     }
 
                     if (drawObstacleRays)
@@ -643,6 +711,12 @@ public class NPCTrafficCar : MonoBehaviour
             // Treat "no hit" as very large clearance so we prefer that side
             if (closestLeftHit == float.MaxValue) closestLeftHit = range * 2f;
             if (closestRightHit == float.MaxValue) closestRightHit = range * 2f;
+
+            // Cache exit-eval signals.
+            usedLaneProbeForExitEval = false;
+            centerBlockedForExitEval = centerBlocked;
+            leftClearDistForExit = closestLeftHit;
+            rightClearDistForExit = closestRightHit;
 
             if (centerBlocked)
             {
@@ -674,6 +748,8 @@ public class NPCTrafficCar : MonoBehaviour
                 wantAvoid = true;
                 avoidDir = Quaternion.Euler(0f, baseAngle, 0f) * forward;
                 avoidUrg = urg;
+                avoidanceTriggerPoint = hasClosestCenterHitPoint ? closestCenterHitPoint : avoidanceTriggerPoint;
+                avoidanceTriggerPointValid = hasClosestCenterHitPoint;
                 if (drawObstacleRays)
                     Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 5f, Color.magenta);
             }
@@ -712,6 +788,16 @@ public class NPCTrafficCar : MonoBehaviour
                     wantAvoid = true;
                     avoidDir = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
                     avoidUrg = urgency;
+                    if (preferLeftSoft && hasClosestLeftHitPoint)
+                    {
+                        avoidanceTriggerPoint = closestLeftHitPoint;
+                        avoidanceTriggerPointValid = true;
+                    }
+                    else if (!preferLeftSoft && hasClosestRightHitPoint)
+                    {
+                        avoidanceTriggerPoint = closestRightHitPoint;
+                        avoidanceTriggerPointValid = true;
+                    }
                     if (drawObstacleRays)
                         Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 4f, Color.Lerp(Color.yellow, Color.magenta, urgency));
                 }
@@ -721,6 +807,7 @@ public class NPCTrafficCar : MonoBehaviour
         }
 
         // Confirm obstacle and commit to one dodge direction to avoid jitter
+        bool wasAvoiding = _isAvoiding;
         if (wantAvoid)
         {
             _obstacleInPathConfirmCount++;
@@ -728,9 +815,29 @@ public class NPCTrafficCar : MonoBehaviour
             if (_obstacleInPathConfirmCount >= obstacleConfirmFrames)
             {
                 _isAvoiding = true;
-                if (_obstacleInPathConfirmCount == obstacleConfirmFrames)
-                    _avoidanceDirection = avoidDir; // Set direction once when we confirm; keep it stable
+
+                // Previously we froze _avoidanceDirection on the first confirm frame.
+                // That can become "possessed" if the preferred avoidance direction changes while we are still committed.
+                // Now we only update when new evidence meaningfully differs (or urgency spikes).
+                if (!wasAvoiding)
+                {
+                    _avoidanceDirection = avoidDir;
+                }
+                else
+                {
+                    float dirAngle = Vector3.Angle(_avoidanceDirection, avoidDir);
+                    bool urgencySpike = _avoidanceUrgency <= 0f || avoidUrg > _avoidanceUrgency * avoidanceUrgencyUpdateFactor;
+                    if (dirAngle >= avoidanceDirectionUpdateAngleDeg || urgencySpike)
+                        _avoidanceDirection = avoidDir;
+                }
+
                 _avoidanceUrgency = avoidUrg;
+
+                if (avoidanceTriggerPointValid)
+                {
+                    _avoidanceObstaclePoint = avoidanceTriggerPoint;
+                    _avoidanceObstaclePointValid = true;
+                }
             }
         }
         else
@@ -738,9 +845,32 @@ public class NPCTrafficCar : MonoBehaviour
             _obstacleInPathConfirmCount = 0;
             if (_isAvoiding)
             {
-                _avoidanceClearCount++;
+                // Hysteresis: when near/along a long obstacle, ray misses can happen while still needing avoidance.
+                // Only exit avoidance when rays say we're truly clear.
+                bool isTrulyClear;
+                if (usedLaneProbeForExitEval)
+                {
+                    isTrulyClear = centerClearDistForExit >= range * avoidanceExitLaneCenterClearFraction;
+                }
+                else
+                {
+                    bool sidesClearEnough =
+                        leftClearDistForExit >= sideObstacleSoftDistance * avoidanceExitSoftDistanceMultiplier &&
+                        rightClearDistForExit >= sideObstacleSoftDistance * avoidanceExitSoftDistanceMultiplier;
+                    isTrulyClear = (!centerBlockedForExitEval) && sidesClearEnough;
+                }
+
+                if (isTrulyClear)
+                    _avoidanceClearCount++;
+                else
+                    _avoidanceClearCount = 0;
+
                 if (_avoidanceClearCount >= avoidancePersistClearFrames)
+                {
                     _isAvoiding = false;
+                    _avoidanceUrgency = 0f;
+                    _avoidanceObstaclePointValid = false;
+                }
             }
             else
                 _avoidanceClearCount = 0;
@@ -996,7 +1126,9 @@ public class NPCTrafficCar : MonoBehaviour
         {
             _rb.MovePosition(newPosition);
 
-            if (_currentSpeed > minSpeedForRotation)
+            // Keep the collider turning even when we slow down for avoidance.
+            // Otherwise the translation can change direction via _currentForward while the rigidbody rotation stays stale.
+            if (_currentSpeed > minSpeedForRotation || _isAvoiding)
             {
                 Quaternion targetRot = Quaternion.LookRotation(_currentForward, Vector3.up);
                 if (alignToGround && _groundNormal != Vector3.up)
@@ -1700,7 +1832,8 @@ public class NPCTrafficCar : MonoBehaviour
         if (_isAvoiding)
         {
             Gizmos.color = Color.Lerp(Color.yellow, Color.red, _avoidanceUrgency);
-            Gizmos.DrawWireSphere(transform.position + Vector3.up * 2f, 0.5f);
+            Vector3 gizmoPos = _avoidanceObstaclePointValid ? _avoidanceObstaclePoint : (transform.position + Vector3.up * 2f);
+            Gizmos.DrawWireSphere(gizmoPos, 0.5f);
         }
     }
 }
