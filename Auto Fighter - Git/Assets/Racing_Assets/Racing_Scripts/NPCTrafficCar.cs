@@ -144,6 +144,18 @@ public class NPCTrafficCar : MonoBehaviour
     [Tooltip("Use lane-probe when best lane is this much clearer than center (1.05 = slight advantage).")]
     [SerializeField, Min(1f)] private float laneProbeMinAdvantage = 1.05f;
 
+    [Tooltip("Minimum track room (m) on a side to prefer dodging that way. Higher = stay on track more; off-track is last resort.")]
+    [SerializeField, Min(0.3f)] private float minTrackRoomToDodge = 2.2f;
+
+    [Tooltip("Half-width (m) of 'our path' – only obstacles in this band ahead trigger avoidance. Stops dodging things outside our lane.")]
+    [SerializeField, Min(0.4f)] private float pathHalfWidthForAvoidance = 1.4f;
+
+    [Header("Obstacle confirmation (reduces jitter)")]
+    [Tooltip("Frames obstacle must be seen in path before we start avoiding. Stops reacting to flicker.")]
+    [SerializeField, Min(1)] private int obstacleConfirmFrames = 2;
+    [Tooltip("Frames path must be clear before we stop avoiding. Commits to the dodge until we've passed the obstacle.")]
+    [SerializeField, Min(2)] private int avoidancePersistClearFrames = 6;
+
     [Header("Speed Reduction on Avoidance")]
     [Tooltip("Slow down when avoiding obstacles.")]
     [SerializeField] private bool slowDownOnAvoidance = true;
@@ -306,9 +318,11 @@ public class NPCTrafficCar : MonoBehaviour
     // INTERNALS - Avoidance State (NEW)
     // ============================================
     private float _avoidanceUrgency;       // 0-1, how urgent is avoidance
-    private Vector3 _avoidanceDirection;   // Direction to steer toward
+    private Vector3 _avoidanceDirection;   // Direction to steer toward (committed when avoiding)
     private float _avoidanceBlend;         // Current blend toward avoidance
     private bool _isAvoiding;
+    private int _obstacleInPathConfirmCount;  // Frames we've seen obstacle in path
+    private int _avoidanceClearCount;         // Frames path has been clear (while we were avoiding)
 
     // ============================================
     // INTERNALS - Road Boundary State (NEW)
@@ -381,6 +395,8 @@ public class NPCTrafficCar : MonoBehaviour
         _avoidanceUrgency = 0f;
         _avoidanceBlend = 0f;
         _isAvoiding = false;
+        _obstacleInPathConfirmCount = 0;
+        _avoidanceClearCount = 0;
 
         // Road boundary state
         _roadCorrectionInput = 0f;
@@ -442,9 +458,9 @@ public class NPCTrafficCar : MonoBehaviour
         // Update track distance from current position (fixed step = consistent simulation)
         _dist = GetDistanceAlongPath(transform.position);
 
-        // Steering and movement: track-follow + obstacle avoidance (no A* in loop)
-        UpdateObstacleDetection();
+        // Road boundary first so obstacle detection can prefer staying on track
         UpdateRoadBoundaryDetection();
+        UpdateObstacleDetection();
         UpdateSteering(dt);
         UpdateMovement(dt);
     }
@@ -472,6 +488,8 @@ public class NPCTrafficCar : MonoBehaviour
         {
             _avoidanceUrgency = 0f;
             _isAvoiding = false;
+            _obstacleInPathConfirmCount = 0;
+            _avoidanceClearCount = 0;
             return;
         }
 
@@ -483,7 +501,25 @@ public class NPCTrafficCar : MonoBehaviour
             forward = transform.forward;
 
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
-        float range = obstacleDetectionRange; // Full range at any speed so we always see the clearest path
+        float range = obstacleDetectionRange;
+
+        // Path check: only react to obstacles in our lane (band ahead of car)
+        SampleAlongPath(_dist, out Vector3 trackCenter, out Vector3 trackFwd);
+        trackFwd.y = 0f;
+        if (trackFwd.sqrMagnitude < 0.01f) trackFwd = forward;
+        trackFwd.Normalize();
+        Vector3 trackRight = Vector3.Cross(Vector3.up, trackFwd).normalized;
+
+        bool IsHitInPath(Vector3 hitPoint)
+        {
+            float hitLateral = Vector3.Dot(hitPoint - trackCenter, trackRight);
+            return Mathf.Abs(hitLateral - _distanceFromTrackCenter) <= pathHalfWidthForAvoidance;
+        }
+
+        // We'll decide avoidance from this frame's rays, then apply confirmation so we don't jitter
+        bool wantAvoid = false;
+        Vector3 avoidDir = forward;
+        float avoidUrg = 0f;
 
         // ---- 1) Lane probe: find which lateral lane has the longest clear path ----
         bool laneProbeChoseDirection = false;
@@ -511,12 +547,14 @@ public class NPCTrafficCar : MonoBehaviour
                 else
                 {
                     clearDist = range;
+                    if (i == centerIdxI)
+                        centerClearDist = range;
                     if (drawObstacleRays)
                         Debug.DrawRay(rayStart, forward * range, Color.green);
                 }
 
-                if (i == centerIdxI)
-                    centerClearDist = clearDist;
+                if (i == centerIdxI && clearDist < range)
+                    centerClearDist = IsHitInPath(hit.point) ? clearDist : range;
                 if (clearDist > bestClearDist)
                 {
                     bestClearDist = clearDist;
@@ -524,21 +562,21 @@ public class NPCTrafficCar : MonoBehaviour
                 }
             }
 
-            // Use lane-probe when center is blocked and another lane is clearer (reduces weaving when path is clear)
+            // Use lane-probe when center is blocked and another lane is clearer – only if that lane stays on track
             bool centerBlockedEnough = centerClearDist < range * 0.9f;
             bool bestLaneClearer = bestClearDist >= centerClearDist * laneProbeMinAdvantage && bestIdx != centerIdxI;
-            if (centerClearDist > 0f && centerBlockedEnough && bestLaneClearer)
+            bool bestLaneIsLeft = bestIdx < centerIdxI;
+            bool hasTrackRoomOnBestSide = bestLaneIsLeft ? (_leftEdgeDistance >= minTrackRoomToDodge) : (_rightEdgeDistance >= minTrackRoomToDodge);
+            if (centerClearDist > 0f && centerBlockedEnough && bestLaneClearer && hasTrackRoomOnBestSide)
             {
                 float lateralOffset = -laneProbeSpread + step * bestIdx;
-                // Steer toward the best lane: angle proportional to offset (gentler when offset is small)
                 float avoidAngle = Mathf.Clamp(lateralOffset * 12f, -42f, 42f);
-                _avoidanceDirection = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
-                _avoidanceUrgency = Mathf.Clamp01(1f - (bestClearDist / range));
-                _avoidanceUrgency = Mathf.Max(0.25f, _avoidanceUrgency); // Commit enough to actually steer
-                _isAvoiding = true;
+                wantAvoid = true;
+                avoidDir = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
+                avoidUrg = Mathf.Max(0.25f, Mathf.Clamp01(1f - (bestClearDist / range)));
                 laneProbeChoseDirection = true;
                 if (drawObstacleRays)
-                    Debug.DrawRay(origin + Vector3.up * 0.5f, _avoidanceDirection * 6f, Color.cyan);
+                    Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 6f, Color.cyan);
             }
         }
 
@@ -553,10 +591,10 @@ public class NPCTrafficCar : MonoBehaviour
             float angleStep = (obstacleRayCount > 1) ? (obstacleDetectionAngle / (obstacleRayCount - 1)) : 0f;
             float halfDangerZone = dangerZoneAngle * 0.5f;
 
-            // Always cast one ray straight ahead so we never miss a center obstacle
+            // Center ray: only block if the hit is in our path (lane)
             if (Physics.Raycast(origin, forward, out RaycastHit centerHit, range, obstacleDetectionLayers, QueryTriggerInteraction.Ignore))
             {
-                if (!centerHit.collider.transform.IsChildOf(transform))
+                if (!centerHit.collider.transform.IsChildOf(transform) && IsHitInPath(centerHit.point))
                 {
                     centerBlocked = true;
                     if (centerHit.distance < closestCenterHit)
@@ -572,6 +610,7 @@ public class NPCTrafficCar : MonoBehaviour
                 if (Physics.Raycast(origin, rayDir, out RaycastHit hit, range, obstacleDetectionLayers, QueryTriggerInteraction.Ignore))
                 {
                     if (hit.collider.transform.IsChildOf(transform)) continue;
+                    if (!IsHitInPath(hit.point)) continue; // Ignore obstacles outside our lane
 
                     bool isInDangerZone = Mathf.Abs(angle) <= halfDangerZone;
                     bool isLeftSide = angle < -halfDangerZone;
@@ -607,22 +646,36 @@ public class NPCTrafficCar : MonoBehaviour
 
             if (centerBlocked)
             {
-                _avoidanceUrgency = Mathf.Clamp01(1f - (closestCenterHit - criticalObstacleDistance) /
-                    Mathf.Max(0.1f, range - criticalObstacleDistance));
-                _avoidanceUrgency = Mathf.Max(_avoidanceUrgency, 0.55f); // Always commit enough to actually turn
+                float urg = Mathf.Max(0.55f, Mathf.Clamp01(1f - (closestCenterHit - criticalObstacleDistance) /
+                    Mathf.Max(0.1f, range - criticalObstacleDistance)));
 
-                // Always choose the side with GREATER clearance (optimal path)
-                bool preferLeft = closestLeftHit > closestRightHit;
+                bool leftHasRoom = _leftEdgeDistance >= minTrackRoomToDodge;
+                bool rightHasRoom = _rightEdgeDistance >= minTrackRoomToDodge;
+                bool preferLeft;
+                if (!leftHasRoom && !rightHasRoom)
+                    preferLeft = _leftEdgeDistance >= _rightEdgeDistance;
+                else if (!leftHasRoom)
+                    preferLeft = false;
+                else if (!rightHasRoom)
+                    preferLeft = true;
+                else
+                    // Both have room: prefer the side with MORE track room (stay on track); tiebreak by obstacle clearance
+                    preferLeft = _leftEdgeDistance > _rightEdgeDistance + 0.3f ? true
+                        : (_rightEdgeDistance > _leftEdgeDistance + 0.3f ? false
+                        : (closestLeftHit >= closestRightHit));
+
                 float clearanceOnChosenSide = preferLeft ? closestLeftHit : closestRightHit;
-
-                // Proportional angle: more clearance = gentler turn; less = sharper
+                float trackRoomOnChosenSide = preferLeft ? _leftEdgeDistance : _rightEdgeDistance;
                 float baseAngle = (preferLeft ? -1f : 1f) * Mathf.Lerp(38f, 22f, Mathf.InverseLerp(criticalObstacleDistance, range, clearanceOnChosenSide));
-                baseAngle *= Mathf.Lerp(0.7f, 1f, _avoidanceUrgency);
-                _avoidanceDirection = Quaternion.Euler(0f, baseAngle, 0f) * forward;
-                _isAvoiding = true;
-
+                baseAngle *= Mathf.Lerp(0.7f, 1f, urg);
+                // Scale down angle when track room is limited so we don't oversteer off the track
+                float roomScale = Mathf.Clamp01(trackRoomOnChosenSide / 3.5f);
+                baseAngle *= Mathf.Lerp(0.6f, 1f, roomScale);
+                wantAvoid = true;
+                avoidDir = Quaternion.Euler(0f, baseAngle, 0f) * forward;
+                avoidUrg = urg;
                 if (drawObstacleRays)
-                    Debug.DrawRay(origin + Vector3.up * 0.5f, _avoidanceDirection * 5f, Color.magenta);
+                    Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 5f, Color.magenta);
             }
             else
             {
@@ -632,30 +685,65 @@ public class NPCTrafficCar : MonoBehaviour
 
                 if (bothSidesClose)
                 {
-                    _avoidanceUrgency = 0f;
-                    _isAvoiding = false;
+                    wantAvoid = false;
                     if (drawObstacleRays)
                         Debug.DrawRay(origin + Vector3.up * 0.5f, forward * 4f, Color.cyan);
                 }
                 else if (softLeft < sideObstacleSoftDistance || softRight < sideObstacleSoftDistance)
                 {
-                    // Steer toward the side with MORE clearance (left clearer => go left = negative angle in Unity)
-                    bool preferLeftSoft = softLeft >= softRight;
+                    bool leftHasRoom = _leftEdgeDistance >= minTrackRoomToDodge;
+                    bool rightHasRoom = _rightEdgeDistance >= minTrackRoomToDodge;
+                    bool preferLeftSoft;
+                    if (!leftHasRoom && !rightHasRoom)
+                        preferLeftSoft = _leftEdgeDistance >= _rightEdgeDistance;
+                    else if (!leftHasRoom)
+                        preferLeftSoft = false;
+                    else if (!rightHasRoom)
+                        preferLeftSoft = true;
+                    else
+                        preferLeftSoft = _leftEdgeDistance > _rightEdgeDistance + 0.3f ? true
+                            : (_rightEdgeDistance > _leftEdgeDistance + 0.3f ? false
+                            : (softLeft >= softRight));
                     float clear = preferLeftSoft ? softLeft : softRight;
                     float urgency = Mathf.Lerp(0.3f, 0.6f, 1f - Mathf.Clamp01(clear / sideObstacleSoftDistance));
                     float avoidAngle = (preferLeftSoft ? -1f : 1f) * Mathf.Lerp(18f, 28f, urgency);
-                    _avoidanceUrgency = urgency;
-                    _avoidanceDirection = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
-                    _isAvoiding = true;
+                    float trackRoomSoft = preferLeftSoft ? _leftEdgeDistance : _rightEdgeDistance;
+                    avoidAngle *= Mathf.Lerp(0.6f, 1f, Mathf.Clamp01(trackRoomSoft / 3.5f));
+                    wantAvoid = true;
+                    avoidDir = Quaternion.Euler(0f, avoidAngle, 0f) * forward;
+                    avoidUrg = urgency;
                     if (drawObstacleRays)
-                        Debug.DrawRay(origin + Vector3.up * 0.5f, _avoidanceDirection * 4f, Color.Lerp(Color.yellow, Color.magenta, urgency));
+                        Debug.DrawRay(origin + Vector3.up * 0.5f, avoidDir * 4f, Color.Lerp(Color.yellow, Color.magenta, urgency));
                 }
                 else
-                {
-                    _avoidanceUrgency = 0f;
-                    _isAvoiding = false;
-                }
+                    wantAvoid = false;
             }
+        }
+
+        // Confirm obstacle and commit to one dodge direction to avoid jitter
+        if (wantAvoid)
+        {
+            _obstacleInPathConfirmCount++;
+            _avoidanceClearCount = 0;
+            if (_obstacleInPathConfirmCount >= obstacleConfirmFrames)
+            {
+                _isAvoiding = true;
+                if (_obstacleInPathConfirmCount == obstacleConfirmFrames)
+                    _avoidanceDirection = avoidDir; // Set direction once when we confirm; keep it stable
+                _avoidanceUrgency = avoidUrg;
+            }
+        }
+        else
+        {
+            _obstacleInPathConfirmCount = 0;
+            if (_isAvoiding)
+            {
+                _avoidanceClearCount++;
+                if (_avoidanceClearCount >= avoidancePersistClearFrames)
+                    _isAvoiding = false;
+            }
+            else
+                _avoidanceClearCount = 0;
         }
     }
 

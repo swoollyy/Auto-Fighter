@@ -181,33 +181,70 @@ public class NPCTrafficCarSpawner : MonoBehaviour
         playerTransform = player;
     }
 
-    /// <summary>TEST only. Spawns one NPC traffic car at the beginning of the track (P key). Bypasses camera viewport, blocker checks, and ground raycast — always spawns if path and prefab exist.</summary>
+    /// <summary>
+    /// TEST only (P key).
+    /// Force-spawns one NPC traffic car at the beginning of the track, bypassing:
+    /// - camera/viewport culling
+    /// - spawn distance windows
+    /// - spawn blockers / overlap checks
+    /// - streaming / updateInterval
+    /// It only requires that we have at least one valid car prefab; if no track data is
+    /// available, it falls back to the spawner (or player) position.
+    /// </summary>
     public void SpawnOneNPCCarForTest()
     {
-        if (_path.Count < 2 || trackGenerator == null || !HasAnyValidCarType())
+        // Only requirement: at least one valid car prefab to spawn
+        if (!HasAnyValidCarType())
             return;
 
-        if (_totalLength <= 0f)
-            return;
-
-        float dist = 0f; // Spawn at start of track for AI testing (P key)
-
-        GameObject prefab = ChooseCarPrefab(dist);
+        // 1) Choose a prefab (ignore distance weighting; just grab something valid)
+        GameObject prefab = null;
+        foreach (var t in carTypes)
+        {
+            if (t != null && t.prefab != null && t.weight > 0f)
+            {
+                prefab = t.prefab;
+                break;
+            }
+        }
         if (prefab == null)
             return;
 
-        SampleAlongPath(dist, out Vector3 pos, out Vector3 forward);
+        // 2) Decide a base position + forward at the *start of the track* if we can.
+        Vector3 basePos = transform.position;
+        Vector3 forward = transform.forward.sqrMagnitude > 0.0001f ? transform.forward : Vector3.forward;
 
-        // P spawn bypasses all restrictions: no camera viewport check, no blocker check. Prefer ground raycast but fallback to path position.
+        // Prefer track start from generator
+        if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
+        {
+            var pts = trackGenerator.PathPoints;
+            basePos = pts[0];
+            Vector3 next = pts[1];
+            forward = (next - basePos);
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+        // Fallback: use player position if available
+        else if (playerTransform != null)
+        {
+            basePos = playerTransform.position;
+            forward = playerTransform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        // 3) Ground it: prefer road raycast, but always spawn even if it misses
         Vector3 spawnPos;
-        Vector3 origin = pos + Vector3.up * raycastStartHeight;
+        Vector3 origin = basePos + Vector3.up * raycastStartHeight;
         float maxRay = raycastStartHeight + raycastDownDistance;
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
             spawnPos = hit.point + Vector3.up * carHeightOffset;
         else
-            spawnPos = pos + Vector3.up * Mathf.Max(1f, carHeightOffset); // Fallback so we always spawn
+            spawnPos = basePos + Vector3.up * Mathf.Max(1f, carHeightOffset);
 
-        Quaternion rot = Quaternion.LookRotation(forward.sqrMagnitude > 0.001f ? forward : Vector3.forward, Vector3.up);
+        Quaternion rot = Quaternion.LookRotation(forward, Vector3.up);
         Transform parent = carParent != null ? carParent : transform;
 
         GameObject car = Instantiate(prefab, spawnPos, rot, parent);
@@ -217,7 +254,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
             npc.SetGenerator(trackGenerator);
 
         if (verboseDebug)
-            Debug.Log($"[NPCTrafficCarSpawner] TEST SPAWN: {prefab.name} at dist {dist:F1}m");
+            Debug.Log($"[NPCTrafficCarSpawner] TEST SPAWN (P key): {prefab.name} at {spawnPos}, forward={forward}");
     }
 
     // -------- Path Building --------

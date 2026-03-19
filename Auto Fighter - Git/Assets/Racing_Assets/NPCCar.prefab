@@ -207,30 +207,31 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 788609
-  obstacleDetectionRange: 3
-  obstacleDetectionWidth: 4.5
-  obstacleRayCount: 21
-  obstacleDetectionAngle: 200
-  obstacleAvoidanceStrength: 1
-  criticalObstacleDistance: 8
-  avoidanceBlendSpeed: 14
-  dangerZoneAngle: 21
-  sideObstacleSoftDistance: 12
+  obstacleDetectionRange: 3.5
+  obstacleDetectionWidth: 0.75
+  obstacleRayCount: 16
+  obstacleDetectionAngle: 45
+  obstacleAvoidanceStrength: 0.973
+  criticalObstacleDistance: 1.5
+  avoidanceBlendSpeed: 4
+  dangerZoneAngle: 10
+  sideObstacleSoftDistance: 2
   obstacleRayHeight: 0
   useLaneProbe: 1
-  laneProbeCount: 9
-  laneProbeSpread: 0.5
-  laneProbeMinAdvantage: 1
+  laneProbeCount: 5
+  laneProbeSpread: 1
+  laneProbeMinAdvantage: 1.03
+  minTrackRoomToDodge: 0.5
   slowDownOnAvoidance: 1
-  avoidanceSpeedMultiplier: 0.59
+  avoidanceSpeedMultiplier: 0.381
   enableRoadBoundaryDetection: 1
   roadEdgeDetectionWidth: 6
   roadCorrectionStrength: 0.658
   roadEdgeSoftMargin: 0.25
   validateMovementOnRoad: 1
   trackFollowingStrength: 0.048
-  offTrackRecoveryStrength: 0.384
-  trackLookAhead: 8
+  offTrackRecoveryStrength: 0.599
+  trackLookAhead: 3.5
   drawRoadBoundaryDebug: 1
   alignToGround: 0
   minSpeedForRotation: 1
