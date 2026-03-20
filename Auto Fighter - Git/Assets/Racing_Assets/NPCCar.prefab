@@ -194,9 +194,9 @@ MonoBehaviour:
   raycastStartHeight: 0.5
   raycastDownDistance: 20
   groundClearance: 0.02
-  baseTurnRate: 450
-  minTurnRate: 60
-  turnRateFalloffSpeed: 2
+  baseTurnRate: 600
+  minTurnRate: 110
+  turnRateFalloffSpeed: 12
   accelerationRate: 8
   decelerationRate: 16
   steeringSmoothing: 0.15
@@ -207,23 +207,28 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 788609
-  obstacleDetectionRange: 3.5
+  obstacleDetectionRange: 8
   obstacleDetectionWidth: 0.75
-  obstacleRayCount: 16
-  obstacleDetectionAngle: 45
-  obstacleAvoidanceStrength: 0.973
-  criticalObstacleDistance: 1.5
-  avoidanceBlendSpeed: 4
-  dangerZoneAngle: 10
-  sideObstacleSoftDistance: 2
+  obstacleRayCount: 21
+  obstacleDetectionAngle: 60
+  obstacleAvoidanceStrength: 1
+  criticalObstacleDistance: 3.5
+  avoidanceBlendSpeed: 10
+  dangerZoneAngle: 0
+  sideObstacleSoftDistance: 0
   obstacleRayHeight: 0
-  useLaneProbe: 1
-  laneProbeCount: 5
-  laneProbeSpread: 1
+  obstacleRayForwardOffset: 0.4
+  avoidanceClearanceDistance: 0.65
+  useLaneProbe: 0
+  laneProbeCount: 9
+  laneProbeSpread: 0.5
   laneProbeMinAdvantage: 1.03
   minTrackRoomToDodge: 0.5
-  slowDownOnAvoidance: 1
-  avoidanceSpeedMultiplier: 0.381
+  pathHalfWidthForAvoidance: 1.4
+  obstacleConfirmFrames: 2
+  avoidancePersistClearFrames: 6
+  slowDownOnAvoidance: 0
+  avoidanceSpeedMultiplier: 0.576
   enableRoadBoundaryDetection: 1
   roadEdgeDetectionWidth: 6
   roadCorrectionStrength: 0.658
@@ -277,6 +282,12 @@ MonoBehaviour:
   drawDestinationGizmo: 1
   drawObstacleRays: 1
   drawSteeringDebug: 1
+  avoidanceDirectionUpdateAngleDeg: 12
+  avoidanceUrgencyUpdateFactor: 1.12
+  committedObstacleMissingGraceFrames: 3
+  avoidancePredictionTime: 0.55
+  avoidanceExitLaneCenterClearFraction: 0.98
+  avoidanceExitSoftDistanceMultiplier: 1.25
 --- !u!1 &8123480379425158355
 GameObject:
   m_ObjectHideFlags: 0
