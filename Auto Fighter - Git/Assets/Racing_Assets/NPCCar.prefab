@@ -176,15 +176,9 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  destinationLookAhead: 5
-  destinationUpdateInterval: 0.15
-  destinationMoveThreshold: 1.2
   speed: 3
   randomizeSpeed: 1
   speedRange: {x: 1.5, y: 3.5}
-  lateralFraction: 1
-  edgeMargin: 0
-  randomizeLane: 1
   roadLayer:
     serializedVersion: 2
     m_Bits: 8192
@@ -194,8 +188,8 @@ MonoBehaviour:
   raycastStartHeight: 0.5
   raycastDownDistance: 20
   groundClearance: 0.02
-  baseTurnRate: 600
-  minTurnRate: 110
+  baseTurnRate: 900
+  minTurnRate: 170
   turnRateFalloffSpeed: 12
   accelerationRate: 8
   decelerationRate: 16
@@ -207,18 +201,16 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 788609
-  obstacleDetectionRange: 8
+  obstacleDetectionRange: 13
   obstacleDetectionWidth: 0.75
   obstacleRayCount: 21
-  obstacleDetectionAngle: 60
-  obstacleAvoidanceStrength: 1
-  criticalObstacleDistance: 3.5
+  obstacleDetectionAngle: 140
   avoidanceBlendSpeed: 10
-  dangerZoneAngle: 0
-  sideObstacleSoftDistance: 0
+  dangerZoneAngle: 8
+  sideObstacleSoftDistance: 0.6
   obstacleRayHeight: 0
   obstacleRayForwardOffset: 0.4
-  avoidanceClearanceDistance: 0.65
+  avoidanceClearanceDistance: 0
   useLaneProbe: 0
   laneProbeCount: 9
   laneProbeSpread: 0.5
@@ -228,14 +220,13 @@ MonoBehaviour:
   obstacleConfirmFrames: 2
   avoidancePersistClearFrames: 6
   slowDownOnAvoidance: 0
-  avoidanceSpeedMultiplier: 0.576
+  avoidanceSpeedMultiplier: 0.4
   enableRoadBoundaryDetection: 1
   roadEdgeDetectionWidth: 6
-  roadCorrectionStrength: 0.658
+  roadCorrectionStrength: 0.368
   roadEdgeSoftMargin: 0.25
   validateMovementOnRoad: 1
-  trackFollowingStrength: 0.048
-  offTrackRecoveryStrength: 0.599
+  offTrackRecoveryStrength: 0.434
   trackLookAhead: 3.5
   drawRoadBoundaryDebug: 1
   alignToGround: 0
@@ -282,12 +273,12 @@ MonoBehaviour:
   drawDestinationGizmo: 1
   drawObstacleRays: 1
   drawSteeringDebug: 1
-  avoidanceDirectionUpdateAngleDeg: 12
-  avoidanceUrgencyUpdateFactor: 1.12
+  avoidanceDirectionUpdateAngleDeg: 8.1
+  avoidanceUrgencyUpdateFactor: 1.053
   committedObstacleMissingGraceFrames: 3
-  avoidancePredictionTime: 0.55
-  avoidanceExitLaneCenterClearFraction: 0.98
-  avoidanceExitSoftDistanceMultiplier: 1.25
+  avoidancePredictionTime: 1.396
+  avoidanceExitLaneCenterClearFraction: 0.8
+  avoidanceExitSoftDistanceMultiplier: 1
 --- !u!1 &8123480379425158355
 GameObject:
   m_ObjectHideFlags: 0
