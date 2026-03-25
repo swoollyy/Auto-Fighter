@@ -32,7 +32,7 @@ MonoBehaviour:
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 1
-  baseSprocketCost: 20
+  baseSprocketCost: 0
   sprocketCostPerLevel: 0
   progressiveUnlocks:
   - requiredLevel: 1

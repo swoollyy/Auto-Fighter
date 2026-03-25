@@ -10,32 +10,41 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 929d11989ad6a8745964fb3e6569a0c2, type: 3}
-  m_Name: Close Call Speed Boost Unlock
+  m_Name: Close Call Item Reset
   m_EditorClassIdentifier: 
-  type: 4810
-  displayName: Close Call Speed Boost Unlock
-  description: Gives a slight speed boost after your close call encounter!
+  type: 4811
+  displayName: Close Call Reset Items
+  description: Resets your active item cooldown!
   maxLevel: 1
   costCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 1
-      value: 25
-      inSlope: 0
-      outSlope: 0
+      time: 0
+      value: 0
+      inSlope: 10
+      outSlope: 10
       tangentMode: 34
       weightedMode: 0
       inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 5
+      value: 50
+      inSlope: 10
+      outSlope: 10
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  flatCost: 25
+  flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
-  uiPosition: {x: 225, y: 75}
+  perLevelAdd: 1
+  uiPosition: {x: 300, y: 75}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 0
@@ -44,4 +53,4 @@ MonoBehaviour:
   progressiveUnlocks:
   - requiredLevel: 1
     unlocks:
-    - {fileID: 11400000, guid: 25d4ece7811d5e1498ea2c720f06e68e, type: 2}
+    - {fileID: 11400000, guid: 567f3a6739118f3439766d1b48d70df8, type: 2}

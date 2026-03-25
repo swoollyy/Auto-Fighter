@@ -62,6 +62,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Maximum fraction of the full usable lane width used for this shuttle's travel path.")]
     [SerializeField, Range(0.1f, 1f)] private float maxPathFraction = 1f;
 
+    [Header("Flat Path Constraint")]
+    [Tooltip("Keep shuttle path strictly flat in world Y and trim endpoint span when edge terrain starts rising/falling.")]
+    [SerializeField] private bool keepPathFlatAndTrimOnElevation = true;
+    [Tooltip("Max allowed terrain height delta (meters) from path origin before endpoint is trimmed inward.")]
+    [SerializeField, Min(0f)] private float maxAllowedPathElevationDelta = 0.15f;
+    [Tooltip("Iterations used when trimming each endpoint inward for flat travel.")]
+    [SerializeField, Range(1, 24)] private int endpointTrimIterations = 10;
+
     [Header("Screen Shake")]
     [SerializeField] private bool enableScreenShake = true;
 
@@ -89,6 +97,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private float _impactSpeed; // NEW: track impact speed for rotation scaling
     private bool _hasImpactDir;
     private bool _convertedToPhysics;
+    private bool _travelFxEnabled;
 
     private Rigidbody _rb;
     private float _bottomOffset = 0f;
@@ -110,6 +119,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [SerializeField] private bool enableOverlapDetection = true;
     [Tooltip("How often (seconds) to run the overlap check. Lower = more responsive, higher = cheaper.")]
     [SerializeField] private float overlapCheckInterval = 0.05f;
+
+    [Header("Obstacle clash popup (Crash style)")]
+    [SerializeField] private bool enableShuttleClashCrashPopup = true;
+    [SerializeField, Min(0f)] private float shuttleClashPopupHeight = 1f;
+    [SerializeField, Min(0f)] private float shuttleClashMinRelativeSpeed = 2f;
+    [SerializeField, Min(0f)] private float shuttleClashPairCooldown = 0.2f;
 
     [Header("Telegraphing & FX")]
     [Tooltip("Optional light used to telegraph when the shuttle is about to move again.")]
@@ -153,6 +168,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private float _overlapTimer;
     private float _baseLightIntensity = 3.5f;
     private float _spawnGraceUntil = 0f;
+    private ObstaclePathPreview _preview;
 
     // NEW: collision tracking for delayed conversion
     private int _pendingCollisionFrames = 0;
@@ -186,6 +202,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
             _baseLightIntensity = telegraphLight.intensity;
             telegraphLight.enabled = false;
         }
+
+        _preview = GetComponent<ObstaclePathPreview>();
+        SetTravelFxEnabled(false, true);
     }
 
     private void Start()
@@ -227,10 +246,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _leftWS = SpawnUtils.ProjectOntoSurface(_leftWS, out _, upOffsetForCast, 25f, roadMask);
         _rightWS = SpawnUtils.ProjectOntoSurface(_rightWS, out _, upOffsetForCast, 25f, roadMask);
 
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview) { preview.SetEndpoints(_leftWS, _rightWS); preview.FadeIn(0.2f); }
+        if (keepPathFlatAndTrimOnElevation)
+            TrimPathEndpointsForFlatTravel(_originWS);
 
-        // Always use full lane width: shuttle travels entire length before reversing (no path shortening).
+        if (_preview) _preview.SetEndpoints(_leftWS, _rightWS);
 
         Vector3 startWS = startOnLeft ? _leftWS : _rightWS;
         Vector3 targetWS = startOnLeft ? _rightWS : _leftWS;
@@ -253,6 +272,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
         _spawnGraceUntil = Time.time + 0.1f;
+
+        SetTravelFxEnabled(true);
     }
 
     private void OnEnable()
@@ -269,12 +290,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _overlapTimer = 0f;
 
         // Ensure light and preview are OFF until Start() properly initializes
-        if (telegraphLight != null)
-            telegraphLight.enabled = false;
-
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview != null)
-            preview.FadeOut(0f); // Instant off
+        SetTravelFxEnabled(false, true);
     }
 
     private void Update()
@@ -283,6 +299,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
             return;
 
         KillPathFxIfDynamic();
+        bool isTravelingNow = !_waiting && !_convertedToPhysics && enabled && _rb != null && _rb.isKinematic;
+        SetTravelFxEnabled(isTravelingNow);
 
         if (enableOverlapDetection)
         {
@@ -304,14 +322,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
             return;
         }
 
-        // >>> TRAVEL LIGHT STATE WHILE MOVING <<<
-        if (useTelegraphLight && useTravelLightDuringMotion && telegraphLight)
-        {
-            telegraphLight.enabled = true;
-            telegraphLight.color = travelLightColor;
-            telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0f, travelLightIntensityMultiplier);
-        }
-
         float step = Mathf.Max(0.01f, speed) * Time.deltaTime;
 
         Vector2 curXZ = new Vector2(transform.position.x, transform.position.z);
@@ -324,8 +334,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 shakeMaxDistance, shakeFullIntensityDistance);
         }
 
-        float sampleY = SampleTerrainHeightUnderXZ(nextXZ, Mathf.Abs(_bottomOffset) + 1f);
-        float newY = sampleY - _bottomOffset + _safeMargin;
+        // Keep travel Y flat across the lane; do not follow terrain elevation while moving.
+        float newY = transform.position.y;
 
         Vector3 newPos = new Vector3(nextXZ.x, newY, nextXZ.y);
 
@@ -392,9 +402,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         bool telegraphOn = false;
         bool launchWarningFired = false;
 
-        // NEW: Turn off light when waiting starts
-        if (telegraphLight)
-            telegraphLight.enabled = false;
+        // Not traveling while waiting: keep all travel FX hard off.
+        SetTravelFxEnabled(false, true);
 
         float totalWait = Mathf.Max(0.0001f, seconds);
         float telegraphStartTime = totalWait * Mathf.Clamp01(telegraphStartPercent);
@@ -408,50 +417,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
             float clampedElapsed = Mathf.Min(elapsed, totalWait);
             float timeRemaining = totalWait - clampedElapsed;
 
-            if (useTelegraphLight && telegraphLight)
-            {
-                if (!telegraphOn && clampedElapsed >= telegraphStartTime)
-                {
-                    telegraphOn = true;
-                    telegraphLight.enabled = true;
-                    telegraphLight.color = telegraphStartColor;
-                    telegraphLight.intensity = _baseLightIntensity;
-                }
-
-                if (telegraphOn && !launchWarningFired)
-                {
-                    float tNorm = Mathf.Clamp01((clampedElapsed - telegraphStartTime) / telegraphDuration);
-                    telegraphLight.color = Color.Lerp(telegraphStartColor, telegraphEndColor, tNorm);
-                    telegraphLight.intensity = _baseLightIntensity;
-                }
-
-                if (!launchWarningFired &&
-                    launchWarningLeadTime > 0f &&
-                    timeRemaining <= launchWarningLeadTime)
-                {
-                    launchWarningFired = true;
-
-                    telegraphLight.enabled = true;
-                    telegraphLight.color = launchWarningColor;
-                    telegraphLight.intensity =
-                        _baseLightIntensity * Mathf.Max(1f, launchWarningIntensityMultiplier);
-
-                    if (launchParticles)
-                        launchParticles.Play();
-
-                    if (launchAudio)
-                        launchAudio.Play();
-                }
-            }
+            // During wait, keep all lights/path off by requirement.
+            // Launch particles/audio are also skipped while not traveling.
 
             yield return null;
         }
 
-        // NEW: Turn off light when movement starts
-        if (telegraphLight)
-            telegraphLight.enabled = false;
-
         _waiting = false;
+        SetTravelFxEnabled(true);
     }
 
     private float DetermineHalfRoadWidth()
@@ -503,13 +476,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
     private void OnDisable()
     {
+        StopAllCoroutines();
         // Ensure FX are killed when disabled
-        if (telegraphLight != null)
-            telegraphLight.enabled = false;
-
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview != null)
-            preview.FadeOut(0f);
+        SetTravelFxEnabled(false, true);
     }
 
     public void ConvertToPhysicsOnHit()
@@ -526,18 +495,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
         // Kill all FX immediately
         _fxKilled = true;
 
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview != null)
-        {
-            preview.FadeOut(0f); // Instant
-            preview.enabled = false;
-        }
-
-        if (telegraphLight != null)
-        {
-            telegraphLight.enabled = false;
-            telegraphLight.intensity = 0f;
-        }
+        SetTravelFxEnabled(false, true);
+        if (_preview != null) _preview.enabled = false;
 
         if (!_rb)
             _rb = GetComponent<Rigidbody>() ?? gameObject.AddComponent<Rigidbody>();
@@ -641,9 +600,41 @@ public class ShuttleTrackObstacle : MonoBehaviour
             _fxKilled = true;
 
             var preview = GetComponent<ObstaclePathPreview>();
-            if (preview) preview.FadeOut(0.2f);
+            if (preview) preview.FadeOut(0f);
+            SetTravelFxEnabled(false, true);
+        }
+    }
 
-            if (telegraphLight) telegraphLight.enabled = false;
+    private void SetTravelFxEnabled(bool enabledNow, bool instant = false)
+    {
+        if (_travelFxEnabled == enabledNow && !instant) return;
+        _travelFxEnabled = enabledNow;
+
+        if (_preview != null)
+        {
+            if (enabledNow)
+            {
+                _preview.enabled = true;
+                _preview.FadeIn(instant ? 0f : 0.08f);
+            }
+            else
+            {
+                _preview.FadeOut(instant ? 0f : 0.08f);
+            }
+        }
+
+        if (telegraphLight != null)
+        {
+            if (enabledNow && useTelegraphLight && useTravelLightDuringMotion)
+            {
+                telegraphLight.enabled = true;
+                telegraphLight.color = travelLightColor;
+                telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0f, travelLightIntensityMultiplier);
+            }
+            else
+            {
+                telegraphLight.enabled = false;
+            }
         }
     }
 
@@ -685,6 +676,20 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _impactSpeed = collision.relativeVelocity.magnitude;
         _hasImpactDir = true;
 
+        if (RacingObstacleCollisionPopups.IsObstacleBuddy(collision.collider))
+        {
+            RacingObstacleCollisionPopups.TrySpawnObstacleClash(
+                transform.root,
+                collision.collider.transform.root,
+                collision,
+                collision.collider,
+                collision.relativeVelocity.magnitude,
+                shuttleClashMinRelativeSpeed,
+                shuttleClashPopupHeight,
+                shuttleClashPairCooldown,
+                enableShuttleClashCrashPopup);
+        }
+
         // NEW: Start delayed conversion to give car crash logic time to fire
         _pendingCollider = collision.collider;
         _pendingCollisionFrames = collisionDelayFrames;
@@ -724,6 +729,21 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _impactDir = dir;
         _impactSpeed = _lastVelocity.magnitude;
         _hasImpactDir = true;
+
+        if (RacingObstacleCollisionPopups.IsObstacleBuddy(other))
+        {
+            Vector3 approx = other.ClosestPoint(transform.position);
+            RacingObstacleCollisionPopups.TrySpawnObstacleClashApprox(
+                transform.root,
+                other.transform.root,
+                other,
+                approx,
+                _lastVelocity.magnitude,
+                shuttleClashMinRelativeSpeed,
+                shuttleClashPopupHeight,
+                shuttleClashPairCooldown,
+                enableShuttleClashCrashPopup);
+        }
 
         // NEW: Start delayed conversion
         _pendingCollider = other;
@@ -798,6 +818,21 @@ public class ShuttleTrackObstacle : MonoBehaviour
             _impactSpeed = _lastVelocity.magnitude;
             _hasImpactDir = true;
 
+            if (RacingObstacleCollisionPopups.IsObstacleBuddy(hit))
+            {
+                Vector3 approx = hit.ClosestPoint(combined.center);
+                RacingObstacleCollisionPopups.TrySpawnObstacleClashApprox(
+                    transform.root,
+                    hit.transform.root,
+                    hit,
+                    approx,
+                    _lastVelocity.magnitude,
+                    shuttleClashMinRelativeSpeed,
+                    shuttleClashPopupHeight,
+                    shuttleClashPairCooldown,
+                    enableShuttleClashCrashPopup);
+            }
+
             ConvertToPhysicsOnHit();
             return;
         }
@@ -871,6 +906,33 @@ public class ShuttleTrackObstacle : MonoBehaviour
             projected = SpawnUtils.ProjectOntoSurface(probe, out normal, upOffset, 50f, null);
         }
         return projected.y;
+    }
+
+    private void TrimPathEndpointsForFlatTravel(Vector3 originWS)
+    {
+        float refSurfaceY = SampleTerrainHeightUnderXZ(new Vector2(originWS.x, originWS.z), Mathf.Abs(_bottomOffset) + 1f);
+        _leftWS = TrimEndpointTowardOrigin(_leftWS, originWS, refSurfaceY);
+        _rightWS = TrimEndpointTowardOrigin(_rightWS, originWS, refSurfaceY);
+    }
+
+    private Vector3 TrimEndpointTowardOrigin(Vector3 endpoint, Vector3 origin, float refSurfaceY)
+    {
+        Vector3 candidate = endpoint;
+        float candidateY = SampleTerrainHeightUnderXZ(new Vector2(candidate.x, candidate.z), Mathf.Abs(_bottomOffset) + 1f);
+        if (Mathf.Abs(candidateY - refSurfaceY) <= maxAllowedPathElevationDelta)
+            return candidate;
+
+        // Binary trim from endpoint toward origin until terrain height is close to origin band.
+        Vector3 lo = origin;
+        Vector3 hi = endpoint;
+        for (int i = 0; i < endpointTrimIterations; i++)
+        {
+            Vector3 mid = Vector3.Lerp(lo, hi, 0.5f);
+            float midY = SampleTerrainHeightUnderXZ(new Vector2(mid.x, mid.z), Mathf.Abs(_bottomOffset) + 1f);
+            bool valid = Mathf.Abs(midY - refSurfaceY) <= maxAllowedPathElevationDelta;
+            if (valid) lo = mid; else hi = mid;
+        }
+        return lo;
     }
 
     private bool IsInConvertLayers(GameObject go)

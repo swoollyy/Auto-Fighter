@@ -8,7 +8,7 @@ using Random = UnityEngine.Random;
 /// <summary>
 /// Spawns creatures along the procedural track.
 /// Mirrors TrackObstacleSpawner and NPCTrafficCarSpawner patterns for consistency.
-/// Supports passive, scared, and aggressive creature behaviors.
+/// Supports passive (bug), scared (critter), and aggressive (beast) creature behaviors.
 /// </summary>
 public class TrackCreatureSpawner : MonoBehaviour
 {
@@ -16,6 +16,13 @@ public class TrackCreatureSpawner : MonoBehaviour
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private Transform playerTransform;
     [SerializeField] private Transform creatureParent;
+
+    [Header("Creature vs Traffic")]
+    [Tooltip("Layer mask for NPC traffic colliders (same layer as NPCTrafficCar bodies). Critters flee; beasts can hunt.")]
+    [SerializeField] private LayerMask npcTrafficLayerMask;
+
+    [Tooltip("Static obstacles for creature avoidance. Used at spawn when a creature's avoidance layer mask is empty.")]
+    [SerializeField] private LayerMask creatureObstacleAvoidanceLayers;
 
     [Header("Spawn Mode")]
     [Tooltip("If true, fills ahead of player on InitializeForRun.")]
@@ -164,6 +171,13 @@ public class TrackCreatureSpawner : MonoBehaviour
     /// Get track generator reference.
     /// </summary>
     public ProceduralTrackGenerator GetTrackGenerator() => trackGenerator;
+
+    /// <summary>
+    /// Layers used to find NPC traffic for creature flee/chase behavior.
+    /// </summary>
+    public LayerMask NpcTrafficLayerMask => npcTrafficLayerMask;
+
+    public LayerMask CreatureObstacleAvoidanceLayers => creatureObstacleAvoidanceLayers;
 
     #endregion
 

@@ -68,6 +68,11 @@ public class CarTurretController : MonoBehaviour
     private float _cooldownTimer;
     private Rigidbody _carRb;
 
+    public void ResetCooldownNow()
+    {
+        _cooldownTimer = 0f;
+    }
+
     private void Awake()
     {
         if (car == null)

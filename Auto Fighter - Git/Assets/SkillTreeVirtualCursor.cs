@@ -3,6 +3,11 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
+/// <summary>
+/// Runs before <see cref="EventSystem"/> so gamepad Submit cannot fire on the still-selected skill node
+/// in the same frame as our synthetic click / dismiss logic.
+/// </summary>
+[DefaultExecutionOrder(-300)]
 [DisallowMultipleComponent]
 public class SkillTreeVirtualCursor : MonoBehaviour
 {
@@ -13,6 +18,7 @@ public class SkillTreeVirtualCursor : MonoBehaviour
     [SerializeField] private Canvas canvas;                      // the skill tree canvas
     [SerializeField] private RectTransform clampArea;            // usually RacingSkillUI.treeViewport
     [SerializeField] private RacingSkillDetailPanel detailPanel; // so we can close it on empty click
+    [SerializeField] private RacingSkillUI skillTreeUi;            // optional; same dismiss rules as mouse
 
     [Header("Input (Legacy Input Manager)")]
     [SerializeField] private string axisX = "Horizontal";
@@ -63,6 +69,9 @@ public class SkillTreeVirtualCursor : MonoBehaviour
             _raycaster = canvas.gameObject.AddComponent<GraphicRaycaster>();
 
         _uiCam = (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay) ? canvas.worldCamera : null;
+
+        if (skillTreeUi == null)
+            skillTreeUi = FindObjectOfType<RacingSkillUI>();
     }
 
     void OnEnable()
@@ -121,6 +130,9 @@ public class SkillTreeVirtualCursor : MonoBehaviour
 
         if (Input.GetKeyDown(clickKey))
         {
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return;
+
             float now = useUnscaledTime ? Time.unscaledTime : Time.time;
             if (now >= _nextAllowedClickTime)
             {
@@ -223,18 +235,37 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         var results = new List<RaycastResult>();
         _eventSystem.RaycastAll(pointer, results);
 
-        if (results.Count == 0)
+        // Full stack: top-most hit alone often lies on tree/mask while Buy is deeper — same rule as mouse dismiss.
+        if (closeDetailOnEmptyClick && skillTreeUi != null && skillTreeUi.ShouldDismissSkillDetailForRaycastResults(results))
         {
-            if (closeDetailOnEmptyClick && detailPanel != null && detailPanel.IsInfoVisible)
-                detailPanel.HideInfo();
+            skillTreeUi.DismissSkillDetailFromPointerOutside();
+            _eventSystem.SetSelectedGameObject(null);
             return;
         }
 
-        // IMPORTANT: choose a real clickable target (Button/Selectable/etc.), not a TMP child
-        GameObject target = FindFirstClickableFromResults(results);
-        if (!target) return;
+        // Prefer clickables on the detail card (Buy, etc.) when the stack mixes tree + card hits.
+        GameObject target = FindFirstClickableFromResults(results, detailPanel);
+        if (!target)
+        {
+            // Raycast hit something non-interactive; do not leave the previous node selected or Submit will re-fire it.
+            _eventSystem.SetSelectedGameObject(null);
+            return;
+        }
 
-        pointer.pointerCurrentRaycast = results[0];
+        // Must match the clickable we execute on — using results[0] can desync TMP/child hits vs Button parent.
+        pointer.pointerCurrentRaycast = default;
+        for (int i = 0; i < results.Count; i++)
+        {
+            var go = results[i].gameObject;
+            if (go != null && (go.transform == target.transform || go.transform.IsChildOf(target.transform)))
+            {
+                pointer.pointerCurrentRaycast = results[i];
+                break;
+            }
+        }
+
+        if (!pointer.pointerCurrentRaycast.isValid && results.Count > 0)
+            pointer.pointerCurrentRaycast = results[0];
 
         // Mirror the normal "selection" behavior
         _eventSystem.SetSelectedGameObject(target);
@@ -322,8 +353,21 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         return null;
     }
 
-    private static GameObject FindFirstClickableFromResults(List<RaycastResult> results)
+    private static GameObject FindFirstClickableFromResults(List<RaycastResult> results, RacingSkillDetailPanel detailPanel)
     {
+        if (detailPanel != null && detailPanel.IsInfoVisible)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                var go = results[i].gameObject;
+                if (go == null) continue;
+                if (!detailPanel.IsHitInsideDetailUi(go)) continue;
+                var clickable = FindClickable(go);
+                if (clickable != null)
+                    return clickable;
+            }
+        }
+
         for (int i = 0; i < results.Count; i++)
         {
             var go = results[i].gameObject;
@@ -331,6 +375,7 @@ public class SkillTreeVirtualCursor : MonoBehaviour
             if (clickable != null)
                 return clickable;
         }
+
         return null;
     }
 

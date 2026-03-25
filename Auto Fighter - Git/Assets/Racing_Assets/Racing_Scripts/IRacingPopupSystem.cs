@@ -36,6 +36,16 @@ public interface IRacingPopupSystem
     /// Spawn a coin popup with separate text color and outline color.
     /// </summary>
     void SpawnCoin(int value, Vector3 worldPosition, Color textColor, Color outlineColor);
+
+    /// <summary>
+    /// Spawn at the given world position and billboard to the camera, ignoring camera-fixed HUD placement when that mode is enabled on the popup component.
+    /// </summary>
+    void SpawnWorldSpace(RacingPopupType type, float value, Vector3 worldPosition);
+
+    /// <summary>
+    /// Same as <see cref="SpawnWorldSpace(RacingPopupType, float, Vector3)"/> with custom text.
+    /// </summary>
+    void SpawnWorldSpace(RacingPopupType type, string text, Vector3 worldPosition);
 }
 
 public static class RacingPopups
@@ -147,6 +157,9 @@ public static class RacingPopups
     public static void MashFuelRandom(float amount)
         => SpawnRandomScreen(RacingPopupType.MashFuelReward, amount, new Vector2(-3f, 3f), new Vector2(-1.5f, 1.5f));
 
+    public static void MashClickDamageRandom(float clickStrength)
+        => SpawnRandomScreen(RacingPopupType.MashClickDamage, clickStrength, new Vector2(-3f, 3f), new Vector2(-1.5f, 1.5f));
+
     public static void SprocketGain(int amount, Vector3 position)
         => Spawn(RacingPopupType.SprocketGain, amount, position);
 
@@ -158,4 +171,20 @@ public static class RacingPopups
     /// </summary>
     public static void SpawnCoin(int value, Vector3 position, Color textColor, Color outlineColor)
         => System?.SpawnCoin(value, position, textColor, outlineColor);
+
+    public static void SpawnWorldSpace(RacingPopupType type, float value, Vector3 position)
+        => System?.SpawnWorldSpace(type, value, position);
+
+    public static void SpawnWorldSpace(RacingPopupType type, string text, Vector3 position)
+        => System?.SpawnWorldSpace(type, text, position);
+
+    /// <summary>Crash-style popup at a world hit point (not fixed in front of the camera).</summary>
+    public static void CrashWorld(Vector3 position)
+        => SpawnWorldSpace(RacingPopupType.Crash, 0f, position);
+
+    public static void CrashWorld(string text, Vector3 position)
+        => SpawnWorldSpace(RacingPopupType.Crash, text, position);
+
+    public static void CrashWorld(float severity, Vector3 position)
+        => SpawnWorldSpace(RacingPopupType.Crash, severity, position);
 }

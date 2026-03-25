@@ -22,8 +22,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
     [Tooltip("If true, we first fill the entire terrain detail layer to a baseline value, then cut the road out and optionally add ring paint.")]
     [SerializeField] private bool fillEntireTerrainBeforeCut = true;
 
-    [Tooltip("Baseline density used when fillEntireTerrainBeforeCut is true.")]
-    [SerializeField, Range(0, 32)] private int baselineDensity = 10;
+    [Tooltip("Baseline density used when fillEntireTerrainBeforeCut is true. Higher = thicker grass off-road (runtime cost increases).")]
+    [SerializeField, Range(0, 64)] private int baselineDensity = 32;
 
     [Tooltip("If fillEntireTerrainBeforeCut is true, set this false to skip Phase 2 rings (since the world is already grass).")]
     [SerializeField] private bool stillPaintRingsAfterFill = false;
@@ -56,8 +56,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
     [Tooltip("How far from the road edge we paint grass (meters).")]
     [SerializeField, Min(0f)] private float paintOutwardMeters = 30f;
 
-    [Tooltip("Detail density written into the terrain detailmap (0..16-ish typical, but Unity allows higher).")]
-    [SerializeField, Range(0, 32)] private int grassDensity = 10;
+    [Tooltip("Detail density for Phase 2 ring painting (when used). Unity accepts high values; more instances = higher GPU cost when drawing grass.")]
+    [SerializeField, Range(0, 64)] private int grassDensity = 32;
 
     [Tooltip("How often we sample along the track to stamp (meters). Lower = more accurate, slower.")]
     [SerializeField, Range(0.5f, 10f)] private float sampleStepMeters = 2f;
@@ -77,6 +77,7 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
     private bool _didDebugStamp;
 
+    private readonly List<Vector3> _centerPathScratch = new List<Vector3>(2048);
 
     private TerrainData _td;
     private int _detailW;
@@ -129,7 +130,16 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
     private IEnumerator PaintInternal(ProceduralTrackGenerator gen, bool allowYield)
     {
-        if (gen == null || gen.PathPoints == null || gen.PathPoints.Count < 2) yield break;
+        if (gen == null) yield break;
+
+        gen.FillRoadMeshCenterPath(_centerPathScratch);
+        if (_centerPathScratch.Count < 2)
+        {
+            if (debugLogBounds)
+                Debug.LogWarning("[TerrainDetailGrassPainter] No road centerline path; skip paint.");
+            yield break;
+        }
+
         if (targetTerrain == null) targetTerrain = Terrain.activeTerrain;
         if (targetTerrain == null) yield break;
 
@@ -156,7 +166,15 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         _debugRayMisses = 0;
 
         Physics.SyncTransforms();
-        if (allowYield) yield return new WaitForFixedUpdate();
+        if (allowYield)
+        {
+            // During loading we can intentionally keep Time.timeScale at 0.
+            // WaitForFixedUpdate would stall forever in that case.
+            if (Time.timeScale <= 0f)
+                yield return null;
+            else
+                yield return new WaitForFixedUpdate();
+        }
 
         // Road width info
         float roadHalf = Mathf.Max(0.01f, gen.RoadWidth * 0.5f);
@@ -170,10 +188,10 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         if (debugLogBounds)
             Debug.Log("[TerrainDetailGrassPainter] Phase 1: Clearing grass along road...");
 
-        for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+        for (int i = 0; i < _centerPathScratch.Count - 1; i++)
         {
-            Vector3 a = gen.PathPoints[i];
-            Vector3 b = gen.PathPoints[i + 1];
+            Vector3 a = _centerPathScratch[i];
+            Vector3 b = _centerPathScratch[i + 1];
 
             float segLen = Vector3.Distance(a, b);
             if (segLen < 0.01f) continue;
@@ -211,10 +229,10 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
 
             samples = 0;
 
-            for (int i = 0; i < gen.PathPoints.Count - 1; i++)
+            for (int i = 0; i < _centerPathScratch.Count - 1; i++)
             {
-                Vector3 a = gen.PathPoints[i];
-                Vector3 b = gen.PathPoints[i + 1];
+                Vector3 a = _centerPathScratch[i];
+                Vector3 b = _centerPathScratch[i + 1];
 
                 float segLen = Vector3.Distance(a, b);
                 if (segLen < 0.01f) continue;

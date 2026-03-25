@@ -10,10 +10,12 @@ public sealed class TurretUnlockBinding : MonoBehaviour
     [SerializeField] private bool defaultOffIfLocked = true;
 
     private RacingSkillTreeManager _mgr;
+    private RacingQuestUnlockManager _questMgr;
 
     private void Awake()
     {
         _mgr = RacingSkillTreeManager.Instance;
+        _questMgr = RacingQuestUnlockManager.Instance;
     }
 
     private void OnEnable()
@@ -28,6 +30,11 @@ public sealed class TurretUnlockBinding : MonoBehaviour
             _mgr.OnLevelChanged += HandleLevelChanged;
             _mgr.OnSkillsReset += HandleSkillsReset;
         }
+        if (_questMgr != null)
+        {
+            _questMgr.OnQuestUnlocked += HandleQuestUnlocked;
+            _questMgr.OnInventoryChanged += HandleInventoryChanged;
+        }
     }
 
     private void OnDisable()
@@ -36,6 +43,11 @@ public sealed class TurretUnlockBinding : MonoBehaviour
         {
             _mgr.OnLevelChanged -= HandleLevelChanged;
             _mgr.OnSkillsReset -= HandleSkillsReset;
+        }
+        if (_questMgr != null)
+        {
+            _questMgr.OnQuestUnlocked -= HandleQuestUnlocked;
+            _questMgr.OnInventoryChanged -= HandleInventoryChanged;
         }
     }
 
@@ -46,6 +58,16 @@ public sealed class TurretUnlockBinding : MonoBehaviour
     }
 
     private void HandleSkillsReset()
+    {
+        SyncTurretActive();
+    }
+
+    private void HandleQuestUnlocked(RacingQuestType _)
+    {
+        SyncTurretActive();
+    }
+
+    private void HandleInventoryChanged()
     {
         SyncTurretActive();
     }
@@ -63,7 +85,9 @@ public sealed class TurretUnlockBinding : MonoBehaviour
 
     private bool IsUnlocked()
     {
-        if (_mgr == null) return false;
-        return _mgr.GetLevel(SkillType.TurretUnlock) > 0;
+        bool unlockedBySkill = _mgr != null && _mgr.GetLevel(SkillType.TurretUnlock) > 0;
+        if (!unlockedBySkill) return false;
+        // Run-time activation is inventory-driven: node purchased + equipped in active slot.
+        return _questMgr != null && _questMgr.IsItemEquipped(RacingQuestRunItem.Turret);
     }
 }

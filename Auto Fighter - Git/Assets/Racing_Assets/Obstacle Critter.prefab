@@ -127,7 +127,7 @@ MonoBehaviour:
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
+  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   rewardCurrency: 1
   treeToppleMinVelocity: 2
   treeToppleImpulseScale: 2
@@ -183,7 +183,7 @@ MonoBehaviour:
   runOverPopupHeight: 1.2
   playCoinRewardSound: 1
   coinRewardSoundsOverride: []
-  coinRewardSoundVolume: 1
+  coinRewardSoundVolume: 0.638
   coinRewardPitchVariance: 0.05
   coinRewardBasePitch: 1
   coinRewardMinDistance: 5
@@ -196,9 +196,14 @@ MonoBehaviour:
   movementAvoidanceLayers:
     serializedVersion: 2
     m_Bits: 1837057
-  avoidanceRadius: 0.75
-  avoidanceLookAhead: 3
+  avoidanceIncludeTriggers: 1
+  avoidanceRadius: 0.3
+  avoidanceLookAhead: 5.53
   avoidanceCastHeight: 0.35
+  avoidanceRayCount: 11
+  avoidanceFanAngleDeg: 100
+  avoidanceSteerSmoothSpeed: 14
+  avoidanceIdlePathNudgeSpeed: 5
   avoidanceSideBias: 0
   avoidanceResponse: 5
   aggressivePlayerPriorityRadius: 12
@@ -207,7 +212,7 @@ MonoBehaviour:
     m_Bits: 2097152
   crushLayers:
     serializedVersion: 2
-    m_Bits: 2885633
+    m_Bits: 7079937
   minCrushSpeed: 1
   allowTagCrushWithoutRigidbody: 1
   obstacleTags:

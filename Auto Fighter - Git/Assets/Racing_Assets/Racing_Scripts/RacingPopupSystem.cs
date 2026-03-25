@@ -221,6 +221,16 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         SpawnInternal(type, value, null, worldPosition, colorOverride, scaleOverride);
     }
 
+    public void SpawnWorldSpace(RacingPopupType type, float value, Vector3 worldPosition)
+    {
+        SpawnInternal(type, value, null, worldPosition, null, null, false, true);
+    }
+
+    public void SpawnWorldSpace(RacingPopupType type, string text, Vector3 worldPosition)
+    {
+        SpawnInternal(type, 0f, text, worldPosition, null, null, false, true);
+    }
+
     public void SpawnRandomScreen(RacingPopupType type, float value, Vector2 horizontalRange, Vector2 verticalRange)
     {
         float now = Time.time;
@@ -478,13 +488,15 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         tmp.SetMaterialDirty();
     }
 
-    private void SpawnInternal(RacingPopupType type, float value, string customText, Vector3 worldPosition, Color? colorOverride, float? scaleOverride, bool useRandomScreenPos = false)
+    private void SpawnInternal(RacingPopupType type, float value, string customText, Vector3 worldPosition, Color? colorOverride, float? scaleOverride, bool useRandomScreenPos = false, bool forceWorldSpace = false)
     {
         var go = _pool.Get();
         DOTween.Kill(go.transform, false);
 
         var tmp = go.GetComponent<TextMeshPro>();
         DOTween.Kill(tmp, false);
+
+        bool useCameraRelative = attachToCamera && targetCamera && !forceWorldSpace;
 
         // Get style (or use defaults)
         _styleMap.TryGetValue(type, out var style);
@@ -563,7 +575,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         // === POSITION WITH OFFSET (Comic Style) ===
         Vector3 positionOffset = style?.GetPositionOffset() ?? Vector3.zero;
 
-        if (attachToCamera && targetCamera)
+        if (useCameraRelative)
         {
             // Parent to camera so it moves with it
             go.transform.SetParent(targetCamera.transform, false);
@@ -626,7 +638,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         var seq = DOTween.Sequence().SetUpdate(useUnscaled).SetRecyclable(true);
 
         // Rise motion
-        if (attachToCamera && targetCamera)
+        if (useCameraRelative)
         {
             // Local space rise (relative to camera)
             Vector3 startLocal = go.transform.localPosition;
@@ -669,7 +681,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         // Face camera + apply fixed rotation + dynamic tilt
         seq.OnUpdate(() =>
         {
-            if (attachToCamera && targetCamera)
+            if (useCameraRelative)
             {
                 // Already parented to camera, just apply tilt
                 go.transform.localRotation = Quaternion.Euler(0f, 0f, fixedRotZ + dynamicTiltZ);

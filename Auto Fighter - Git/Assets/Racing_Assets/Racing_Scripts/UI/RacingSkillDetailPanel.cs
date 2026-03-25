@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -10,7 +11,7 @@ public class RacingSkillDetailPanel : MonoBehaviour
     [SerializeField] private GameObject root;          // Stays active (overall panel parent / skill tree layer)
     [SerializeField] private GameObject backdrop;      // Clickable area to dismiss ONLY the info
     [SerializeField] private GameObject infoContainer; // NEW: the actual skill info box (card)
-    [SerializeField] private Button closeButton;       // Legacy (optional) — no longer used
+    [SerializeField] private Button closeButton;       // Legacy (optional) ï¿½ no longer used
 
     [Header("Text Fields")]
     [SerializeField] private TMP_Text nameText;
@@ -22,6 +23,12 @@ public class RacingSkillDetailPanel : MonoBehaviour
     [Header("Actions")]
     [SerializeField] private Button buyButton;
 
+    [Header("Click-outside / hierarchy")]
+    [Tooltip("If Buy (or other detail controls) are NOT children of Info Container, add their parent Transforms here so clicks there are not treated as 'outside' the detail UI.")]
+    [SerializeField] private List<Transform> extraDetailUiRoots = new List<Transform>();
+
+    private const string BuyRaycastBlockerChildName = "BuyRaycastBlocker";
+
     private RacingSkillTreeManager mgr;
     private SkillDefinition def;
     private bool wired;
@@ -31,17 +38,45 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public bool IsInfoVisible => infoContainer != null && infoContainer.activeSelf;
     public GameObject InfoContainer => infoContainer != null ? infoContainer : null;
 
+    /// <summary>True if this raycast hit is part of the detail UX (card, Buy row, dimmed backdrop, optional extra roots).</summary>
+    public bool IsHitInsideDetailUi(GameObject hitObject)
+    {
+        if (hitObject == null) return false;
+        Transform t = hitObject.transform;
+        if (backdrop != null && IsDescendantOf(t, backdrop.transform)) return true;
+        if (infoContainer != null && IsDescendantOf(t, infoContainer.transform)) return true;
+        if (buyButton != null && IsDescendantOf(t, buyButton.transform)) return true;
+        if (extraDetailUiRoots != null)
+        {
+            for (int i = 0; i < extraDetailUiRoots.Count; i++)
+            {
+                Transform root = extraDetailUiRoots[i];
+                if (root != null && IsDescendantOf(t, root)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsDescendantOf(Transform t, Transform ancestor)
+    {
+        while (t != null)
+        {
+            if (t == ancestor) return true;
+            t = t.parent;
+        }
+        return false;
+    }
+
     public void Init(RacingSkillTreeManager manager) => mgr = manager;
 
     void Awake()
     {
         if (!mgr) mgr = RacingSkillTreeManager.Instance;
 
-        // Remove the full-screen "big button" behaviour that blocks clicks.
-        // Instead, we make the visual backdrop inert (non-raycast) and install a global click catcher
-        // on the skill tree root so clicks that land outside the info box will hide it while allowing
-        // clicks on other skill buttons to still register.
-        WireStaticBackdrop();
+        // Reverted global SkillTreeGlobalClickCatcher: it caused stray toolbar clicks when dismissing detail.
+        // Dismiss by clicking the dimmed backdrop (must sit behind tree + card in hierarchy so nodes still receive clicks).
+        WireBackdropDismiss();
 
         // Ensure root stays active so backdrop can always catch clicks (if desired).
         if (root && !root.activeSelf) root.SetActive(true);
@@ -55,41 +90,162 @@ public class RacingSkillDetailPanel : MonoBehaviour
             sfxMgr = root.AddComponent<RacingUISoundManager>();
         }
 
-        // Attach global click catcher to the root so we can detect clicks anywhere (without blocking raycasts).
-        if (root != null)
+        EnsureDetailTextsNonBlocking();
+        ApplyBuyButtonIdleState();
+    }
+
+    /// <summary>
+    /// TMP defaults to Raycast Target on; after Buy, refreshed text/layout can steal hits from the tree.
+    /// </summary>
+    private void EnsureDetailTextsNonBlocking()
+    {
+        void StripTmp(Transform root)
         {
-            var catcher = root.GetComponent<SkillTreeGlobalClickCatcher>();
-            if (catcher == null) catcher = root.AddComponent<SkillTreeGlobalClickCatcher>();
-            catcher.Init(this);
+            if (root == null) return;
+            foreach (var tmp in root.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (tmp != null) tmp.raycastTarget = false;
+            }
+        }
+
+        StripTmp(infoContainer != null ? infoContainer.transform : null);
+        StripTmp(buyButton != null ? buyButton.transform : null);
+        if (extraDetailUiRoots != null)
+        {
+            for (int i = 0; i < extraDetailUiRoots.Count; i++)
+                StripTmp(extraDetailUiRoots[i]);
+        }
+
+        // After stripping TMP raycasts, Buy may have no blocking Graphic (common if targetGraphic was text).
+        // Also keep a full-rect raycast target under labels so hits never fall through to toolbar behind the card.
+        EnsureBuyButtonAlwaysRaycasts();
+    }
+
+    /// <summary>
+    /// Ensures the Buy button rect always participates in GraphicRaycaster so disabled clicks do not pass through.
+    /// </summary>
+    private void EnsureBuyButtonAlwaysRaycasts()
+    {
+        if (buyButton == null) return;
+        var buttonRt = buyButton.transform as RectTransform;
+        if (buttonRt == null) return;
+
+        var selfImage = buyButton.GetComponent<Image>();
+        if (selfImage != null)
+            selfImage.raycastTarget = true;
+
+        if (!TransformHasAnyRaycastTargetGraphic(buyButton.transform))
+            CreateOrRefreshBuyRaycastBlocker(buttonRt);
+
+        var tg = buyButton.targetGraphic;
+        if (tg == null || !tg.raycastTarget)
+        {
+            Image blockGraphic = selfImage != null && selfImage.raycastTarget ? selfImage : null;
+            if (blockGraphic == null)
+            {
+                var blockerTr = buttonRt.Find(BuyRaycastBlockerChildName);
+                if (blockerTr != null)
+                    blockGraphic = blockerTr.GetComponent<Image>();
+            }
+
+            if (blockGraphic == null)
+            {
+                foreach (var img in buyButton.GetComponentsInChildren<Image>(true))
+                {
+                    if (img != null && img.raycastTarget)
+                    {
+                        blockGraphic = img;
+                        break;
+                    }
+                }
+            }
+
+            if (blockGraphic != null)
+            {
+                blockGraphic.raycastTarget = true;
+                buyButton.targetGraphic = blockGraphic;
+            }
         }
     }
 
-    private void WireStaticBackdrop()
+    private static bool TransformHasAnyRaycastTargetGraphic(Transform root)
+    {
+        if (root == null) return false;
+        var graphics = root.GetComponentsInChildren<Graphic>(true);
+        for (int i = 0; i < graphics.Length; i++)
+        {
+            var g = graphics[i];
+            if (g != null && g.raycastTarget && g.gameObject.activeSelf)
+                return true;
+        }
+        return false;
+    }
+
+    private static void CreateOrRefreshBuyRaycastBlocker(RectTransform buttonRt)
+    {
+        Transform existing = buttonRt.Find(BuyRaycastBlockerChildName);
+        RectTransform blockerRt;
+        Image img;
+
+        if (existing != null)
+        {
+            blockerRt = existing as RectTransform;
+            img = existing.GetComponent<Image>();
+            if (blockerRt == null || img == null) return;
+            if (existing.GetComponent<LayoutElement>() == null)
+                existing.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+        }
+        else
+        {
+            var go = new GameObject(BuyRaycastBlockerChildName, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            go.transform.SetParent(buttonRt, false);
+            blockerRt = go.GetComponent<RectTransform>();
+            img = go.GetComponent<Image>();
+            var le = go.GetComponent<LayoutElement>();
+            le.ignoreLayout = true;
+        }
+
+        blockerRt.SetAsFirstSibling();
+        blockerRt.anchorMin = Vector2.zero;
+        blockerRt.anchorMax = Vector2.one;
+        blockerRt.offsetMin = Vector2.zero;
+        blockerRt.offsetMax = Vector2.zero;
+        blockerRt.localScale = Vector3.one;
+        img.color = new Color(1f, 1f, 1f, 0f);
+        img.raycastTarget = true;
+    }
+
+    private void WireBackdropDismiss()
     {
         if (backdrop == null) return;
 
-        // If it's an Image (UI panel) make it visual-only (no raycast target) so it doesn't block clicks.
-        var img = backdrop.GetComponent<UnityEngine.UI.Image>();
-        if (img != null)
+        var img = backdrop.GetComponent<Image>();
+        if (img == null)
         {
-            img.raycastTarget = false;
+            img = backdrop.AddComponent<Image>();
+            img.color = new Color(0f, 0f, 0f, 0.5f);
         }
 
-        // If there's a Button component, remove its listeners so it won't swallow clicks.
+        img.raycastTarget = true;
+
+        // Button + IPointerClick can double-fire; use a simple click catcher on the backdrop Image.
         var btn = backdrop.GetComponent<Button>();
         if (btn != null)
         {
             btn.onClick.RemoveAllListeners();
-            // remove the Button component entirely to avoid accidental blocking in editor
-            DestroyImmediate(btn);
+            Destroy(btn);
         }
 
-        // Remove any legacy BackdropClickCatcher that relied on the backdrop receiving events.
-        var oldCatcher = backdrop.GetComponent<BackdropClickCatcher>();
-        if (oldCatcher != null)
-            DestroyImmediate(oldCatcher);
+        var catcher = backdrop.GetComponent<BackdropClickCatcher>();
+        if (catcher == null) catcher = backdrop.AddComponent<BackdropClickCatcher>();
+        catcher.onClicked = OnBackdropPointerDismissDetail;
+    }
 
-        // Keep the backdrop GameObject as a visual only.
+    private void OnBackdropPointerDismissDetail()
+    {
+        if (!IsInfoVisible) return;
+        EventSystem.current?.SetSelectedGameObject(null);
+        HideInfo();
     }
 
     /// <summary>
@@ -102,8 +258,10 @@ public class RacingSkillDetailPanel : MonoBehaviour
 
         if (root && !root.activeSelf) root.SetActive(true);
         if (infoContainer && !infoContainer.activeSelf) infoContainer.SetActive(true);
+        if (buyButton) buyButton.gameObject.SetActive(true);
 
         if (!wired) WireLiveEvents();
+        EnsureDetailTextsNonBlocking();
         Refresh();
     }
 
@@ -113,6 +271,8 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public void HideInfo()
     {
         if (infoContainer) infoContainer.SetActive(false);
+        if (buyButton) buyButton.gameObject.SetActive(true);
+        ApplyBuyButtonIdleState();
         UnwireLiveEvents();
         def = null;
         OnHidden?.Invoke();
@@ -124,6 +284,8 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public void Hide()
     {
         if (infoContainer) infoContainer.SetActive(false);
+        if (buyButton) buyButton.gameObject.SetActive(true);
+        ApplyBuyButtonIdleState();
         if (root) root.SetActive(false);
         UnwireLiveEvents();
         def = null;
@@ -136,6 +298,8 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public void HideImmediate()
     {
         if (infoContainer) infoContainer.SetActive(false);
+        if (buyButton) buyButton.gameObject.SetActive(true);
+        ApplyBuyButtonIdleState();
         if (root) root.SetActive(false);
         UnwireLiveEvents();
         def = null;
@@ -171,6 +335,10 @@ public class RacingSkillDetailPanel : MonoBehaviour
     {
         if (mgr == null || def == null) return;
 
+        EventSystem.current?.SetSelectedGameObject(null);
+        if (!IsPurchasePossibleNow())
+            return;
+
         // Use smart purchase that checks usesSprockets flag
         bool purchased = mgr.TryPurchaseSmart(def.type);
 
@@ -184,7 +352,28 @@ public class RacingSkillDetailPanel : MonoBehaviour
                 sfx.PlayPurchaseCurrency();
             }
             Refresh();
+            EnsureDetailTextsNonBlocking();
+
+            // Clear selection if it was the Buy button (or its child) so the next click isn't confused.
+            var es = EventSystem.current;
+            if (es != null && buyButton != null && es.currentSelectedGameObject != null)
+            {
+                Transform sel = es.currentSelectedGameObject.transform;
+                Transform bt = buyButton.transform;
+                if (sel == bt || sel.IsChildOf(bt))
+                    es.SetSelectedGameObject(null);
+            }
         }
+    }
+
+    /// <summary>True when a skill is shown and the player can buy the next level right now.</summary>
+    private bool IsPurchasePossibleNow()
+    {
+        if (def == null || mgr == null) return false;
+        int lvl = mgr.GetLevel(def.type);
+        if (lvl >= def.maxLevel) return false;
+        if (!mgr.IsQuestGateSatisfiedForSkill(def.type)) return false;
+        return mgr.CanAffordNextLevel(def.type);
     }
 
     private void Refresh()
@@ -205,6 +394,10 @@ public class RacingSkillDetailPanel : MonoBehaviour
             {
                 costText.text = "Maxed";
             }
+            else if (!mgr.IsQuestGateSatisfiedForSkill(def.type))
+            {
+                costText.text = "Quest Locked";
+            }
             else
             {
                 int cost = mgr.GetNextLevelCostSmart(def.type);
@@ -213,12 +406,41 @@ public class RacingSkillDetailPanel : MonoBehaviour
             }
         }
 
-        // Buy button - check correct currency
+        // Buy only when a real purchase is possible; keep CanvasGroup so disabled state still blocks raycasts
+        // (interactable=false alone can let clicks fall through to the toolbar).
         if (buyButton)
         {
-            bool canBuy = mgr.CanAffordNextLevel(def.type);
+            bool canBuy = IsPurchasePossibleNow();
+            buyButton.navigation = new Navigation { mode = Navigation.Mode.None };
             buyButton.interactable = canBuy;
+
+            var cg = buyButton.GetComponent<CanvasGroup>();
+            if (cg == null) cg = buyButton.gameObject.AddComponent<CanvasGroup>();
+            cg.interactable = canBuy;
+            cg.blocksRaycasts = true;
+            cg.alpha = canBuy ? 1f : 0.42f;
+
+            if (buyButton.targetGraphic != null)
+                buyButton.targetGraphic.raycastTarget = true;
         }
+
+        EnsureDetailTextsNonBlocking();
+    }
+
+    private void ApplyBuyButtonIdleState()
+    {
+        if (buyButton == null) return;
+        buyButton.interactable = false;
+        buyButton.navigation = new Navigation { mode = Navigation.Mode.None };
+
+        var cg = buyButton.GetComponent<CanvasGroup>();
+        if (cg == null) cg = buyButton.gameObject.AddComponent<CanvasGroup>();
+        cg.interactable = false;
+        cg.blocksRaycasts = true;
+        cg.alpha = 0.42f;
+
+        if (buyButton.targetGraphic != null)
+            buyButton.targetGraphic.raycastTarget = true;
     }
 
     /// <summary>
@@ -327,8 +549,9 @@ public class RacingSkillDetailPanel : MonoBehaviour
     /// </summary>
     private float GetCurrentStatValue(SkillType type)
     {
-        // Try to get CarController for base stats
-        var car = FindObjectOfType<CarController>();
+        // Prefer the active runtime car only; skill-tree view must work without a car instance.
+        var gm = GameManager_Racing.Instance;
+        var car = gm != null ? gm.ActiveCar : null;
 
         switch (type)
         {

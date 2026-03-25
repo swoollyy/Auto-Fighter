@@ -36,6 +36,10 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private float flippedClickMultiplier = 1.5f;
     [SerializeField] private float airborneClickMultiplier = 1.25f;
 
+    [Header("Central crash severity")]
+    [Tooltip("Assign a Crash Severity Config asset on the car prefab. Severity drives HP/fuel (CarHealthConfig × severity), popups, and mash drain. Add CrashObstacleIdentity on props when you need explicit mass/scale/kind.")]
+    [SerializeField] private CrashSeverityConfig crashSeverityConfig;
+
     [Header("Crash / Hit Reaction")]
     [SerializeField] private LayerMask crashLayers = (LayerMask)1837056;
     [SerializeField] private float minImpactSpeed = 1.6f;
@@ -99,6 +103,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private int baseClicksPerClick = 1;
     [SerializeField] private float basePassiveClickRate = 0f;
     [SerializeField] private int basePassiveClickStrength = 1;
+    [Tooltip("Each integer step of (effective − baseline) clicks per press multiplies required mash by this. 1 = no extra scaling.")]
+    [SerializeField, Min(1f)] private float mashDifficultyPerClickPowerStep = 1.4f;
 
     [Header("Mash Progress Gauge")]
     [SerializeField] private bool enableMashProgressGauge = true;
@@ -132,7 +138,6 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private bool enableSprocketRewards = true;
     [SerializeField] private float sprocketBasePercent = 0.2f;
     [SerializeField] private float sprocketGaugeBonusMax = 1.5f;
-    [SerializeField] private float sprocketMaxedBonusMultiplier = 1.25f;
     [SerializeField] private int sprocketMinReward = 5;
     [SerializeField] private int sprocketMaxReward = 5000000;
 
@@ -167,6 +172,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public bool EnableCrashRecoveryAlways => enableCrashRecoveryAlways;
     public float FlippedClickMultiplier => flippedClickMultiplier;
     public float AirborneClickMultiplier => airborneClickMultiplier;
+    public CrashSeverityConfig CrashSeverityConfig => crashSeverityConfig;
     public LayerMask CrashLayers => crashLayers;
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
@@ -214,6 +220,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public int BaseClicksPerClick => baseClicksPerClick;
     public float BasePassiveClickRate => basePassiveClickRate;
     public int BasePassiveClickStrength => basePassiveClickStrength;
+    public float MashDifficultyPerClickPowerStep => mashDifficultyPerClickPowerStep;
     public bool EnableMashProgressGauge => enableMashProgressGauge;
     public float GaugeDrainRateBase => gaugeDrainRateBase;
     public float GaugeDrainRatePerCrash => gaugeDrainRatePerCrash;
@@ -241,7 +248,6 @@ public class CarCrashMashConfig : MonoBehaviour
     public bool EnableSprocketRewards => enableSprocketRewards;
     public float SprocketBasePercent => sprocketBasePercent;
     public float SprocketGaugeBonusMax => sprocketGaugeBonusMax;
-    public float SprocketMaxedBonusMultiplier => sprocketMaxedBonusMultiplier;
     public int SprocketMinReward => sprocketMinReward;
     public int SprocketMaxReward => sprocketMaxReward;
     public float FlipUprightLift => flipUprightLift;

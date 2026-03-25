@@ -10,6 +10,22 @@ using Debug = UnityEngine.Debug;
 
 public class GameManager_Racing : MonoBehaviour
 {
+    public enum GameProgressState
+    {
+        InitIntro = 0,
+        SkillTree = 1,
+        LoadingRun = 2,
+        InRun = 3,
+        RunEnd = 4
+    }
+
+    private enum RunFlowState
+    {
+        SkillTree = 0,
+        Loading = 1,
+        InRun = 2,
+        RunEnd = 3
+    }
 
     public static GameManager_Racing Instance { get; private set; }
 
@@ -22,6 +38,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
     [SerializeField] private CrossObstacleDirector crossObstacleDirector;
     [SerializeField] private ThrownObstacleDirector thrownObstacleDirector;
+    [SerializeField] private RollingLogSpawner rollingLogSpawner;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
@@ -74,11 +91,6 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private bool enableTestSpawnCar = false;
 
 
-    [SerializeField, Min(0.05f)]
-    private float xHoldSeconds = 0.35f; // tap vs hold threshold (realtime)
-
-    private float _xDownRealtime = -1f;
-
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
 
@@ -92,6 +104,11 @@ public class GameManager_Racing : MonoBehaviour
 
     [Header("Balancing")]
     [SerializeField, Min(0f)] private float baseCoinsPerMeter = 0.33f; // base coins per meter (now skill-modifiable)
+
+    [Header("Coin Friend Defaults (from prefab)")]
+    [SerializeField, Min(0.1f)] private float coinFriendBaseRange = 30f;
+    [SerializeField, Min(0.05f)] private float coinFriendBaseCooldown = 3f;
+    [SerializeField, Min(0)] private int coinFriendBaseValueBonus = 0;
 
     [Header("Crash Penalties")]
     [Tooltip("Enable currency loss when crashing.")]
@@ -154,9 +171,12 @@ public class GameManager_Racing : MonoBehaviour
     private bool runEnded = false;
     private bool runStarted = false;
     private Coroutine beginRunRoutine;
+    private Coroutine _afterTrackGenCr;
 
     private Coroutine _finalizeRunCR;
     private bool _finalizePending;
+    private bool _acceptRunEndContinueInput;
+    private RunFlowState _flowState = RunFlowState.SkillTree;
     private float _stopConditionBeganRealtime;
 
     private float runDistanceMeters = 0f;
@@ -170,12 +190,31 @@ public class GameManager_Racing : MonoBehaviour
     private int _sprocketsThisRun;
 
     private bool _depositSoundPlayed = false;
+    private bool _loadingGameplayGateActive = false;
+    private bool _audioPausedByLoadingGate = false;
+    private GameProgressState _progressState = GameProgressState.InitIntro;
+    [Header("Loading Audio Gate")]
+    [Tooltip("Music/audio sources allowed to keep playing while loading gate is active (these get ignoreListenerPause enabled during loading).")]
+    [SerializeField] private AudioSource[] loadingMusicWhitelist;
+    private readonly System.Collections.Generic.Dictionary<AudioSource, bool> _musicIgnorePauseOriginal =
+        new System.Collections.Generic.Dictionary<AudioSource, bool>(16);
+
+    [Header("Narrative Progression")]
+    [Tooltip("Story flag set by init intro dialogue on completion.")]
+    [SerializeField] private string initFinishedStoryFlag = "init_finish";
+    [Tooltip("Raised once when entering SkillTree after init is finished. Use this to trigger first-time skill tree narrative.")]
+    [SerializeField] private string firstSkillTreeEntryStoryFlag = "skilltree_first_entry";
 
     public float DistanceAlongTrack => runDistanceMeters;
+    public bool IsGameplayLive => !_loadingGameplayGateActive && runStarted && !runEnded;
 
 
     public bool RunEnded => runEnded;
+    public GameProgressState ProgressState => _progressState;
     public CarController ActiveCar => carController;
+    public float CoinFriendBaseRange => Mathf.Max(0.1f, coinFriendBaseRange);
+    public float CoinFriendBaseCooldown => Mathf.Max(0.05f, coinFriendBaseCooldown);
+    public int CoinFriendBaseValueBonus => Mathf.Max(0, coinFriendBaseValueBonus);
 
     private const string PREF_KEY_PLAY_DEPOSIT = "GM_PlayDepositOnLoad_v1";
 
@@ -191,6 +230,7 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         ConfigureURPRenderers();
+        SyncCoinFriendDefaultsFromCarPrefab();
 
         Instance = this;
 
@@ -221,17 +261,40 @@ public class GameManager_Racing : MonoBehaviour
         if (skillTreeUI == null) skillTreeUI = FindObjectOfType<RacingSkillUI>();
         if (skillTreeUI != null) skillTreeUI.BindGameManager(this);
 
+        WireNarrativeEvents();
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
+            SetProgressState(GameProgressState.InitIntro);
+        else
+            SetProgressState(GameProgressState.SkillTree);
+
+    }
+
+    private void SyncCoinFriendDefaultsFromCarPrefab()
+    {
+        if (carPrefab == null) return;
+        var friend = carPrefab.GetComponentInChildren<CoinCollectingFriend>(true);
+        if (friend == null) return;
+
+        coinFriendBaseRange = friend.AuthoredBaseRange;
+        coinFriendBaseCooldown = friend.AuthoredBaseCooldown;
     }
 
     void OnDestroy()
     {
+        UnwireNarrativeEvents();
         if (trackGenerator != null)
-            trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
+            trackGenerator.OnTrackGeneratedSuccessfully -= OnTrackGeneratedDeferSpawn;
 
+        if (_afterTrackGenCr != null)
+        {
+            StopCoroutine(_afterTrackGenCr);
+            _afterTrackGenCr = null;
+        }
     }
 
     private void OnDisable()
     {
+        ExitLoadingGameplayGate();
 
         // Make sure we release any slowmo we own when this manager is disabled
         if (_crashSlowMoRoutine != null)
@@ -249,6 +312,8 @@ public class GameManager_Racing : MonoBehaviour
 
     void Update()
     {
+        SyncFlowStateFromUISection();
+
         // TEST: Start button (PS5 Options) spawns one NPC car. Remove this block when done testing.
         if (enableTestSpawnCar && npcCarSpawner != null &&
             Gamepad.current != null && Gamepad.current.startButton.wasPressedThisFrame)
@@ -274,15 +339,25 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         // Restart can be pressed after run has ended even if car was destroyed; handle it without requiring carController.
-        bool canCheckRestart = _finalizePending || runEnded;
+        bool uiIsRunEnd = uiManager != null && uiManager.CurrentSection == UIManager_Racing.UISection.RunEnd;
+        bool canCheckRestart =
+            _flowState == RunFlowState.RunEnd &&
+            uiIsRunEnd &&
+            _acceptRunEndContinueInput &&
+            (_finalizePending || runEnded) &&
+            !runStarted &&
+            !_loadingGameplayGateActive;
         if (canCheckRestart)
         {
             bool notInFlipMash = carController == null || !carController.IsFlipMashActive;
             if (notInFlipMash)
             {
-                bool restartPressed = RacingInputReader.Instance != null
-                    ? RacingInputReader.Instance.RestartDown
-                    : (Input.GetKeyDown(KeyCode.R) || (RestartAllowedNow() && Input.GetKeyDown(PAD_X)));
+                bool restartPressed =
+                    Input.GetKeyDown(KeyCode.R) ||
+                    (RestartAllowedNow() && (
+                        (RacingInputReader.Instance != null && RacingInputReader.Instance.RestartDown) ||
+                        Input.GetKeyDown(PAD_X)
+                    ));
 
                 if (restartPressed)
                 {
@@ -362,20 +437,6 @@ public class GameManager_Racing : MonoBehaviour
         }
     }
 
-    private bool XDown() => Input.GetKeyDown(PAD_X);
-    private bool XHeld() => Input.GetKey(PAD_X);
-    private bool XUp() => Input.GetKeyUp(PAD_X);
-
-    private void TickXHoldTimer()
-    {
-        if (XDown())
-            _xDownRealtime = Time.realtimeSinceStartup;
-
-        // Safety: if something eats the up event, clear stale timer
-        if (!XHeld() && _xDownRealtime > 0f && !XUp())
-            _xDownRealtime = -1f;
-    }
-
     // New helper: same gating logic used by ReturnToSkillTree for deposit audio, but callable before a scene restart.
     private void TryPlayDepositSoundOnReset()
     {
@@ -398,11 +459,24 @@ public class GameManager_Racing : MonoBehaviour
 
     public void BeginRun()
     {
-        if (runStarted && beginRunRoutine != null) return;
+        if (runStarted || _loadingGameplayGateActive || beginRunRoutine != null || _afterTrackGenCr != null)
+            return;
 
+        // Reset end-state flags immediately so loading cannot be interrupted by stale restart logic.
+        runEnded = false;
+        _finalizePending = false;
+        _acceptRunEndContinueInput = false;
+        _flowState = RunFlowState.Loading;
+        SetProgressState(GameProgressState.LoadingRun);
+        if (_finalizeRunCR != null)
+        {
+            StopCoroutine(_finalizeRunCR);
+            _finalizeRunCR = null;
+        }
         runStarted = true;
+        EnterLoadingGameplayGate();
+        uiManager?.SetSection(UIManager_Racing.UISection.Loading);
         uiManager?.ShowLoading("Generating track...");
-        Time.timeScale = 1f;
 
         var mgr = RacingSkillTreeManager.Instance;
         _startingCurrency = mgr != null ? mgr.Currency : 0;
@@ -416,6 +490,7 @@ public class GameManager_Racing : MonoBehaviour
 
         uiManager?.UpdateRunCoins(0);   // HUD shows 0 to start
         uiManager?.ShowRunCoins();
+        uiManager?.UpdateRunSprockets(0);
 
         if (trackGenerator == null)
             trackGenerator = FindGeneratorAnyState();
@@ -438,6 +513,11 @@ public class GameManager_Racing : MonoBehaviour
     private void FinalizeRun()
     {
         if (_currencyAwarded) return;
+
+        // Forcefield quest progression: count this run only if the player did NOT die from HP.
+        // Fuel death / normal completion still counts.
+        bool diedFromHp = carController != null && carController.IsOutOfHP;
+        RacingQuestUnlockManager.Instance?.RecordForcefieldEligibleRunCompletion(diedFromHp);
 
         int distanceInt = Mathf.RoundToInt(runDistanceMeters);
 
@@ -474,10 +554,15 @@ public class GameManager_Racing : MonoBehaviour
             _sprocketsThisRun,
             totalSprockets
         );
+        uiManager?.SetSection(UIManager_Racing.UISection.RunEnd);
         PlayRunCompleteCoinSound();
 
         _currencyAwarded = true;
+        runStarted = false;
         runEnded = true;
+        _acceptRunEndContinueInput = true;
+        _flowState = RunFlowState.RunEnd;
+        SetProgressState(GameProgressState.RunEnd);
 
         NarrativeDirector.NotifyRunCompleted();
 
@@ -497,25 +582,23 @@ public class GameManager_Racing : MonoBehaviour
     private IEnumerator CoBeginRun()
     {
         EnsureTrackCallbacksWired();
-        uiManager?.ShowLoading("Generating track...");
-        trackGenerator.GenerateTrack();
+        uiManager?.ShowLoading("Generating track...", 0.05f);
+        yield return trackGenerator.GenerateTrackCo();
 
-        float t = 0f;
-        const float timeout = 6f;
-
-        // Just wait until the track is ready OR we time out.
-        // We DO NOT call HandleTrackGenerated here, we rely on the event.
-        while (t < timeout && !TrackIsReady(trackGenerator))
+        if (!trackGenerator.LastGenerateSucceeded)
         {
-            t += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!TrackIsReady(trackGenerator))
-        {
-            Debug.LogError("[GameManager_Racing] Track generation timeout. Allowing retry.");
+            Debug.LogError("[GameManager_Racing] Track generation failed after retries.");
             uiManager?.HideLoading();
+            uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
+            ExitLoadingGameplayGate();
+            carController?.SetExternalInputLock(true);
             runStarted = false;
+            _flowState = RunFlowState.SkillTree;
+        }
+        else
+        {
+            // OnTrackGeneratedDeferSpawn/HandleTrackGenerated continue post-generation setup.
+            uiManager?.SetLoadingState("Finalizing track...", 0.55f);
         }
 
         beginRunRoutine = null;
@@ -857,16 +940,31 @@ public class GameManager_Racing : MonoBehaviour
         FinalizeRun();
     }
 
-    private bool TrackIsReady(ProceduralTrackGenerator gen)
-    {
-        return gen != null && gen.PathPoints != null && gen.PathPoints.Count > 1;
-    }
-
     private void EnsureTrackCallbacksWired()
     {
         if (trackGenerator == null) return;
-        trackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackGenerated;
-        trackGenerator.OnTrackGeneratedSuccessfully += HandleTrackGenerated;
+        trackGenerator.OnTrackGeneratedSuccessfully -= OnTrackGeneratedDeferSpawn;
+        trackGenerator.OnTrackGeneratedSuccessfully += OnTrackGeneratedDeferSpawn;
+    }
+
+    /// <summary>
+    /// Terrain heightmaps are updated during track generation; wait one frame so TerrainColliders and physics
+    /// match before raycasting to place obstacles/environment on hills.
+    /// </summary>
+    private void OnTrackGeneratedDeferSpawn(ProceduralTrackGenerator gen)
+    {
+        uiManager?.SetLoadingState("Preparing spawn points...", 0.60f);
+        if (_afterTrackGenCr != null)
+            StopCoroutine(_afterTrackGenCr);
+        _afterTrackGenCr = StartCoroutine(CoHandleTrackGeneratedAfterTerrainHeight(gen));
+    }
+
+    private IEnumerator CoHandleTrackGeneratedAfterTerrainHeight(ProceduralTrackGenerator gen)
+    {
+        yield return null;
+        Physics.SyncTransforms();
+        yield return StartCoroutine(CoHandleTrackGenerated(gen));
+        _afterTrackGenCr = null;
     }
 
     private ProceduralTrackGenerator FindGeneratorAnyState()
@@ -908,6 +1006,13 @@ public class GameManager_Racing : MonoBehaviour
         // Show the skill tree root (same as existing flow)
         if (skillTreeRoot != null)
             skillTreeRoot.SetActive(true);
+        uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
+        ExitLoadingGameplayGate();
+        carController?.SetExternalInputLock(true);
+        _acceptRunEndContinueInput = false;
+        _flowState = RunFlowState.SkillTree;
+        SetProgressState(GameProgressState.SkillTree);
+        TryRaiseFirstSkillTreeEntryNarrativeFlag();
 
         // Hide run UI if present
         uiManager?.HideRunComplete();
@@ -941,10 +1046,23 @@ public class GameManager_Racing : MonoBehaviour
         if (cameraFollow == null) cameraFollow = FindObjectOfType<CameraFollow>(true);
         if (uiManager == null) uiManager = FindObjectOfType<UIManager_Racing>(true);
         if (distanceSystem == null) distanceSystem = FindObjectOfType<TrackDistanceMeter>(true);
+        if (trackObstacleSpawner == null) trackObstacleSpawner = FindObjectOfType<TrackObstacleSpawner>(true);
+        if (trackCoinSpawner == null) trackCoinSpawner = FindObjectOfType<TrackCoinSpawner>(true);
+        if (trackFuelSpawner == null) trackFuelSpawner = FindObjectOfType<TrackFuelSpawner>(true);
+        if (trackHPSpawner == null) trackHPSpawner = FindObjectOfType<TrackHPSpawner>(true);
+        if (icePathSpawner == null) icePathSpawner = FindObjectOfType<IcePathSpawner>(true);
+        if (npcCarSpawner == null) npcCarSpawner = FindObjectOfType<NPCTrafficCarSpawner>(true);
+        if (creatureSpawner == null) creatureSpawner = FindObjectOfType<TrackCreatureSpawner>(true);
+        if (trackEnvironmentSpawner == null) trackEnvironmentSpawner = FindObjectOfType<TrackEnvironmentSpawner>(true);
+        if (crossObstacleDirector == null) crossObstacleDirector = FindObjectOfType<CrossObstacleDirector>(true);
+        if (thrownObstacleDirector == null) thrownObstacleDirector = FindObjectOfType<ThrownObstacleDirector>(true);
+        if (rollingLogSpawner == null) rollingLogSpawner = FindObjectOfType<RollingLogSpawner>(true);
+        if (iceScreenFlashDriver == null) iceScreenFlashDriver = FindObjectOfType<IcePathScreenFlashDriver>(true);
     }
 
-    private void HandleTrackGenerated(ProceduralTrackGenerator gen)
+    private IEnumerator CoHandleTrackGenerated(ProceduralTrackGenerator gen)
     {
+        uiManager?.SetLoadingState("Spawning player car...", 0.65f);
         Vector3 startPos;
         Vector3 startForward;
         gen.GetStartPoint(out startPos, out startForward);
@@ -960,21 +1078,26 @@ public class GameManager_Racing : MonoBehaviour
         Quaternion spawnRot = Quaternion.LookRotation(startForward, Vector3.up);
 
 
-        RespawnCarAtTrackStart(spawnPos, spawnRot);
+        yield return StartCoroutine(CoRespawnCarAtTrackStart(spawnPos, spawnRot));
 
         if (terrainGrassPainter != null)
         {
-            // coroutine version avoids a nasty spike
-            StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
+            uiManager?.SetLoadingState("Applying terrain details...", 0.92f);
+            // Keep loading visible while this work is spread across frames.
+            yield return StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
+        }
+        else
+        {
+            uiManager?.SetLoadingState("Almost ready...", 0.97f);
         }
 
-        StartCoroutine(CoHideLoadingNextFrame());
+        yield return StartCoroutine(CoHideLoadingNextFrame());
     }
 
     /// <summary>Spawn or reposition the car at the given position/rotation and bind all systems. Used by normal track flow and by TEST spawn hotkey.</summary>
-    private void RespawnCarAtTrackStart(Vector3 spawnPos, Quaternion spawnRot)
+    private IEnumerator CoRespawnCarAtTrackStart(Vector3 spawnPos, Quaternion spawnRot)
     {
-        if (carPrefab == null) return;
+        if (carPrefab == null) yield break;
 
         if (carInstance == null)
             carInstance = Instantiate(carPrefab, spawnPos, spawnRot);
@@ -982,15 +1105,36 @@ public class GameManager_Racing : MonoBehaviour
             carInstance.transform.SetPositionAndRotation(spawnPos, spawnRot);
 
         _deathStopBurstPlayed = false;
-        trackCoinSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        trackObstacleSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        trackFuelSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        trackHPSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        icePathSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        npcCarSpawner.InitializeForRun(trackGenerator, carInstance.transform);
-        AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
+        yield return null;
+
+        uiManager?.SetLoadingState("Placing obstacles...", 0.72f);
+        trackObstacleSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Placing environment...", 0.80f);
         trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+
+        uiManager?.SetLoadingState("Spawning coins...", 0.84f);
+        trackCoinSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Spawning pickups...", 0.86f);
+        trackFuelSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        trackHPSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Spawning hazards...", 0.89f);
+        icePathSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+                rollingLogSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Spawning traffic...", 0.91f);
+        npcCarSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        uiManager?.SetLoadingState("Building navigation...", 0.94f);
+        AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
+        yield return null;
+
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)
@@ -1000,15 +1144,15 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         carController = carInstance.GetComponent<CarController>();
-        crossObstacleDirector.SetCar(carController);
-        thrownObstacleDirector.SetCar(carController);
-        iceScreenFlashDriver.SetCarController(carController);
+        carController?.SetExternalInputLock(true);
+        crossObstacleDirector?.SetCar(carController);
+        thrownObstacleDirector?.SetCar(carController);
+        iceScreenFlashDriver?.SetCarController(carController);
 
         runDistanceMeters = 0f;
         _carRb = carInstance.GetComponent<Rigidbody>();
         _currencyAwarded = false;
         runEnded = false;
-        Time.timeScale = 1f;
         uiManager?.HideRunComplete();
 
         EnsureRefs();
@@ -1024,6 +1168,8 @@ public class GameManager_Racing : MonoBehaviour
 
         if (skillTreeRoot != null)
             skillTreeRoot.SetActive(false);
+
+        uiManager?.SetLoadingState("Ready!", 0.99f);
     }
 
 
@@ -1040,6 +1186,159 @@ public class GameManager_Racing : MonoBehaviour
         // let instantiates + layout rebuilds finish
         yield return null;
         uiManager?.HideLoading();
+        ExitLoadingGameplayGate();
+        uiManager?.SetSection(UIManager_Racing.UISection.InGameDefault);
+        // Re-apply run HUD once the in-game root is active (avoids live coin/sprocket lines staying hidden on later runs in the same session).
+        uiManager?.ShowRunCoins();
+        uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
+        uiManager?.UpdateRunSprockets(_sprocketsThisRun);
+        carController?.SetExternalInputLock(false);
+        _acceptRunEndContinueInput = false;
+        _flowState = RunFlowState.InRun;
+        SetProgressState(GameProgressState.InRun);
+    }
+
+    private void SetProgressState(GameProgressState state)
+    {
+        _progressState = state;
+    }
+
+    private void TryRaiseFirstSkillTreeEntryNarrativeFlag()
+    {
+        if (string.IsNullOrWhiteSpace(initFinishedStoryFlag) || string.IsNullOrWhiteSpace(firstSkillTreeEntryStoryFlag))
+            return;
+
+        // Gate first-skill-tree narrative until init intro has explicitly finished.
+        if (!NarrativeDirector.HasStoryFlag(initFinishedStoryFlag))
+            return;
+
+        if (NarrativeDirector.HasStoryFlag(firstSkillTreeEntryStoryFlag))
+            return;
+
+        NarrativeDirector.SetStoryFlag(firstSkillTreeEntryStoryFlag);
+        NarrativeDirector.Instance?.CheckTriggers();
+    }
+
+    private void WireNarrativeEvents()
+    {
+        if (DialogueManager.Instance == null) return;
+        DialogueManager.Instance.OnSequenceStarted -= HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleted -= HandleDialogueSequenceCompleted;
+        DialogueManager.Instance.OnSequenceStarted += HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleted += HandleDialogueSequenceCompleted;
+    }
+
+    private void UnwireNarrativeEvents()
+    {
+        if (DialogueManager.Instance == null) return;
+        DialogueManager.Instance.OnSequenceStarted -= HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleted -= HandleDialogueSequenceCompleted;
+    }
+
+    private void HandleDialogueSequenceStarted(DialogueSequenceSO _)
+    {
+        // Intro dialogue is the first state players see.
+        if (_progressState == GameProgressState.SkillTree || _progressState == GameProgressState.InitIntro)
+            SetProgressState(GameProgressState.InitIntro);
+    }
+
+    private void HandleDialogueSequenceCompleted(DialogueSequenceSO _)
+    {
+        // Centralized flow ownership: GameManager decides where to go after dialogue.
+        // Keep previous behavior for run-end narrative while also supporting init intro.
+        if (_progressState == GameProgressState.InitIntro || _progressState == GameProgressState.RunEnd || runEnded)
+            ReturnToSkillTree();
+    }
+
+    private void SyncFlowStateFromUISection()
+    {
+        if (uiManager == null) return;
+
+        switch (uiManager.CurrentSection)
+        {
+            case UIManager_Racing.UISection.SkillTree:
+                _flowState = RunFlowState.SkillTree;
+                _acceptRunEndContinueInput = false;
+                break;
+
+            case UIManager_Racing.UISection.Loading:
+                _flowState = RunFlowState.Loading;
+                _acceptRunEndContinueInput = false;
+                break;
+
+            case UIManager_Racing.UISection.RunEnd:
+                if (runEnded)
+                {
+                    _flowState = RunFlowState.RunEnd;
+                    _acceptRunEndContinueInput = true;
+                }
+                break;
+
+            default:
+                _flowState = RunFlowState.InRun;
+                _acceptRunEndContinueInput = false;
+                break;
+        }
+    }
+
+    private void EnterLoadingGameplayGate()
+    {
+        if (_loadingGameplayGateActive) return;
+        _loadingGameplayGateActive = true;
+
+        // Freeze gameplay simulation while loading UI is visible.
+        Time.timeScale = 0f;
+
+        // Keep only whitelisted music alive while all other audio is paused.
+        ApplyMusicWhitelistBypass(enable: true);
+        if (!AudioListener.pause)
+        {
+            AudioListener.pause = true;
+            _audioPausedByLoadingGate = true;
+        }
+    }
+
+    private void ExitLoadingGameplayGate()
+    {
+        if (!_loadingGameplayGateActive) return;
+        _loadingGameplayGateActive = false;
+
+        // Resume normal gameplay simulation.
+        Time.timeScale = 1f;
+
+        if (_audioPausedByLoadingGate)
+        {
+            AudioListener.pause = false;
+            _audioPausedByLoadingGate = false;
+        }
+
+        ApplyMusicWhitelistBypass(enable: false);
+    }
+
+    private void ApplyMusicWhitelistBypass(bool enable)
+    {
+        if (loadingMusicWhitelist == null || loadingMusicWhitelist.Length == 0)
+            return;
+
+        for (int i = 0; i < loadingMusicWhitelist.Length; i++)
+        {
+            AudioSource src = loadingMusicWhitelist[i];
+            if (src == null) continue;
+
+            if (enable)
+            {
+                if (!_musicIgnorePauseOriginal.ContainsKey(src))
+                    _musicIgnorePauseOriginal[src] = src.ignoreListenerPause;
+                src.ignoreListenerPause = true;
+            }
+            else if (_musicIgnorePauseOriginal.TryGetValue(src, out bool prev))
+            {
+                src.ignoreListenerPause = prev;
+            }
+        }
+
+        if (!enable)
+            _musicIgnorePauseOriginal.Clear();
     }
 
 

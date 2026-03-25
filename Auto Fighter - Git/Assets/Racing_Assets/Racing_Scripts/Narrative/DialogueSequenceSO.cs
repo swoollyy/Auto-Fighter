@@ -7,9 +7,6 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Racing/Narrative/Dialogue Sequence", fileName = "DialogueSeq_New")]
 public class DialogueSequenceSO : ScriptableObject
 {
-    [Tooltip("Optional ID for progress/conditions (e.g. \"intro\", \"after_first_race\").")]
-    public string sequenceId = "";
-
     [Tooltip("Dialogue lines in order. Played one by one; player (or auto) advances.")]
     public DialogueLineData[] lines = new DialogueLineData[0];
 
@@ -19,6 +16,9 @@ public class DialogueSequenceSO : ScriptableObject
 
     [Tooltip("If true, timeScale is set to 0 while this sequence is playing (cutscene feel).")]
     public bool pauseGameWhilePlaying = true;
+
+    [Tooltip("If true, keep the game canvas visible while this dialogue plays (use for skill-tree/tutorial dialogue overlays).")]
+    public bool keepGameCanvasVisibleWhilePlaying = false;
 
     /// <summary>True if the sequence has at least one line.</summary>
     public bool HasLines => lines != null && lines.Length > 0;

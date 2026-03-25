@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -118,7 +118,11 @@ public class ThrownObstacleDirector : MonoBehaviour
     {
         if (!trackGenerator) trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
         if (!playerTransform && GameManager_Racing.Instance != null)
-            playerTransform = GameManager_Racing.Instance.ActiveCar?.transform;
+        {
+            var activeCar = GameManager_Racing.Instance.ActiveCar;
+            if (activeCar != null)
+                playerTransform = activeCar.transform;
+        }
         if (!carController && playerTransform != null)
             carController = playerTransform.GetComponent<CarController>();
 

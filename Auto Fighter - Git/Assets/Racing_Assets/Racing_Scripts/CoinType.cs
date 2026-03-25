@@ -9,5 +9,6 @@ public enum CoinType
     Gold = 2,
     Platinum = 3,
     Diamond = 4,
-    Legendary = 5
+    Legendary = 5,
+    DefaultFallback = 6
 }

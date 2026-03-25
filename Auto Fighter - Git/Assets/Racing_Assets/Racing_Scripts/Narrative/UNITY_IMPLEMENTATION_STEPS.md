@@ -57,7 +57,6 @@ Do these steps in your **racing scene** (e.g. **Racer_Incremental**). Save the s
 2. **Right‑click** in the folder → **Create** → **Racing** → **Narrative** → **Dialogue Sequence**.
 3. Name it (e.g. **Intro_Dialogue**).
 4. Select it and in the Inspector:
-   - **Sequence Id**: e.g. `intro` (optional).
    - **Lines** → set **Size** to **2** (or more).
    - **Element 0**: Speaker Name = `Mechanic`, Text = `Hey. First run? Just drive and don't crash.`
    - **Element 1**: Speaker Name = `Mechanic`, Text = `Press Space when you're done reading.`

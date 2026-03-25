@@ -243,6 +243,37 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   pulseSpeed: 0.7
   pulseScale: 0.02
+--- !u!1 &1212245948265394290
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 633560356949007360}
+  m_Layer: 2
+  m_Name: Coin Sit Here
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &633560356949007360
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1212245948265394290}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.51, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 9133986507031933044}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2029454580896771843
 GameObject:
   m_ObjectHideFlags: 0
@@ -759,6 +790,135 @@ TrailRenderer:
   m_Autodestruct: 0
   m_Emitting: 1
   m_ApplyActiveColorSpace: 1
+--- !u!1 &5619546008587955685
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 9133986507031933044}
+  - component: {fileID: 2744861296193328044}
+  - component: {fileID: 4071185393014295584}
+  - component: {fileID: 7406792489031616192}
+  - component: {fileID: 5719022685625730438}
+  m_Layer: 2
+  m_Name: Coin Collecting Friend
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &9133986507031933044
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5619546008587955685}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.58, z: 0}
+  m_LocalScale: {x: 0.16031, y: 0.16031, z: 0.16031}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 633560356949007360}
+  m_Father: {fileID: 7624176337786834354}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &2744861296193328044
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5619546008587955685}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &4071185393014295584
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5619546008587955685}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 6dc669eb99c16234491f3d2c3ea95ec9, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &7406792489031616192
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5619546008587955685}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 0
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &5719022685625730438
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5619546008587955685}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f70b2e7127e73db47b6e5c3946fb2f04, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerCar: {fileID: 4026302879999614892}
+  carryAnchor: {fileID: 633560356949007360}
+  collectionCooldown: 8
+  searchRangeFromPlayer: 5
+  fallbackMoveSpeed: 14
+  grabDistance: 0.25
+  deliverDistance: 0.25
+  idleUsesInitialLocalPose: 1
+  idleOffset: {x: 0, y: 0, z: 0}
+  idleFollowLerp: 8
 --- !u!1 &5657100606639614825
 GameObject:
   m_ObjectHideFlags: 0
@@ -792,6 +952,7 @@ GameObject:
   - component: {fileID: 2359635645306560026}
   - component: {fileID: 5501037321091204196}
   - component: {fileID: 2399475850178820915}
+  - component: {fileID: 2303199453191144412}
   m_Layer: 0
   m_Name: Car
   m_TagString: Untagged
@@ -826,6 +987,7 @@ Transform:
   - {fileID: 2106783782778364616}
   - {fileID: 3116900748683582674}
   - {fileID: 3435999841598023568}
+  - {fileID: 9133986507031933044}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &5809011667624789452
@@ -1023,8 +1185,9 @@ MonoBehaviour:
   useProxyLayer: 1
   obstacleLayers:
     serializedVersion: 2
-    m_Bits: 788480
+    m_Bits: 9177088
   triggerRadius: 1.45
+  affectOnlyAggressiveTrackCreatures: 1
   startsArmed: 1
   autoRearm: 1
   cooldownSeconds: 6
@@ -1357,19 +1520,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   requireDriftUnlock: 1
   driftKey: 304
-  driftMinSpeed: 2.15
-  maxDriftSteerMultiplier: 3.1
-  driftBuildRate: 0.7
-  driftReleaseRate: 12.2
-  driftSideForce: 0.41
+  driftMinSpeed: 0.95
+  maxDriftSteerMultiplier: 3.33
+  driftSteeringInputBuildupMultiplier: 0.506
+  driftBuildRate: 0.4
+  driftReleaseRate: 8.75
+  driftSideForce: 0.47
   driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
   lockToDriftPeakSpeed: 1
-  driftBrakeDecayPerSecond: 0.001
+  driftBrakeDecayPerSecond: 0
   requireDirectionalInputForDriftCharge: 0
-  driftNeutralDrainRate: 2.6
+  driftNeutralDrainRate: 2.55
   driftNeutralFullResetDelay: 3.65
   resetDriftChargeOnSteerFlip: 1
   steerFlipRetainedCharge: 0.055
@@ -1377,7 +1541,7 @@ MonoBehaviour:
   minChargeForFlipReset: 0
   steerFlipRebuildDelay: 0.1
   allowDriftGlideWithoutSteer: 1
-  driftGlideDecayPerSecond: 0.15
+  driftGlideDecayPerSecond: 0.09
   closeCallBoostBaseDuration: 0.9
   closeCallBoostForce: 9
   closeCallBoostForceMode: 2
@@ -1389,8 +1553,8 @@ MonoBehaviour:
   invincibilityBumpForceUp: 3
   invincibilityBumpTorque: 5
   enableCloseCallNearMisses: 1
-  closeCallDistance: 0.45
-  closeCallMinSpeed: 2.88
+  closeCallDistance: 0.48
+  closeCallMinSpeed: 2
   closeCallCooldown: 1.42
   closeCallRootCooldown: 4.39
   iceFrictionTransitionSpeed: 3
@@ -1442,9 +1606,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 0
-  fuelUsePerSecondBraking: 0
-  idleFuelUsePerSecond: 0
+  fuelUsePerSecondAtFullThrottle: 10
+  fuelUsePerSecondBraking: 10
+  idleFuelUsePerSecond: 5
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:
@@ -1459,21 +1623,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxHP: 20
-  hpCrashDamageAtSeverity1: 19
   baseHpRegenPerSecond: 0
   performanceAtZeroHP: 0.455
   degradeStartHPFraction: 0.422
   enableDamageMalfunction: 1
   maxMalfunctionChancePerSecond: 0.326
+  lowHpMalfunctionChanceBiasExponent: 0.42
   malfunctionBurstDuration: {x: 0.2, y: 0.72}
   malfunctionCooldown: {x: 0.5, y: 5}
   malfunctionThrottleMultiplier: 0.35
   useSmoothMalfunction: 1
-  minimumAccelerationFloor: 4
-  minimumMaxSpeedFloor: 6
-  fuelLossAtSeverity1: 30
-  minHpLossPerCrash: 10
-  minFuelLossPerCrash: 10
+  minimumAccelerationFloor: 4.17
+  minimumMaxSpeedFloor: 2
+  crashDamageSeverityScale: 1
   crashDamageCooldown: 0.35
   crashImpactVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   crashImpactVFXLifetime: 0.4
@@ -1500,7 +1662,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   groundLayers:
     serializedVersion: 2
-    m_Bits: 90112
+    m_Bits: 90113
   samplesX: 6
   samplesZ: 6
   raycastHeightOffset: 0.5
@@ -1559,9 +1721,10 @@ MonoBehaviour:
   enableCrashRecoveryAlways: 1
   flippedClickMultiplier: 1.5
   airborneClickMultiplier: 1.25
+  crashSeverityConfig: {fileID: 11400000, guid: 7baae3b2c31f7994ebc281ee7d67968e, type: 2}
   crashLayers:
     serializedVersion: 2
-    m_Bits: 1837056
+    m_Bits: 10225664
   minImpactSpeed: 1.6
   maxImpactSpeed: 14
   minCrashDuration: 1.08
@@ -1633,6 +1796,7 @@ MonoBehaviour:
   baseClicksPerClick: 1
   basePassiveClickRate: 0
   basePassiveClickStrength: 1
+  mashDifficultyPerClickPowerStep: 1.4
   enableMashProgressGauge: 1
   gaugeDrainRateBase: 0.12
   gaugeDrainRatePerCrash: 0.06
@@ -1645,12 +1809,12 @@ MonoBehaviour:
   gaugeMultiplierAtMax: 2
   mashDrainsHealth: 1
   mashDrainsFuel: 1
-  mashHealthDrainAtMinSeverity: 0.3
+  mashHealthDrainAtMinSeverity: 0.6
   mashHealthDrainAtMaxSeverity: 4
-  mashHealthDrainPerCrash: 0.25
+  mashHealthDrainPerCrash: 0.4
   mashHealthDrainCap: 25
   mashFuelDrainAtMinSeverity: 0.3
-  mashFuelDrainAtMaxSeverity: 5
+  mashFuelDrainAtMaxSeverity: 10
   mashFuelDrainPerCrash: 0.25
   mashFuelDrainCap: 15
   gaugeDrainAtMinSeverity: 0.08
@@ -1658,11 +1822,10 @@ MonoBehaviour:
   gaugeDrainPerCrash: 0.02
   gaugeDrainCap: 0.75
   enableSprocketRewards: 1
-  sprocketBasePercent: 0.2
-  sprocketGaugeBonusMax: 1.5
-  sprocketMaxedBonusMultiplier: 1.25
-  sprocketMinReward: 5
-  sprocketMaxReward: 5000000
+  sprocketBasePercent: 0.8
+  sprocketGaugeBonusMax: 1.1
+  sprocketMinReward: 1
+  sprocketMaxReward: 200
   flipUprightLift: 0.2
   surfaceMaxSpeedLerpRate: 2.78
   closeCallAfterCrashBlockTime: 1
@@ -1712,6 +1875,29 @@ MonoBehaviour:
   crashVolumeMultiplier: 2.63
   crashPitchMin: 0.976
   crashPitchMax: 1.141
+--- !u!114 &2303199453191144412
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5657100606639614825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b785d8675f831046beb9665067f4781, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  collectingFriend: {fileID: 5719022685625730438}
+  useUnlockSkill: 1
+  unlockSkill: 4900
+  useRangeSkills: 1
+  rangeAddSkill: 4910
+  rangeMulSkill: 4911
+  useCooldownSkills: 1
+  cooldownAddSkill: 4920
+  cooldownMulSkill: 4921
+  useValueBonusSkill: 1
+  valueBonusSkill: 4930
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0

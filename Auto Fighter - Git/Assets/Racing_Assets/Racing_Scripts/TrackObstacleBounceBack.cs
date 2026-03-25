@@ -9,7 +9,7 @@ using UnityEngine;
 /// - Kinematic RB + non-trigger collider => real collisions (can land on other obstacles).
 /// - DOTween drives a smooth bounce param, FixedUpdate applies MovePosition/MoveRotation.
 /// - Always follows track path (cannot be pushed off path), but pushes OTHER obstacles on impact.
-/// - Car hit triggers full crash sim (shake/slowmo/fling/disable) without severity-based damage.
+/// - Car hit triggers full crash sim; optionally uses centralized CrashSeverityConfig (see useCentralizedCrashSeverity).
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -120,22 +120,34 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("Minimum time between applying impulse to other obstacles (prevents spam vibration).")]
     [SerializeField, Min(0f)] private float obstacleImpactCooldown = 0.10f;
 
+    [Header("Obstacle clash popup (Crash style)")]
+    [SerializeField] private bool enableObstacleClashCrashPopup = true;
+    [SerializeField, Min(0f)] private float obstacleClashPopupHeight = 1f;
+    [SerializeField, Min(0f)] private float obstacleClashMinRelativeSpeed = 2f;
+    [SerializeField, Min(0f)] private float obstacleClashPairCooldown = 0.2f;
+
     [Header("Damage On Player Hit")]
     [SerializeField] private bool damagePlayerOnHit = true;
 
-    [Tooltip("Flat HP damage applied on hit.")]
+    [Tooltip("If true, uses the car's CrashSeverityConfig (obstacle kind BounceBack): closing speed × mass × scale × per-kind weight. Ignores Hit HP Damage / Hit Fuel Percent.")]
+    [SerializeField] private bool useCentralizedCrashSeverity = true;
+
+    [Tooltip("When centralized severity is on: multiplied into the computed severity after the config (1 = default).")]
+    [SerializeField, Min(0f)] private float centralizedSeverityExtraMultiplier = 1f;
+
+    [Tooltip("Flat HP damage applied on hit (only when Use Centralized Crash Severity is off).")]
     [SerializeField, Min(0f)] private float hitHpDamage = 1f;
 
-    [Tooltip("Fuel damage as a FRACTION of max fuel. 0.05 = 5% of max fuel.")]
+    [Tooltip("Fuel damage as a FRACTION of max fuel (only when centralized severity is off). 0.05 = 5% of max fuel.")]
     [SerializeField, Range(0f, 1f)] private float hitFuelPercent = 0.02f;
 
     [Tooltip("Cooldown between player damage applications.")]
     [SerializeField, Min(0f)] private float hitDamageCooldown = 0.5f;
 
-    [Tooltip("Crash FX severity used for presentation only (shake/slowmo/crash handling). Damage is fixed by hitHpDamage/hitFuelPercent.")]
+    [Tooltip("Fallback 0–1 severity when the car has no CrashSeverityConfig assigned, or extra tuning hint. Also used for legacy flat-damage mode as FX severity.")]
     [SerializeField, Range(0f, 1f)] private float crashFxSeverity = 0.65f;
 
-    [Tooltip("ImpactSpeed fed into crash sim (controls fling/torque). Car also caps final velocity with Max Crash Fling Speed; keep this modest (e.g. 12–16) so bounce-back doesn't fling harder than other obstacles.")]
+    [Tooltip("Closing speed passed into crash severity (centralized mode) and impact speed for crash sim (fling/torque). Car caps with Max Crash Fling Speed on CarCrashMashConfig.")]
     [SerializeField, Min(0f)] private float crashImpactSpeed = 14f;
 
     [Tooltip("When the obstacle hits the car, it loses pathing and reacts with physics. Impulse magnitude applied to the obstacle away from the car (0 = use estimated speed).")]
@@ -619,9 +631,24 @@ public class TrackObstacleBounceBack : MonoBehaviour
         // Other obstacle reaction only
         if (reactToOtherObstacles && obstacleReactMask.value != 0)
         {
+            int otherLayerMaskBit = 1 << collision.collider.gameObject.layer;
+            if ((obstacleReactMask.value & otherLayerMaskBit) != 0 &&
+                RacingObstacleCollisionPopups.IsObstacleBuddy(collision.collider))
+            {
+                RacingObstacleCollisionPopups.TrySpawnObstacleClash(
+                    transform.root,
+                    collision.collider.transform.root,
+                    collision,
+                    collision.collider,
+                    collision.relativeVelocity.magnitude,
+                    obstacleClashMinRelativeSpeed,
+                    obstacleClashPopupHeight,
+                    obstacleClashPairCooldown,
+                    enableObstacleClashCrashPopup);
+            }
+
             if (now < _nextAllowedObstacleImpulseTime) return;
 
-            int otherLayerMaskBit = 1 << collision.collider.gameObject.layer;
             if ((obstacleReactMask.value & otherLayerMaskBit) == 0) return;
 
             Rigidbody otherRb = collision.rigidbody;
@@ -669,6 +696,32 @@ public class TrackObstacleBounceBack : MonoBehaviour
             _cumLengths[i] = len;
         }
         _totalLength = len;
+    }
+
+    /// <summary>
+    /// Rolling log (or similar) hit — leave the bounce spline and take an impulse.
+    /// </summary>
+    public void ApplyRollingLogRam(Vector3 planarDirection, float horizontalImpulse, float upImpulse, Vector3 contactPoint)
+    {
+        if (_forcefieldDetached) return;
+
+        DetachForForcefieldLaunch();
+
+        Vector3 dir = planarDirection;
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 1e-6f) dir = transform.forward;
+        dir.Normalize();
+
+        if (_rb != null)
+        {
+            _rb.AddForceAtPosition(dir * horizontalImpulse + Vector3.up * upImpulse, contactPoint, ForceMode.Impulse);
+            Vector3 torqueAxis = Vector3.Cross(Vector3.up, dir);
+            if (torqueAxis.sqrMagnitude > 1e-6f)
+                _rb.AddTorque(torqueAxis.normalized * (horizontalImpulse * 0.08f), ForceMode.Impulse);
+        }
+
+        if (enableObstacleClashCrashPopup && RacingPopups.IsReady)
+            RacingPopups.CrashWorld(contactPoint + Vector3.up * obstacleClashPopupHeight);
     }
 
     public void DetachForForcefieldLaunch()
@@ -839,16 +892,30 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (hitDir.sqrMagnitude < 0.0001f) hitDir = -contactNormal;
         hitDir.Normalize();
 
-        // Use your existing "damage + crash FX" function (with overrides)
-        car.ApplyDirectDamageWithCrashFX(
-            hitHpDamage,
-            hitFuelPercent,
-            contactPoint,
-            contactNormal,
-            hitDir,
-            crashImpactSpeed,
-            crashFxSeverity
-        );
+        if (useCentralizedCrashSeverity)
+        {
+            float extra = centralizedSeverityExtraMultiplier > 0f ? centralizedSeverityExtraMultiplier : 1f;
+            car.ApplyExternalCrashDamage(
+                hitDir,
+                crashImpactSpeed,
+                contactPoint,
+                crashFxSeverity,
+                transform,
+                _rb,
+                contactNormal,
+                extra);
+        }
+        else
+        {
+            car.ApplyDirectDamageWithCrashFX(
+                hitHpDamage,
+                hitFuelPercent,
+                contactPoint,
+                contactNormal,
+                hitDir,
+                crashImpactSpeed,
+                crashFxSeverity);
+        }
 
         // Lose pathing and react with physics from the collision (same as forcefield detach)
         Vector3 awayFromCar = (_rb.position - car.transform.position);

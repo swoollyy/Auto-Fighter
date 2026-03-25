@@ -69,7 +69,7 @@ public class NarrativeDirector : MonoBehaviour
         return _totalRunsCompleted;
     }
 
-    /// <summary>Manually trigger dialogue by sequence ID from your trigger list, or pass a sequence asset.</summary>
+    /// <summary>Manually trigger dialogue by passing a sequence asset.</summary>
     public void PlayDialogue(DialogueSequenceSO sequence)
     {
         if (sequence == null) return;
@@ -79,24 +79,19 @@ public class NarrativeDirector : MonoBehaviour
             Debug.LogWarning("[NarrativeDirector] No DialogueManager in scene; cannot play: " + sequence.name);
     }
 
-    /// <summary>Play dialogue and set a flag when done (so it won't trigger again if you use that flag in conditions).</summary>
+    /// <summary>
+    /// Play dialogue and reserve <paramref name="flagWhenDone"/> immediately so this trigger cannot fire again
+    /// during the same session (fixes race: other <see cref="DialogueManager.OnSequenceCompleted"/> listeners
+    /// may run before a "set flag on complete" callback and re-enter <see cref="CheckTriggers"/>).
+    /// </summary>
     public void PlayDialogueOnce(DialogueSequenceSO sequence, string flagWhenDone)
     {
         if (sequence == null) return;
         if (HasStoryFlag(flagWhenDone)) return;
-        var prev = DialogueManager.Instance != null ? (Action<DialogueSequenceSO>)null : null;
-        if (DialogueManager.Instance != null)
-        {
-            void OnDone(DialogueSequenceSO seq)
-            {
-                if (seq == sequence && !string.IsNullOrEmpty(flagWhenDone))
-                    SetStoryFlag(flagWhenDone);
-                if (DialogueManager.Instance != null)
-                    DialogueManager.Instance.OnSequenceCompleted -= OnDone;
-            }
-            DialogueManager.Instance.OnSequenceCompleted += OnDone;
-            DialogueManager.Instance.PlaySequence(sequence);
-        }
+        if (DialogueManager.Instance == null) return;
+
+        SetStoryFlag(flagWhenDone);
+        DialogueManager.Instance.PlaySequence(sequence);
     }
 
     /// <summary>Evaluate trigger entries and play the first matching sequence (once per condition).</summary>
@@ -142,7 +137,7 @@ public class NarrativeTriggerEntry
     [Tooltip("If true, only play once per session (or use flagWhenPlayed for persistence).")]
     public bool playOnce = true;
 
-    [Tooltip("Story flag to set when this has been played (so condition can require 'not yet played').")]
+    [Tooltip("Story flag set as soon as this sequence starts (dedupe / block re-trigger before OnSequenceCompleted order issues).")]
     public string flagWhenPlayed = "";
 }
 

@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f1f1d24f42e3fa45a9c75a78560fe40, type: 3}
   m_Name: Sprocket_Collect
   m_EditorClassIdentifier: 
-  popupType: 16
-  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  popupType: 17
+  font: {fileID: 11400000, guid: 91008197671975e48bd82fb37b4e4e80, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 11400000, guid: 0248a313a4fb855488b1f02e2bbe463c, type: 2}
   baseFontSize: 10

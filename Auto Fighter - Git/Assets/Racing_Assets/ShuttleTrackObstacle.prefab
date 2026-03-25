@@ -200,6 +200,9 @@ MonoBehaviour:
   randomizePathLength: 1
   minPathFraction: 0.404
   maxPathFraction: 1
+  keepPathFlatAndTrimOnElevation: 1
+  maxAllowedPathElevationDelta: 0.15
+  endpointTrimIterations: 10
   enableScreenShake: 1
   moveShakeIntensity: 0.09
   moveShakeFrequency: 5
@@ -211,7 +214,7 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   convertOnCollisionLayers:
     serializedVersion: 2
-    m_Bits: 3934209
+    m_Bits: 12322817
   ignoreRoadAndTerrain: 1
   minTransferVelocity: 0
   collisionDelayFrames: 3

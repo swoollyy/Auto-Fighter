@@ -48,24 +48,21 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("If assigned, uses this instead of auto-finding.")]
     [SerializeField] private Collider hitCollider;
 
-    [Header("UI Popup (Car Run-Over)")]
+    [Header("UI Popup (Car Run-Over + NPC crush)")]
+    [Tooltip("Comic popup when the player runs over this creature, or when NPC traffic crushes it (same style / height).")]
     [SerializeField] private bool enableRunOverPopup = true;
     [SerializeField] private RacingPopupType runOverPopupType = RacingPopupType.CreatureSplat;
     [SerializeField] private float runOverPopupHeight = 1.2f;
 
-    [Header("Coin Reward SFX (Car Kills)")]
-    [SerializeField] private bool playCoinRewardSound = true;
-
-    [Tooltip("Optional override clips for creature coin rewards. If empty, will try CoinDatabase coin sounds.")]
-    [SerializeField] private AudioClip[] coinRewardSoundsOverride;
-
-    [SerializeField, Range(0f, 1f)] private float coinRewardSoundVolume = 1f;
-    [SerializeField, Range(0f, 0.3f)] private float coinRewardPitchVariance = 0.05f;
-    [SerializeField] private float coinRewardBasePitch = 1f;
-
-    [SerializeField] private float coinRewardMinDistance = 5f;
-    [SerializeField] private float coinRewardMaxDistance = 40f;
-
+    [Header("UI Popup (creature eats creature — NOM style)")]
+    [Tooltip("When this aggressive beast kills a scared critter on contact, spawn eat-style popup at the prey.")]
+    [SerializeField] private bool enableBeastEatPopup = true;
+    [Tooltip("When this scared critter kills a passive bug on contact, use the same eat popup (type + height below).")]
+    [SerializeField] private bool enableCritterEatBugPopup = true;
+    [Tooltip("Popup type for both beast→critter and critter→bug (e.g. BeastEat style asset with NOM NOM lines).")]
+    [SerializeField] private RacingPopupType beastEatPopupType = RacingPopupType.BeastEat;
+    [Tooltip("World height above the prey for both eat interactions.")]
+    [SerializeField] private float beastEatPopupHeight = 1.1f;
 
     [Tooltip("Visual root to animate/rotate separately from physics.")]
     [SerializeField] private Transform visualRoot;
@@ -81,14 +78,32 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("Layers to avoid while moving (obstacles, walls, props, etc).")]
     [SerializeField] private LayerMask movementAvoidanceLayers = 0;
 
+    [Tooltip("Extra layers treated as obstacles for Passive/Scared only (e.g. Rolling Log). Beasts ignore this mask.")]
+    [SerializeField] private LayerMask rollingLogAvoidanceLayers = 0;
+
+    [Tooltip("If true, trigger colliders count as obstacles. Many props use triggers; leaving this off makes casts ignore them entirely.")]
+    [SerializeField] private bool avoidanceIncludeTriggers = true; // default on so existing trigger props are detected
+
     [Tooltip("Sphere radius for obstacle sensing while moving.")]
     [SerializeField, Min(0.01f)] private float avoidanceRadius = 0.35f;
 
     [Tooltip("How far ahead we check for blockers (meters).")]
-    [SerializeField, Min(0.05f)] private float avoidanceLookAhead = 1.2f;
+    [SerializeField, Min(0.05f)] private float avoidanceLookAhead = 2.4f;
 
     [Tooltip("Height above pivot for the sphere cast origin (helps if pivot is low).")]
     [SerializeField] private float avoidanceCastHeight = 0.35f;
+
+    [Tooltip("Rays in a horizontal fan when picking a way around (3–21).")]
+    [SerializeField, Range(3, 21)] private int avoidanceRayCount = 11;
+
+    [Tooltip("Total fan angle (degrees) centered on desired move direction.")]
+    [SerializeField, Range(20f, 160f)] private float avoidanceFanAngleDeg = 100f;
+
+    [Tooltip("How quickly smoothed avoidance direction catches up to the best clear direction.")]
+    [SerializeField, Min(0.5f)] private float avoidanceSteerSmoothSpeed = 14f;
+
+    [Tooltip("When bug-idle path is blocked, how fast to shift lateral goal (meters/sec on offset).")]
+    [SerializeField, Min(0f)] private float avoidanceIdlePathNudgeSpeed = 5f;
 
     [Tooltip("If we can't slide, we pick a side-step amount (meters per second-ish bias).")]
     [SerializeField] private float avoidanceSideBias = 0.9f;
@@ -220,8 +235,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float threatDistance;
     protected Vector3 threatDirection;
 
-    // Aggressive hunting target (scared creature)
+    // Scared: hunt passive bugs. Aggressive: hunt scared (set in threat scan).
     protected Transform chaseTargetTransform;
+
+    /// <summary>Nearest NPC traffic root (beast chase / critter flee).</summary>
+    protected Transform vehicleChaseTransform;
+    protected float vehicleChaseDistance = float.MaxValue;
 
     protected bool isBullRushCharging = false;      // True during wind-up phase
     protected bool isBullRushActive = false;        // True during the actual rush
@@ -246,8 +265,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     private const int MAX_THREATS = 8;
     private Collider[] _threatColliderBuffer = new Collider[MAX_THREATS];
+    private readonly Collider[] _creatureQueryBuffer = new Collider[32];
+    private readonly Collider[] _npcOverlapBuffer = new Collider[24];
     private Vector3 _combinedFleeDirection = Vector3.forward;
     private int _activeThreatCount = 0;
+
+    private LayerMask _npcTrafficLayers;
+
+    private float _idleRhythmPhaseEndTime;
+    private bool _idleRhythmWalking = true;
+
+    private Vector3 _avoidanceSteerSmoothed;
 
     #endregion
 
@@ -264,6 +292,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     public bool IsBullRushActive => isBullRushActive;
     public Vector3 BullRushDirection => bullRushDirection;
+
+    /// <summary>Movement avoidance mask; beasts do not include <see cref="rollingLogAvoidanceLayers"/>.</summary>
+    private LayerMask GetAvoidanceLayerMask()
+    {
+        LayerMask m = movementAvoidanceLayers;
+        if (behaviorType != CreatureBehaviorType.Aggressive)
+            m.value |= rollingLogAvoidanceLayers.value;
+        return m;
+    }
     #endregion
 
     #region Initialization
@@ -280,6 +317,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         currentDistanceAlongTrack = distanceAlongTrack;
         behaviorType = creatureConfig.behaviorType;
         trackGenerator = spawner.GetTrackGenerator();
+        _npcTrafficLayers = spawner != null ? spawner.NpcTrafficLayerMask : default;
+
+        if (spawnerRef != null && movementAvoidanceLayers.value == 0)
+        {
+            LayerMask obs = spawnerRef.CreatureObstacleAvoidanceLayers;
+            if (obs.value != 0)
+                movementAvoidanceLayers = obs;
+        }
 
         // Set health (creatures die in one hit from turret, but this allows for future expansion)
         currentHealth = 1f;
@@ -300,7 +345,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         switch (behaviorType)
         {
             case CreatureBehaviorType.Passive:
-                SetState(CreatureState.Wandering);
+                SetState(config != null && config.passiveUseBugIdleMovement
+                    ? CreatureState.Idle
+                    : CreatureState.Wandering);
                 break;
             case CreatureBehaviorType.Scared:
             case CreatureBehaviorType.Aggressive:
@@ -459,7 +506,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return;
         }
 
-        // Aggressive creature instantly kills scared creature on trigger contact
+        // Beast: kills critters on contact
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
             TrackCreature otherCreature = other.GetComponentInParent<TrackCreature>();
@@ -469,25 +516,33 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 !otherCreature.isDead &&
                 otherCreature.behaviorType == CreatureBehaviorType.Scared)
             {
-
-                Debug.Log($"Working!");
-
-                // Kill immediately
+                if (enableBeastEatPopup)
+                    SpawnEatStylePopupOnPrey(otherCreature);
                 otherCreature.killSource = CreatureKillSource.Other;
                 otherCreature.Die();
-
-                // Stop chasing and return to idle
                 chaseTargetTransform = null;
                 SetState(CreatureState.Idle);
-
-                return; // IMPORTANT: stop further trigger processing
-            }
-            else
-            {
-                Debug.Log($"Working Not! {other.gameObject.name}");
+                return;
             }
         }
 
+        // Critter: kills bugs on contact
+        if (behaviorType == CreatureBehaviorType.Scared)
+        {
+            TrackCreature otherCreature = other.GetComponentInParent<TrackCreature>();
+            if (otherCreature != null &&
+                otherCreature != this &&
+                !otherCreature.isDead &&
+                otherCreature.behaviorType == CreatureBehaviorType.Passive)
+            {
+                if (enableCritterEatBugPopup)
+                    SpawnEatStylePopupOnPrey(otherCreature);
+                otherCreature.killSource = CreatureKillSource.Other;
+                otherCreature.Die();
+                chaseTargetTransform = null;
+                return;
+            }
+        }
 
         if (IsCrushingCollider(other, out float otherMass, out float otherSpeed))
         {
@@ -535,10 +590,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
                 currentSpeed = 0f;
+                _idleRhythmPhaseEndTime = 0f;
 
-                // Idle anchor for bug-style idle movement (scared + aggressive).
+                // Idle anchor for bug-style idle movement.
                 if (config != null)
                 {
+                    if (behaviorType == CreatureBehaviorType.Passive && config.passiveUseBugIdleMovement)
+                        CaptureIdleAnchor();
+
                     if (behaviorType == CreatureBehaviorType.Scared && config.scaredIdleUseBugMovement)
                         CaptureIdleAnchor();
 
@@ -553,7 +612,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
 
             case CreatureState.Fleeing:
-                currentFleeSpeed = config.scaredBaseFleeSpeed;
+                currentFleeSpeed = behaviorType == CreatureBehaviorType.Passive && config != null
+                    ? config.passiveFleeBaseSpeed
+                    : config.scaredBaseFleeSpeed;
                 PlaySound(runSound);
                 break;
 
@@ -584,17 +645,60 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     #region Behavior Updates
 
     /// <summary>
-    /// Passive behavior: Wanders randomly, never reacts to player.
+    /// Bug (Passive): bug idle or wander; flees from critters (Scared) when configured.
     /// </summary>
     protected virtual void UpdatePassiveBehavior(float dt)
     {
-        // Always wandering
-        if (currentState != CreatureState.Wandering && currentState != CreatureState.Dead)
+        if (config == null || currentState == CreatureState.Dead) return;
+
+        bool critterSpotted = config.passiveFleeFromScared &&
+                              threatTransform != null &&
+                              threatDistance < config.passiveScaredDetectRadius;
+        bool stillFleeingCritter = config.passiveFleeFromScared &&
+                                   threatTransform != null &&
+                                   threatDistance < config.passiveScaredLoseDistance;
+
+        if (currentState == CreatureState.Fleeing)
         {
-            SetState(CreatureState.Wandering);
+            if (!stillFleeingCritter)
+            {
+                SetState(config.passiveUseBugIdleMovement ? CreatureState.Idle : CreatureState.Wandering);
+                currentFleeSpeed = config.passiveFleeBaseSpeed;
+            }
+            else
+            {
+                UpdateFleeing(dt);
+                return;
+            }
         }
 
-        UpdateWandering(dt);
+        if (critterSpotted)
+        {
+            SetState(CreatureState.Fleeing);
+            UpdateFleeing(dt);
+            return;
+        }
+
+        if (config.passiveUseBugIdleMovement)
+        {
+            if (currentState != CreatureState.Idle)
+                SetState(CreatureState.Idle);
+
+            UpdateBugIdleMovement(
+                dt,
+                config.passiveIdleBugMoveSpeed,
+                config.passiveIdleBugDirectionChangeInterval,
+                config.passiveIdleBugLateralRadius,
+                config.passiveIdleBugForwardRadius,
+                config.passiveFleeMaxOffRoadDistance * 0.5f);
+        }
+        else
+        {
+            if (currentState != CreatureState.Wandering)
+                SetState(CreatureState.Wandering);
+
+            UpdateWandering(dt);
+        }
     }
 
     /// <summary>
@@ -605,11 +709,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// </summary>
     protected virtual void UpdateScaredBehavior(float dt)
     {
-        // Determine if ANY threat is present
+        if (config == null) return;
+
         bool hasAggressiveThreat = threatIsAggressive && threatTransform != null &&
                                    threatDistance < config.scaredAggressiveDetectRadius;
         bool hasPlayerThreat = playerDetected && playerDistance < config.scaredDetectionRadius;
-        bool shouldFlee = hasAggressiveThreat || hasPlayerThreat;
+        bool hasNpcThreat = config.scaredFleeFromNpcTraffic &&
+                            _npcTrafficLayers.value != 0 &&
+                            vehicleChaseTransform != null &&
+                            vehicleChaseDistance < config.scaredNpcTrafficDetectRadius;
+
+        bool shouldFlee = hasAggressiveThreat || hasPlayerThreat || hasNpcThreat;
 
         switch (currentState)
         {
@@ -617,56 +727,111 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureState.Wandering:
                 if (shouldFlee)
                 {
-                    // Immediately start fleeing
+                    chaseTargetTransform = null;
                     if (currentState != CreatureState.Fleeing)
                         SetState(CreatureState.Fleeing);
 
-                    // Boost flee speed when fleeing from aggressive creatures
                     if (hasAggressiveThreat)
                     {
                         currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
                                            Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
                     }
                 }
-                else
+                else if (config.scaredHuntPassiveCreatures)
                 {
-                    // No threats - do idle/wander behavior
-                    if (config != null && config.scaredIdleUseBugMovement)
+                    var bug = FindNearestCreature(CreatureBehaviorType.Passive, config.scaredHuntPassiveRadius);
+                    if (bug != null)
                     {
-                        if (currentState != CreatureState.Idle)
-                            SetState(CreatureState.Idle);
-
-                        UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
-                            config.scaredIdleBugDirectionChangeInterval,
-                            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
-                            config.scaredMaxOffRoadDistance);
+                        chaseTargetTransform = bug.transform;
+                        SetState(CreatureState.Charging);
+                        RunScaredBugHuntCharging(dt, shouldFlee);
                     }
                     else
                     {
-                        if (currentState != CreatureState.Wandering)
-                            SetState(CreatureState.Wandering);
-
-                        UpdateWandering(dt);
+                        chaseTargetTransform = null;
+                        UpdateScaredCalmIdle(dt);
                     }
+                }
+                else
+                {
+                    chaseTargetTransform = null;
+                    UpdateScaredCalmIdle(dt);
                 }
                 break;
 
             case CreatureState.Fleeing:
-                // ALWAYS update fleeing movement - never skip this!
                 UpdateFleeing(dt);
 
-                // Check if we can calm down (all threats far enough away)
                 bool playerFar = !playerDetected || playerDistance > config.scaredDetectionRadius * 2f;
                 bool aggroFar = !threatIsAggressive || threatTransform == null ||
-                               threatDistance > config.scaredAggressiveLoseFearDistance;
+                                threatDistance > config.scaredAggressiveLoseFearDistance;
+                bool npcFar = !hasNpcThreat;
 
-                if (playerFar && aggroFar && _activeThreatCount == 0)
+                if (playerFar && aggroFar && npcFar && _activeThreatCount == 0)
                 {
-                    // All threats gone - return to idle/wander
-                    SetState(CreatureState.Wandering);
+                    SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
                     currentFleeSpeed = config.scaredBaseFleeSpeed;
+                    chaseTargetTransform = null;
                 }
                 break;
+
+            case CreatureState.Charging:
+                RunScaredBugHuntCharging(dt, shouldFlee);
+                break;
+        }
+    }
+
+    /// <summary>Critter chasing a bug (Passive). Aborts if a higher-priority threat appears.</summary>
+    private void RunScaredBugHuntCharging(float dt, bool shouldFlee)
+    {
+        if (config == null) return;
+
+        if (shouldFlee)
+        {
+            chaseTargetTransform = null;
+            SetState(CreatureState.Fleeing);
+            return;
+        }
+
+        if (chaseTargetTransform == null ||
+            !chaseTargetTransform.TryGetComponent<TrackCreature>(out var prey) ||
+            prey.isDead ||
+            prey.behaviorType != CreatureBehaviorType.Passive)
+        {
+            chaseTargetTransform = null;
+            SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
+            return;
+        }
+
+        float huntDist = Vector3.Distance(transform.position, chaseTargetTransform.position);
+        if (huntDist > config.scaredPassiveHuntLoseDistance)
+        {
+            chaseTargetTransform = null;
+            SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
+            return;
+        }
+
+        UpdateCharging(dt);
+    }
+
+    private void UpdateScaredCalmIdle(float dt)
+    {
+        if (config.scaredIdleUseBugMovement)
+        {
+            if (currentState != CreatureState.Idle)
+                SetState(CreatureState.Idle);
+
+            UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
+                config.scaredIdleBugDirectionChangeInterval,
+                config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
+                config.scaredMaxOffRoadDistance);
+        }
+        else
+        {
+            if (currentState != CreatureState.Wandering)
+                SetState(CreatureState.Wandering);
+
+            UpdateWandering(dt);
         }
     }
 
@@ -691,23 +856,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 bullRushChargeTimer = 0f;
                 bullRushActiveTimer = 0f;
 
-                // Check if we should start a new bull rush (only if cooldown is done)
                 bool canStartNewRush = bullRushCooldownTimer <= 0f;
+                ResolveAggressiveChargeTarget(out Transform chargeTarget, out _);
 
-                // Priority radius: if the player is inside this bubble, ALWAYS target the player.
-                bool playerIsClosePriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
-                bool playerInDetectionRange = playerDetected && playerDistance < config.aggressiveDetectionRadius;
-
-                // Start charging at player (bull rush only)
-                if (canStartNewRush && config.useBullRush && (playerIsClosePriority || playerInDetectionRange))
-                {
-                    chaseTargetTransform = null; // Target is player
-                    SetState(CreatureState.Charging);
-                }
-                // Hunt scared creatures (standard tracking, not bull rush)
-                else if (config.aggressiveHuntScaredCreatures && chaseTargetTransform != null)
+                if (canStartNewRush && chargeTarget != null)
                 {
                     SetState(CreatureState.Charging);
+                    UpdateCharging(dt);
                 }
                 // Idle bug movement
                 else
@@ -736,30 +891,24 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureState.Charging:
                 UpdateCharging(dt);
 
-                // For hunting creatures: give up if target is gone / too far
-                // (Bull rush handles its own exit conditions)
                 if (!isBullRushActive && !isBullRushCharging)
                 {
-                    bool hunting = chaseTargetTransform != null;
+                    ResolveAggressiveChargeTarget(out Transform focus, out _);
+                    if (focus == null)
+                    {
+                        SetState(CreatureState.Idle);
+                        break;
+                    }
 
-                    if (hunting)
-                    {
-                        float distToTarget = Vector3.Distance(transform.position, chaseTargetTransform.position);
-                        if (distToTarget > config.aggressiveHuntRadius * 1.25f)
-                        {
-                            chaseTargetTransform = null;
-                            SetState(CreatureState.Idle);
-                        }
-                    }
-                    // If targeting player but not in bull rush, go back to idle
-                    // (This shouldn't happen with new logic, but safety check)
-                    else if (!config.useBullRush)
-                    {
-                        if (!playerDetected || playerDistance > config.aggressiveDetectionRadius * 1.5f)
-                        {
-                            SetState(CreatureState.Idle);
-                        }
-                    }
+                    float d = Vector3.Distance(transform.position, focus.position);
+                    float abandon = focus == playerTransform
+                        ? config.aggressiveDetectionRadius * 1.6f
+                        : (vehicleChaseTransform != null && focus == vehicleChaseTransform
+                            ? config.aggressiveNpcTrafficDetectRadius * 1.35f
+                            : config.aggressiveHuntRadius * 1.35f);
+
+                    if (d > abandon)
+                        SetState(CreatureState.Idle);
                 }
                 break;
         }
@@ -799,6 +948,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         // Smooth lateral movement
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, config.passiveWanderSpeed * dt);
+
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && avoidanceIdlePathNudgeSpeed > 0f)
+            NudgeWanderGoalAroundObstacles(dt, maxLateral);
     }
 
 
@@ -826,6 +978,30 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// - Lets the creature drift off the road (within extraOffRoad).
     /// - Intended for Scared creatures BEFORE they detect the player.
     /// </summary>
+    /// <summary>Walk / pause cycle for bug-style idle on all creature tiers.</summary>
+    protected bool IdleRhythmAllowsWalking()
+    {
+        if (config == null || !config.idleUseWalkPauseRhythm)
+            return true;
+
+        if (_idleRhythmPhaseEndTime <= 0f)
+        {
+            _idleRhythmWalking = true;
+            _idleRhythmPhaseEndTime = Time.time + Random.Range(config.idleWalkSegmentMinSec, config.idleWalkSegmentMaxSec);
+        }
+
+        if (Time.time >= _idleRhythmPhaseEndTime)
+        {
+            _idleRhythmWalking = !_idleRhythmWalking;
+            float dur = _idleRhythmWalking
+                ? Random.Range(config.idleWalkSegmentMinSec, config.idleWalkSegmentMaxSec)
+                : Random.Range(config.idlePauseMinSec, config.idlePauseMaxSec);
+            _idleRhythmPhaseEndTime = Time.time + Mathf.Max(0.05f, dur);
+        }
+
+        return _idleRhythmWalking;
+    }
+
     protected virtual void UpdateBugIdleMovement(
         float dt,
         float bugSpeed,
@@ -835,6 +1011,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float extraOffRoad)
     {
         if (spawner == null) return;
+
+        if (!IdleRhythmAllowsWalking())
+        {
+            currentSpeed = Mathf.MoveTowards(currentSpeed, 0f, Mathf.Max(0.01f, bugSpeed) * 4f * dt);
+            return;
+        }
 
         // If we haven't anchored yet (e.g., config toggled at runtime), anchor now.
         if (nextIdleChangeTime <= 0f)
@@ -870,21 +1052,113 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float maxLateral = halfWidth + Mathf.Max(0f, extraOffRoad);
         targetLateralOffset = Mathf.Clamp(idleAnchorLateral + idleCurrentLateralOffset, -maxLateral, maxLateral);
 
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && avoidanceIdlePathNudgeSpeed > 0f)
+            NudgeIdleGoalAroundObstacles(dt, maxLateral);
+
         // Smooth lateral
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, Mathf.Max(0.01f, currentSpeed) * dt);
     }
 
+    /// <summary>
+    /// If the spline goal is blocked, shift idle lateral targets toward the clearest fan direction (bugs/critters).
+    /// </summary>
+    private void NudgeIdleGoalAroundObstacles(float dt, float maxLateralAbs)
+    {
+        if (spawner == null) return;
+
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatF = pathForward;
+        flatF.y = 0f;
+        if (flatF.sqrMagnitude < 1e-6f) return;
+        flatF.Normalize();
+        Vector3 pathRight = Vector3.Cross(Vector3.up, flatF).normalized;
+
+        Vector3 goal = pathPos + pathRight * targetLateralOffset;
+        goal.y = transform.position.y;
+        Vector3 toGoal = goal - transform.position;
+        toGoal.y = 0f;
+        float dist = toGoal.magnitude;
+        if (dist < 0.05f) return;
+
+        Vector3 wantDir = toGoal / dist;
+        Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+        float look = Mathf.Max(avoidanceLookAhead * 1.15f, dist + 0.5f);
+
+        float forwardClear = SampleObstacleClearance(origin, wantDir, look);
+        if (forwardClear >= look * 0.55f)
+            return;
+
+        TryPickBestClearDirection(origin, wantDir, look, out Vector3 bestDir, out float bestClear);
+        if (bestClear <= forwardClear + 0.08f)
+            return;
+
+        float side = Vector3.Dot(bestDir, pathRight);
+        if (Mathf.Abs(side) < 0.12f)
+            return;
+
+        float nudge = Mathf.Sign(side) * avoidanceIdlePathNudgeSpeed * dt;
+        idleTargetLateralOffset += nudge;
+        idleCurrentLateralOffset = Mathf.MoveTowards(idleCurrentLateralOffset, idleTargetLateralOffset, Mathf.Abs(nudge) * 2.5f);
+
+        float anchorLat = idleAnchorLateral + idleCurrentLateralOffset;
+        anchorLat = Mathf.Clamp(anchorLat, -maxLateralAbs, maxLateralAbs);
+        idleCurrentLateralOffset = anchorLat - idleAnchorLateral;
+        idleTargetLateralOffset = Mathf.Clamp(idleTargetLateralOffset,
+            idleCurrentLateralOffset - 1.5f,
+            idleCurrentLateralOffset + 1.5f);
+
+        targetLateralOffset = Mathf.Clamp(idleAnchorLateral + idleCurrentLateralOffset, -maxLateralAbs, maxLateralAbs);
+    }
+
+    private void NudgeWanderGoalAroundObstacles(float dt, float maxLateralAbs)
+    {
+        if (spawner == null) return;
+
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatF = pathForward;
+        flatF.y = 0f;
+        if (flatF.sqrMagnitude < 1e-6f) return;
+        flatF.Normalize();
+        Vector3 pathRight = Vector3.Cross(Vector3.up, flatF).normalized;
+
+        Vector3 goal = pathPos + pathRight * targetLateralOffset;
+        goal.y = transform.position.y;
+        Vector3 toGoal = goal - transform.position;
+        toGoal.y = 0f;
+        float dist = toGoal.magnitude;
+        if (dist < 0.05f) return;
+
+        Vector3 wantDir = toGoal / dist;
+        Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+        float look = Mathf.Max(avoidanceLookAhead * 1.15f, dist + 0.5f);
+
+        float forwardClear = SampleObstacleClearance(origin, wantDir, look);
+        if (forwardClear >= look * 0.55f)
+            return;
+
+        TryPickBestClearDirection(origin, wantDir, look, out Vector3 bestDir, out float bestClear);
+        if (bestClear <= forwardClear + 0.08f)
+            return;
+
+        float side = Vector3.Dot(bestDir, pathRight);
+        if (Mathf.Abs(side) < 0.12f)
+            return;
+
+        targetLateralOffset += Mathf.Sign(side) * avoidanceIdlePathNudgeSpeed * dt;
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateralAbs, maxLateralAbs);
+    }
 
 
     protected virtual void UpdateFleeing(float dt)
     {
-        // Build up flee speed over time (scurry effect)
-        currentFleeSpeed = Mathf.MoveTowards(
-            currentFleeSpeed,
-            config.scaredMaxFleeSpeed,
-            config.scaredSpeedBuildupRate * dt
-        );
+        float fleeMax = behaviorType == CreatureBehaviorType.Passive
+            ? config.passiveFleeMaxSpeed
+            : config.scaredMaxFleeSpeed;
+        float fleeBuild = behaviorType == CreatureBehaviorType.Passive
+            ? config.passiveFleeBuildupRate
+            : config.scaredSpeedBuildupRate;
 
+        currentFleeSpeed = Mathf.MoveTowards(currentFleeSpeed, fleeMax, fleeBuild * dt);
         currentSpeed = currentFleeSpeed;
 
         // Path basis for track + lateral (needed before we apply avoidance)
@@ -897,7 +1171,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         // Flee direction (away from player/threats), then steer around obstacles so we don't run into them
         Vector3 fleeDirection = GetFleeDirection();
-        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && fleeDirection.sqrMagnitude > 0.0001f)
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && fleeDirection.sqrMagnitude > 0.0001f)
         {
             float step = currentSpeed * dt;
             fleeDirection = ApplyAvoidanceToMoveDir(fleeDirection, step, flatForward, right);
@@ -919,8 +1193,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float lateralDot = Vector3.Dot(fleeDirection, right);
         float lateralMovement = currentSpeed * lateralDot * dt;
 
-        // Can run off-road when fleeing
-        float maxOffRoad = config.scaredMaxOffRoadDistance;
+        float maxOffRoad = behaviorType == CreatureBehaviorType.Passive
+            ? config.passiveFleeMaxOffRoadDistance
+            : config.scaredMaxOffRoadDistance;
         float halfWidth = GetRoadHalfWidth();
         float maxLateral = halfWidth + maxOffRoad;
 
@@ -934,42 +1209,93 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null || config == null) return;
 
-        // Determine target (player has priority if inside aggressivePlayerPriorityRadius).
-        Transform target = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
+        if (behaviorType == CreatureBehaviorType.Scared)
+        {
+            if (chaseTargetTransform == null) return;
+            UpdateStandardCharging(dt, chaseTargetTransform, huntingCreature: true);
+            return;
+        }
 
-        bool playerPriority = playerDetected && playerTransform != null &&
-                              playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
+        if (behaviorType != CreatureBehaviorType.Aggressive)
+            return;
 
-        if (playerPriority)
+        ResolveAggressiveChargeTarget(out Transform target, out bool huntingCreature);
+
+        if (target == null)
+        {
+            EndBullRush();
+            SetState(CreatureState.Idle);
+            currentSpeed = 0f;
+            return;
+        }
+
+        if (chaseTargetTransform != null &&
+            chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
+        {
+            chaseTargetTransform = null;
+            EndBullRush();
+            SetState(CreatureState.Idle);
+            currentSpeed = 0f;
+            return;
+        }
+
+        bool useBullRush = config.useBullRush && !huntingCreature;
+        if (useBullRush)
+            UpdateBullRush(dt, target);
+        else
+            UpdateStandardCharging(dt, target, huntingCreature);
+    }
+
+    /// <summary>
+    /// Pick closest valid target: player (priority bubble first), else among player / critter / NPC in range.
+    /// </summary>
+    private void ResolveAggressiveChargeTarget(out Transform target, out bool huntingCreature)
+    {
+        target = null;
+        huntingCreature = false;
+
+        if (config == null) return;
+
+        if (playerTransform != null && playerDetected &&
+            playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius))
+        {
             target = playerTransform;
+            huntingCreature = false;
+            return;
+        }
 
-        if (target == null) return;
+        float bestD = float.MaxValue;
+        Transform best = null;
 
-        // Check if hunting target died
+        if (playerTransform != null && playerDetected && playerDistance <= config.aggressiveDetectionRadius &&
+            playerDistance < bestD)
+        {
+            bestD = playerDistance;
+            best = playerTransform;
+        }
+
         if (chaseTargetTransform != null)
         {
-            if (chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
+            float d = Vector3.Distance(transform.position, chaseTargetTransform.position);
+            if (d <= config.aggressiveHuntRadius && d < bestD)
             {
-                chaseTargetTransform = null;
-                EndBullRush();
-                SetState(CreatureState.Idle);
-                currentSpeed = 0f;
-                return;
+                bestD = d;
+                best = chaseTargetTransform;
             }
         }
 
-        bool huntingCreature = (target != playerTransform);
+        if (vehicleChaseTransform != null && config.aggressiveHuntNpcTraffic && _npcTrafficLayers.value != 0)
+        {
+            if (vehicleChaseDistance <= config.aggressiveNpcTrafficDetectRadius &&
+                vehicleChaseDistance < bestD)
+            {
+                bestD = vehicleChaseDistance;
+                best = vehicleChaseTransform;
+            }
+        }
 
-        // ========== BULL RUSH MECHANIC ==========
-        if (config.useBullRush && !huntingCreature)
-        {
-            UpdateBullRush(dt, target);
-        }
-        else
-        {
-            // Standard charging behavior (for hunting creatures or if bull rush disabled)
-            UpdateStandardCharging(dt, target, huntingCreature);
-        }
+        target = best;
+        huntingCreature = target != null && target != playerTransform;
     }
 
     /// <summary>
@@ -1250,8 +1576,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// </summary>
     protected virtual void UpdateStandardCharging(float dt, Transform target, bool huntingCreature)
     {
-        float speedMult = huntingCreature ? Mathf.Max(0.01f, config.aggressiveHuntSpeedMultiplier) : 1f;
-        currentSpeed = Mathf.Max(0f, config.aggressiveChargeSpeed) * speedMult;
+        float baseCharge = behaviorType == CreatureBehaviorType.Scared
+            ? config.scaredBugHuntSpeed * Mathf.Max(0.01f, config.scaredBugHuntSpeedMultiplier)
+            : config.aggressiveChargeSpeed;
+
+        float speedMult = behaviorType == CreatureBehaviorType.Aggressive && huntingCreature
+            ? Mathf.Max(0.01f, config.aggressiveHuntSpeedMultiplier)
+            : 1f;
+
+        currentSpeed = Mathf.Max(0f, baseCharge) * speedMult;
 
         // Move in "track space" toward the target's distance-along-track
         float targetDistAlong = spawner.GetDistanceAlongPath(target.position);
@@ -1330,90 +1663,193 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
 
         Vector3 newPos = transform.position + moveDir * Mathf.Min(step, desiredDist);
-        // Keep current Y for now (ground snap handles Y)
         newPos.y = transform.position.y;
+
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && !skipAvoidance)
+            ClampHorizontalMoveToObstacles(prevPos, ref newPos);
 
         transform.position = newPos;
 
         Vector3 delta = transform.position - prevPos;
         currentVelocity = delta / Mathf.Max(dt, 0.001f);
 
+        if (!isBullRushActive && !isBullRushCharging)
+            SyncTrackStateFromTransform();
+    }
+
+    /// <summary>
+    /// Reconcile spline coordinates with the world position after movement (reduces obstacle jitter).
+    /// </summary>
+    protected void SyncTrackStateFromTransform()
+    {
+        if (spawner == null) return;
+
+        float d = spawner.GetDistanceAlongPath(transform.position);
+        d = Mathf.Clamp(d, 0f, spawner.GetTotalLength());
+        currentDistanceAlongTrack = d;
+
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 1e-6f) return;
+        flatForward.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+        Vector3 toCreature = transform.position - pathPos;
+        toCreature.y = 0f;
+        currentLateralOffset = Vector3.Dot(toCreature, right);
+        targetLateralOffset = currentLateralOffset;
+    }
+
+    private QueryTriggerInteraction AvoidanceTriggerQuery =>
+        avoidanceIncludeTriggers ? QueryTriggerInteraction.Collide : QueryTriggerInteraction.Ignore;
+
+    private bool IsOwnObstacleCollider(Collider c)
+    {
+        if (c == null) return true;
+        return c.transform == transform || c.transform.IsChildOf(transform);
+    }
+
+    /// <summary>
+    /// SphereCast that reports the first hit not on this creature (needed when Include Triggers is on).
+    /// </summary>
+    private bool ObstacleSphereCast(Vector3 origin, float sphereRadius, Vector3 direction, out RaycastHit blockingHit, float maxDistance)
+    {
+        blockingHit = default;
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 1e-8f) return false;
+        direction.Normalize();
+
+        var q = AvoidanceTriggerQuery;
+        Vector3 cursor = origin;
+        float remaining = maxDistance;
+        const int maxIterations = 20;
+
+        for (int iter = 0; iter < maxIterations && remaining > 0.0005f; iter++)
+        {
+            if (!Physics.SphereCast(cursor, sphereRadius, direction, out RaycastHit hit, remaining, GetAvoidanceLayerMask(), q))
+                return false;
+
+            if (IsOwnObstacleCollider(hit.collider))
+            {
+                float skip = Mathf.Max(hit.distance, 0.02f) + sphereRadius * 0.2f;
+                if (skip >= remaining - 1e-4f)
+                    return false;
+                cursor += direction * skip;
+                remaining -= skip;
+                continue;
+            }
+
+            blockingHit = hit;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Hard clamp so kinematic movement cannot end inside or past a collider this frame.
+    /// </summary>
+    private void ClampHorizontalMoveToObstacles(Vector3 prevWorld, ref Vector3 newWorld)
+    {
+        Vector3 o0 = prevWorld + Vector3.up * avoidanceCastHeight;
+        Vector3 o1 = newWorld + Vector3.up * avoidanceCastHeight;
+        Vector3 delta = o1 - o0;
+        delta.y = 0f;
+        float dist = delta.magnitude;
+        if (dist < 1e-5f) return;
+
+        Vector3 dir = delta / dist;
+        float r = Mathf.Max(0.06f, avoidanceRadius * 0.9f);
+        float maxCast = dist + r * 0.35f;
+
+        if (!ObstacleSphereCast(o0, r, dir, out RaycastHit hit, maxCast))
+            return;
+
+        float skin = Mathf.Max(0.02f, r * 0.25f);
+        float allowed = Mathf.Max(0f, hit.distance - skin);
+        if (allowed >= dist - 0.0005f)
+            return;
+
+        newWorld = prevWorld + dir * Mathf.Min(dist, allowed);
+        newWorld.y = prevWorld.y;
+    }
+
+    private float SampleObstacleClearance(Vector3 origin, Vector3 dir, float look)
+    {
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 1e-6f) return 0f;
+        dir.Normalize();
+
+        float r = Mathf.Max(0.05f, avoidanceRadius * 0.5f);
+        float castLen = Mathf.Max(0.1f, look - r * 0.45f);
+        if (ObstacleSphereCast(origin, r, dir, out RaycastHit hit, castLen))
+            return Mathf.Max(0f, hit.distance);
+
+        return look;
+    }
+
+    private void TryPickBestClearDirection(Vector3 origin, Vector3 forwardHint, float look, out Vector3 bestDir, out float bestClear)
+    {
+        bestDir = forwardHint;
+        bestClear = -1f;
+
+        forwardHint.y = 0f;
+        if (forwardHint.sqrMagnitude < 1e-6f)
+        {
+            forwardHint = transform.forward;
+            forwardHint.y = 0f;
+        }
+        forwardHint.Normalize();
+
+        int count = Mathf.Clamp(avoidanceRayCount, 3, 21);
+        float halfFan = avoidanceFanAngleDeg * 0.5f;
+        float step = count > 1 ? avoidanceFanAngleDeg / (count - 1) : 0f;
+
+        for (int i = 0; i < count; i++)
+        {
+            float ang = -halfFan + step * i;
+            Vector3 rayDir = Quaternion.AngleAxis(ang, Vector3.up) * forwardHint;
+            rayDir.y = 0f;
+            if (rayDir.sqrMagnitude < 1e-6f) continue;
+            rayDir.Normalize();
+
+            float clear = SampleObstacleClearance(origin, rayDir, look);
+            if (clear > bestClear)
+            {
+                bestClear = clear;
+                bestDir = rayDir;
+            }
+        }
     }
 
     private Vector3 ApplyAvoidanceToMoveDir(Vector3 moveDir, float step, Vector3 flatForward, Vector3 right)
     {
+        moveDir.y = 0f;
+        if (moveDir.sqrMagnitude < 1e-6f) return moveDir;
+        moveDir.Normalize();
+
         Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+        float look = Mathf.Max(avoidanceLookAhead, step * 2.5f);
 
-        float look = Mathf.Max(avoidanceLookAhead, step * 2f);
+        float forwardClear = SampleObstacleClearance(origin, moveDir, look);
+        TryPickBestClearDirection(origin, moveDir, look, out Vector3 bestDir, out float bestClear);
 
-        // If we'd hit something we want to avoid, steer
-        if (Physics.SphereCast(origin, avoidanceRadius, moveDir, out RaycastHit hit, look, movementAvoidanceLayers, QueryTriggerInteraction.Ignore))
+        const float blockedRatio = 0.48f;
+        if (forwardClear >= look * blockedRatio && forwardClear >= bestClear - 0.12f)
         {
-            Vector3 n = hit.normal;
-            n.y = 0f;
-
-            // If normal is garbage (rare), just treat it as "block forward"
-            if (n.sqrMagnitude < 0.0001f)
-                n = -moveDir;
-
-            n.Normalize();
-
-            // Slide along the surface
-            Vector3 slide = Vector3.ProjectOnPlane(moveDir, n);
-            slide.y = 0f;
-
-            if (slide.sqrMagnitude > 0.0001f)
-            {
-                slide.Normalize();
-
-                // small lateral bias so we don't jitter-stick on edges
-                float sideDot = Mathf.Clamp(Vector3.Dot(slide, right), -1f, 1f);
-                currentLateralOffset = Mathf.MoveTowards(
-                    currentLateralOffset,
-                    currentLateralOffset + sideDot * avoidanceSideBias,
-                    avoidanceResponse * Time.deltaTime
-                );
-
-                return slide;
-            }
-
-            // If we can't slide (head-on), choose whichever side is clearer
-            float side = ChooseClearSide(origin, right, look);
-            Vector3 sidestep = (moveDir + right * side * 0.75f);
-            sidestep.y = 0f;
-
-            if (sidestep.sqrMagnitude > 0.0001f)
-            {
-                sidestep.Normalize();
-
-                currentLateralOffset = Mathf.MoveTowards(
-                    currentLateralOffset,
-                    currentLateralOffset + side * avoidanceSideBias,
-                    avoidanceResponse * Time.deltaTime
-                );
-
-                return sidestep;
-            }
+            Vector3 from = _avoidanceSteerSmoothed.sqrMagnitude > 0.01f ? _avoidanceSteerSmoothed : moveDir;
+            _avoidanceSteerSmoothed = Vector3.Slerp(from, moveDir, Mathf.Clamp01(avoidanceSteerSmoothSpeed * Time.deltaTime));
+            return _avoidanceSteerSmoothed.normalized;
         }
 
-        return moveDir;
+        Vector3 targetDir = bestClear > forwardClear + 0.02f
+            ? Vector3.Slerp(moveDir, bestDir, 0.78f).normalized
+            : Vector3.Slerp(moveDir, bestDir, 0.42f).normalized;
+
+        Vector3 baseFrom = _avoidanceSteerSmoothed.sqrMagnitude > 0.01f ? _avoidanceSteerSmoothed : moveDir;
+        _avoidanceSteerSmoothed = Vector3.Slerp(baseFrom, targetDir, Mathf.Clamp01(avoidanceSteerSmoothSpeed * Time.deltaTime));
+        return _avoidanceSteerSmoothed.sqrMagnitude > 1e-6f ? _avoidanceSteerSmoothed.normalized : targetDir;
     }
-
-    private float ChooseClearSide(Vector3 origin, Vector3 right, float look)
-    {
-        // Probe both sides a bit. Pick the side with MORE free space.
-        float probeDist = Mathf.Max(0.25f, avoidanceRadius * 2f);
-
-        bool hitR = Physics.SphereCast(origin, avoidanceRadius, right, out _, probeDist, movementAvoidanceLayers, QueryTriggerInteraction.Ignore);
-        bool hitL = Physics.SphereCast(origin, avoidanceRadius, -right, out _, probeDist, movementAvoidanceLayers, QueryTriggerInteraction.Ignore);
-
-        if (hitR && !hitL) return -1f;
-        if (!hitR && hitL) return 1f;
-
-        // If both clear or both blocked, bias randomly so groups don't all pick the same side.
-        return (Random.value < 0.5f) ? -1f : 1f;
-    }
-
 
     protected virtual void UpdateGroundSnap(float dt)
     {
@@ -1484,9 +1920,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
             case CreatureState.Charging:
                 {
-                    Transform t = chaseTargetTransform != null ? chaseTargetTransform : playerTransform;
+                    Transform t = null;
+                    if (behaviorType == CreatureBehaviorType.Scared)
+                        t = chaseTargetTransform;
+                    else if (behaviorType == CreatureBehaviorType.Aggressive)
+                        ResolveAggressiveChargeTarget(out t, out _);
+                    if (t == null)
+                        t = playerTransform;
                     if (t != null)
-                        lookDirection = (t.position - transform.position);
+                        lookDirection = t.position - transform.position;
                 }
                 break;
 
@@ -1554,71 +1996,126 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         threatDirection = Vector3.zero;
         _activeThreatCount = 0;
         _combinedFleeDirection = Vector3.zero;
+        vehicleChaseTransform = null;
+        vehicleChaseDistance = float.MaxValue;
 
         if (spawner == null || config == null) return;
 
-        // Scared: detect ALL nearby aggressive creatures and compute combined flee vector
-        if (behaviorType == CreatureBehaviorType.Scared && config.scaredFleeFromAggressive)
+        // Passive (bug): flee from nearby critters (Scared)
+        if (behaviorType == CreatureBehaviorType.Passive && config.passiveFleeFromScared)
         {
-            float detectRadius = config.scaredAggressiveDetectRadius;
+            float detectRadius = Mathf.Max(config.passiveScaredDetectRadius, config.passiveScaredLoseDistance);
             int hitCount = Physics.OverlapSphereNonAlloc(
                 transform.position,
                 detectRadius,
                 _threatColliderBuffer,
                 creatureSenseLayers,
-                QueryTriggerInteraction.Collide
-            );
+                QueryTriggerInteraction.Collide);
 
-            Vector3 combinedAwayVector = Vector3.zero;
-            float closestDistSqr = float.MaxValue;
-            Transform closestThreat = null;
+            Vector3 combinedAway = Vector3.zero;
+            float closestSqr = float.MaxValue;
+            Transform closest = null;
 
             for (int i = 0; i < hitCount; i++)
             {
                 var col = _threatColliderBuffer[i];
                 if (col == null) continue;
-
                 var tc = col.GetComponentInParent<TrackCreature>();
                 if (tc == null || tc == this) continue;
                 if (!tc.isInitialized || tc.isDead) continue;
-                if (tc.behaviorType != CreatureBehaviorType.Aggressive) continue;
+                if (tc.behaviorType != CreatureBehaviorType.Scared) continue;
 
-                Vector3 toThreat = tc.transform.position - transform.position;
-                float distSqr = toThreat.sqrMagnitude;
-
-                // Calculate away vector with distance-based weighting (closer = stronger influence)
-                Vector3 awayFromThis = -toThreat;
-                awayFromThis.y = 0f;
+                Vector3 toT = tc.transform.position - transform.position;
+                float distSqr = toT.sqrMagnitude;
+                Vector3 away = -toT;
+                away.y = 0f;
                 float dist = Mathf.Sqrt(distSqr);
                 if (dist > 0.01f)
-                {
-                    // Weight by inverse distance - closer threats have more influence
-                    float weight = 1f / Mathf.Max(0.5f, dist);
-                    combinedAwayVector += awayFromThis.normalized * weight;
-                }
+                    combinedAway += away.normalized * (1f / Mathf.Max(0.5f, dist));
 
                 _activeThreatCount++;
-
-                // Track the closest threat for backward compatibility
-                if (distSqr < closestDistSqr)
+                if (distSqr < closestSqr)
                 {
-                    closestDistSqr = distSqr;
-                    closestThreat = tc.transform;
+                    closestSqr = distSqr;
+                    closest = tc.transform;
                 }
             }
 
-            // Set the closest threat as the primary (for legacy code that uses threatTransform)
-            if (closestThreat != null)
+            if (closest != null)
             {
-                threatTransform = closestThreat;
-                threatIsAggressive = true;
-
+                threatTransform = closest;
+                threatIsAggressive = false;
                 Vector3 toThreat = threatTransform.position - transform.position;
                 threatDistance = toThreat.magnitude;
-                threatDirection = threatDistance > 0.01f ? (toThreat / threatDistance) : Vector3.zero;
+                threatDirection = threatDistance > 0.01f ? toThreat / threatDistance : Vector3.zero;
             }
 
-            // Also factor in the player as a threat if nearby
+            if (combinedAway.sqrMagnitude > 0.0001f)
+                _combinedFleeDirection = combinedAway.normalized;
+            else
+            {
+                spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
+                fwd.y = 0f;
+                _combinedFleeDirection = fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
+            }
+        }
+
+        // Scared (critter): beasts (optional) + player + NPC traffic
+        if (behaviorType == CreatureBehaviorType.Scared)
+        {
+            Vector3 combinedAwayVector = Vector3.zero;
+            float closestDistSqr = float.MaxValue;
+            Transform closestThreat = null;
+
+            if (config.scaredFleeFromAggressive)
+            {
+                float detectRadius = config.scaredAggressiveDetectRadius;
+                int hitCount = Physics.OverlapSphereNonAlloc(
+                    transform.position,
+                    detectRadius,
+                    _threatColliderBuffer,
+                    creatureSenseLayers,
+                    QueryTriggerInteraction.Collide);
+
+                for (int i = 0; i < hitCount; i++)
+                {
+                    var col = _threatColliderBuffer[i];
+                    if (col == null) continue;
+
+                    var tc = col.GetComponentInParent<TrackCreature>();
+                    if (tc == null || tc == this) continue;
+                    if (!tc.isInitialized || tc.isDead) continue;
+                    if (tc.behaviorType != CreatureBehaviorType.Aggressive) continue;
+
+                    Vector3 toThreat = tc.transform.position - transform.position;
+                    float distSqr = toThreat.sqrMagnitude;
+
+                    Vector3 awayFromThis = -toThreat;
+                    awayFromThis.y = 0f;
+                    float dist = Mathf.Sqrt(distSqr);
+                    if (dist > 0.01f)
+                        combinedAwayVector += awayFromThis.normalized * (1f / Mathf.Max(0.5f, dist));
+
+                    _activeThreatCount++;
+
+                    if (distSqr < closestDistSqr)
+                    {
+                        closestDistSqr = distSqr;
+                        closestThreat = tc.transform;
+                    }
+                }
+
+                if (closestThreat != null)
+                {
+                    threatTransform = closestThreat;
+                    threatIsAggressive = true;
+
+                    Vector3 toThreat = threatTransform.position - transform.position;
+                    threatDistance = toThreat.magnitude;
+                    threatDirection = threatDistance > 0.01f ? toThreat / threatDistance : Vector3.zero;
+                }
+            }
+
             if (playerDetected && playerTransform != null && playerDistance < config.scaredDetectionRadius)
             {
                 Vector3 awayFromPlayer = transform.position - playerTransform.position;
@@ -1631,37 +2128,88 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 _activeThreatCount++;
             }
 
-            // Normalize the combined flee direction
-            if (combinedAwayVector.sqrMagnitude > 0.0001f)
+            if (config.scaredFleeFromNpcTraffic && _npcTrafficLayers.value != 0)
             {
-                _combinedFleeDirection = combinedAwayVector.normalized;
+                RefreshNearestNpcTraffic(config.scaredNpcTrafficDetectRadius);
+                if (vehicleChaseTransform != null && vehicleChaseDistance < config.scaredNpcTrafficDetectRadius)
+                {
+                    Vector3 awayNpc = transform.position - vehicleChaseTransform.position;
+                    awayNpc.y = 0f;
+                    if (awayNpc.sqrMagnitude > 0.0001f)
+                    {
+                        float w = 1f / Mathf.Max(0.5f, vehicleChaseDistance);
+                        combinedAwayVector += awayNpc.normalized * w;
+                    }
+                    _activeThreatCount++;
+                }
             }
+
+            if (combinedAwayVector.sqrMagnitude > 0.0001f)
+                _combinedFleeDirection = combinedAwayVector.normalized;
             else
             {
-                // No threats - default to forward along track
                 spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
                 fwd.y = 0f;
                 _combinedFleeDirection = fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
             }
         }
 
-        // Aggressive: optionally detect scared to hunt
+        if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveHuntNpcTraffic &&
+            _npcTrafficLayers.value != 0)
+            RefreshNearestNpcTraffic(config.aggressiveNpcTrafficDetectRadius);
+
         if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveHuntScaredCreatures)
         {
             bool playerPriority = playerDetected && playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius);
             if (playerPriority)
-            {
                 chaseTargetTransform = null;
-            }
             else
             {
                 var scared = FindNearestCreature(CreatureBehaviorType.Scared, config.aggressiveHuntRadius);
                 chaseTargetTransform = scared != null ? scared.transform : null;
             }
         }
-        else
+        else if (behaviorType != CreatureBehaviorType.Scared)
         {
             chaseTargetTransform = null;
+        }
+    }
+
+    private void RefreshNearestNpcTraffic(float radius)
+    {
+        vehicleChaseTransform = null;
+        vehicleChaseDistance = float.MaxValue;
+        if (_npcTrafficLayers.value == 0 || radius <= 0.01f) return;
+
+        int n = Physics.OverlapSphereNonAlloc(
+            transform.position,
+            radius,
+            _npcOverlapBuffer,
+            _npcTrafficLayers,
+            QueryTriggerInteraction.Ignore);
+
+        float bestSqr = float.MaxValue;
+        Transform best = null;
+
+        for (int i = 0; i < n; i++)
+        {
+            var c = _npcOverlapBuffer[i];
+            if (c == null) continue;
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+
+            Transform root = c.attachedRigidbody != null ? c.attachedRigidbody.transform : c.transform;
+            float sqr = (root.position - transform.position).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                best = root;
+            }
+        }
+
+        if (best != null)
+        {
+            vehicleChaseTransform = best;
+            vehicleChaseDistance = Mathf.Sqrt(bestSqr);
         }
     }
 
@@ -1669,14 +2217,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (radius <= 0.01f) return null;
 
-        Collider[] cols = Physics.OverlapSphere(transform.position, radius, creatureSenseLayers, QueryTriggerInteraction.Collide);
+        int n = Physics.OverlapSphereNonAlloc(
+            transform.position,
+            radius,
+            _creatureQueryBuffer,
+            creatureSenseLayers,
+            QueryTriggerInteraction.Collide);
 
         TrackCreature best = null;
         float bestSqr = float.MaxValue;
 
-        for (int i = 0; i < cols.Length; i++)
+        for (int i = 0; i < n; i++)
         {
-            var c = cols[i];
+            var c = _creatureQueryBuffer[i];
             if (c == null) continue;
 
             var tc = c.GetComponentInParent<TrackCreature>();
@@ -1697,13 +2250,22 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected Vector3 GetFleeDirection()
     {
-        // If we have a valid combined flee direction from multi-threat detection, use it
         if (_activeThreatCount > 0 && _combinedFleeDirection.sqrMagnitude > 0.0001f)
-        {
             return _combinedFleeDirection;
+
+        // Passive bugs only flee via critter detection above — never from the player car.
+        if (behaviorType == CreatureBehaviorType.Passive)
+        {
+            if (spawner != null)
+            {
+                spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 fwd);
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude > 0.0001f)
+                    return fwd.normalized;
+            }
+            return Vector3.forward;
         }
 
-        // Fallback: flee from player if detected
         if (playerDetected && playerTransform != null)
         {
             Vector3 fleeDir = transform.position - playerTransform.position;
@@ -1756,6 +2318,29 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Only consider things that are on allowed layers
         if ((crushLayers.value & (1 << col.gameObject.layer)) == 0)
             return false;
+
+        var rollingLog = col.GetComponentInParent<RollingLogAlongTrack>();
+        if (rollingLog != null && rollingLog.IsScriptedAlongPath)
+        {
+            otherMass = rollingLog.RigidbodyMass;
+            otherSpeed = rollingLog.CurrentScriptedSpeed;
+            return otherSpeed >= minCrushSpeed;
+        }
+
+        // NPC traffic uses a kinematic Rigidbody + MovePosition — physics velocity stays ~0, so use scripted speed.
+        // After a crash it becomes dynamic; then prefer max(scripted, physics).
+        var npcTraffic = col.GetComponentInParent<NPCTrafficCar>();
+        if (npcTraffic != null)
+        {
+            Rigidbody npcRb = col.attachedRigidbody != null ? col.attachedRigidbody : col.GetComponentInParent<Rigidbody>();
+            otherMass = npcRb != null ? npcRb.mass : 0f;
+            float scripted = npcTraffic.CurrentSpeed;
+            float physicsSpd = 0f;
+            if (npcRb != null && !npcRb.isKinematic)
+                physicsSpd = npcRb.GetPointVelocity(transform.position).magnitude;
+            otherSpeed = Mathf.Max(scripted, physicsSpd);
+            return otherSpeed >= minCrushSpeed;
+        }
 
         // Prefer Rigidbody detection so we can check velocity
         Rigidbody rb = col.attachedRigidbody != null ? col.attachedRigidbody : col.GetComponentInParent<Rigidbody>();
@@ -1817,6 +2402,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (obstacleSpeed < minCrushSpeed)
             return;
 
+        var rollingLog = obstacleCollider.GetComponentInParent<RollingLogAlongTrack>();
+        if (rollingLog != null && behaviorType == CreatureBehaviorType.Aggressive)
+        {
+            rollingLog.ApplyBeastStrike(transform.position, obstacleSpeed);
+            return;
+        }
+
         // Passive + Scared always die to moving obstacle impacts.
         // Aggressive (big) only dies if obstacle is "heavy enough".
         if (behaviorType == CreatureBehaviorType.Aggressive && obstacleMass > 0f)
@@ -1828,6 +2420,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             if (obstacleMass < threshold)
                 return;
         }
+
+        if (obstacleCollider.GetComponentInParent<NPCTrafficCar>() != null)
+            SpawnNpcTrafficCrushPopup(obstacleCollider);
 
         killSource = CreatureKillSource.Other;
         Die();
@@ -1851,9 +2446,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (isDead) return;
 
         // CHECK FOR ARMED FORCEFIELD FIRST
-        // If the car has an armed forcefield, don't cause a crash - let the forcefield handle it
+        // Only aggressive creatures (beast) are forcefield-intercepted.
         var forcefield = playerCollider.GetComponentInParent<CarForcefield>();
-        if (forcefield != null && forcefield.IsArmed)
+        if (forcefield != null && forcefield.IsArmed && behaviorType == CreatureBehaviorType.Aggressive)
         {
             // The forcefield will handle this via its own trigger detection
             // Just call KilledByForcefield directly to ensure it happens
@@ -1958,11 +2553,20 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // Contact point is the creature's position
         Vector3 contactPoint = transform.position;
 
-        // Severity scales with multiplier for bull rush
+        // Severity scales with multiplier for bull rush (fallback if car has no CrashSeverityConfig)
         float severity = Mathf.Clamp01(config.impactCrashSeverity * impactMultiplier);
+        float extraSeverity = config.impactCrashSeverity * impactMultiplier;
 
         // Trigger the crash (handles FX, damage, recovery state, etc.)
-        carController.ApplyExternalCrashDamage(hitDirection, impactSpeed, contactPoint, severity);
+        carController.ApplyExternalCrashDamage(
+            hitDirection,
+            impactSpeed,
+            contactPoint,
+            severity,
+            transform,
+            GetComponent<Rigidbody>(),
+            null,
+            extraSeverity);
 
         // Apply additional knockback force for impact feel
         if (carRb != null)
@@ -2101,81 +2705,34 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         int rewardAmount = config.coinReward;
         if (rewardAmount <= 0) return;
 
-        // Register the coins with GameManager_Racing
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
+        if (RacingCoinCollectionHub.Instance != null)
         {
-            gm.RegisterObstacleReward(rewardAmount);
-        }
-
-        // Add to player currency via skill tree manager
-        var skillMgr = RacingSkillTreeManager.Instance;
-        if (skillMgr != null)
-        {
-            skillMgr.AddCurrency(rewardAmount);
-        }
-
-        // Show coin popup
-        if (RacingPopups.IsReady)
-        {
-            Color textColor = rewardAmount >= 5 ? new Color(1f, 0.84f, 0f) : Color.yellow;
-            Color outlineColor = rewardAmount >= 5 ? new Color(0.8f, 0.5f, 0f) : new Color(0.6f, 0.4f, 0f);
-            RacingPopups.SpawnCoin(rewardAmount, position + Vector3.up * 0.5f, textColor, outlineColor);
-        }
-        PlayCoinRewardSFX(rewardAmount, position);
-
-    }
-
-    private void PlayCoinRewardSFX(int rewardAmount, Vector3 position)
-    {
-        if (!playCoinRewardSound) return;
-
-        AudioClip clip = null;
-
-        // 1) Prefer explicit overrides (fast + predictable)
-        if (coinRewardSoundsOverride != null && coinRewardSoundsOverride.Length > 0)
-        {
-            clip = coinRewardSoundsOverride[Random.Range(0, coinRewardSoundsOverride.Length)];
+            RacingCoinCollectionHub.Instance.AwardCoins(
+                rewardAmount,
+                position,
+                RacingCoinRewardSource.Obstacle);
         }
         else
         {
-            // 2) Fallback to CoinDatabase sounds (matches your coin system)
-            // Map reward to a rough "coin type" for sound choice.
-            CoinType type = rewardAmount >= 10 ? CoinType.Gold : (rewardAmount >= 5 ? CoinType.Silver : CoinType.Bronze);
-            var data = CoinDatabase.Get(type);
-            if (data != null && data.collectSounds != null && data.collectSounds.Length > 0)
-            {
-                clip = data.collectSounds[Random.Range(0, data.collectSounds.Length)];
+            // Backward-compatible fallback if hub is not present yet.
+            var gm = GameManager_Racing.Instance;
+            if (gm != null)
+                gm.RegisterObstacleReward(rewardAmount);
 
-                // If you want, you can also borrow volume/pitch from the coin data:
-                coinRewardSoundVolume = data.collectVolume;
-                coinRewardPitchVariance = data.pitchVariance;
-                coinRewardBasePitch = data.basePitch;
+            var skillMgr = RacingSkillTreeManager.Instance;
+            if (skillMgr != null)
+                skillMgr.AddCurrency(rewardAmount);
+
+            if (RacingPopups.IsReady)
+            {
+                Color textColor = rewardAmount >= 5 ? new Color(1f, 0.84f, 0f) : Color.yellow;
+                Color outlineColor = rewardAmount >= 5 ? new Color(0.8f, 0.5f, 0f) : new Color(0.6f, 0.4f, 0f);
+                RacingPopups.SpawnCoin(rewardAmount, position + Vector3.up * 0.5f, textColor, outlineColor);
             }
         }
-
-        if (clip == null) return;
-
-        // Need a real AudioSource to support pitch variance (PlayClipAtPoint can't set pitch).
-        var go = new GameObject("CreatureCoinRewardSFX");
-        go.transform.position = position;
-
-        var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f;
-        src.rolloffMode = AudioRolloffMode.Linear;
-        src.minDistance = Mathf.Max(0.01f, coinRewardMinDistance);
-        src.maxDistance = Mathf.Max(src.minDistance + 0.1f, coinRewardMaxDistance);
-
-        src.volume = Mathf.Clamp01(coinRewardSoundVolume);
-        src.pitch = Mathf.Clamp(coinRewardBasePitch + Random.Range(-coinRewardPitchVariance, coinRewardPitchVariance), 0.01f, 3f);
-
-        src.clip = clip;
-        src.Play();
-
-        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
     }
 
-
+    
     #endregion
 
     #region Wander Helpers
@@ -2234,7 +2791,28 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         basePos += Vector3.up * runOverPopupHeight;
 
         // Pass 0 to trigger random text selection (style asset uses useRandomText/randomTexts)
-        RacingPopups.Spawn(runOverPopupType, 0f, basePos);
+        RacingPopups.SpawnWorldSpace(runOverPopupType, 0f, basePos);
+    }
+
+    private void SpawnNpcTrafficCrushPopup(Collider npcCollider)
+    {
+        if (!enableRunOverPopup) return;
+        if (!RacingPopups.IsReady) return;
+
+        Vector3 p = npcCollider != null
+            ? npcCollider.ClosestPoint(transform.position)
+            : transform.position;
+        p += Vector3.up * runOverPopupHeight;
+        RacingPopups.SpawnWorldSpace(runOverPopupType, 0f, p);
+    }
+
+    /// <summary>Beast→critter and critter→bug; callers gate with enableBeastEatPopup / enableCritterEatBugPopup.</summary>
+    private void SpawnEatStylePopupOnPrey(TrackCreature prey)
+    {
+        if (prey == null || !RacingPopups.IsReady) return;
+
+        Vector3 p = prey.transform.position + Vector3.up * beastEatPopupHeight;
+        RacingPopups.SpawnWorldSpace(beastEatPopupType, 0f, p);
     }
 
 

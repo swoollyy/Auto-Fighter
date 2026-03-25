@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2f00befe1fee4a4bb665e496d2a78fc, type: 3}
   m_Name: Init_Dialogue
   m_EditorClassIdentifier: 
-  sequenceId: intro
   lines:
   - speakerName: Overseer
     text: Oh... <link="wave"><link="rainbow">heyyyyyyyyyyyy!</link></link>
@@ -118,5 +117,6 @@ MonoBehaviour:
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  setStoryFlagOnComplete: init_done
+  setStoryFlagOnComplete: init_finish
   pauseGameWhilePlaying: 1
+  keepGameCanvasVisibleWhilePlaying: 0

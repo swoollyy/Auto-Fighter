@@ -18,6 +18,10 @@ public class ObstaclePathPreview : MonoBehaviour
     private Vector3 _a, _b;
     private float _alpha = 1f;
 
+    private bool _usePolyline;
+    private Vector3[] _polylinePts = new Vector3[64];
+    private int _polylineCount;
+
     private void Awake()
     {
         _lr = GetComponent<LineRenderer>();
@@ -32,7 +36,31 @@ public class ObstaclePathPreview : MonoBehaviour
 
     public void SetEndpoints(Vector3 a, Vector3 b)
     {
+        _usePolyline = false;
         _a = a; _b = b;
+        if (_lr != null)
+            _lr.positionCount = 2;
+        ApplyPositions();
+    }
+
+    /// <summary>World-space path (e.g. draped on terrain). Count must be >= 2.</summary>
+    public void SetPolylineWorld(Vector3[] worldPoints, int count)
+    {
+        if (worldPoints == null || count < 2) return;
+        _usePolyline = true;
+        _polylineCount = count;
+        if (_polylinePts == null || _polylinePts.Length < count)
+            _polylinePts = new Vector3[Mathf.NextPowerOfTwo(count)];
+        for (int i = 0; i < count; i++)
+            _polylinePts[i] = worldPoints[i];
+        if (_lr != null)
+            _lr.positionCount = count;
+        ApplyPositions();
+    }
+
+    public void SetYOffset(float worldYOffset)
+    {
+        yOffset = worldYOffset;
         ApplyPositions();
     }
 
@@ -67,7 +95,7 @@ public class ObstaclePathPreview : MonoBehaviour
 
     private void LateUpdate()
     {
-        // If the obstacle is moving/rotating and you want the line to “track” its endpoints,
+        // If the obstacle is moving/rotating and you want the line to ï¿½trackï¿½ its endpoints,
         // call SetEndpoints each frame from the owner. Otherwise this is fine for static endpoints.
         ApplyPositions();
     }
@@ -75,6 +103,17 @@ public class ObstaclePathPreview : MonoBehaviour
     private void ApplyPositions()
     {
         if (_lr == null) return;
+
+        if (_usePolyline)
+        {
+            for (int i = 0; i < _polylineCount; i++)
+            {
+                Vector3 p = _polylinePts[i];
+                p.y += yOffset;
+                _lr.SetPosition(i, p);
+            }
+            return;
+        }
 
         Vector3 p0 = _a; p0.y += yOffset;
         Vector3 p1 = _b; p1.y += yOffset;

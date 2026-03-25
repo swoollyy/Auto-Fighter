@@ -232,10 +232,13 @@ MonoBehaviour:
   maxHealth: 2
   scaleOnHit: 0.46
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
+  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   rewardCurrency: 2
-  treeToppleDuration: 0.7
-  treeToppleEase: 6
+  treeToppleMinVelocity: 2
+  treeToppleImpulseScale: 2
+  treeToppleImpulseMin: 3
+  treeToppleImpulseMax: 25
+  treeToppleForceHeight: 2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &-9222208852432572727

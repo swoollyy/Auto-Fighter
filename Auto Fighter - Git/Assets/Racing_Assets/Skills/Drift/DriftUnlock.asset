@@ -38,4 +38,3 @@ MonoBehaviour:
   - requiredLevel: 1
     unlocks:
     - {fileID: 11400000, guid: 5c0589032db46274ba4ec2af2039491a, type: 2}
-    - {fileID: 11400000, guid: 615c9e5ab1f95174caec575494646100, type: 2}

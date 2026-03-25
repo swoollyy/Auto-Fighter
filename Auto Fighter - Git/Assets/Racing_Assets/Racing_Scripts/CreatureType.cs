@@ -1,23 +1,21 @@
 /// <summary>
 /// Defines the behavioral type of a track creature.
+/// Typical mapping: Passive = bug, Scared = critter, Aggressive = beast.
 /// </summary>
 public enum CreatureBehaviorType
 {
     /// <summary>
-    /// Wanders randomly on the track. Does not react to the player.
-    /// Rewards coins when hit.
+    /// Bug: low reactivity; bug-style idle; flees from critters (Scared); dodges obstacles.
     /// </summary>
     Passive,
 
     /// <summary>
-    /// Wanders until player approaches, then flees away from the player.
-    /// Builds up scurry speed when fleeing. Can run off-road.
+    /// Critter: flees player, NPC traffic, and beast; can hunt bugs (Passive).
     /// </summary>
     Scared,
 
     /// <summary>
-    /// Detects player from a distance and charges toward them.
-    /// Causes a crash on collision. Can move off-track to intercept.
+    /// Beast: hunts critters, player, and NPC traffic; bull rush vs player when configured.
     /// </summary>
     Aggressive
 }

@@ -37,6 +37,15 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("Height above pivot (meters) where the push force is applied. Higher = more rotation, less slide.")]
     [SerializeField, Min(0.1f)] private float treeToppleForceHeight = 2f;
 
+    [Header("Impact comic (Crash popup — WHAM / KAPOW)")]
+    [SerializeField] private bool enableTreeToppleCrashPopup = true;
+    [SerializeField, Min(0f)] private float treeToppleCrashPopupHeight = 1.2f;
+    [Tooltip("When this prop hits another special mover / prop hard enough, spawn Crash text at the contact.")]
+    [SerializeField] private bool enablePropClashCrashPopup = true;
+    [SerializeField, Min(0f)] private float propClashPopupHeight = 1f;
+    [SerializeField, Min(0f)] private float propClashMinRelativeSpeed = 2.5f;
+    [SerializeField, Min(0f)] private float propClashPairCooldown = 0.2f;
+
     // NEW: Impact damage tuning
     [Header("Forcefield Impact Damage")]
     [Tooltip("Base velocity threshold to qualify as a damaging impact (m/s). Skill chain scales this.")]
@@ -164,6 +173,13 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         // Apply force at a point above the base so the tree rotates around its base instead of just sliding.
         Vector3 applyPoint = pivot.position + Vector3.up * treeToppleForceHeight;
         rb.AddForceAtPosition(fallDir * impulse, applyPoint, ForceMode.Impulse);
+
+        // RollingLogAlongTrack already spawns CrashWorld in PlayRacingObstacleHitFeedback — skip duplicate.
+        bool hitByRollingLog = collision.collider != null &&
+            collision.collider.GetComponentInParent<RollingLogAlongTrack>() != null;
+
+        if (enableTreeToppleCrashPopup && RacingPopups.IsReady && !hitByRollingLog)
+            RacingPopups.CrashWorld(applyPoint + Vector3.up * treeToppleCrashPopupHeight);
     }
 
     // NEW: obstacle-on-obstacle impact damage when one was launched by the forcefield
@@ -176,6 +192,23 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
             if (impactSpeed >= treeToppleMinVelocity)
                 ToppleTree(collision);
             return;
+        }
+
+        var hitCol = collision.collider;
+        if (hitCol != null &&
+            hitCol.GetComponentInParent<CarController>() == null &&
+            RacingObstacleCollisionPopups.IsObstacleBuddy(hitCol))
+        {
+            RacingObstacleCollisionPopups.TrySpawnObstacleClash(
+                transform.root,
+                hitCol.transform.root,
+                collision,
+                hitCol,
+                collision.relativeVelocity.magnitude,
+                propClashMinRelativeSpeed,
+                propClashPopupHeight,
+                propClashPairCooldown,
+                enablePropClashCrashPopup);
         }
 
         var otherRb = collision.rigidbody;

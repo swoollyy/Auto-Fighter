@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -8,6 +8,32 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField] private float speed = 6f;
     [Tooltip("Destroy this GameObject after it crosses. If false, just disable this script.")]
     [SerializeField] private bool destroyOnExit = true;
+
+    [Header("Flat Path Constraint")]
+    [Tooltip("If enabled, cross-track travel stays flat and target path is trimmed before elevation changes exceed tolerance.")]
+    [SerializeField] private bool keepPathFlatAndTrimOnElevation = false;
+    [SerializeField, Min(0f)] private float maxAllowedPathElevationDelta = 0.15f;
+    [SerializeField, Range(1, 24)] private int endpointTrimIterations = 10;
+
+    [Header("Visual tilt (optional)")]
+    [Tooltip("Child transform that tilts with the road. The rigidbody on this object only does position + yaw. If empty, tries a child named Visual, TiltRoot, or Model; otherwise tilts this transform (legacy).")]
+    [SerializeField] private Transform tiltVisualRoot;
+
+    [Header("Surface / hills")]
+    [Tooltip("How fast parent yaw blends toward travel heading. When a tilt visual is set, only the parent yaws; the child handles slope tilt.")]
+    [SerializeField, Min(0f)] private float surfaceAlignRotationSpeed = 16f;
+    [Tooltip("How fast the tilt visual blends toward sampled ground normal (non-flat paths only).")]
+    [SerializeField, Min(0f)] private float surfaceNormalSmoothSpeed = 14f;
+    [Tooltip("Raycast tuning for ground samples.")]
+    [SerializeField, Min(1f)] private float surfaceProbeUpOffset = 48f;
+    [SerializeField, Min(10f)] private float surfaceMaxDownDist = 200f;
+    [Tooltip("Extra meters above detected ground (center Y = ground + half-height + this). Small float so it never clips terrain.")]
+    [SerializeField, Min(0f)] private float clearanceAboveGround = 0.08f;
+
+    [Header("Path preview line")]
+    [SerializeField, Range(4, 64)] private int previewPathSegments = 36;
+    [Tooltip("Rebuild draped polyline every frame while moving (accurate on hills).")]
+    [SerializeField] private bool previewUpdateEveryFrame = true;
 
     [Header("Debug")]
     [SerializeField] private bool drawPathGizmos = true;
@@ -34,11 +60,29 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField, Tooltip("Layers this cross will react to. Colliders on other layers will be ignored (e.g. Terrain).")]
     private LayerMask reactLayers = ~0;
 
+    [Header("Obstacle clash popup (Crash style)")]
+    [SerializeField] private bool enableCrossClashCrashPopup = true;
+    [SerializeField, Min(0f)] private float crossClashPopupHeight = 1f;
+    [SerializeField, Min(0f)] private float crossClashMinRelativeSpeed = 2f;
+    [SerializeField, Min(0f)] private float crossClashPairCooldown = 0.2f;
+
     // Cached Rigidbody
     private Rigidbody _rb;
 
     // Flag to prevent multiple conversions
     private bool _convertedToPhysics;
+    private bool _travelFxEnabled;
+    private ObstaclePathPreview _preview;
+    private float _pathHeightOffset;
+    private Vector3[] _previewScratch;
+
+    /// <summary>Resolved tilt target; equals <see cref="transform"/> when no separate visual.</summary>
+    private Transform _resolvedTiltRoot;
+    private Vector3 _smoothedGroundNormal = Vector3.up;
+
+    [Header("Travel FX")]
+    [Tooltip("All child lights that should only be on while this obstacle is actively traveling on its scripted path.")]
+    [SerializeField] private Light[] travelLights;
 
     // -------------------------- INITIALIZATION --------------------------
 
@@ -49,12 +93,33 @@ public class CrossTrackObstacle : MonoBehaviour
     /// </summary>
     public void InitializeDirect(Vector3 startWorld, Vector3 targetWorld, float crossSpeed, float delayBeforeMove)
     {
-        // Trust director's start/target completely, including Y
         _startWS = startWorld;
         _targetWS = targetWorld;
+        _pathHeightOffset = ComputeHalfHeightWorld();
 
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview) { preview.SetEndpoints(_startWS, _targetWS); preview.FadeIn(0.2f); }
+        Vector2 startXZ = new Vector2(_startWS.x, _startWS.z);
+        Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
+
+        if (keepPathFlatAndTrimOnElevation)
+        {
+            float startGroundY = SampleRoadSurfaceY(new Vector3(_startWS.x, 0f, _startWS.z));
+            float refY = SampleRoadSurfaceY(_startWS);
+            _targetWS = TrimTargetTowardStart(_startWS, _targetWS, refY);
+
+            // Flat travel: world-up offset from surface under each endpoint.
+            _startWS.y = startGroundY + _pathHeightOffset;
+            _targetWS.y = _startWS.y;
+        }
+        else
+        {
+            _startWS = GroundedCenterAtXZ(new Vector2(_startWS.x, _startWS.z), startWorld);
+            _targetWS = GroundedCenterAtXZ(new Vector2(_targetWS.x, _targetWS.z), targetWorld);
+        }
+
+        _preview = GetComponent<ObstaclePathPreview>();
+        if (_preview)
+            // Polyline points are already at obstacle center height; only nudge the line for visibility.
+            _preview.SetYOffset(0.05f);
 
         speed = Mathf.Max(0.5f, crossSpeed);
 
@@ -64,6 +129,8 @@ public class CrossTrackObstacle : MonoBehaviour
         transform.position = _startWS;
 
         EnsureRigidbody();
+        // Upright travel along chord; no terrain-tilt rotation fighting MovePosition.
+        _rb.constraints = RigidbodyConstraints.FreezeRotation;
 
         // Mass from scale curve
         float computedMass = ComputeMassFromScale();
@@ -76,7 +143,128 @@ public class CrossTrackObstacle : MonoBehaviour
         _initialized = true;
         _active = true;
         _convertedToPhysics = false;
+
+        ResolveTiltVisualRoot();
+
+        Vector2 flatDir = targetXZ - startXZ;
+        if (flatDir.sqrMagnitude > 1e-6f) flatDir.Normalize();
+        Quaternion parentYaw = flatDir.sqrMagnitude > 1e-6f
+            ? Quaternion.LookRotation(new Vector3(flatDir.x, 0f, flatDir.y), Vector3.up)
+            : Quaternion.identity;
+
+        _rb.MoveRotation(parentYaw);
+        transform.rotation = parentYaw;
+
+        if (UseSeparateTiltVisual)
+        {
+            if (keepPathFlatAndTrimOnElevation)
+                _resolvedTiltRoot.localRotation = Quaternion.identity;
+            else
+            {
+                SampleRoadSurface(new Vector3(_startWS.x, 0f, _startWS.z), _startWS, out Vector3 n0);
+                _smoothedGroundNormal = n0.sqrMagnitude > 1e-8f ? n0.normalized : Vector3.up;
+                _resolvedTiltRoot.rotation = ComputeAlignedRotation(flatDir, _smoothedGroundNormal);
+            }
+        }
+        else if (!keepPathFlatAndTrimOnElevation)
+        {
+            SampleRoadSurface(new Vector3(_startWS.x, 0f, _startWS.z), _startWS, out Vector3 n0);
+            _smoothedGroundNormal = n0.sqrMagnitude > 1e-8f ? n0.normalized : Vector3.up;
+            Quaternion tilted = ComputeAlignedRotation(flatDir, _smoothedGroundNormal);
+            _rb.MoveRotation(tilted);
+            transform.rotation = tilted;
+        }
+
+        RebuildPathPreview();
+        UpdateTravelFxState();
     }
+
+    private void LateUpdate()
+    {
+        if (!previewUpdateEveryFrame) return;
+        if (_preview == null || !_initialized || _convertedToPhysics) return;
+        if (!_active) return;
+        RebuildPathPreview();
+    }
+
+    /// <summary>Preview matches motion: flat XZ + constant Y, or XZ lerp with Y from ground + clearance.</summary>
+    private void RebuildPathPreview()
+    {
+        if (_preview == null || !_initialized) return;
+
+        int segs = Mathf.Clamp(previewPathSegments, 4, 64);
+        if (_previewScratch == null || _previewScratch.Length < segs)
+            _previewScratch = new Vector3[segs];
+
+        bool fullSpan = Time.time < _spawnedAt + _initialDelay;
+
+        if (keepPathFlatAndTrimOnElevation)
+        {
+            Vector2 aXZ = fullSpan ? new Vector2(_startWS.x, _startWS.z) : new Vector2(transform.position.x, transform.position.z);
+            Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
+            if (Vector2.Distance(aXZ, bXZ) < 0.02f)
+            {
+                _preview.SetEndpoints(_startWS, _targetWS);
+                return;
+            }
+
+            for (int i = 0; i < segs; i++)
+            {
+                float t = segs <= 1 ? 0f : i / (float)(segs - 1);
+                Vector2 xz = Vector2.Lerp(aXZ, bXZ, t);
+                _previewScratch[i] = new Vector3(xz.x, _startWS.y, xz.y);
+            }
+        }
+        else
+        {
+            Vector2 aXZ = fullSpan ? new Vector2(_startWS.x, _startWS.z) : new Vector2(transform.position.x, transform.position.z);
+            Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
+            if (Vector2.Distance(aXZ, bXZ) < 0.02f)
+            {
+                _preview.SetEndpoints(_startWS, _targetWS);
+                return;
+            }
+
+            for (int i = 0; i < segs; i++)
+            {
+                float t = segs <= 1 ? 0f : i / (float)(segs - 1);
+                Vector2 xz = Vector2.Lerp(aXZ, bXZ, t);
+                Vector3 stab = fullSpan
+                    ? Vector3.Lerp(_startWS, _targetWS, t)
+                    : Vector3.Lerp(transform.position, _targetWS, t);
+                _previewScratch[i] = GroundedCenterAtXZ(xz, stab);
+            }
+        }
+
+        _preview.SetPolylineWorld(_previewScratch, segs);
+    }
+
+    /// <summary>World position for obstacle center: ground under XZ + half-height + clearance (world-up, not slope-normal).</summary>
+    private Vector3 GroundedCenterAtXZ(Vector2 xz, Vector3 stabilityRef) =>
+        GroundedCenterAtXZ(xz, stabilityRef, out _);
+
+    private Vector3 GroundedCenterAtXZ(Vector2 xz, Vector3 stabilityRef, out Vector3 groundNormal)
+    {
+        Vector3 ground = SampleRoadSurface(new Vector3(xz.x, 0f, xz.y), stabilityRef, out groundNormal);
+        float y = ground.y + _pathHeightOffset + Mathf.Max(0f, clearanceAboveGround);
+        return new Vector3(xz.x, y, xz.y);
+    }
+
+    private void ResolveTiltVisualRoot()
+    {
+        if (tiltVisualRoot != null)
+        {
+            _resolvedTiltRoot = tiltVisualRoot;
+            return;
+        }
+
+        Transform t = transform.Find("Visual");
+        if (t == null) t = transform.Find("TiltRoot");
+        if (t == null) t = transform.Find("Model");
+        _resolvedTiltRoot = t != null ? t : transform;
+    }
+
+    private bool UseSeparateTiltVisual => _resolvedTiltRoot != null && _resolvedTiltRoot != transform;
 
     private void Awake()
     {
@@ -104,6 +292,10 @@ public class CrossTrackObstacle : MonoBehaviour
         }
 
         _convertedToPhysics = false;
+        _preview = GetComponent<ObstaclePathPreview>();
+        CacheTravelLightsIfNeeded();
+        SetTravelFxEnabled(false, true);
+        ResolveTiltVisualRoot();
     }
 
     // -------------------------- MOVEMENT --------------------------
@@ -111,7 +303,10 @@ public class CrossTrackObstacle : MonoBehaviour
     private void FixedUpdate()
     {
         if (!_initialized || !_active || _convertedToPhysics)
+        {
+            SetTravelFxEnabled(false, true);
             return;
+        }
 
 
 
@@ -119,18 +314,14 @@ public class CrossTrackObstacle : MonoBehaviour
         {
             _prevPosition = transform.position;
             _lastVelocity = Vector3.zero;
+            SetTravelFxEnabled(false, true);
             return;
         }
+
+        SetTravelFxEnabled(true);
 
         Vector3 current = transform.position;
-        Vector3 toTarget = _targetWS - current;
-        float dist = toTarget.magnitude;
-
-        if (dist < 0.01f)
-        {
-            OnReachedEnd();
-            return;
-        }
+        float step = speed * Time.fixedDeltaTime;
 
         if (enableScreenShake && _active && !_convertedToPhysics)
         {
@@ -143,31 +334,122 @@ public class CrossTrackObstacle : MonoBehaviour
             );
         }
 
-        Vector3 dir = toTarget / dist;
-        float step = speed * Time.fixedDeltaTime;
-        step = Mathf.Min(step, dist);
-        Vector3 nextPos = current + dir * step;
+        Vector3 nextPos;
+        Quaternion parentYawTarget;
+        Quaternion slopeAlignTarget;
 
-        // NO MORE re-projecting onto the surface here.
-        // We trust the director's path (start/target) fully.
+        if (keepPathFlatAndTrimOnElevation)
+        {
+            Vector2 curXZ = new Vector2(current.x, current.z);
+            Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
+            Vector2 toTargetXZ = targetXZ - curXZ;
+            float dist = toTargetXZ.magnitude;
+            if (dist < 0.01f)
+            {
+                OnReachedEnd();
+                return;
+            }
+
+            Vector2 dirXZ = toTargetXZ / dist;
+            float horizStep = Mathf.Min(step, dist);
+            Vector2 nextXZ = curXZ + dirXZ * horizStep;
+            nextPos = new Vector3(nextXZ.x, _startWS.y, nextXZ.y);
+            parentYawTarget = ComputeAlignedRotation(dirXZ, Vector3.up);
+            slopeAlignTarget = parentYawTarget;
+        }
+        else
+        {
+            // Constant speed on XZ toward target; Y from ground under that XZ (never fly on a 3D chord).
+            Vector2 curXZ = new Vector2(current.x, current.z);
+            Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
+            Vector2 toTargetXZ = targetXZ - curXZ;
+            float dist = toTargetXZ.magnitude;
+            if (dist < 0.01f)
+            {
+                OnReachedEnd();
+                return;
+            }
+
+            Vector2 dirXZ = toTargetXZ / dist;
+            float horizStep = Mathf.Min(step, dist);
+            Vector2 nextXZ = curXZ + dirXZ * horizStep;
+            Vector3 stabilityRef = Vector3.Lerp(current, new Vector3(_targetWS.x, current.y, _targetWS.z), 0.18f);
+            nextPos = GroundedCenterAtXZ(nextXZ, stabilityRef, out Vector3 groundN);
+            float nSmooth = 1f - Mathf.Exp(-surfaceNormalSmoothSpeed * Time.fixedDeltaTime);
+            Vector3 gn = groundN.sqrMagnitude > 1e-8f ? groundN.normalized : Vector3.up;
+            _smoothedGroundNormal = Vector3.Slerp(_smoothedGroundNormal, gn, nSmooth).normalized;
+            parentYawTarget = Quaternion.LookRotation(new Vector3(dirXZ.x, 0f, dirXZ.y), Vector3.up);
+            slopeAlignTarget = ComputeAlignedRotation(dirXZ, _smoothedGroundNormal);
+        }
+
+        float rotT = 1f - Mathf.Exp(-surfaceAlignRotationSpeed * Time.fixedDeltaTime);
+
         _lastVelocity = (nextPos - _prevPosition) / Mathf.Max(Time.fixedDeltaTime, 0.0001f);
         _prevPosition = nextPos;
 
-        Vector3 move = nextPos - current;
-        float moveDist = move.magnitude;
-
-
-
-
         if (_rb != null && _rb.isKinematic)
+        {
             _rb.MovePosition(nextPos);
+            if (UseSeparateTiltVisual)
+            {
+                Quaternion newParent = Quaternion.Slerp(_rb.rotation, parentYawTarget, rotT);
+                _rb.MoveRotation(newParent);
+                if (keepPathFlatAndTrimOnElevation)
+                {
+                    _resolvedTiltRoot.localRotation = Quaternion.Slerp(
+                        _resolvedTiltRoot.localRotation,
+                        Quaternion.identity,
+                        rotT);
+                }
+                else
+                {
+                    _resolvedTiltRoot.rotation = Quaternion.Slerp(
+                        _resolvedTiltRoot.rotation,
+                        slopeAlignTarget,
+                        rotT);
+                }
+            }
+            else
+            {
+                Quaternion singleTarget = keepPathFlatAndTrimOnElevation ? parentYawTarget : slopeAlignTarget;
+                Quaternion newRot = Quaternion.Slerp(_rb.rotation, singleTarget, rotT);
+                _rb.MoveRotation(newRot);
+            }
+        }
         else
-            transform.position = nextPos;
+        {
+            if (UseSeparateTiltVisual)
+            {
+                Quaternion newParent = Quaternion.Slerp(transform.rotation, parentYawTarget, rotT);
+                transform.SetPositionAndRotation(nextPos, newParent);
+                if (keepPathFlatAndTrimOnElevation)
+                {
+                    _resolvedTiltRoot.localRotation = Quaternion.Slerp(
+                        _resolvedTiltRoot.localRotation,
+                        Quaternion.identity,
+                        rotT);
+                }
+                else
+                {
+                    _resolvedTiltRoot.rotation = Quaternion.Slerp(
+                        _resolvedTiltRoot.rotation,
+                        slopeAlignTarget,
+                        rotT);
+                }
+            }
+            else
+            {
+                Quaternion singleTarget = keepPathFlatAndTrimOnElevation ? parentYawTarget : slopeAlignTarget;
+                Quaternion newRot = Quaternion.Slerp(transform.rotation, singleTarget, rotT);
+                transform.SetPositionAndRotation(nextPos, newRot);
+            }
+        }
     }
 
     private void OnReachedEnd()
     {
         _active = false;
+        SetTravelFxEnabled(false, true);
         if (destroyOnExit)
             Destroy(gameObject);
         else
@@ -290,11 +572,29 @@ public class CrossTrackObstacle : MonoBehaviour
             return; // DO NOT convert this obstacle
         }
 
+        Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
+
+        if (RacingObstacleCollisionPopups.IsObstacleBuddy(other))
+        {
+            float relForPopup = _lastVelocity.magnitude;
+            if (otherRb != null && otherRb.velocity.sqrMagnitude > 0.01f)
+                relForPopup = (_lastVelocity - otherRb.velocity).magnitude;
+
+            RacingObstacleCollisionPopups.TrySpawnObstacleClash(
+                transform.root,
+                other.transform.root,
+                collision,
+                other,
+                relForPopup,
+                crossClashMinRelativeSpeed,
+                crossClashPopupHeight,
+                crossClashPairCooldown,
+                enableCrossClashCrashPopup);
+        }
+
         // Non-player collision: mass comparison rules.
         float obstCurveMass = ComputeMassFromScale();
         float obstMass = obstCurveMass;
-
-        Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
 
         var otherShuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
 
@@ -547,8 +847,7 @@ public class CrossTrackObstacle : MonoBehaviour
 
         if (_rb == null) return;
 
-        var preview = GetComponent<ObstaclePathPreview>();
-        if (preview) preview.FadeOut(0.2f);
+        SetTravelFxEnabled(false, true);
 
         _rb.isKinematic = false;
         _rb.useGravity = true;
@@ -577,6 +876,7 @@ public class CrossTrackObstacle : MonoBehaviour
 
         _active = false;
         enabled = false;
+        SetTravelFxEnabled(false, true);
 
         if (_rb == null) return;
 
@@ -672,6 +972,57 @@ public class CrossTrackObstacle : MonoBehaviour
         _rb.constraints = RigidbodyConstraints.FreezeRotation;
     }
 
+    private void OnDisable()
+    {
+        SetTravelFxEnabled(false, true);
+    }
+
+    private void UpdateTravelFxState()
+    {
+        bool movingOnScriptedPath =
+            _initialized &&
+            _active &&
+            !_convertedToPhysics &&
+            enabled &&
+            _rb != null &&
+            _rb.isKinematic &&
+            Time.time >= _spawnedAt + _initialDelay;
+
+        SetTravelFxEnabled(movingOnScriptedPath);
+    }
+
+    private void CacheTravelLightsIfNeeded()
+    {
+        if (travelLights != null && travelLights.Length > 0) return;
+        travelLights = GetComponentsInChildren<Light>(true);
+    }
+
+    private void SetTravelFxEnabled(bool enabledNow, bool instant = false)
+    {
+        if (_travelFxEnabled == enabledNow && !instant) return;
+        _travelFxEnabled = enabledNow;
+
+        if (_preview != null)
+        {
+            if (enabledNow)
+            {
+                _preview.enabled = true;
+                _preview.FadeIn(instant ? 0f : 0.08f);
+            }
+            else
+            {
+                _preview.FadeOut(instant ? 0f : 0.08f);
+            }
+        }
+
+        if (travelLights == null) return;
+        for (int i = 0; i < travelLights.Length; i++)
+        {
+            if (travelLights[i] != null)
+                travelLights[i].enabled = enabledNow;
+        }
+    }
+
     private void ForceMakeDynamic(Rigidbody rb)
     {
         if (rb == null) return;
@@ -757,6 +1108,143 @@ public class CrossTrackObstacle : MonoBehaviour
     /// Public property to check if this obstacle is still on its scripted path.
     /// </summary>
     public bool IsOnScriptedPath => _active && _initialized && !_convertedToPhysics;
+
+    private Vector3 SampleRoadSurface(Vector3 worldProbe, out Vector3 normal) =>
+        SampleRoadSurface(worldProbe, worldProbe, out normal);
+
+    /// <summary>
+    /// Picks a stable ground hit near the expected height (reduces jitter when road + terrain overlap).
+    /// </summary>
+    private Vector3 SampleRoadSurface(Vector3 worldProbe, Vector3 stabilityRef, out Vector3 normal)
+    {
+        float refY = Mathf.Max(stabilityRef.y, worldProbe.y);
+        Vector3 origin = new Vector3(worldProbe.x, refY + surfaceProbeUpOffset, worldProbe.z);
+        float maxDist = surfaceProbeUpOffset + surfaceMaxDownDist;
+        RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, maxDist, ~0, QueryTriggerInteraction.Ignore);
+
+        if (hits == null || hits.Length == 0)
+            return SampleRoadSurfaceLegacy(worldProbe, out normal);
+
+        float desiredSurfY = stabilityRef.y - _pathHeightOffset;
+        int best = 0;
+        float bestScore = float.MaxValue;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            float dy = Mathf.Abs(hits[i].point.y - desiredSurfY);
+            float score = dy + hits[i].distance * 0.02f;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = i;
+            }
+        }
+
+        normal = hits[best].normal.sqrMagnitude > 1e-8f ? hits[best].normal.normalized : Vector3.up;
+        return new Vector3(worldProbe.x, hits[best].point.y, worldProbe.z);
+    }
+
+    private Vector3 SampleRoadSurfaceLegacy(Vector3 worldProbe, out Vector3 normal)
+    {
+        Vector3 projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, LayerMask.GetMask("RoadSurface"));
+        if ((projected - worldProbe).sqrMagnitude < 1e-6f)
+            projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, null);
+        if (normal.sqrMagnitude < 1e-8f) normal = Vector3.up;
+        else normal.Normalize();
+        return projected;
+    }
+
+    private float SampleRoadSurfaceY(Vector3 ws)
+    {
+        Vector3 n;
+        return SampleRoadSurface(ws, out n).y;
+    }
+
+    private static Quaternion ComputeAlignedRotation(Vector2 dirXZ, Vector3 surfaceNormal)
+    {
+        surfaceNormal = surfaceNormal.sqrMagnitude > 1e-8f ? surfaceNormal.normalized : Vector3.up;
+        Vector3 moveFlat = new Vector3(dirXZ.x, 0f, dirXZ.y);
+        if (moveFlat.sqrMagnitude < 1e-8f)
+            return Quaternion.LookRotation(Vector3.forward, surfaceNormal);
+
+        moveFlat.Normalize();
+        Vector3 forward = Vector3.ProjectOnPlane(moveFlat, surfaceNormal);
+        if (forward.sqrMagnitude < 1e-8f)
+            forward = Vector3.Cross(surfaceNormal, Vector3.right);
+        if (forward.sqrMagnitude < 1e-8f)
+            forward = Vector3.Cross(surfaceNormal, Vector3.forward);
+        forward.Normalize();
+        return Quaternion.LookRotation(forward, surfaceNormal);
+    }
+
+    private Vector3 TrimTargetTowardStart(Vector3 start, Vector3 target, float refY)
+    {
+        float targetY = SampleRoadSurfaceY(target);
+        if (Mathf.Abs(targetY - refY) <= maxAllowedPathElevationDelta)
+            return target;
+
+        Vector3 lo = start;
+        Vector3 hi = target;
+        for (int i = 0; i < endpointTrimIterations; i++)
+        {
+            Vector3 mid = Vector3.Lerp(lo, hi, 0.5f);
+            float midY = SampleRoadSurfaceY(mid);
+            bool valid = Mathf.Abs(midY - refY) <= maxAllowedPathElevationDelta;
+            if (valid) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+
+    private float ComputeHalfHeightWorld()
+    {
+        // Parent-only half-height: use this GameObject's own bounds, not children.
+        // This matches center-pivot prefabs where "half height" should ground the bottom.
+        float maxHalfHeight = 0f;
+        bool found = false;
+
+        Renderer selfRenderer = GetComponent<Renderer>();
+        if (selfRenderer != null && !(selfRenderer is LineRenderer))
+        {
+            maxHalfHeight = Mathf.Max(maxHalfHeight, selfRenderer.bounds.extents.y);
+            found = true;
+        }
+
+        Collider[] selfColliders = GetComponents<Collider>();
+        for (int i = 0; i < selfColliders.Length; i++)
+        {
+            Collider c = selfColliders[i];
+            if (c == null || c.isTrigger) continue;
+            maxHalfHeight = Mathf.Max(maxHalfHeight, c.bounds.extents.y);
+            found = true;
+        }
+
+        if (!found)
+            return 0.5f * Mathf.Max(0.1f, transform.lossyScale.y);
+
+        return Mathf.Max(0.05f, maxHalfHeight);
+    }
+
+    /// <summary>
+    /// Heavy hit from a rolling log — break scripted cross motion and launch with explosion rules.
+    /// </summary>
+    public void ApplyRollingLogRam(Vector3 fromLogPlanarDirection, float relativeSpeed)
+    {
+        if (_convertedToPhysics) return;
+
+        Vector3 d = fromLogPlanarDirection;
+        d.y = 0f;
+        if (d.sqrMagnitude < 1e-6f)
+        {
+            d = _lastVelocity.sqrMagnitude > 1e-4f ? -_lastVelocity.normalized : -transform.forward;
+            d.y = 0f;
+            if (d.sqrMagnitude < 1e-6f) d = -transform.forward;
+        }
+        d.Normalize();
+
+        ConvertToPhysicsWithExplosion(-d, explosionForceBase * 0.95f, Mathf.Max(relativeSpeed, 4f));
+
+        if (enableCrossClashCrashPopup && RacingPopups.IsReady)
+            RacingPopups.CrashWorld(transform.position + Vector3.up * crossClashPopupHeight);
+    }
 
 #if UNITY_EDITOR
     private void OnDrawGizmos()

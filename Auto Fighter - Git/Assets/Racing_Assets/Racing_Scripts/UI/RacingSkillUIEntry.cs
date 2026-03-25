@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 public class RacingSkillUIEntry : MonoBehaviour
 {
@@ -43,9 +44,25 @@ public class RacingSkillUIEntry : MonoBehaviour
         var rootBtn = GetComponent<Button>();
         if (rootBtn)
         {
+            // Critical for controller-cursor behavior: prevent Unity from auto-targeting
+            // neighboring selectables ("nearest button") when submit/click focus shifts.
+            var nav = rootBtn.navigation;
+            nav.mode = Navigation.Mode.None;
+            rootBtn.navigation = nav;
+
             rootBtn.onClick.RemoveAllListeners();
             rootBtn.onClick.AddListener(() => { if (def != null) Selected?.Invoke(def); });
         }
+
+        // TMP often has Raycast Target on by default → steals hits from overlapping skill nodes / wrong pick order.
+        foreach (var tmp in GetComponentsInChildren<TMPro.TMP_Text>(true))
+        {
+            if (tmp != null) tmp.raycastTarget = false;
+        }
+
+        // Extra decorative Image: must not steal rays from the Button's targetGraphic.
+        if (button != null && rootBtn != null && rootBtn.targetGraphic != button)
+            button.raycastTarget = false;
 
         Refresh();
     }

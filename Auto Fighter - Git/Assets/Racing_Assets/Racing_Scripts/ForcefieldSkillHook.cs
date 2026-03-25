@@ -27,6 +27,7 @@ public sealed class ForcefieldSkillHook : MonoBehaviour
     [SerializeField] private SkillType knockbackMul = SkillType.ForcefieldKnockback_Mul;
 
     private RacingSkillTreeManager _mgr;
+    private RacingQuestUnlockManager _questMgr;
 
     private void Reset()
     {
@@ -41,10 +42,16 @@ public sealed class ForcefieldSkillHook : MonoBehaviour
     private void OnEnable()
     {
         _mgr = RacingSkillTreeManager.Instance;
+        _questMgr = RacingQuestUnlockManager.Instance;
         if (_mgr != null)
         {
             _mgr.OnLevelChanged += HandleSkillChanged;
             _mgr.OnSkillsReset += HandleSkillsReset;
+        }
+        if (_questMgr != null)
+        {
+            _questMgr.OnQuestUnlocked += HandleQuestUnlocked;
+            _questMgr.OnInventoryChanged += HandleInventoryChanged;
         }
         Apply();
     }
@@ -56,22 +63,34 @@ public sealed class ForcefieldSkillHook : MonoBehaviour
             _mgr.OnLevelChanged -= HandleSkillChanged;
             _mgr.OnSkillsReset -= HandleSkillsReset;
         }
+        if (_questMgr != null)
+        {
+            _questMgr.OnQuestUnlocked -= HandleQuestUnlocked;
+            _questMgr.OnInventoryChanged -= HandleInventoryChanged;
+        }
     }
 
     private void HandleSkillChanged(SkillType _, int __) => Apply();
     private void HandleSkillsReset() => Apply();
+    private void HandleQuestUnlocked(RacingQuestType _) => Apply();
+    private void HandleInventoryChanged() => Apply();
 
     private void Apply()
     {
         if (!forcefield) return;
 
         // Unlock
-        bool unlocked = !useUnlockSkill || _mgr == null
-            ? true
-            : (_mgr.GetLevel(unlockSkill) > 0);
+        bool unlocked = true;
+        if (useUnlockSkill)
+            unlocked = _mgr != null && _mgr.GetLevel(unlockSkill) > 0;
+
+        // Run-time activation is inventory-driven: node purchased + equipped in active slot.
+        if (unlocked)
+            unlocked = _questMgr != null && _questMgr.IsItemEquipped(RacingQuestRunItem.Forcefield);
+
         forcefield.enabled = unlocked;
         // ensure the visual is off when locked (component disabled) or when not armed
-                if (!unlocked)
+        if (!unlocked)
             forcefield.SetArmed(false);
 
 

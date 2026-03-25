@@ -6,7 +6,8 @@ using UnityEngine;
 public class CarGroundConfig : MonoBehaviour
 {
     [Header("Ground Detection")]
-    [SerializeField] private LayerMask groundLayers = (LayerMask)90112;
+    [Tooltip("Include Default if Terrain uses that layer for ground hits.")]
+    [SerializeField] private LayerMask groundLayers = (LayerMask)(90112 | 1);
     [SerializeField] private int samplesX = 6;
     [SerializeField] private int samplesZ = 6;
     [SerializeField] private float raycastHeightOffset = 0.5f;

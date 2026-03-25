@@ -160,7 +160,6 @@ Use both opening and closing tags so the same text is inside multiple links. Exa
 1. In the **Project** window: **Right-click** → **Create** → **Racing** → **Narrative** → **Dialogue Sequence**.
 2. Name it (e.g. `Intro_Dialogue`).
 3. In the Inspector:
-   - **Sequence Id** (optional): e.g. `intro`.
    - **Lines**: set **Size** to how many lines you want. For each element:
      - **Speaker Name**: e.g. “Mechanic”, “Rival”.
      - **Text**: the line of dialogue.

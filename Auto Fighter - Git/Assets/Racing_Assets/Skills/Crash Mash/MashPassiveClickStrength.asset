@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 4620
   displayName: Passive Mash Click Strength
-  description: Increases the strength of passive clicks per click by 1
-  maxLevel: 10
+  description: Increases the strength of passive clicks per click by 2
+  maxLevel: 15
   costCurve:
     serializedVersion: 2
     m_Curve: []
@@ -25,7 +25,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 1
+  perLevelAdd: 2
   uiPosition: {x: 0, y: 725}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

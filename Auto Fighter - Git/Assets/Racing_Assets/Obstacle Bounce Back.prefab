@@ -126,7 +126,7 @@ MonoBehaviour:
   maxHealth: 2
   scaleOnHit: 0.25
   scalePunchTime: 0.15
-  destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
+  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
   rewardCurrency: 1
   treeToppleMinVelocity: 2
   treeToppleImpulseScale: 2
@@ -212,11 +212,13 @@ MonoBehaviour:
   reactToOtherObstacles: 1
   obstacleReactMask:
     serializedVersion: 2
-    m_Bits: 2885632
+    m_Bits: 11274240
   obstacleImpulse: 9.48
   obstacleUpImpulse: 2.8
   obstacleImpactCooldown: 0.08
   damagePlayerOnHit: 1
+  useCentralizedCrashSeverity: 1
+  centralizedSeverityExtraMultiplier: 1
   hitHpDamage: 20
   hitFuelPercent: 0.66
   hitDamageCooldown: 1.01

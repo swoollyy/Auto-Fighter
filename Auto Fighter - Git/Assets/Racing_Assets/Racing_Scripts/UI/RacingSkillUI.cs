@@ -2,8 +2,12 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-[DefaultExecutionOrder(-10)]
+/// <summary>
+/// Skill tree UI. Racing vs SkillTreeUI action maps are toggled from <see cref="UIManager_Racing"/> by section (not from this component's OnEnable), so car input is restored even if this object stays active when the skill-tree panel is hidden.
+/// </summary>
+[DefaultExecutionOrder(-50)]
 public class RacingSkillUI : MonoBehaviour
 {
     [Header("Wiring")]
@@ -26,9 +30,17 @@ public class RacingSkillUI : MonoBehaviour
 
     [Header("Buttons")]
     [SerializeField] private Button playButton;
-    [SerializeField] private bool autoOpenFirstSkill = true;
+    [SerializeField] private Button questButton;
+    [SerializeField] private Button inventoryButton;
+    [SerializeField] private RacingQuestsPanelUI questsPanelUI;
+    [SerializeField] private RacingRunInventoryPanelUI inventoryPanelUI;
+    [SerializeField] private bool autoOpenFirstSkill = false;
     [SerializeField] private bool verboseDebug = false;
     [SerializeField] private bool forceDeferredBuild = true;
+    [SerializeField] private bool enableLegacyPanelToggleRaycastFallback = false;
+
+    [Tooltip("When the skill info card is open, a left-click that is not on the card, Buy, a skill node, or toolbar closes the card (no invisible blocking layer).")]
+    [SerializeField] private bool dismissDetailOnOutsideClick = true;
 
     [Header("Tree View - Gamepad")]
     [SerializeField] private bool enableGamepadPanZoom = true;
@@ -60,11 +72,16 @@ public class RacingSkillUI : MonoBehaviour
     private Vector2 _lastMouse;
     private Vector3 _contentBaseScale = Vector3.one;
 
+    /// <summary>Where skill node instances are parented (tree or list). Used for hierarchy/debug; click logic uses <see cref="RacingSkillUIEntry"/> on nodes.</summary>
+    public Transform SkillNodesParent => treeContent != null ? treeContent : contentParent;
+
     private RacingSkillTreeManager mgr;
+    private RacingQuestUnlockManager questMgr;
     private GameManager_Racing gameManager;
     private readonly List<RacingSkillUIEntry> entries = new();
     private RacingSkillUIEntry selectedEntry;
     private bool buildSucceeded;
+    private int _lastPanelToggleFrame = -9999;
 
     void Awake()
     {
@@ -74,26 +91,35 @@ public class RacingSkillUI : MonoBehaviour
     private void OnEnable()
     {
         EnsureManager();
+        mgr?.RefreshQuestUnlockReveals();
         BindPlayButton();
         WireEvents();
+        DestroyLegacyTreeViewportRaycastFillIfPresent();
         AttemptBuild(); // builds only revealed
         RefreshAll();
         if (treeContent) _contentBaseScale = treeContent.localScale;
         AutoOpenFirstIfNeeded();
-        RacingInputReader.Instance?.SetSkillTreeMapEnabled(true);
     }
 
     private void OnDisable()
     {
-        RacingInputReader.Instance?.SetSkillTreeMapEnabled(false);
         UnwireEvents();
     }
 
     void Update()
     {
-        HandleTreePan();
-        HandleTreeZoom();
-        HandleTreePanZoomGamepad();   // <-- add this
+        if (!GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+        {
+            HandleTreePan();
+            HandleTreeZoom();
+            HandleTreePanZoomGamepad();
+            if (enableLegacyPanelToggleRaycastFallback)
+                HandlePanelToggleByButtonRaycastFallback();
+            if (dismissDetailOnOutsideClick)
+                TryDismissDetailOnOutsideClick();
+        }
+
+        HandlePanelSelectionSafety();
     }
 
     public void BindGameManager(GameManager_Racing gm) => gameManager = gm;
@@ -105,20 +131,171 @@ public class RacingSkillUI : MonoBehaviour
             playButton.onClick.RemoveAllListeners();
             playButton.onClick.AddListener(OnPlayClicked);
         }
+
+        if (questButton)
+        {
+            questButton.onClick.RemoveAllListeners();
+            questButton.onClick.AddListener(OnQuestClicked);
+        }
+
+        if (inventoryButton)
+        {
+            inventoryButton.onClick.RemoveAllListeners();
+            inventoryButton.onClick.AddListener(OnInventoryClicked);
+        }
     }
 
     private void OnPlayClicked()
     {
+        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+
         ClearSelection();
         detailPanel?.HideImmediate();
+
+        var inventoryPanel = FindObjectOfType<RacingRunInventoryPanelUI>(true);
+        if (inventoryPanel != null)
+        {
+            bool canProceed = inventoryPanel.CheckPlayWarningGate(ProceedToRunFromPlay);
+            if (!canProceed) return;
+        }
+
+        ProceedToRunFromPlay();
+    }
+
+    private void ProceedToRunFromPlay()
+    {
         if (!gameManager)
             gameManager = FindObjectOfType<GameManager_Racing>();
         gameManager?.BeginRun();
     }
 
+    private void OnQuestClicked()
+    {
+        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+        if (Time.frameCount == _lastPanelToggleFrame) return;
+        _lastPanelToggleFrame = Time.frameCount;
+
+        if (!questsPanelUI)
+            questsPanelUI = FindObjectOfType<RacingQuestsPanelUI>(true);
+        if (!inventoryPanelUI)
+            inventoryPanelUI = FindObjectOfType<RacingRunInventoryPanelUI>(true);
+
+        inventoryPanelUI?.HidePanel();
+        questsPanelUI?.TogglePanel();
+        EventSystem.current?.SetSelectedGameObject(null);
+    }
+
+    private void OnInventoryClicked()
+    {
+        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+        if (Time.frameCount == _lastPanelToggleFrame) return;
+        _lastPanelToggleFrame = Time.frameCount;
+
+        if (!inventoryPanelUI)
+            inventoryPanelUI = FindObjectOfType<RacingRunInventoryPanelUI>(true);
+        if (!questsPanelUI)
+            questsPanelUI = FindObjectOfType<RacingQuestsPanelUI>(true);
+
+        questsPanelUI?.HidePanel();
+        inventoryPanelUI?.TogglePanel();
+        EventSystem.current?.SetSelectedGameObject(null);
+    }
+
+    private void HandlePanelSelectionSafety()
+    {
+        bool anyPanelOpen = IsPanelOpen(questsPanelUI) || IsPanelOpen(inventoryPanelUI);
+
+        SyncToolbarButtons(anyPanelOpen);
+
+        // Prevent controller Submit from activating stale selected buttons (e.g. Play)
+        if (anyPanelOpen && EventSystem.current != null && EventSystem.current.currentSelectedGameObject != null)
+            EventSystem.current.SetSelectedGameObject(null);
+    }
+
+    /// <summary>
+    /// Play is disabled while quest/inventory panels are open. Keeps <see cref="Selectable.targetGraphic"/> raycast
+    /// in sync so non-interactable toolbar items do not confuse the EventSystem.
+    /// </summary>
+    private void SyncToolbarButtons(bool anyPanelOpen)
+    {
+        if (playButton != null)
+        {
+            bool allowPlay = !anyPanelOpen;
+            playButton.interactable = allowPlay;
+            if (playButton.targetGraphic != null)
+                playButton.targetGraphic.raycastTarget = allowPlay;
+        }
+
+        if (questButton != null)
+        {
+            questButton.interactable = true;
+            if (questButton.targetGraphic != null)
+                questButton.targetGraphic.raycastTarget = true;
+        }
+
+        if (inventoryButton != null)
+        {
+            inventoryButton.interactable = true;
+            if (inventoryButton.targetGraphic != null)
+                inventoryButton.targetGraphic.raycastTarget = true;
+        }
+    }
+
+    private void HandlePanelToggleByButtonRaycastFallback()
+    {
+        bool anyPanelOpen = IsPanelOpen(questsPanelUI) || IsPanelOpen(inventoryPanelUI);
+        if (!anyPanelOpen) return;
+        if (!Input.GetMouseButtonDown(0)) return;
+        if (EventSystem.current == null) return;
+
+        var ped = new PointerEventData(EventSystem.current)
+        {
+            position = Input.mousePosition
+        };
+        var results = new List<RaycastResult>(16);
+        EventSystem.current.RaycastAll(ped, results);
+        if (results.Count == 0) return;
+
+        if (ContainsTargetInRaycast(results, questButton))
+        {
+            OnQuestClicked();
+            return;
+        }
+
+        if (ContainsTargetInRaycast(results, inventoryButton))
+        {
+            OnInventoryClicked();
+            return;
+        }
+    }
+
+    private static bool IsPanelOpen(Object panelScript)
+    {
+        if (panelScript is RacingQuestsPanelUI q)
+            return q.gameObject.activeInHierarchy && q.enabled;
+        if (panelScript is RacingRunInventoryPanelUI i)
+            return i.gameObject.activeInHierarchy && i.enabled;
+        return false;
+    }
+
+    private static bool ContainsTargetInRaycast(List<RaycastResult> results, Button target)
+    {
+        if (target == null || results == null) return false;
+        Transform btnT = target.transform;
+        for (int i = 0; i < results.Count; i++)
+        {
+            Transform t = results[i].gameObject != null ? results[i].gameObject.transform : null;
+            if (t == null) continue;
+            if (t == btnT || t.IsChildOf(btnT))
+                return true;
+        }
+        return false;
+    }
+
     private void EnsureManager()
     {
         if (!mgr) mgr = RacingSkillTreeManager.Instance;
+        if (!questMgr) questMgr = RacingQuestUnlockManager.Instance;
         if (detailPanel && mgr) detailPanel.Init(mgr);
         if (!gameManager) gameManager = FindObjectOfType<GameManager_Racing>();
     }
@@ -130,6 +307,8 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSprocketsChanged += HandleSprocketsChanged;
         mgr.OnLevelChanged += HandleLevelChanged;
         mgr.OnSkillRevealed += HandleSkillRevealed;
+        if (questMgr != null)
+            questMgr.OnQuestUnlocked += HandleQuestUnlocked;
     }
 
     private void UnwireEvents()
@@ -139,6 +318,8 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSprocketsChanged -= HandleSprocketsChanged;
         mgr.OnLevelChanged -= HandleLevelChanged;
         mgr.OnSkillRevealed -= HandleSkillRevealed;
+        if (questMgr != null)
+            questMgr.OnQuestUnlocked -= HandleQuestUnlocked;
     }
 
     private void HandleCurrencyChanged(int _) => RefreshAll();
@@ -147,10 +328,21 @@ public class RacingSkillUI : MonoBehaviour
 
     private void HandleSkillRevealed(SkillDefinition def)
     {
+        SkillDefinition previouslySelected = selectedEntry != null ? selectedEntry.GetDefinition() : null;
+
         // Rebuild to include newly revealed skill(s)
         AttemptBuild();
         RefreshAll();
-        AutoOpenFirstIfNeeded();
+        if (!TryRestoreSelectionAfterRebuild(previouslySelected))
+            AutoOpenFirstIfNeeded();
+    }
+
+    private void HandleQuestUnlocked(RacingQuestType _)
+    {
+        SkillDefinition previouslySelected = selectedEntry != null ? selectedEntry.GetDefinition() : null;
+        AttemptBuild();
+        RefreshAll();
+        TryRestoreSelectionAfterRebuild(previouslySelected);
     }
 
     private void AttemptBuild()
@@ -168,7 +360,9 @@ public class RacingSkillUI : MonoBehaviour
         foreach (var def in subset)
         {
             if (!def) continue;
-            if (!mgr.IsSkillRevealed(def.type)) continue; // filter unrevealed
+            bool revealed = mgr.IsSkillRevealed(def.type);
+            if (!revealed)
+                continue; // filter unrevealed unless its quest is already completed
             RacingSkillUIEntry inst = Instantiate(entryPrefab,
                 treeContent ? treeContent : contentParent);
             if (treeContent)
@@ -185,11 +379,109 @@ public class RacingSkillUI : MonoBehaviour
         buildSucceeded = entries.Count > 0;
     }
 
+    private const string TreeViewportRaycastFillLegacyName = "TreeViewportRaycastFill";
+
+    /// <summary>Removes the transparent fill added for the reverted global click-catcher workaround.</summary>
+    private void DestroyLegacyTreeViewportRaycastFillIfPresent()
+    {
+        RectTransform host = treeViewport != null ? treeViewport : contentParent as RectTransform;
+        if (host == null) return;
+        var t = host.Find(TreeViewportRaycastFillLegacyName);
+        if (t != null) Destroy(t.gameObject);
+    }
+
     private void OnEntrySelected(SkillDefinition def)
     {
+        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
         if (!def || !detailPanel) return;
         selectedEntry = entries.Find(e => e.GetDefinition() == def);
         ShowEntryDetail(selectedEntry);
+    }
+
+    /// <summary>
+    /// Uses top UI raycast only — no full-tree blocking Image (that was stealing clicks from Buy when it sorted above the card).
+    /// </summary>
+    private void TryDismissDetailOnOutsideClick()
+    {
+        if (!Input.GetMouseButtonDown(0) || detailPanel == null || !detailPanel.IsInfoVisible || !dismissDetailOnOutsideClick)
+            return;
+
+        var es = EventSystem.current;
+        if (es == null) return;
+
+        var ped = new PointerEventData(es) { position = Input.mousePosition };
+        var results = new List<RaycastResult>(16);
+        es.RaycastAll(ped, results);
+
+        if (!ShouldDismissSkillDetailForRaycastResults(results))
+            return;
+
+        DismissSkillDetailFromOutsideClick();
+    }
+
+    /// <summary>
+    /// If <b>any</b> raycast hit is the detail card, Buy, backdrop, a skill node, or toolbar, we do not dismiss.
+    /// Using only <c>results[0]</c> breaks controller/Buy when tree or mask sorts above the card in the hit list.
+    /// </summary>
+    public bool ShouldDismissSkillDetailForRaycastResults(List<RaycastResult> results)
+    {
+        if (detailPanel == null || !detailPanel.IsInfoVisible || !dismissDetailOnOutsideClick)
+            return false;
+        if (results == null || results.Count == 0)
+            return true;
+
+        for (int i = 0; i < results.Count; i++)
+        {
+            GameObject go = results[i].gameObject;
+            if (go == null) continue;
+            if (detailPanel.IsHitInsideDetailUi(go))
+                return false;
+            if (IsRaycastHitSkillNode(go.transform))
+                return false;
+            if (IsRaycastHitToolbar(go.transform))
+                return false;
+        }
+
+        return true;
+    }
+
+    public void DismissSkillDetailFromPointerOutside()
+    {
+        if (detailPanel == null || !detailPanel.IsInfoVisible)
+            return;
+        DismissSkillDetailFromOutsideClick();
+    }
+
+    private void DismissSkillDetailFromOutsideClick()
+    {
+        selectedEntry = null;
+        detailPanel.HideInfo();
+        EventSystem.current?.SetSelectedGameObject(null);
+    }
+
+    private bool IsRaycastHitSkillNode(Transform hitT)
+    {
+        if (hitT == null) return false;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            if (e == null) continue;
+            if (hitT == e.transform || hitT.IsChildOf(e.transform))
+                return true;
+        }
+        return false;
+    }
+
+    private bool IsRaycastHitToolbar(Transform hitT)
+    {
+        if (hitT == null) return false;
+        return IsUnderButton(hitT, playButton) || IsUnderButton(hitT, questButton) || IsUnderButton(hitT, inventoryButton);
+    }
+
+    private static bool IsUnderButton(Transform hitT, Button b)
+    {
+        if (b == null || hitT == null) return false;
+        return hitT == b.transform || hitT.IsChildOf(b.transform);
     }
 
     private void HandleTreePanZoomGamepad()
@@ -278,19 +570,49 @@ public class RacingSkillUI : MonoBehaviour
 
     private void AutoOpenFirstIfNeeded()
     {
-        if (!autoOpenFirstSkill || !buildSucceeded || detailPanel == null) return;
-        if (entries.Count > 0)
+        if (!buildSucceeded || detailPanel == null) return;
+        if (autoOpenFirstSkill && entries.Count > 0)
         {
             detailPanel.Show(entries[0].GetDefinition());
             selectedEntry = entries[0];
         }
+        else
+        {
+            selectedEntry = null;
+            detailPanel.HideInfo();
+        }
     }
+
+    private bool TryRestoreSelectionAfterRebuild(SkillDefinition previousDef)
+    {
+        if (detailPanel == null || previousDef == null || entries == null || entries.Count == 0)
+            return false;
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            if (e == null) continue;
+            var d = e.GetDefinition();
+            if (d == previousDef || (d != null && d.type == previousDef.type))
+            {
+                selectedEntry = e;
+                ShowEntryDetail(e);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Overlay = null; Camera mode must pass world camera or screen rects read wrong.</summary>
+    private Camera TreeUiEventCamera =>
+        treeViewport != null ? treeViewport.GetComponentInParent<Canvas>()?.worldCamera : null;
 
     private void HandleTreePan()
     {
         if (!treeViewport || !treeContent || !rightMouseDragToPan) return;
         if (Input.GetMouseButtonDown(1) &&
-            RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
+            RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition, TreeUiEventCamera))
         {
             _isPanning = true;
             _lastMouse = Input.mousePosition;
@@ -309,7 +631,7 @@ public class RacingSkillUI : MonoBehaviour
     private void HandleTreeZoom()
     {
         if (!treeViewport || !treeContent) return;
-        if (!RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition))
+        if (!RectTransformUtility.RectangleContainsScreenPoint(treeViewport, Input.mousePosition, TreeUiEventCamera))
             return;
         float scroll = Input.mouseScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.001f) return;

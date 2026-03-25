@@ -1,9 +1,19 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class UIManager_Racing : MonoBehaviour
 {
+    public enum UISection
+    {
+        SkillTree = 0,
+        Loading = 1,
+        InGameDefault = 2,
+        CrashMash = 3,
+        RunEnd = 4
+    }
+
     [Header("Canvases")]
     [Tooltip("Dialogue canvas (shown during init_dialogue and other sequences).")]
     [SerializeField] private GameObject dialogueCanvas;
@@ -19,6 +29,12 @@ public class UIManager_Racing : MonoBehaviour
     [SerializeField] private Image hpFillImage;    // Image set to Filled (Horizontal)
     [SerializeField] private TMP_Text hpText;      // Shows "75 / 100" or "75%"
     [SerializeField] private bool showHPAsPercent = false;
+
+    [Header("Speedometer")]
+    [Tooltip("Optional. World-space rigidbody speed (magnitude). Assign a TextMeshPro under the in-run HUD.")]
+    [SerializeField] private TMP_Text speedometerText;
+    [Tooltip("If true, display km/h (Unity m/s × 3.6). If false, display m/s with one decimal.")]
+    [SerializeField] private bool speedometerUseKmh = true;
 
     private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
 
@@ -56,6 +72,10 @@ public class UIManager_Racing : MonoBehaviour
     [Header("Loading Overlay")]
     [SerializeField] private GameObject loadingOverlayRoot;
     [SerializeField] private TMP_Text loadingLabel;
+    [Tooltip("Optional fill image (Image Type = Filled) for loading progress.")]
+    [SerializeField] private Image loadingProgressFill;
+    [Tooltip("Optional % text for loading progress.")]
+    [SerializeField] private TMP_Text loadingPercentText;
 
     [Header("Mash Gauge (Progress Bar)")]
     [SerializeField] private Image mashGaugeFill;
@@ -88,7 +108,21 @@ public class UIManager_Racing : MonoBehaviour
     [Header("Controller UI")]
     [SerializeField] private bool usePlayStationSymbols = true;
 
+    [Header("Drift-held boost bar (optional)")]
+    [Tooltip("Leave empty to auto-find under Game Canvas (includes inactive children). UIManager drives this so it works even if the bar object never received Awake/LateUpdate.")]
+    [SerializeField] private DriftBoostHoldBarUI driftBoostHoldBar;
+
+    [Header("Section Roots (optional but recommended)")]
+    [Tooltip("Root object for the Skill Tree/Home panel group.")]
+    [SerializeField] private GameObject skillTreeSectionRoot;
+    [Tooltip("Root object for default in-game HUD (health/fuel/distance/coins panel).")]
+    [SerializeField] private GameObject inGameDefaultSectionRoot;
+    [Tooltip("If true, loading overlay is forced off in every non-loading section.")]
+    [SerializeField] private bool hideLoadingOutsideLoadingSection = true;
+
     private CarController car;
+    private UISection _currentSection = UISection.SkillTree;
+    private CanvasGroup _gameplayCanvasGroup;
 
     /// <summary>
     /// Called by GameManager_Racing once the car is spawned.
@@ -96,6 +130,9 @@ public class UIManager_Racing : MonoBehaviour
     public void BindCar(CarController carController)
     {
         car = carController;
+        if (driftBoostHoldBar == null && gameCanvas != null)
+            driftBoostHoldBar = gameCanvas.GetComponentInChildren<DriftBoostHoldBarUI>(true);
+
         HideRunComplete();
 
         // Place static threshold markers as soon as the car binds
@@ -123,11 +160,17 @@ public class UIManager_Racing : MonoBehaviour
             crashRecoveryButton.onClick.RemoveAllListeners();
             crashRecoveryButton.onClick.AddListener(OnCrashRecoveryButtonClicked);
         }
+
+        SetSection(UISection.SkillTree);
     }
 
     private void Update()
     {
-        if (car == null) return;
+        if (car == null)
+        {
+            driftBoostHoldBar?.RefreshFromHud(null);
+            return;
+        }
 
         // Fuel bar
         if (fuelFillImage != null)
@@ -155,6 +198,18 @@ public class UIManager_Racing : MonoBehaviour
                 hpText.text = $"Health - {Mathf.Round(car.CurrentHP * 10f) * .1f} / {car.MaxHP}";
         }
 
+        if (speedometerText != null)
+        {
+            float v = car.CurrentSpeed;
+            if (speedometerUseKmh)
+            {
+                int kmh = Mathf.RoundToInt(v * 3.6f);
+                speedometerText.text = $"{kmh} km/h";
+            }
+            else
+                speedometerText.text = $"{v:F1} m/s";
+        }
+
         UpdateCrashRecoveryUI();
 
         if (car != null && car.IsFlipMashActive)
@@ -180,6 +235,14 @@ public class UIManager_Racing : MonoBehaviour
                 smashButton.gameObject.SetActive(false);
         }
 
+        // During mash, use CrashMash section for mash UI; in-game HUD root stays visible too (see ApplySectionVisibility).
+        if (_currentSection != UISection.Loading && _currentSection != UISection.RunEnd && _currentSection != UISection.SkillTree)
+        {
+            SetSection(car.IsFlipMashActive ? UISection.CrashMash : UISection.InGameDefault);
+        }
+
+        bool inRunHud = _currentSection == UISection.InGameDefault || _currentSection == UISection.CrashMash;
+        driftBoostHoldBar?.RefreshFromHud(inRunHud ? car : null);
     }
 
 
@@ -239,6 +302,7 @@ public class UIManager_Racing : MonoBehaviour
         // Hide the in-run HUD on the summary screen
         HideRunCoins();
         HideRunSprockets();
+        SetSection(UISection.RunEnd);
     }
 
     public void UpdateRunCoins(int coinsThisRun)
@@ -461,8 +525,12 @@ public class UIManager_Racing : MonoBehaviour
 
     public void UpdateRunSprockets(int sprocketsThisRun)
     {
-        if (runSprocketsLiveText)
-            runSprocketsLiveText.text = $"Sprockets: {sprocketsThisRun}";
+        if (runSprocketsLiveText == null) return;
+
+        runSprocketsLiveText.text = $"Sprockets: {sprocketsThisRun}";
+        var mgr = RacingSkillTreeManager.Instance;
+        bool keepVisible = mgr != null && (mgr.HasEverEarnedSprockets || mgr.Sprockets > 0 || sprocketsThisRun > 0);
+        runSprocketsLiveText.gameObject.SetActive(keepVisible);
     }
 
     public void ShowRunSprockets()
@@ -501,15 +569,35 @@ public class UIManager_Racing : MonoBehaviour
         }
     }
 
-    public void ShowLoading(string message = "Loading...")
+    public void ShowLoading(string message = "Loading...", float progress01 = 0f)
     {
-        if (loadingLabel) loadingLabel.text = message;
-        if (loadingOverlayRoot) loadingOverlayRoot.SetActive(true);
+        SetSection(UISection.Loading);
+        SetLoadingState(message, progress01);
     }
 
     public void HideLoading()
     {
         if (loadingOverlayRoot) loadingOverlayRoot.SetActive(false);
+    }
+
+    public void SetLoadingState(string message, float progress01)
+    {
+        SetLoadingMessage(message);
+        SetLoadingProgress(progress01);
+    }
+
+    public void SetLoadingMessage(string message)
+    {
+        if (loadingLabel) loadingLabel.text = message;
+    }
+
+    public void SetLoadingProgress(float progress01)
+    {
+        float p = Mathf.Clamp01(progress01);
+        if (loadingProgressFill != null)
+            loadingProgressFill.fillAmount = p;
+        if (loadingPercentText != null)
+            loadingPercentText.text = $"{Mathf.RoundToInt(p * 100f)}%";
     }
 
     public void OnCrashRecoveryButtonClicked()
@@ -525,11 +613,49 @@ public class UIManager_Racing : MonoBehaviour
             crashRecoveryRoot.SetActive(false);
     }
 
+    public void SetSection(UISection section)
+    {
+        _currentSection = section;
+        ApplySectionVisibility(section);
+    }
+
+    public UISection CurrentSection => _currentSection;
+
     /// <summary>Show or hide the game canvas (in-game HUD + skill tree). Called by DialogueManager when dialogue starts/ends.</summary>
     public void SetGameCanvasVisible(bool visible)
     {
         if (gameCanvas != null)
             gameCanvas.SetActive(visible);
+
+        if (!visible)
+            return;
+
+        // If another system enables the game canvas (e.g. dialogue end), ensure
+        // the section lands in a deterministic non-loading state.
+        if (_currentSection == UISection.Loading)
+            SetSection(UISection.SkillTree);
+    }
+
+    /// <summary>
+    /// When true, disables interaction on the whole game canvas (buttons, Submit, drags on UI) while leaving the mouse cursor free.
+    /// Used during dialogue when <see cref="DialogueSequenceSO.keepGameCanvasVisibleWhilePlaying"/> is on.
+    /// </summary>
+    public void SetGameplayCanvasInputLocked(bool locked)
+    {
+        if (gameCanvas == null) return;
+
+        if (_gameplayCanvasGroup == null)
+        {
+            _gameplayCanvasGroup = gameCanvas.GetComponent<CanvasGroup>();
+            if (_gameplayCanvasGroup == null)
+                _gameplayCanvasGroup = gameCanvas.AddComponent<CanvasGroup>();
+        }
+
+        _gameplayCanvasGroup.interactable = !locked;
+        _gameplayCanvasGroup.blocksRaycasts = true;
+
+        if (locked)
+            EventSystem.current?.SetSelectedGameObject(null);
     }
 
     /// <summary>Show or hide the dialogue canvas.</summary>
@@ -575,6 +701,38 @@ public class UIManager_Racing : MonoBehaviour
             case CarController.FaceButton.Square: return "[]";
             case CarController.FaceButton.Triangle: return "^";
             default: return "X";
+        }
+    }
+
+    private void ApplySectionVisibility(UISection section)
+    {
+        bool isSkillTree = section == UISection.SkillTree;
+        bool isLoading = section == UISection.Loading;
+        bool isInGame = section == UISection.InGameDefault;
+        bool isCrashMash = section == UISection.CrashMash;
+        bool isRunEnd = section == UISection.RunEnd;
+
+        // Must follow UI section, not RacingSkillUI.OnEnable/OnDisable: that component often lives on an always-active
+        // object while only skillTreeSectionRoot toggles, leaving the Racing action map disabled in-game.
+        RacingInputReader.Instance?.SetSkillTreeMapEnabled(isSkillTree);
+
+        if (skillTreeSectionRoot != null)
+            skillTreeSectionRoot.SetActive(isSkillTree);
+
+        // Keep health / fuel / distance (and other in-run HUD under this root) visible during crash mash as well.
+        if (inGameDefaultSectionRoot != null)
+            inGameDefaultSectionRoot.SetActive(isInGame || isCrashMash);
+
+        if (runCompleteRoot != null && !isRunEnd)
+            runCompleteRoot.SetActive(false);
+
+        if (crashRecoveryRoot != null)
+            crashRecoveryRoot.SetActive(isCrashMash);
+
+        if (hideLoadingOutsideLoadingSection || isLoading)
+        {
+            if (loadingOverlayRoot != null)
+                loadingOverlayRoot.SetActive(isLoading);
         }
     }
 

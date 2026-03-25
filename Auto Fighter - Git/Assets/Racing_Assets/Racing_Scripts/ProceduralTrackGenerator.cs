@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
@@ -100,6 +101,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     [SerializeField] private TerrainDetailGrassPainter grassPainter;
 
+    [Tooltip("Optional: hills around the track while keeping terrain below the flat road plane (see TerrainAroundFlatRoad). Runs after road mesh, before grass.")]
+    [SerializeField] private TerrainAroundFlatRoad terrainAroundFlatRoad;
+
     [Header("Randomness")]
     [SerializeField] private bool useRandomSeed = true;
     [SerializeField] private int fixedSeed = 12345;
@@ -135,6 +139,18 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     public float RoadWidth => roadWidth;
 
+    public bool LastGenerateSucceeded { get; private set; }
+
+    /// <summary>Centerline used for the road mesh (smoothed when enabled).</summary>
+    public void FillRoadMeshCenterPath(List<Vector3> dst)
+    {
+        dst.Clear();
+        if (_pathPoints == null || _pathPoints.Count < 2) return;
+        if (useSmoothing)
+            dst.AddRange(GenerateSmoothedPath(_pathPoints, smoothingSubdivisionsPerSegment));
+        else
+            dst.AddRange(_pathPoints);
+    }
 
     // Fired when a full, valid track (no abort) is finished generating (after retries).
     public event Action<ProceduralTrackGenerator> OnTrackGeneratedSuccessfully;
@@ -203,6 +219,48 @@ public class ProceduralTrackGenerator : MonoBehaviour
     // ================================================================
     public void GenerateTrack(int maxRetries = 5)
     {
+        bool success = TryBuildTrackWithRetries(maxRetries);
+        LastGenerateSucceeded = success;
+
+        if (success)
+        {
+            terrainAroundFlatRoad?.ApplyFromTrackSync(this);
+
+            if (grassPainter != null)
+                grassPainter.PaintNow(this);
+
+            OnTrackGeneratedSuccessfully?.Invoke(this);
+        }
+    }
+
+    /// <summary>Like <see cref="GenerateTrack"/> but can spread terrain sculpt and grass paint across frames when configured.</summary>
+    public IEnumerator GenerateTrackCo(int maxRetries = 5)
+    {
+        bool success = TryBuildTrackWithRetries(maxRetries);
+        LastGenerateSucceeded = success;
+
+        if (success)
+        {
+            if (terrainAroundFlatRoad != null && terrainAroundFlatRoad.SpreadWorkAcrossFrames)
+            {
+                IEnumerator sculpt = terrainAroundFlatRoad.ApplyFromTrackAsync(this);
+                while (sculpt.MoveNext())
+                    yield return sculpt.Current;
+            }
+            else
+                terrainAroundFlatRoad?.ApplyFromTrackSync(this);
+
+            if (grassPainter != null)
+                grassPainter.PaintNow(this);
+
+            OnTrackGeneratedSuccessfully?.Invoke(this);
+        }
+
+        yield break;
+    }
+
+    private bool TryBuildTrackWithRetries(int maxRetries)
+    {
         CacheMeshComponents();
 
         bool success = false;
@@ -231,15 +289,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
             }
         }
 
-        // If we ended up with a valid track, notify listeners (GameManager, etc.)
-        if (success)
-        {
-            // Road mesh + collider already exist at this point (BuildRoadMeshFromPath ran inside BuildTrack)
-            if (grassPainter != null)
-                grassPainter.PaintNow(this);
-
-            OnTrackGeneratedSuccessfully?.Invoke(this);
-        }
+        return success;
     }
 
     // ================================================================

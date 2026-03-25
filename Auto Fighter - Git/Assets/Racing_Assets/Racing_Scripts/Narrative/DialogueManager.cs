@@ -33,12 +33,15 @@ public class DialogueManager : MonoBehaviour
     private float _savedTimeScale = 1f;
     private Coroutine _playRoutine;
     private bool _isPlaying;
+    private bool _hidGameCanvasForCurrentSequence;
 
     /// <summary>True while a sequence is being played.</summary>
     public bool IsPlaying => _isPlaying;
 
     /// <summary>Fired when a sequence finishes (with the sequence that finished).</summary>
     public event Action<DialogueSequenceSO> OnSequenceCompleted;
+    /// <summary>Fired when a sequence begins (with the sequence that started).</summary>
+    public event Action<DialogueSequenceSO> OnSequenceStarted;
 
     private void Awake()
     {
@@ -96,9 +99,14 @@ public class DialogueManager : MonoBehaviour
         if (_playRoutine != null)
             StopCoroutine(_playRoutine);
 
+        // Clear any prior lock before applying visibility / lock for this sequence.
+        uiManagerRacing?.SetGameplayCanvasInputLocked(false);
+
         _currentSequence = sequence;
         _currentLineIndex = 0;
         _isPlaying = true;
+        _hidGameCanvasForCurrentSequence = false;
+        OnSequenceStarted?.Invoke(sequence);
 
         if (sequence.pauseGameWhilePlaying)
         {
@@ -108,11 +116,20 @@ public class DialogueManager : MonoBehaviour
 
         dialogueUI?.Show();
 
-        // Hide game canvas so only dialogue is visible during the sequence
-        if (uiManagerRacing != null)
-            uiManagerRacing.SetGameCanvasVisible(false);
-        else if (gameCanvasToEnableWhenSequenceEnds != null)
-            gameCanvasToEnableWhenSequenceEnds.SetActive(false);
+        // Per-sequence option: keep game canvas visible for skill-tree/tutorial dialogue.
+        if (!sequence.keepGameCanvasVisibleWhilePlaying)
+        {
+            _hidGameCanvasForCurrentSequence = true;
+            if (uiManagerRacing != null)
+                uiManagerRacing.SetGameCanvasVisible(false);
+            else if (gameCanvasToEnableWhenSequenceEnds != null)
+                gameCanvasToEnableWhenSequenceEnds.SetActive(false);
+        }
+        else if (uiManagerRacing != null)
+        {
+            // Skill tree / HUD visible: block buttons & controller Submit; mouse still moves; dialogue handles advance.
+            uiManagerRacing.SetGameplayCanvasInputLocked(true);
+        }
 
         _playRoutine = StartCoroutine(PlaySequenceRoutine());
     }
@@ -196,15 +213,17 @@ public class DialogueManager : MonoBehaviour
         if (!string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
             NarrativeDirector.SetStoryFlag(completed.setStoryFlagOnComplete);
 
-        // Show game canvas when dialogue ends (skill tree / in-game UI)
-        if (uiManagerRacing != null)
-            uiManagerRacing.SetGameCanvasVisible(true);
-        else if (gameCanvasToEnableWhenSequenceEnds != null)
-            gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+        // Restore game canvas only if this sequence hid it.
+        if (_hidGameCanvasForCurrentSequence)
+        {
+            if (uiManagerRacing != null)
+                uiManagerRacing.SetGameCanvasVisible(true);
+            else if (gameCanvasToEnableWhenSequenceEnds != null)
+                gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+        }
+        _hidGameCanvasForCurrentSequence = false;
 
-        // After run complete, narrative often plays; when it ends, ensure we return to skill tree so the screen isn't blank.
-        if (GameManager_Racing.Instance != null)
-            GameManager_Racing.Instance.ReturnToSkillTree();
+        uiManagerRacing?.SetGameplayCanvasInputLocked(false);
 
         OnSequenceCompleted?.Invoke(completed);
     }
@@ -231,9 +250,15 @@ public class DialogueManager : MonoBehaviour
         }
         dialogueUI?.Hide();
 
-        if (uiManagerRacing != null)
-            uiManagerRacing.SetGameCanvasVisible(true);
-        else if (gameCanvasToEnableWhenSequenceEnds != null)
-            gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+        if (_hidGameCanvasForCurrentSequence)
+        {
+            if (uiManagerRacing != null)
+                uiManagerRacing.SetGameCanvasVisible(true);
+            else if (gameCanvasToEnableWhenSequenceEnds != null)
+                gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+        }
+        _hidGameCanvasForCurrentSequence = false;
+
+        uiManagerRacing?.SetGameplayCanvasInputLocked(false);
     }
 }

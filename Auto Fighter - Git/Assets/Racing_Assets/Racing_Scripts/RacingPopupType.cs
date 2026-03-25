@@ -28,6 +28,9 @@ public enum RacingPopupType
     // NEW: Creature run-over impact text ("SPLAT!!", "WHAM!!", etc.)
     CreatureSplat,
 
+    // Beast / predator eating another creature ("NOM NOM", "OM NOM NOM", etc. — style asset)
+    BeastEat,
+
     // Invincibility
     Invincible,
 
@@ -40,5 +43,8 @@ public enum RacingPopupType
     // Generic
     Generic,
     Warning,
-    Critical
+    Critical,
+
+    // Mash recovery: per manual click strength (create RacingPopupStyleSO + register on RacingPopupSystem).
+    MashClickDamage,
 }

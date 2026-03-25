@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 253239871281038601}
   - component: {fileID: 4107085308474098136}
   - component: {fileID: 8596313478192626237}
-  m_Layer: 2
+  m_Layer: 22
   m_Name: Cube
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -29,7 +29,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.5000001, y: 1.5000001, z: 1.5000001}
+  m_LocalScale: {x: 1.6326002, y: 1.6326002, z: 1.6326002}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 8066544629863362602}
@@ -170,8 +170,12 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 4108758772899792739, guid: 6e526491afa36544aa8130216c672992, type: 3}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: carHitRadiusWhenAirborne
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: obstacleReactMask.m_Bits
-      value: 2885632
+      value: 11274240
       objectReference: {fileID: 0}
     - target: {fileID: 7000252740046131143, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Materials.Array.data[0]

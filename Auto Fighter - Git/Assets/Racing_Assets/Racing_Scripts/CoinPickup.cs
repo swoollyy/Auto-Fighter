@@ -26,12 +26,13 @@ public class CoinPickup : MonoBehaviour
     private float _bobTimer;
     private Vector3 _startPos;
     private Transform _visualChild;
-
-    // Cached camera reference for screen shake
-    private static CameraFollow _cameraFollow;
+    private bool _isCollected;
+    private bool _isCarried;
+    private Transform _carryAnchor;
 
     public CoinType Type => coinType;
     public CoinDataSO CoinData => _coinData;
+    public bool IsAvailableForCollection => !_isCollected && !_isCarried && isActiveAndEnabled;
 
     private void Awake()
     {
@@ -44,9 +45,6 @@ public class CoinPickup : MonoBehaviour
         if (transform.childCount > 0)
             _visualChild = transform.GetChild(0);
 
-        // Cache camera follow for screen shake
-        if (_cameraFollow == null)
-            _cameraFollow = FindObjectOfType<CameraFollow>();
     }
 
     private void Start()
@@ -84,6 +82,13 @@ public class CoinPickup : MonoBehaviour
 
     private void Update()
     {
+        if (_isCarried)
+        {
+            if (_carryAnchor != null)
+                transform.position = _carryAnchor.position;
+            return;
+        }
+
         if (_coinData == null) return;
 
         // Rotation
@@ -106,6 +111,15 @@ public class CoinPickup : MonoBehaviour
         if (!other.TryGetComponent<CarController>(out var car))
             return;
 
+        TryCollect(car);
+    }
+
+    public bool TryCollect(CarController car, int bonusFlatValue = 0)
+    {
+        if (_isCollected) return false;
+
+        _isCollected = true;
+
         // Ensure we have coin data
         if (_coinData == null)
             RefreshCoinData();
@@ -113,6 +127,9 @@ public class CoinPickup : MonoBehaviour
         // Calculate final value
         int baseValue = _coinData?.baseValue ?? 1;
         int finalValue = baseValue;
+
+        if (bonusFlatValue > 0)
+            finalValue += bonusFlatValue;
 
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null)
@@ -126,132 +143,56 @@ public class CoinPickup : MonoBehaviour
             float dblChance = mgr.GetCoinDoubleChance();
             if (dblChance > 0f && UnityEngine.Random.value < dblChance)
                 finalValue *= 2;
-
-            // Add currency
-            mgr.AddCurrency(finalValue);
-        }
-
-        // Register with game manager
-        if (GameManager_Racing.Instance != null)
-        {
-            GameManager_Racing.Instance.RegisterCoinPickup(finalValue);
         }
 
         // Get spawn position for effects
         Vector3 spawnPos = transform.position;
         try
         {
-            spawnPos = other.ClosestPoint(transform.position);
+            if (car != null)
+                spawnPos = car.GetComponent<Collider>() != null
+                    ? car.GetComponent<Collider>().ClosestPoint(transform.position)
+                    : car.transform.position;
         }
         catch { /* use transform.position */ }
 
-        // === EFFECTS ===
-
-        // Screen Flash (uses secondary color)
-        if (_coinData != null && _coinData.enableScreenFlash && ScreenFlashManager.Instance != null)
+        // Centralized reward + popup + sfx
+        if (RacingCoinCollectionHub.Instance != null)
         {
-            ScreenFlashManager.Instance.Flash(
-                _coinData.secondaryColor,  // Use secondary color for flash
-                _coinData.flashIntensity,
-                _coinData.flashDuration,
-                _coinData.flashInnerRadius
-            );
-        }
-
-        // Screen Shake
-        if (_coinData != null && _coinData.enableScreenShake)
-        {
-            TriggerScreenShake();
-        }
-
-        // Popup Text (primary color for text, secondary for outline)
-        if (RacingPopups.IsReady && _coinData != null)
-        {
-            // Use the CoinGain popup with primary color
-            // The popup system will use secondary color for outline if configured
-            RacingPopups.SpawnCoin(
+            RacingCoinCollectionHub.Instance.AwardCoins(
                 finalValue,
-                spawnPos + Vector3.up * 0.5f,
-                _coinData.primaryColor,
-                _coinData.secondaryColor
+                spawnPos,
+                RacingCoinRewardSource.Pickup,
+                coinType,
+                _coinData
             );
         }
-        else if (RacingPopups.IsReady)
+        else
         {
-            // Fallback
-            RacingPopups.Spawn(
-                RacingPopupType.CoinGain,
-                finalValue,
-                spawnPos + Vector3.up * 0.5f,
-                Color.yellow
-            );
+            // Backward-compatible fallback if hub is not present yet.
+            if (mgr != null)
+                mgr.AddCurrency(finalValue);
+            GameManager_Racing.Instance?.RegisterCoinPickup(finalValue);
+            if (RacingPopups.IsReady)
+                RacingPopups.CoinGain(finalValue, spawnPos + Vector3.up * 0.5f);
         }
-
-        // Sound
-        PlayCollectSound(spawnPos);
 
         // VFX
         SpawnVFX(spawnPos);
 
         // Destroy
         Destroy(gameObject);
+        return true;
     }
 
-    private void TriggerScreenShake()
+    public void SetCarriedState(bool carried, Transform carryAnchor)
     {
-        if (_coinData == null) return;
+        _isCarried = carried;
+        _carryAnchor = carried ? carryAnchor : null;
 
-        // Try to find camera follow if not cached
-        if (_cameraFollow == null)
-            _cameraFollow = FindObjectOfType<CameraFollow>();
-
-        if (_cameraFollow != null)
-        {
-            _cameraFollow.StartShake(
-                _coinData.shakeDuration,
-                _coinData.shakeStrength,
-                _coinData.shakeVibrato,
-                _coinData.shakeRandomness
-            );
-        }
-    }
-
-    private void PlayCollectSound(Vector3 position)
-    {
-        if (_coinData == null) return;
-        if (_coinData.collectSounds == null || _coinData.collectSounds.Length == 0) return;
-
-        // Pick random sound
-        AudioClip clip = null;
-        for (int i = 0; i < 8; i++)
-        {
-            var candidate = _coinData.collectSounds[UnityEngine.Random.Range(0, _coinData.collectSounds.Length)];
-            if (candidate != null) { clip = candidate; break; }
-        }
-        if (clip == null) return;
-
-        // Calculate pitch
-        float pitch = _coinData.basePitch + UnityEngine.Random.Range(-_coinData.pitchVariance, _coinData.pitchVariance);
-
-        // Play
-        PlayClipAtPointWithPitch(clip, position, _coinData.collectVolume, pitch);
-    }
-
-    private void PlayClipAtPointWithPitch(AudioClip clip, Vector3 pos, float volume, float pitch)
-    {
-        if (clip == null) return;
-
-        GameObject go = new GameObject("CoinSFX");
-        go.transform.position = pos;
-
-        var src = go.AddComponent<AudioSource>();
-        src.spatialBlend = 1f;
-        src.clip = clip;
-        src.volume = Mathf.Clamp01(volume);
-        src.pitch = Mathf.Max(0.01f, pitch);
-        src.Play();
-
-        Destroy(go, clip.length / Mathf.Max(0.01f, Mathf.Abs(src.pitch)));
+        var col = GetComponent<Collider>();
+        if (col != null)
+            col.enabled = !carried;
     }
 
     private void SpawnVFX(Vector3 position)

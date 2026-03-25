@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Crash_Popup
   m_EditorClassIdentifier: 
   popupType: 12
-  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  font: {fileID: 11400000, guid: 91008197671975e48bd82fb37b4e4e80, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 0}
   baseFontSize: 6
@@ -28,6 +28,8 @@ MonoBehaviour:
   - OOF..
   - OUCH!!!
   - YIKES!!
+  - KAPOWW!!!
+  - BOOM!!
   enableOutline: 1
   outlineWidth: 0.25
   outlineColor: {r: 14.259473, g: 0.3763907, b: 0, a: 1}

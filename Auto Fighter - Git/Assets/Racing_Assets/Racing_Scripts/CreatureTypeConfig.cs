@@ -42,12 +42,41 @@ public class CreatureTypeConfig
     [Tooltip("Coins awarded when this creature is killed (by car or turret).")]
     [Min(0)] public int coinReward = 1;
 
+    [Header("Idle Rhythm (Walk / Pause)")]
+    [Tooltip("When using bug-style idle, walk for a while then pause (all tiers).")]
+    public bool idleUseWalkPauseRhythm = true;
+
+    [Min(0.1f)] public float idleWalkSegmentMinSec = 0.9f;
+    [Min(0.1f)] public float idleWalkSegmentMaxSec = 3.2f;
+    [Min(0f)] public float idlePauseMinSec = 0.25f;
+    [Min(0f)] public float idlePauseMaxSec = 1.75f;
+
     [Header("Behavior Tuning - Passive")]
     [Tooltip("How fast the passive creature wanders.")]
     [Min(0f)] public float passiveWanderSpeed = 2f;
 
     [Tooltip("How often the passive creature changes direction.")]
     [Min(0.1f)] public float passiveDirectionChangeInterval = 1.5f;
+
+    [Header("Passive - Flee From Critter (Scared)")]
+    [Tooltip("If true, bugs flee when a critter (Scared creature) is nearby.")]
+    public bool passiveFleeFromScared = true;
+
+    [Min(0f)] public float passiveScaredDetectRadius = 14f;
+    [Min(0f)] public float passiveScaredLoseDistance = 28f;
+    [Min(0f)] public float passiveFleeBaseSpeed = 3.5f;
+    [Min(0f)] public float passiveFleeMaxSpeed = 10f;
+    [Min(0f)] public float passiveFleeBuildupRate = 3f;
+    [Min(0f)] public float passiveFleeMaxOffRoadDistance = 3f;
+
+    [Header("Passive - Bug Idle")]
+    [Tooltip("If true, uses small anchored wiggles (recommended). If false, uses legacy wander on the spline.")]
+    public bool passiveUseBugIdleMovement = true;
+
+    [Min(0f)] public float passiveIdleBugMoveSpeed = 1.15f;
+    [Min(0.05f)] public float passiveIdleBugDirectionChangeInterval = 1.05f;
+    [Min(0f)] public float passiveIdleBugLateralRadius = 2.2f;
+    [Min(0f)] public float passiveIdleBugForwardRadius = 1.3f;
 
     [Header("Behavior Tuning - Scared")]
     [Tooltip("Detection radius for the scared creature to notice the player.")]
@@ -94,6 +123,21 @@ public class CreatureTypeConfig
     [Tooltip("Speed multiplier applied when fleeing from an aggressive creature (on top of scared flee speed).")]
     [Min(0f)] public float scaredAggressiveFleeSpeedMultiplier = 1.25f;
 
+    [Header("Scared - Flee NPC Traffic")]
+    [Tooltip("If true, critters treat NPC traffic layer (from spawner) as a threat to flee from.")]
+    public bool scaredFleeFromNpcTraffic = true;
+
+    [Min(0f)] public float scaredNpcTrafficDetectRadius = 20f;
+
+    [Header("Scared - Hunt Bugs (Passive)")]
+    [Tooltip("If true, critters chase and kill passive bugs when no higher-priority threat.")]
+    public bool scaredHuntPassiveCreatures = true;
+
+    [Min(0f)] public float scaredHuntPassiveRadius = 12f;
+    [Min(0f)] public float scaredPassiveHuntLoseDistance = 20f;
+    [Min(0f)] public float scaredBugHuntSpeed = 5f;
+    [Min(0.01f)] public float scaredBugHuntSpeedMultiplier = 1.15f;
+
     [Header("Aggressive - Idle & Hunting")]
     [Tooltip("If true, aggressive creatures will also wander using idle bug movement when not chasing.")]
     public bool aggressiveIdleUseBugMovement = true;
@@ -118,6 +162,12 @@ public class CreatureTypeConfig
 
     [Tooltip("Speed multiplier applied when hunting scared creatures.")]
     [Min(0f)] public float aggressiveHuntSpeedMultiplier = 1.35f;
+
+    [Header("Aggressive - Hunt NPC Traffic")]
+    [Tooltip("If true, beast can charge NPC cars on the traffic layer (set mask on TrackCreatureSpawner).")]
+    public bool aggressiveHuntNpcTraffic = true;
+
+    [Min(0f)] public float aggressiveNpcTrafficDetectRadius = 30f;
 
     [Header("Behavior Tuning - Aggressive")]
     [Tooltip("Detection radius for the aggressive creature to spot the player.")]

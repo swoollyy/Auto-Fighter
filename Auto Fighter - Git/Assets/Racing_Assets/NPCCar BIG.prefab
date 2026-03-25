@@ -15,10 +15,6 @@ GameObject:
   - component: {fileID: 9137398506818108145}
   - component: {fileID: 6594867958862897716}
   - component: {fileID: 2781239470516158656}
-  - component: {fileID: 5749575015671800831}
-  - component: {fileID: 8671616365038160896}
-  - component: {fileID: 7645833144850340215}
-  - component: {fileID: 5075446138171117537}
   m_Layer: 19
   m_Name: NPCCar
   m_TagString: Untagged
@@ -35,9 +31,9 @@ Transform:
   m_GameObject: {fileID: 4549579877093014160}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.2, z: 0}
-  m_LocalScale: {x: 0.7, y: 0.7, z: 0.7}
-  m_ConstrainProportionsScale: 1
+  m_LocalPosition: {x: 0, y: 0.358, z: 0}
+  m_LocalScale: {x: 0.557158, y: 0.7, z: 2.2958763}
+  m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8096117506659213215}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -124,12 +120,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5dcc88590aab2c0459c50f0bba784d7a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  obstacleType: 0
   destructible: 1
   maxHealth: 1
   scaleOnHit: 0.25
   scalePunchTime: 0.15
   destroyVFX: {fileID: 961668682642004311, guid: c4371f7f12136cf4f962c995c256a20c, type: 3}
   rewardCurrency: 1
+  treeToppleMinVelocity: 2
+  treeToppleImpulseScale: 2
+  treeToppleImpulseMin: 3
+  treeToppleImpulseMax: 25
+  treeToppleForceHeight: 2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &6594867958862897716
@@ -174,37 +176,75 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  destinationLookAhead: 20
-  destinationUpdateInterval: 0.15
-  destinationMoveThreshold: 2.24
+  trackLookAhead: 8.5
   speed: 3
   randomizeSpeed: 1
-  speedRange: {x: 5, y: 7.5}
-  lateralFraction: 0.95
-  edgeMargin: 0.92
-  randomizeLane: 1
+  speedRange: {x: 1, y: 2.75}
+  slowDownWhileAvoiding: 1
+  avoidingSpeedMultiplier: 0.809
   roadLayer:
     serializedVersion: 2
+    m_Bits: 8192
+  driveableLayer:
+    serializedVersion: 2
     m_Bits: 24576
-  raycastStartHeight: 6
+  raycastStartHeight: 0.5
   raycastDownDistance: 20
   groundClearance: 0.02
-  rotateToVelocity: 1
+  validateMovementOnDriveable: 0
+  baseTurnRateDegPerSec: 86.3
+  minTurnRateDegPerSec: 19.9
+  turnRateFalloffSpeed: 8.9
+  accelerationRate: 5.71
+  decelerationRate: 16
+  steeringSmoothTime: 0.15
+  speedSmoothTime: 0.09
+  alignmentTime: 0.34
+  headingErrorForFullSteerDeg: 50
+  steeringDeadZoneDeg: 2.5
+  steeringDamping: 0.259
   alignToGround: 0
-  rotationSpeed: 100
-  velocitySmoothTime: 0.09
   minSpeedForRotation: 1
-  trackVelocityBlend: 1
+  obstacleDetectionLayers:
+    serializedVersion: 2
+    m_Bits: 4982913
+  scanRange: 10.1
+  pathHalfWidth: 2.54
+  scanRayCount: 19
+  scanFanAngleDeg: 100
+  forwardThreatConeHalfAngleDeg: 10.3
+  rayHeight: 0
+  rayForwardOffset: 1.21
+  hitboxClearance: 2.01
+  reactionTime: 0.952
+  framesToCommitAvoid: 2
+  avoidSteerWeight: 1
+  dodgeHeadingSlewDegPerSec: 39
+  preCommitSteerBlend: 0.38
+  framesForwardClearToExit: 2
+  exitWhenTrackAheadClear: 1
+  trackAheadClearCheckDistance: 5
+  framesTrackAheadClearToExit: 4
+  sideNudgeMaxDistance: 3.94
+  framesCorridorBlockedToReplan: 2
+  oppositeFlankGreenMargin: 5
+  framesOppositeFlankWinsToFlip: 4
+  minRoadRoomToDodge: 0.5
+  enableRoadBoundaryDetection: 1
+  roadEdgeProbeWidth: 6
+  roadEdgeSteerWeight: 0.613
+  roadEdgeSoftMargin: 0.25
+  offTrackRecoverySteerWeight: 0.966
+  drawRoadBoundaryDebug: 1
   crashLayers:
     serializedVersion: 2
-    m_Bits: 788481
+    m_Bits: 788480
   ignoreRoadAndTerrain: 1
-  enableOverlapDetection: 0
-  overlapCheckInterval: 0.05
-  overlapRadius: 0
-  minTransferVelocity: 7.48
-  crashBounceUp: 6.64
-  crashBounceBack: 8.01
+  enableOverlapDetection: 1
+  overlapCheckInterval: 0.1
+  minTransferVelocity: 1
+  crashBounceUp: 4
+  crashBounceBack: 6
   crashSpinRange: {x: 180, y: 540}
   crashClip: {fileID: 8300000, guid: f872c86f5efa11742ad39e82fc14cb6f, type: 3}
   crashVolume: 0.581
@@ -212,187 +252,33 @@ MonoBehaviour:
   crashVFXLifetime: 5
   destroyAfterCrash: 1
   destroyDelay: 5
-  engineClip: {fileID: 0}
-  engineVolume: 0.361
-  enginePitchMin: 0.09
-  enginePitchMax: 0.75
-  enableSurfaceEffects: 1
-  surfaceDetectionLayers:
-    serializedVersion: 2
-    m_Bits: 24576
-  surfaceCheckInterval: 0.1
-  surfaceSpeedLerpRate: 1.65
-  boostPadSpeedBonus: 1.89
-  boostPadDuration: 0.7
-  boostPadThreshold: 1.3
-  verboseDebug: 0
-  drawDestinationGizmo: 1
-  enableAvoidanceBoost: 1
-  avoidanceSpeedMult: 1.52
-  avoidanceAccelMult: 1.67
-  avoidanceHoldSeconds: 0.21
-  avoidanceRampIn: 16
-  avoidanceRampOut: 8.55
-  maxSpawnSpeedForAvoidanceBoost: 5
   addNavmeshCutOnCrash: 1
   crashCutUsePrefab: 0
   crashCutPrefab: {fileID: 0}
-  crashCutBoxSize: {x: 1.5, y: 3, z: 1.5}
+  crashCutBoxSize: {x: 2.5, y: 3, z: 2.5}
   crashCutUpdateDistance: 0.4
   crashCutUpdateRotationDistance: 10
   crashCutUseRotationAndScale: 1
   crashCutCutsAddedGeometry: 1
---- !u!114 &5749575015671800831
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 373b52eb9bf8c40f785bb6947a1aee66, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  drawGizmos: 1
-  detailedGizmos: 0
-  startEndModifier:
-    addPoints: 1
-    exactStartPoint: 3
-    exactEndPoint: 3
-    useRaycasting: 0
-    mask:
-      serializedVersion: 2
-      m_Bits: 4294967295
-    useGraphRaycasting: 0
-  traversableTags: -1
-  tagCostMultipliers:
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  tagEntryCosts: 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-  graphMask:
-    value: -1
---- !u!114 &8671616365038160896
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ce11ea984e202491d9271f53021d8b89, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  radius: 0.47
-  height: 0.5
-  simulateMovement: 1
-  maxSpeed: 20
-  gravity: {x: NaN, y: NaN, z: NaN}
-  groundMask:
+  engineClip: {fileID: 0}
+  engineVolume: 0.361
+  enginePitchMin: 0.16
+  enginePitchMax: 3.68
+  enableSurfaceEffects: 1
+  surfaceDetectionLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
-  endReachedDistance: 2
-  whenCloseToDestination: 1
-  rvoDensityBehavior:
-    enabled: 0
-    densityThreshold: 0.5
-    returnAfterBeingPushedAway: 1
-    progressAverage: 0
-    lastJobDensityResult: 0
-  repathRateCompatibility: NaN
-  canSearchCompability: 0
-  orientation: 0
-  enableRotation: 0
-  autoRepath:
-    mode: 2
-    period: 0.5
-    sensitivity: 3.49
-    maximumPeriod: 0.55
-    visualizeSensitivity: 1
-  acceleration: 20
-  rotationSpeed: 360
-  slowdownTime: 0
-  wallForce: 3
-  wallDist: 1
-  funnelSimplification: 0
-  slowWhenNotFacingTarget: 1
-  preventMovingBackwards: 0
---- !u!114 &7645833144850340215
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 560112f876f5746c780eca0d404e7139, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  radiusBackingField: 0.5
-  heightBackingField: 2
-  centerBackingField: 1
-  locked: 0
-  lockWhenNotMoving: 0
-  agentTimeHorizon: 1.7
-  obstacleTimeHorizon: 1.7
-  maxNeighbours: 15
-  layer: 1
-  collidesWith: -1
-  wallAvoidForce: 1
-  wallAvoidFalloff: 1
-  priority: 0.462
-  debug: 0
---- !u!114 &5075446138171117537
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4549579877093014160}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 77f586f285b3847808d79083bd19ef1f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  quality: 1
-  splitAtEveryPortal: 0
-  accountForGridPenalties: 0
+    m_Bits: 8192
+  surfaceCheckInterval: 0.1
+  surfaceSpeedLerpRate: 1.65
+  boostPadSpeedBonus: 1.35
+  boostPadDuration: 0.58
+  boostPadThreshold: 1.3
+  verboseDebug: 0
+  drawDestinationGizmo: 1
+  drawObstacleRays: 1
+  drawSteeringDebug: 1
+  autoFitRootColliderToVisual: 1
+  replaceUnsupportedRootCollider: 1
 --- !u!1 &8123480379425158355
 GameObject:
   m_ObjectHideFlags: 0

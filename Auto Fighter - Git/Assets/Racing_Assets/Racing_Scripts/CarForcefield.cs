@@ -20,6 +20,8 @@ public sealed class CarForcefield : MonoBehaviour
     [SerializeField] private LayerMask obstacleLayers = ~0;
     [Tooltip("Trigger radius around the car. The trigger is created at runtime.")]
     [SerializeField] private float triggerRadius = 2.35f;
+    [Tooltip("If true, forcefield only intercepts aggressive TrackCreature (beast).")]
+    [SerializeField] private bool affectOnlyAggressiveTrackCreatures = true;
 
     [Header("Arming")]
     [SerializeField] private bool startsArmed = true;
@@ -278,6 +280,60 @@ public sealed class CarForcefield : MonoBehaviour
     {
         if (!_armed) return;
         if (!other || other == ownerCollider) return;
+
+        // Handle TrackCreature BEFORE obstacle layer filtering so beast interception can be independent
+        // from shared creature layer setup.
+        var creature = other.GetComponentInParent<TrackCreature>();
+        if (creature != null && !creature.IsDead)
+        {
+            if (affectOnlyAggressiveTrackCreatures && creature.BehaviorType != CreatureBehaviorType.Aggressive)
+                return;
+
+            // Avoid processing the same collider multiple times
+            if (_recentlyLaunched.Contains(other)) return;
+
+            creature.KilledByForcefield();
+            _recentlyLaunched.Add(other);
+
+            Transform creatureRoot = creature.transform.root;
+            Collider[] creatureCols = creatureRoot.GetComponentsInChildren<Collider>(true);
+            Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+
+            foreach (var c in creatureCols)
+            {
+                if (!c) continue;
+                _recentlyLaunched.Add(c);
+                foreach (var carCol in carCols)
+                {
+                    if (carCol) Physics.IgnoreCollision(carCol, c, true);
+                }
+            }
+
+            if (ignoreWithCarSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, ignoreWithCarSeconds));
+
+            Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
+            if (launchVFX != null)
+            {
+                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
+                var vfx = Instantiate(launchVFX, fxPos, fxRot);
+                if (parentVfxToObstacle && vfx != null)
+                    vfx.transform.SetParent(creatureRoot, true);
+            }
+
+            if (enableLaunchSlowMo)
+                StartLaunchSlowMo();
+
+            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
+            if (postFX != null)
+                postFX.PlayBurst();
+
+            SetArmed(false);
+            _cooldownRemain = cooldownSeconds;
+            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+            return;
+        }
+
         if (((1 << other.gameObject.layer) & obstacleLayers) == 0) return;
 
         // NEW: If this incoming collider is a thrown projectile, intercept it specially:
@@ -366,7 +422,7 @@ public sealed class CarForcefield : MonoBehaviour
             Collider[] npcCols = npcRoot.GetComponentsInChildren<Collider>(true);
             Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
 
-            // Add immunity marker so CarController ignores it even if something still ìtouchesî
+            // Add immunity marker so CarController ignores it even if something still ùtouchesù
             var immunity = npcRoot.GetComponent<LaunchImmunityMarker>();
             if (!immunity) immunity = npcRoot.gameObject.AddComponent<LaunchImmunityMarker>();
             immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
@@ -376,7 +432,7 @@ public sealed class CarForcefield : MonoBehaviour
             {
                 if (!c) continue;
 
-                _recentlyLaunched.Add(c); // so the forcefield proxy wonít re-handle repeatedly
+                _recentlyLaunched.Add(c); // so the forcefield proxy wonùt re-handle repeatedly
                 foreach (var carCol in carCols)
                 {
                     if (carCol) Physics.IgnoreCollision(carCol, c, true);
@@ -406,72 +462,13 @@ public sealed class CarForcefield : MonoBehaviour
             if (postFX != null)
                 postFX.PlayBurst();
 
-            // Consume the forcefield (optional ó delete this if you want NPC-crash to NOT consume it)
+            // Consume the forcefield (optional ù delete this if you want NPC-crash to NOT consume it)
             SetArmed(false);
             _cooldownRemain = cooldownSeconds;
             if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
 
             return;
         }
-
-        // NEW: Handle TrackCreature (aggressive creatures that would crash the car)
-        var creature = other.GetComponentInParent<TrackCreature>();
-        if (creature != null && !creature.IsDead)
-        {
-            // Avoid processing the same collider multiple times
-            if (_recentlyLaunched.Contains(other)) return;
-
-            // Kill the creature via forcefield (no crash, gives coins)
-            creature.KilledByForcefield();
-
-            // Mark as recently handled
-            _recentlyLaunched.Add(other);
-
-            // Temporarily ignore collisions between creature and car
-            Transform creatureRoot = creature.transform.root;
-            Collider[] creatureCols = creatureRoot.GetComponentsInChildren<Collider>(true);
-            Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
-
-            foreach (var c in creatureCols)
-            {
-                if (!c) continue;
-                _recentlyLaunched.Add(c);
-                foreach (var carCol in carCols)
-                {
-                    if (carCol) Physics.IgnoreCollision(carCol, c, true);
-                }
-            }
-
-            if (ignoreWithCarSeconds > 0f)
-                StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, ignoreWithCarSeconds));
-
-            // FX at interception point
-            Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
-
-            if (launchVFX != null)
-            {
-                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
-                var vfx = Instantiate(launchVFX, fxPos, fxRot);
-                if (parentVfxToObstacle && vfx != null)
-                    vfx.transform.SetParent(creatureRoot, true);
-            }
-
-            if (enableLaunchSlowMo)
-                StartLaunchSlowMo();
-
-            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
-
-            if (postFX != null)
-                postFX.PlayBurst();
-
-            // Consume the forcefield
-            SetArmed(false);
-            _cooldownRemain = cooldownSeconds;
-            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
-
-            return;
-        }
-
 
         if (_recentlyLaunched.Contains(other)) return;
 
@@ -490,6 +487,13 @@ public sealed class CarForcefield : MonoBehaviour
         if (bounceBack != null)
         {
             bounceBack.DetachForForcefieldLaunch();
+        }
+        var rollingLog = other.GetComponentInParent<RollingLogAlongTrack>();
+        if (rollingLog != null)
+        {
+            Vector3 ffCenter = ownerCollider ? ownerCollider.bounds.center : transform.position;
+            // Ensure logs drop scripted pathing immediately; generic force path below applies final impulse.
+            rollingLog.ApplyForcefieldLaunch(ffCenter, speed2, 0f, 0f);
         }
         Rigidbody launchRb = PrepareObstacleForLaunch(other);
         if (launchRb == null) return;
@@ -708,7 +712,6 @@ public sealed class CarForcefield : MonoBehaviour
         private void OnTriggerEnter(Collider other)
         {
             if (!_host) return;
-            if (((1 << other.gameObject.layer) & _layers) == 0) return;
             _host.HandleTriggerEnter(other);
         }
     }

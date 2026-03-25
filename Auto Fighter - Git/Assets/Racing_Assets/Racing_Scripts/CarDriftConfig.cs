@@ -12,6 +12,8 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private KeyCode driftKey = KeyCode.LeftShift;
     [SerializeField] private float driftMinSpeed = 2.15f;
     [SerializeField] private float maxDriftSteerMultiplier = 3.1f;
+    [Tooltip("While drifting, multiplies steering-input smoothing speed. Below 1 = slower buildup to full steer than normal driving; above 1 = faster.")]
+    [SerializeField, Range(0.05f, 2f)] private float driftSteeringInputBuildupMultiplier = 0.55f;
     [SerializeField] private float driftBuildRate = 0.7f;
     [SerializeField] private float driftReleaseRate = 12.2f;
     [SerializeField] private float driftSideForce = 0.41f;
@@ -67,6 +69,7 @@ public class CarDriftConfig : MonoBehaviour
     public KeyCode DriftKey => driftKey;
     public float DriftMinSpeed => driftMinSpeed;
     public float MaxDriftSteerMultiplier => maxDriftSteerMultiplier;
+    public float DriftSteeringInputBuildupMultiplier => driftSteeringInputBuildupMultiplier;
     public float DriftBuildRate => driftBuildRate;
     public float DriftReleaseRate => driftReleaseRate;
     public float DriftSideForce => driftSideForce;

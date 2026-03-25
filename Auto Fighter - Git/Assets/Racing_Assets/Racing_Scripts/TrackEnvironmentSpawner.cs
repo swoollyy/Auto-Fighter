@@ -11,6 +11,8 @@ public class EnvironmentType
     [Header("Placement Tweaks")]
     public float extraHeightOffset = 0f;
     public float extraLateralPadding = 0f;
+    [Tooltip("If false, this type stays world-upright (useful for trees).")]
+    public bool alignToGroundNormal = true;
 }
 
 public class TrackEnvironmentSpawner : MonoBehaviour
@@ -70,7 +72,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Tooltip("Maximum distance from the path centerline for environment placement. Prevents '500000 meters away'.")]
     [SerializeField, Min(1f)] private float maxDistanceFromCenterline = 28f;
 
-    [Tooltip("1 = mostly spawn on the sides (±90°), 0 = any direction around the point.")]
+    [Tooltip("1 = mostly spawn on the sides (ï¿½90ï¿½), 0 = any direction around the point.")]
     [SerializeField, Range(0f, 1f)] private float sideBias = 0.9f;
 
     [Tooltip("How many random candidate points we try for a given slot before giving up.")]
@@ -79,16 +81,29 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Header("Grounding")]
     [SerializeField] private bool autoGroundUsingBounds = true;
     [SerializeField] private float extraGroundPadding = 0.02f;
+    [Tooltip("Maximum downward snap distance along ground normal. Prevents extreme teleports on bad bounds.")]
+    [SerializeField, Min(0f)] private float maxSnapDownDistance = 2.5f;
+
+    [Header("Physics")]
+    [Tooltip("Environment props stay fixed on hills; rigidbodies are forced kinematic with gravity off.")]
+    [SerializeField] private bool forceKinematicRigidbodies = true;
 
     [Header("Raycast / Masks")]
-    [Tooltip("What the environment should sit on (your grass/shoulder colliders).")]
-    [SerializeField] private LayerMask groundMask; // RoadSurface
+    [Tooltip("What the environment should sit on (e.g. grass colliders). TerrainCollider is often on Default ï¿½ use Ground Mask Raycast Extra or include those layers here.")]
+    [SerializeField] private LayerMask groundMask;
+
+    [Tooltip("OR'd with Ground Mask for the downward placement ray so TerrainCollider (and similar) is hit. Default = layer 0 only; set to Nothing if Ground Mask already includes terrain.")]
+    [SerializeField] private LayerMask groundMaskRaycastExtra = 1;
 
     [Tooltip("The DRIVABLE road layer that environment must NEVER spawn onto.")]
     [SerializeField] private LayerMask roadExcludeMask; // Road
 
     [SerializeField] private float raycastStartHeight = 12f;
     [SerializeField] private float raycastDownDistance = 60f;
+
+    [Tooltip("Spawn XZ keeps path Y (often 0). Rays must start above sculpted hills or the cast begins inside TerrainCollider and hits wrong. This clearance is added above Terrain.SampleHeight at XZ.")]
+    [SerializeField, Min(2f)] private float rayOriginClearanceAboveTerrain = 22f;
+
     [SerializeField] private float baseHeightOffset = 0.02f;
 
     [Header("Road Rejection")]
@@ -97,6 +112,8 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
+
+    private readonly RaycastHit[] _rayHits = new RaycastHit[48];
 
     // runtime path
     private readonly List<Vector3> _path = new();
@@ -227,6 +244,122 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     // =========================
     // Core spawning
     // =========================
+    private static float GetMaxTerrainSurfaceYAtXZ(float wx, float wz)
+    {
+        float bestY = float.NegativeInfinity;
+        Terrain[] active = Terrain.activeTerrains;
+        for (int i = 0; i < active.Length; i++)
+        {
+            Terrain t = active[i];
+            if (t == null || t.terrainData == null) continue;
+            Vector3 tp = t.transform.position;
+            Vector3 sz = t.terrainData.size;
+            if (wx < tp.x || wx > tp.x + sz.x || wz < tp.z || wz > tp.z + sz.z)
+                continue;
+            float y = t.SampleHeight(new Vector3(wx, 0f, wz)) + tp.y;
+            if (y > bestY) bestY = y;
+        }
+
+        return bestY;
+    }
+
+    private static bool TryTerrainSurfaceAtXZ(float wx, float wz, out Vector3 groundPoint, out Vector3 groundNormal)
+    {
+        float bestY = float.NegativeInfinity;
+        Terrain bestTerrain = null;
+        Terrain[] active = Terrain.activeTerrains;
+        for (int i = 0; i < active.Length; i++)
+        {
+            Terrain t = active[i];
+            if (t == null || t.terrainData == null) continue;
+            Vector3 tp = t.transform.position;
+            Vector3 sz = t.terrainData.size;
+            if (wx < tp.x || wx > tp.x + sz.x || wz < tp.z || wz > tp.z + sz.z)
+                continue;
+            float y = t.SampleHeight(new Vector3(wx, 0f, wz)) + tp.y;
+            if (bestTerrain == null || y > bestY)
+            {
+                bestY = y;
+                bestTerrain = t;
+            }
+        }
+
+        if (bestTerrain != null)
+        {
+            groundPoint = new Vector3(wx, bestY, wz);
+            Vector3 tp = bestTerrain.transform.position;
+            Vector3 sz = bestTerrain.terrainData.size;
+            float nx = Mathf.Clamp01((wx - tp.x) / Mathf.Max(1e-6f, sz.x));
+            float nz = Mathf.Clamp01((wz - tp.z) / Mathf.Max(1e-6f, sz.z));
+            Vector3 localN = bestTerrain.terrainData.GetInterpolatedNormal(nx, nz);
+            groundNormal = bestTerrain.transform.TransformDirection(localN).normalized;
+            if (groundNormal.sqrMagnitude < 1e-8f) groundNormal = Vector3.up;
+            return true;
+        }
+
+        groundPoint = default;
+        groundNormal = Vector3.up;
+        return false;
+    }
+
+    private void ComputePlacementRayOrigin(Vector3 xzWorld, out Vector3 rayOrigin, out float maxRayDistance)
+    {
+        float wx = xzWorld.x;
+        float wz = xzWorld.z;
+        float surfaceY = GetMaxTerrainSurfaceYAtXZ(wx, wz);
+        if (float.IsNegativeInfinity(surfaceY))
+            surfaceY = xzWorld.y;
+
+        float originY = Mathf.Max(
+            surfaceY + rayOriginClearanceAboveTerrain,
+            xzWorld.y + raycastStartHeight);
+
+        rayOrigin = new Vector3(wx, originY, wz);
+        maxRayDistance = Mathf.Max(
+            raycastStartHeight + raycastDownDistance + 200f,
+            originY - surfaceY + raycastDownDistance + 50f);
+    }
+
+    /// <summary>
+    /// Ray from well above the heightmap at XZ (avoids starting inside hills when path Y is low).
+    /// Uses topmost hit when multiple colliders overlap. Falls back to Terrain.SampleHeight.
+    /// </summary>
+    private bool TryResolveGroundBelow(Vector3 xzWorld, Vector3 rayOrigin, float maxRayDist, out Vector3 groundPoint, out Vector3 groundNormal)
+    {
+        LayerMask castMask = groundMask | groundMaskRaycastExtra;
+
+        int n = Physics.RaycastNonAlloc(rayOrigin, Vector3.down, _rayHits, maxRayDist, castMask, QueryTriggerInteraction.Ignore);
+        if (n > 0)
+        {
+            int best = 0;
+            for (int i = 1; i < n; i++)
+            {
+                if (_rayHits[i].point.y > _rayHits[best].point.y)
+                    best = i;
+            }
+
+            RaycastHit hit = _rayHits[best];
+            groundPoint = hit.point;
+            groundNormal = hit.normal.sqrMagnitude > 1e-8f ? hit.normal.normalized : Vector3.up;
+
+            if (TryTerrainSurfaceAtXZ(xzWorld.x, xzWorld.z, out Vector3 tPt, out Vector3 tN) &&
+                tPt.y > groundPoint.y + 0.05f)
+            {
+                groundPoint = tPt;
+                groundNormal = tN.sqrMagnitude > 1e-8f ? tN.normalized : Vector3.up;
+            }
+
+            return true;
+        }
+
+        if (TryTerrainSurfaceAtXZ(xzWorld.x, xzWorld.z, out groundPoint, out groundNormal))
+            return true;
+
+        groundPoint = default;
+        groundNormal = Vector3.up;
+        return false;
+    }
+
     private void TrySpawnAtSlot(int slot)
     {
         if (_spawnedBySlot.ContainsKey(slot)) return;
@@ -257,29 +390,30 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         if (Physics.CheckSphere(xz + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
             return;
 
-        // 2) Place on groundMask (grass/shoulder)
-        Vector3 origin = xz + Vector3.up * raycastStartHeight;
-        float maxRay = raycastStartHeight + raycastDownDistance;
+        // 2) Place on ground (ray starts above local terrain height ï¿½ path Y is often 0 while hills are tall)
+        ComputePlacementRayOrigin(xz, out Vector3 rayOrigin, out float maxRay);
 
-        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, groundMask, QueryTriggerInteraction.Ignore))
+        if (!TryResolveGroundBelow(xz, rayOrigin, maxRay, out Vector3 groundPoint, out Vector3 groundNormal))
             return;
 
         // 3) SECOND REJECT: if the ray also sees road right under it (belt + suspenders)
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit roadHit, maxRay, roadExcludeMask, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit roadHit, maxRay, roadExcludeMask, QueryTriggerInteraction.Ignore))
         {
-            if (Mathf.Abs(roadHit.point.y - hit.point.y) < 0.25f && Vector3.Distance(roadHit.point, hit.point) < 1.0f)
+            if (Mathf.Abs(roadHit.point.y - groundPoint.y) < 0.25f && Vector3.Distance(roadHit.point, groundPoint) < 1.0f)
                 return;
         }
 
-        // Rotation: align to track direction
-        Quaternion rot = Quaternion.LookRotation(flatForward, Vector3.up);
         Transform parent = environmentParent != null ? environmentParent : transform;
 
-        // Height offsets
         var type = FindTypeForPrefab(prefab);
+        bool alignToGround = type == null || type.alignToGroundNormal;
+        Vector3 up = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
+        Vector3 placementUp = alignToGround ? up : Vector3.up;
+        Quaternion rot = AlignRotationToGround(flatForward, placementUp);
         float h = baseHeightOffset + (type != null ? type.extraHeightOffset : 0f);
 
-        GameObject go = Instantiate(prefab, hit.point + Vector3.up * h, rot, parent);
+        Vector3 spawnPos = groundPoint + placementUp * h;
+        GameObject go = Instantiate(prefab, spawnPos, rot, parent);
 
         if (overrideSpawnedLayer)
         {
@@ -287,9 +421,10 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             else go.layer = spawnedEnvironmentLayer;
         }
 
-        // Center-pivot trees etc.
         if (autoGroundUsingBounds)
-            SnapInstanceToGround(go, hit.point.y, extraGroundPadding);
+            SnapInstanceToGroundOnPlane(go, groundPoint, placementUp, extraGroundPadding, maxSnapDownDistance);
+
+        ConfigureEnvironmentRigidbodies(go);
 
         _spawnedBySlot[slot] = go;
 
@@ -331,7 +466,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             // Use forward as base axis so angle behaves consistently relative to track
             Vector3 dir = (Quaternion.Euler(0f, angDeg, 0f) * fwd).normalized;
 
-            // Optional per-type padding no longer shifts "road edge math"—
+            // Optional per-type padding no longer shifts "road edge math"ï¿½
             // it simply increases how far out we sample.
             float extraPad = 0f;
             // Note: we don't know prefab type here; keep simple and stable.
@@ -482,29 +617,51 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     }
 
     // =========================
-    // Ground snap for center pivots
+    // Ground snap + alignment (slopes)
     // =========================
-    private static void SnapInstanceToGround(GameObject go, float groundY, float pad)
+    private static Quaternion AlignRotationToGround(Vector3 worldForwardFlat, Vector3 groundNormal)
+    {
+        Vector3 n = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
+        Vector3 f = Vector3.ProjectOnPlane(worldForwardFlat, n);
+        if (f.sqrMagnitude < 1e-6f)
+            f = Vector3.ProjectOnPlane(Vector3.forward, n);
+        if (f.sqrMagnitude < 1e-6f)
+            f = Vector3.Cross(n, Vector3.right);
+        f.Normalize();
+        return Quaternion.LookRotation(f, n);
+    }
+
+    /// <summary>
+    /// Slide along surface normal so the collider support point sits at <paramref name="pad"/> above the hit.
+    /// Uses Collider.ClosestPoint from below for robust grounding even when prefab pivots are centered.
+    /// </summary>
+    private static void SnapInstanceToGroundOnPlane(GameObject go, Vector3 surfacePoint, Vector3 surfaceNormal, float pad, float maxDownDistance)
     {
         if (go == null) return;
 
-        Bounds? bounds = null;
+        Vector3 n = surfaceNormal.sqrMagnitude > 1e-8f ? surfaceNormal.normalized : Vector3.up;
+        float minSigned = float.MaxValue;
+        bool foundSupport = false;
 
         var cols = go.GetComponentsInChildren<Collider>();
         for (int i = 0; i < cols.Length; i++)
         {
-            if (cols[i] == null) continue;
-            if (bounds == null) bounds = cols[i].bounds;
-            else
-            {
-                Bounds b = bounds.Value;
-                b.Encapsulate(cols[i].bounds);
-                bounds = b;
-            }
+            Collider col = cols[i];
+            if (col == null || !col.enabled) continue;
+
+            // Query from well below along -normal to get a stable "bottom support" point.
+            float belowDist = Mathf.Max(4f, col.bounds.extents.magnitude * 3f);
+            Vector3 queryPoint = surfacePoint - n * belowDist;
+            Vector3 support = col.ClosestPoint(queryPoint);
+            float s = Vector3.Dot(support - surfacePoint, n);
+            if (s < minSigned) minSigned = s;
+            foundSupport = true;
         }
 
-        if (bounds == null)
+        // Fallback for props without colliders.
+        if (!foundSupport)
         {
+            Bounds? bounds = null;
             var rends = go.GetComponentsInChildren<Renderer>();
             for (int i = 0; i < rends.Length; i++)
             {
@@ -517,15 +674,35 @@ public class TrackEnvironmentSpawner : MonoBehaviour
                     bounds = b;
                 }
             }
+
+            if (bounds == null) return;
+            minSigned = Vector3.Dot(bounds.Value.min - surfacePoint, n);
         }
 
-        if (bounds == null) return;
+        float correction = pad - minSigned;
+        if (Mathf.Abs(correction) <= 0.0001f) return;
 
-        float bottomY = bounds.Value.min.y;
-        float deltaUp = (groundY - bottomY) + pad;
+        // Downward movement can be exaggerated by broad world AABB on rotated/complex props,
+        // so clamp only the downward correction to a safe distance.
+        if (correction < 0f)
+            correction = Mathf.Max(correction, -Mathf.Abs(maxDownDistance));
 
-        if (deltaUp > 0f)
-            go.transform.position += Vector3.up * deltaUp;
+        go.transform.position += n * correction;
+    }
+
+    private void ConfigureEnvironmentRigidbodies(GameObject go)
+    {
+        if (!forceKinematicRigidbodies || go == null) return;
+
+        Rigidbody[] rbs = go.GetComponentsInChildren<Rigidbody>(true);
+        for (int i = 0; i < rbs.Length; i++)
+        {
+            Rigidbody rb = rbs[i];
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
     }
 
     // =========================

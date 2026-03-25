@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -41,6 +42,11 @@ public class ThrownObstacle : MonoBehaviour
     [Tooltip("If true the projectile will orient smoothly toward its motion/target. Disable to avoid sharp rotations on arrival.")]
     [SerializeField] private bool orientToMotion = false;
 
+    [Header("Impact comic (Crash popup)")]
+    [Tooltip("World-space WHAM/KAPOW style text at the impact point. At most once per throw (avoids doubles with obstacle-vs-obstacle popups on the prop, since the projectile is not an 'obstacle buddy').")]
+    [SerializeField] private bool enableImpactCrashPopup = true;
+    [SerializeField, Min(0f)] private float impactCrashPopupHeight = 1f;
+
     [Header("Plain Impact Zone")]
     [Tooltip("Multiplier applied to the derived collider footprint to form the non-explosive 'impact zone' radius.")]
     [SerializeField, Min(0.1f)] private float plainImpactRadiusMultiplier = 1.0f;
@@ -59,6 +65,7 @@ public class ThrownObstacle : MonoBehaviour
 
     private bool _initialized;
     private bool _hasImpacted;
+    private bool _impactCrashPopupFired;
 
     // whether the director already spawned a preview telegraph
     private bool _previewRingSpawned;
@@ -138,6 +145,7 @@ public class ThrownObstacle : MonoBehaviour
         _travelT = 0f;
         _initialized = true;
         _hasImpacted = false;
+        _impactCrashPopupFired = false;
 
         // derive plain impact radius from collider footprint (world-ish)
         _impactRadius = DeriveFootprintRadius(_col);
@@ -255,13 +263,15 @@ public class ThrownObstacle : MonoBehaviour
             if (!_previewRingSpawned) SpawnRing();
 
             GameManager_Racing.Instance?.HandleProjectileExplosion(transform.position, _explosionRadius);
-            ExplodeAt(transform.position);
+            ExplodeAt(transform.position, skipCrashPopup: false);
         }
         else
         {
-            // NEW: Plain impact zone (AoE-like) so it doesn't rely only on collider contact
-            if (enablePlainImpactZone)
-                ApplyPlainImpactZone(transform.position);
+            if (Time.time >= _suppressExplodeUntil)
+                TryThrownImpactCrashPopup(transform.position);
+
+            // Always apply landing AoE so nearby obstacles are displaced even without direct contact.
+            ApplyPlainImpactZone(transform.position);
 
             // Use the same radius you’re telegraphing for proximity feedback
             GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _impactRadius);
@@ -293,63 +303,178 @@ public class ThrownObstacle : MonoBehaviour
     // NEW: plain arrival AoE impact
     private void ApplyPlainImpactZone(Vector3 pos)
     {
-        // Respect hit layers; ignore triggers
-        Collider[] hits = Physics.OverlapSphere(pos, _impactRadius, _hitLayers.value, QueryTriggerInteraction.Ignore);
+        ApplyBlastPhysicsOverlaps(pos, _impactRadius, isExplosive: false);
+    }
+
+    /// <summary>
+    /// Stable instance id per obstacle root so multi-collider props only take one blast impulse.
+    /// Order matches displacement handling (special movers before generic rigidbodies).
+    /// </summary>
+    private static int GetBlastDisplacementRootId(Collider c)
+    {
+        var log = c.GetComponentInParent<RollingLogAlongTrack>();
+        if (log != null) return log.gameObject.GetInstanceID();
+        var bounce = c.GetComponentInParent<TrackObstacleBounceBack>();
+        if (bounce != null) return bounce.gameObject.GetInstanceID();
+        var cross = c.GetComponentInParent<CrossTrackObstacle>();
+        if (cross != null) return cross.gameObject.GetInstanceID();
+        var ro = c.GetComponentInParent<RacingObstacle>();
+        if (ro != null) return ro.gameObject.GetInstanceID();
+        var shuttle = c.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttle != null) return shuttle.gameObject.GetInstanceID();
+        Rigidbody rb = c.attachedRigidbody;
+        if (rb == null) rb = c.GetComponentInParent<Rigidbody>();
+        if (rb != null && rb.GetComponentInParent<CarController>() == null)
+            return rb.gameObject.GetInstanceID();
+        return c.transform.root.GetInstanceID();
+    }
+
+    private static Vector3 HorizontalAwayFromBlast(Vector3 blastCenter, Vector3 referencePoint)
+    {
+        Vector3 d = referencePoint - blastCenter;
+        d.y = 0f;
+        if (d.sqrMagnitude < 1e-6f) d = Vector3.forward;
+        d.Normalize();
+        return d;
+    }
+
+    private void ApplyBlastPhysicsOverlaps(Vector3 pos, float radius, bool isExplosive)
+    {
+        Collider[] hits = Physics.OverlapSphere(pos, radius, _hitLayers.value, QueryTriggerInteraction.Ignore);
+        var processed = new HashSet<int>();
 
         foreach (var c in hits)
         {
             if (c == null) continue;
 
-            // CAR HIT (arrival AoE)
             var car = c.GetComponentInParent<CarController>();
             if (car != null)
             {
+                int cid = car.gameObject.GetInstanceID();
+                if (!processed.Add(cid)) continue;
+
                 float d = Vector3.Distance(car.transform.position, pos);
-                if (d <= _impactRadius)
-                {
-                    float severity = 1f - Mathf.Clamp01(d / Mathf.Max(0.01f, _impactRadius));
-                    severity *= 0.65f; // plain hits are softer than explosions
+                if (d > radius) continue;
 
-                    Vector3 hitDir = (car.transform.position - pos);
-                    if (hitDir.sqrMagnitude < 0.0001f) hitDir = -car.transform.forward;
-                    hitDir.Normalize();
+                float severity = 1f - Mathf.Clamp01(d / Mathf.Max(0.01f, radius));
+                if (!isExplosive) severity *= 0.65f;
 
-                    var carCol = car.GetComponent<Collider>();
-                    Vector3 contactPoint = carCol != null ? carCol.ClosestPoint(pos) : car.transform.position;
+                Vector3 hitDir = (car.transform.position - pos);
+                if (hitDir.sqrMagnitude < 0.0001f) hitDir = -car.transform.forward;
+                hitDir.Normalize();
 
-                    // impact speed floor so it always "feels like something"
-                    float impactSpeed = Mathf.Max(car.CurrentSpeed, 9f);
-                    car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
-                }
+                var carCol = car.GetComponent<Collider>();
+                Vector3 contactPoint = carCol != null ? carCol.ClosestPoint(pos) : car.transform.position;
+
+                float impactSpeed = Mathf.Max(car.CurrentSpeed, isExplosive ? 12f : 9f);
+                car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity, transform, _rb);
+                continue;
             }
 
-            // OBSTACLE HIT (small knock)
-            var obstacle = c.GetComponentInParent<RacingObstacle>();
-            if (obstacle != null)
-            {
-                Rigidbody obr = EnsureRigidbodyForObstacle(obstacle.gameObject);
-                if (obr != null)
-                {
-                    if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
+            int oid = GetBlastDisplacementRootId(c);
+            if (!processed.Add(oid)) continue;
 
-                    Vector3 dir = (obr.position - pos);
-                    if (dir.sqrMagnitude < 0.0001f) dir = Vector3.up;
-                    dir.Normalize();
-
-                    float mass = Mathf.Max(0.01f, obr.mass);
-                    // gentler than explosion
-                    Vector3 impulse = dir * (_explosionImpulse * 0.35f * mass);
-                    obr.AddForce(impulse, ForceMode.Impulse);
-                }
-
-                // light damage ping
-                obstacle.ApplyDamage(5f);
-            }
+            TryApplyBlastDisplacement(c, pos, radius, isExplosive);
         }
     }
 
+    private void TryApplyBlastDisplacement(Collider c, Vector3 blastCenter, float blastRadius, bool isExplosive)
+    {
+        Vector3 closest = c.ClosestPoint(blastCenter);
+        float distH = Vector2.Distance(
+            new Vector2(closest.x, closest.z),
+            new Vector2(blastCenter.x, blastCenter.z));
+        float falloff = 1f - Mathf.Clamp01(distH / Mathf.Max(0.01f, blastRadius));
+        if (falloff < 0.01f) return;
+
+        float scale = isExplosive ? 1f : 0.35f;
+        float baseImpulse = _explosionImpulse * scale * falloff;
+        Vector3 planar = HorizontalAwayFromBlast(blastCenter, closest);
+
+        var rollingLog = c.GetComponentInParent<RollingLogAlongTrack>();
+        if (rollingLog != null)
+        {
+            rollingLog.ApplyBeastStrike(blastCenter, Mathf.Max(6f, baseImpulse * 1.15f));
+            return;
+        }
+
+        var bounceBack = c.GetComponentInParent<TrackObstacleBounceBack>();
+        if (bounceBack != null)
+        {
+            bounceBack.ApplyRollingLogRam(
+                planar,
+                Mathf.Max(4f, baseImpulse * 0.95f),
+                Mathf.Max(1f, baseImpulse * 0.4f),
+                closest);
+            return;
+        }
+
+        var cross = c.GetComponentInParent<CrossTrackObstacle>();
+        if (cross != null)
+        {
+            cross.ApplyRollingLogRam(planar, Mathf.Max(5f, baseImpulse * 1.05f));
+            return;
+        }
+
+        var obstacle = c.GetComponentInParent<RacingObstacle>();
+        if (obstacle != null)
+        {
+            Rigidbody obr = EnsureRigidbodyForObstacle(obstacle.gameObject);
+            if (obr != null)
+            {
+                if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
+
+                Vector3 dir = (obr.position - blastCenter);
+                if (dir.sqrMagnitude < 0.0001f) dir = Vector3.up;
+                dir.Normalize();
+
+                float mass = Mathf.Max(0.01f, obr.mass);
+                Vector3 impulse = dir * (_explosionImpulse * scale * mass * falloff);
+                obr.AddForce(impulse, ForceMode.Impulse);
+            }
+
+            obstacle.ApplyDamage(isExplosive ? 10f : 5f);
+            return;
+        }
+
+        var shuttle = c.GetComponentInParent<ShuttleTrackObstacle>();
+        if (shuttle != null)
+        {
+            shuttle.ConvertToPhysicsOnHit();
+            Rigidbody srb = shuttle.GetComponent<Rigidbody>();
+            if (srb != null)
+            {
+                Vector3 dir = (srb.worldCenterOfMass - blastCenter);
+                if (dir.sqrMagnitude < 1e-6f) dir = planar + Vector3.up * 0.25f;
+                dir.Normalize();
+                float mass = Mathf.Max(0.01f, srb.mass);
+                srb.AddForce(dir * (baseImpulse * mass), ForceMode.Impulse);
+            }
+            return;
+        }
+
+        Rigidbody rb = c.attachedRigidbody;
+        if (rb == null) rb = c.GetComponentInParent<Rigidbody>();
+        if (rb == null) return;
+        if (rb.GetComponentInParent<CarController>() != null) return;
+
+        if (rb.isKinematic)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            rb.WakeUp();
+        }
+
+        Vector3 away = (rb.worldCenterOfMass - blastCenter);
+        if (away.sqrMagnitude < 1e-6f) away = planar + Vector3.up * 0.15f;
+        away.Normalize();
+        float m = Mathf.Max(0.01f, rb.mass);
+        rb.AddForce(away * (baseImpulse * m), ForceMode.Impulse);
+    }
+
     // explosion effect
-    private void ExplodeAt(Vector3 pos)
+    private void ExplodeAt(Vector3 pos, bool skipCrashPopup = false)
     {
         if (Time.time < _suppressExplodeUntil)
         {
@@ -358,66 +483,12 @@ public class ThrownObstacle : MonoBehaviour
             return;
         }
 
+        if (!skipCrashPopup)
+            TryThrownImpactCrashPopup(pos);
+
         SpawnImpactVFX(pos, Vector3.up);
 
-        Collider[] hits = Physics.OverlapSphere(pos, _explosionRadius, _hitLayers.value, QueryTriggerInteraction.Ignore);
-
-        foreach (var c in hits)
-        {
-            if (c == null) continue;
-
-            var car = c.GetComponentInParent<CarController>();
-            if (car)
-            {
-                float d = Vector3.Distance(car.transform.position, pos);
-                if (d <= _explosionRadius)
-                {
-                    float severity = 1f - Mathf.Clamp01(d / _explosionRadius);
-
-                    Vector3 hitDir = (car.transform.position - pos);
-                    if (hitDir.sqrMagnitude < 0.0001f) hitDir = -car.transform.forward;
-                    hitDir.Normalize();
-
-                    var carCol = car.GetComponent<Collider>();
-                    Vector3 contactPoint = carCol != null ? carCol.ClosestPoint(pos) : car.transform.position;
-
-                    float impactSpeed = Mathf.Max(car.CurrentSpeed, 12f);
-                    car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
-                }
-            }
-
-            var obstacle = c.GetComponentInParent<RacingObstacle>();
-            if (obstacle)
-            {
-                Rigidbody obr = EnsureRigidbodyForObstacle(obstacle.gameObject);
-                if (obr != null)
-                {
-                    if (obr.mass < 0.01f) obr.mass = Mathf.Max(1f, 10f);
-
-                    Vector3 dir = (obr.position - pos).normalized;
-                    float mass = Mathf.Max(0.01f, obr.mass);
-                    Vector3 impulse = dir * (_explosionImpulse * mass);
-                    obr.AddForce(impulse, ForceMode.Impulse);
-                }
-
-                obstacle.ApplyDamage(10f);
-            }
-
-            var rb = c.attachedRigidbody;
-            if (rb && obstacle == null)
-            {
-                if (rb.isKinematic)
-                {
-                    rb.isKinematic = false;
-                    rb.WakeUp();
-                }
-
-                float mass = Mathf.Max(0.01f, rb.mass);
-                Vector3 dir = (rb.position - pos).normalized;
-                Vector3 impulse = dir * (_explosionImpulse * mass);
-                rb.AddForce(impulse, ForceMode.Impulse);
-            }
-        }
+        ApplyBlastPhysicsOverlaps(pos, _explosionRadius, isExplosive: true);
 
         ExplodeOrDeactivate();
     }
@@ -454,12 +525,24 @@ public class ThrownObstacle : MonoBehaviour
         _initialized = false;
     }
 
+    private void TryThrownImpactCrashPopup(Vector3 worldPos)
+    {
+        if (_impactCrashPopupFired) return;
+        if (!enableImpactCrashPopup) return;
+        if (!RacingPopups.IsReady) return;
+
+        _impactCrashPopupFired = true;
+        RacingPopups.CrashWorld(worldPos + Vector3.up * impactCrashPopupHeight);
+    }
+
     void OnCollisionEnter(Collision collision)
     {
         if (_hasImpacted) return;
 
         var other = collision.collider;
         if (((1 << other.gameObject.layer) & _hitLayers.value) == 0) return;
+
+        bool hitCar = false;
 
         // If collided with a RacingObstacle, apply knockback to that obstacle
         var ro = other.GetComponentInParent<RacingObstacle>();
@@ -498,7 +581,7 @@ public class ThrownObstacle : MonoBehaviour
                 SpawnImpactVFX(contactPoint, normal);
                 GameManager_Racing.Instance?.HandleProjectileExplosion(contactPoint, _explosionRadius);
                 _hasImpacted = true;
-                ExplodeAt(contactPoint);
+                ExplodeAt(contactPoint, skipCrashPopup: false);
                 return;
             }
         }
@@ -527,7 +610,7 @@ public class ThrownObstacle : MonoBehaviour
                 : car.transform.position;
 
             float severity = Mathf.InverseLerp(min, max, impactSpeed);
-            car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity);
+            car.ApplyExternalCrashDamage(hitDir, impactSpeed, contactPoint, severity, transform, _rb);
         }
 
         // For all other cases treat as impact and deactivate / explode depending on type
@@ -554,10 +637,12 @@ public class ThrownObstacle : MonoBehaviour
             if (!_previewRingSpawned) SpawnRing();
             SpawnImpactVFX(impactPoint, nrm);
             GameManager_Racing.Instance?.HandleProjectileExplosion(impactPoint, _explosionRadius);
-            ExplodeAt(impactPoint);
+            ExplodeAt(impactPoint, skipCrashPopup: hitCar);
         }
         else
         {
+            if (!hitCar)
+                TryThrownImpactCrashPopup(impactPoint);
             SpawnImpactVFX(impactPoint, nrm);
             ExplodeOrDeactivate();
         }

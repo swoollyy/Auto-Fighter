@@ -155,7 +155,7 @@ MonoBehaviour:
   runOverPopupHeight: 1.2
   playCoinRewardSound: 1
   coinRewardSoundsOverride: []
-  coinRewardSoundVolume: 1
+  coinRewardSoundVolume: 0.633
   coinRewardPitchVariance: 0.05
   coinRewardBasePitch: 1
   coinRewardMinDistance: 5
@@ -167,12 +167,17 @@ MonoBehaviour:
   enableMovementAvoidance: 1
   movementAvoidanceLayers:
     serializedVersion: 2
-    m_Bits: 2885633
-  avoidanceRadius: 0.15
-  avoidanceLookAhead: 0.5
-  avoidanceCastHeight: 0.35
-  avoidanceSideBias: 0
-  avoidanceResponse: 3
+    m_Bits: 7079937
+  avoidanceIncludeTriggers: 1
+  avoidanceRadius: 0.1
+  avoidanceLookAhead: 3.84
+  avoidanceCastHeight: 0.2
+  avoidanceRayCount: 11
+  avoidanceFanAngleDeg: 100
+  avoidanceSteerSmoothSpeed: 14
+  avoidanceIdlePathNudgeSpeed: 5
+  avoidanceSideBias: 0.09
+  avoidanceResponse: 3.3
   aggressivePlayerPriorityRadius: 12
   creatureSenseLayers:
     serializedVersion: 2

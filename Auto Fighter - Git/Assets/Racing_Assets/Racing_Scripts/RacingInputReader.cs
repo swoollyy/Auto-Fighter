@@ -19,6 +19,8 @@ public class RacingInputReader : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float steerDeadzone = 0.12f;
     [SerializeField, Range(0f, 1f)] private float triggerThreshold = 0.1f;
     [SerializeField, Range(0f, 0.5f)] private float skillTreeStickDeadzone = 0.18f;
+    [SerializeField] private bool autoHideCursorByInputDevice = true;
+    [SerializeField, Range(0f, 1f)] private float cursorGamepadMoveThreshold = 0.12f;
 
     private InputActionMap _racingMap;
     private InputActionMap _skillTreeMap;
@@ -209,12 +211,29 @@ public class RacingInputReader : MonoBehaviour
             actionAsset.Disable();
     }
 
+    /// <summary>
+    /// Skill tree UI on: enable SkillTreeUI map and <b>disable</b> Racing map.
+    /// Otherwise Racing Restart/Boost/Mash share gamepad South (and other bindings) with UI Submit / clicks and can cause phantom "Play" or double-use with the tree.
+    /// Skill tree off: disable SkillTreeUI and re-enable Racing.
+    /// </summary>
     public void SetSkillTreeMapEnabled(bool enabled)
     {
         if (enabled)
-            _skillTreeMap?.Enable();
+        {
+            if (_skillTreeMap == null)
+            {
+                Debug.LogWarning("[RacingInputReader] SkillTreeUI action map not found — Racing map left enabled (add SkillTreeUI map to your Input Action Asset).");
+                return;
+            }
+
+            _skillTreeMap.Enable();
+            _racingMap?.Disable();
+        }
         else
+        {
             _skillTreeMap?.Disable();
+            _racingMap?.Enable();
+        }
     }
 
     void OnDestroy()
@@ -227,22 +246,28 @@ public class RacingInputReader : MonoBehaviour
 
     void Update()
     {
-        if (_racingMap == null || !_racingMap.enabled) return;
+        // Racing and skill-tree maps are mutually exclusive (see SetSkillTreeMapEnabled). Read only enabled map(s).
+        if (_racingMap != null && _racingMap.enabled)
+        {
+            _steerCache = ReadSteer();
+            _accelerateCache = ReadAccelerate();
+            _brakeCache = ReadBrake();
+            _boostDownCache = _boostAction != null && _boostAction.triggered;
+            _driftHeldCache = _driftAction != null && _driftAction.IsPressed();
+            _restartDownCache = _restartAction != null && _restartAction.triggered;
+            _mashSouthDownCache = _mashSouthAction != null && _mashSouthAction.triggered;
+            _mashNorthDownCache = _mashNorthAction != null && _mashNorthAction.triggered;
+            _mashEastDownCache = _mashEastAction != null && _mashEastAction.triggered;
+            _mashWestDownCache = _mashWestAction != null && _mashWestAction.triggered;
+            _fireHeldCache = _fireAction != null && _fireAction.IsPressed();
+            _fovPeekCache = _fovPeekAction != null && _fovPeekAction.IsPressed();
+        }
+        else
+        {
+            ZeroRacingCaches();
+        }
 
-        _steerCache = ReadSteer();
-        _accelerateCache = ReadAccelerate();
-        _brakeCache = ReadBrake();
-        _boostDownCache = _boostAction != null && _boostAction.triggered;
-        _driftHeldCache = _driftAction != null && _driftAction.IsPressed();
-        _restartDownCache = _restartAction != null && _restartAction.triggered;
-        _mashSouthDownCache = _mashSouthAction != null && _mashSouthAction.triggered;
-        _mashNorthDownCache = _mashNorthAction != null && _mashNorthAction.triggered;
-        _mashEastDownCache = _mashEastAction != null && _mashEastAction.triggered;
-        _mashWestDownCache = _mashWestAction != null && _mashWestAction.triggered;
-        _fireHeldCache = _fireAction != null && _fireAction.IsPressed();
-        _fovPeekCache = _fovPeekAction != null && _fovPeekAction.IsPressed();
-
-        if (_skillTreeMap != null && _skillTreeMap.enabled)
+        if (_skillTreeMap != null && _skillTreeMap.enabled && !GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
         {
             _panCache = ReadPan();
             _zoomCache = ReadZoom();
@@ -252,6 +277,22 @@ public class RacingInputReader : MonoBehaviour
             _panCache = Vector2.zero;
             _zoomCache = 0f;
         }
+
+        UpdateCursorVisibilityByDevice();
+    }
+
+    private void ZeroRacingCaches()
+    {
+        _steerCache = _accelerateCache = _brakeCache = 0f;
+        _boostDownCache = false;
+        _driftHeldCache = false;
+        _restartDownCache = false;
+        _mashSouthDownCache = false;
+        _mashNorthDownCache = false;
+        _mashEastDownCache = false;
+        _mashWestDownCache = false;
+        _fireHeldCache = false;
+        _fovPeekCache = false;
     }
 
     private float ReadSteer()
@@ -292,5 +333,43 @@ public class RacingInputReader : MonoBehaviour
         float inVal = _zoomInAction != null ? _zoomInAction.ReadValue<float>() : 0f;
         float outVal = _zoomOutAction != null ? _zoomOutAction.ReadValue<float>() : 0f;
         return Mathf.Clamp01(inVal) - Mathf.Clamp01(outVal);
+    }
+
+    private void UpdateCursorVisibilityByDevice()
+    {
+        if (!autoHideCursorByInputDevice) return;
+
+        bool mouseUsed = false;
+        if (Mouse.current != null)
+        {
+            Vector2 delta = Mouse.current.delta.ReadValue();
+            mouseUsed = delta.sqrMagnitude > 0.01f
+                || Mouse.current.leftButton.wasPressedThisFrame
+                || Mouse.current.rightButton.wasPressedThisFrame
+                || Mouse.current.middleButton.wasPressedThisFrame;
+        }
+
+        bool gamepadUsed = false;
+        if (Gamepad.current != null)
+        {
+            Vector2 ls = Gamepad.current.leftStick.ReadValue();
+            Vector2 rs = Gamepad.current.rightStick.ReadValue();
+            gamepadUsed =
+                ls.sqrMagnitude > (cursorGamepadMoveThreshold * cursorGamepadMoveThreshold) ||
+                rs.sqrMagnitude > (cursorGamepadMoveThreshold * cursorGamepadMoveThreshold) ||
+                Gamepad.current.buttonSouth.wasPressedThisFrame ||
+                Gamepad.current.buttonNorth.wasPressedThisFrame ||
+                Gamepad.current.buttonEast.wasPressedThisFrame ||
+                Gamepad.current.buttonWest.wasPressedThisFrame ||
+                Gamepad.current.startButton.wasPressedThisFrame ||
+                Gamepad.current.selectButton.wasPressedThisFrame ||
+                Gamepad.current.leftShoulder.wasPressedThisFrame ||
+                Gamepad.current.rightShoulder.wasPressedThisFrame;
+        }
+
+        if (mouseUsed)
+            Cursor.visible = true;
+        else if (gamepadUsed)
+            Cursor.visible = false;
     }
 }

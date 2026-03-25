@@ -41,8 +41,8 @@ TagManager:
   - NPCCar
   - Environment
   - Creatures
-  - 
-  - 
+  - VisualMatchHitbox
+  - Log
   - 
   - 
   - 

@@ -1,4 +1,4 @@
-﻿public enum SkillType
+public enum SkillType
 {
     // ---- Existing core car stats ----
     Acceleration = 0,
@@ -141,13 +141,26 @@
     CloseCallCoins_Add = 4800,              // Coins earned per close call (also acts as unlock)
     CloseCallCoins_Mul = 4801,
 
-    CloseCallSpeedBoostUnlock = 4810,       // Unlock speed boost on close call
+    // Close-call utility unlocks (one-time purchases recommended)
+    CloseCallRefreshBoostCooldownsUnlock = 4810,       // Reset boost cooldowns on close call
 
     CloseCallSpeedBoostDuration_Add = 4820, // Duration of speed boost
     CloseCallSpeedBoostDuration_Mul = 4821,
 
+    CloseCallResetItemCooldownsUnlock = 4811, // Reset equipped item/quest ability cooldowns on close call
+
     CloseCallInvincibility_Add = 4830,      // Invincibility duration (also acts as unlock)
     CloseCallInvincibility_Mul = 4831,
+
+    // ------------------------------------------------------------------------
+    // Coin Collecting Friend (unlock + stat chains)
+    // ------------------------------------------------------------------------
+    CoinFriendUnlock = 4900,
+    CoinFriendRange_Add = 4910,
+    CoinFriendRange_Mul = 4911,
+    CoinFriendCooldown_Add = 4920,
+    CoinFriendCooldown_Mul = 4921,
+    CoinFriendValue_Add = 4930,
 }
 
 

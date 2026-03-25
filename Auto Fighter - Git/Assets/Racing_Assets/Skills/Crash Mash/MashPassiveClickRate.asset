@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 4610
   displayName: Passive Mash Click Rate
-  description: Lessens the time between passive clicks by .25
-  maxLevel: 10
+  description: Lessens the time between passive clicks by .4
+  maxLevel: 20
   costCurve:
     serializedVersion: 2
     m_Curve: []
@@ -25,7 +25,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.25
+  perLevelAdd: 0.4
   uiPosition: {x: 75, y: 650}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

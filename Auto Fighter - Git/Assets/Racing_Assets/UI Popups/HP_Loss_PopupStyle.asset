@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HP_Loss_PopupStyle
   m_EditorClassIdentifier: 
   popupType: 0
-  font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  font: {fileID: 11400000, guid: 91008197671975e48bd82fb37b4e4e80, type: 2}
   fontMaterial: {fileID: 0}
   spriteAsset: {fileID: 11400000, guid: 02d4aa42b7154164f9ec77597763e3b4, type: 2}
   baseFontSize: 6

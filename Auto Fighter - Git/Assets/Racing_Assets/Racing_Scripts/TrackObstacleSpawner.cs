@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -592,6 +592,7 @@ public class TrackObstacleSpawner : MonoBehaviour
         // Don’t mess with obstacles that manage their own kinematic/dynamic state
         if (obstacle.GetComponentInChildren<CrossTrackObstacle>(true) != null) return;
         if (obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true) != null) return;
+        if (obstacle.GetComponentInChildren<RollingLogAlongTrack>(true) != null) return;
 
         var rbs = obstacle.GetComponentsInChildren<Rigidbody>(true);
         if (rbs == null || rbs.Length == 0) return;

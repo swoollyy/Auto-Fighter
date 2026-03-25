@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -52,6 +52,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     private SkillTreeState _state;
     private readonly Dictionary<SkillType, SkillDefinition> _map = new();
     private readonly HashSet<SkillType> _revealedSkills = new();
+    private RacingQuestUnlockManager _questMgr;
 
     private const string CurrencyKey = "Racing_Currency";
 
@@ -106,6 +107,14 @@ public class RacingSkillTreeManager : MonoBehaviour
         OnSprocketsChanged?.Invoke(playerSprockets);
         foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
             OnLevelChanged?.Invoke(t, GetLevel(t));
+
+        HookQuestRevealEvents();
+        SyncQuestUnlockReveals();
+    }
+
+    private void OnDestroy()
+    {
+        UnhookQuestRevealEvents();
     }
 
     private void RevealSkill(SkillDefinition def)
@@ -115,7 +124,23 @@ public class RacingSkillTreeManager : MonoBehaviour
             OnSkillRevealed?.Invoke(def);
     }
 
-    public bool IsSkillRevealed(SkillType type) => _revealedSkills.Contains(type);
+    public bool IsSkillRevealed(SkillType type)
+    {
+        if (_revealedSkills.Contains(type))
+            return true;
+
+        // Quest-completed unlock nodes should appear even if not pre-revealed.
+        var quest = RacingQuestUnlockManager.Instance;
+        if (quest == null) return false;
+
+        switch (type)
+        {
+            case SkillType.ForcefieldUnlock: return quest.IsForcefieldUnlocked;
+            case SkillType.TurretUnlock: return quest.IsTurretUnlocked;
+            case SkillType.CoinFriendUnlock: return quest.IsCoinFriendUnlocked;
+            default: return false;
+        }
+    }
     public IReadOnlyCollection<SkillType> RevealedSkills => _revealedSkills;
 
     public int Currency => playerCurrency;
@@ -161,6 +186,7 @@ public class RacingSkillTreeManager : MonoBehaviour
         if (!_map.TryGetValue(type, out var def)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
+        if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;
         int cost = def.GetCostForLevel(nextLevel);
         if (playerCurrency < cost) return false;
 
@@ -170,6 +196,7 @@ public class RacingSkillTreeManager : MonoBehaviour
             SaveCurrency();
             _state.Save();
             int newLvl = GetLevel(type);
+            RacingQuestUnlockManager.Instance?.NotifyUnlockNodePurchased(type);
             OnCurrencyChanged?.Invoke(playerCurrency);
             OnLevelChanged?.Invoke(type, newLvl);
             EvaluateProgressiveUnlocks(def, newLvl);
@@ -436,9 +463,14 @@ public class RacingSkillTreeManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Check if close call speed boost is unlocked.
+    /// Close-call utility: reset boost cooldowns.
     /// </summary>
-    public bool IsCloseCallSpeedBoostUnlocked => GetLevel(SkillType.CloseCallSpeedBoostUnlock) > 0;
+    public bool IsCloseCallResetBoostCooldownsUnlocked => GetLevel(SkillType.CloseCallRefreshBoostCooldownsUnlock) > 0;
+
+    /// <summary>
+    /// Close-call utility: reset equipped item/quest ability cooldowns.
+    /// </summary>
+    public bool IsCloseCallResetItemCooldownsUnlocked => GetLevel(SkillType.CloseCallResetItemCooldownsUnlock) > 0;
 
     /// <summary>
     /// Get the duration of close call speed boost. Returns 0 if not unlocked.
@@ -446,7 +478,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     /// </summary>
     public float GetCloseCallSpeedBoostDuration(float baseDuration)
     {
-        if (!IsCloseCallSpeedBoostUnlocked) return 0f;
+        if (!IsCloseCallResetBoostCooldownsUnlocked) return 0f;
         return ApplyStatChain(baseDuration, SkillType.CloseCallSpeedBoostDuration_Add, SkillType.CloseCallSpeedBoostDuration_Mul);
     }
 
@@ -464,6 +496,32 @@ public class RacingSkillTreeManager : MonoBehaviour
         return ApplyStatChain(baseDuration, SkillType.CloseCallInvincibility_Add, SkillType.CloseCallInvincibility_Mul);
     }
 
+    // ------------------------------------------------------------------------
+    // Coin Collecting Friend
+    // ------------------------------------------------------------------------
+    public bool IsCoinFriendUnlocked()
+    {
+        return GetLevel(SkillType.CoinFriendUnlock) > 0;
+    }
+
+    public float GetCoinFriendRange(float baseRange)
+    {
+        float v = ApplyStatChain(baseRange, SkillType.CoinFriendRange_Add, SkillType.CoinFriendRange_Mul);
+        return Mathf.Max(0.1f, v);
+    }
+
+    public float GetCoinFriendCooldown(float baseCooldown)
+    {
+        float v = ApplyStatChain(baseCooldown, SkillType.CoinFriendCooldown_Add, SkillType.CoinFriendCooldown_Mul);
+        return Mathf.Max(0.05f, v);
+    }
+
+    public int GetCoinFriendValueBonus()
+    {
+        // Explicitly +1 per level.
+        return Mathf.Max(0, GetLevel(SkillType.CoinFriendValue_Add));
+    }
+
     /// <summary>
     /// Check if player can afford a sprocket cost.
     /// </summary>
@@ -478,6 +536,7 @@ public class RacingSkillTreeManager : MonoBehaviour
         if (!_map.TryGetValue(type, out var def)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
+        if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;
 
         // Use sprocket cost (you can add a separate field to SkillDefinition for this)
         int cost = def.GetSprocketCostForLevel(nextLevel);
@@ -489,6 +548,7 @@ public class RacingSkillTreeManager : MonoBehaviour
             SaveSprockets();
             _state.Save();
             int newLvl = GetLevel(type);
+            RacingQuestUnlockManager.Instance?.NotifyUnlockNodePurchased(type);
             OnSprocketsChanged?.Invoke(playerSprockets);
             OnLevelChanged?.Invoke(type, newLvl);
             EvaluateProgressiveUnlocks(def, newLvl);
@@ -533,6 +593,7 @@ public class RacingSkillTreeManager : MonoBehaviour
         if (!_map.TryGetValue(type, out var def)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
+        if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;
 
         if (def.usesSprockets)
         {
@@ -553,6 +614,47 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         if (!_map.TryGetValue(type, out var def)) return "Coins";
         return def.usesSprockets ? "Sprockets" : "Coins";
+    }
+
+    public bool IsQuestGateSatisfiedForSkill(SkillType type)
+    {
+        return MeetsQuestGateForPurchase(type, GetLevel(type) + 1);
+    }
+
+    private static bool TryMapQuestGate(SkillType type, out RacingQuestType questType)
+    {
+        switch (type)
+        {
+            case SkillType.ForcefieldUnlock:
+                questType = RacingQuestType.Forcefield;
+                return true;
+            case SkillType.TurretUnlock:
+                questType = RacingQuestType.Turret;
+                return true;
+            case SkillType.CoinFriendUnlock:
+                questType = RacingQuestType.CoinFriend;
+                return true;
+            default:
+                questType = default;
+                return false;
+        }
+    }
+
+    private static bool MeetsQuestGateForPurchase(SkillType type, int nextLevel)
+    {
+        // Only gate the first purchase of unlock-node skills.
+        if (nextLevel > 1) return true;
+        if (!TryMapQuestGate(type, out var questType)) return true;
+
+        var quest = RacingQuestUnlockManager.Instance;
+        if (quest == null) return false;
+
+        switch (questType)
+        {
+            case RacingQuestType.Forcefield: return quest.IsForcefieldUnlocked;
+            case RacingQuestType.Turret: return quest.IsTurretUnlocked;
+            default: return quest.IsCoinFriendUnlocked;
+        }
     }
 
 
@@ -610,6 +712,9 @@ public class RacingSkillTreeManager : MonoBehaviour
         playerSprockets = 0;
         PlayerPrefs.DeleteKey(SprocketsKey);
         OnSprocketsChanged?.Invoke(playerSprockets);
+
+        RacingQuestUnlockManager.Instance?.ClearAllData();
+        SyncQuestUnlockReveals();
     }
 
     public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
@@ -629,4 +734,57 @@ public class RacingSkillTreeManager : MonoBehaviour
         ApplyStatChain(baseCooldown, SkillType.BoostCooldown_Add, SkillType.BoostCooldown_Mul);
     public float GetBoostFuelCostScaled(float baseCost) =>
         ApplyStatChain(baseCost, SkillType.BoostFuelCost_Add, SkillType.BoostFuelCost_Mul);
+
+    private void HookQuestRevealEvents()
+    {
+        _questMgr = RacingQuestUnlockManager.Instance;
+        if (_questMgr == null) return;
+        _questMgr.OnQuestUnlocked -= HandleQuestUnlockedReveal;
+        _questMgr.OnQuestUnlocked += HandleQuestUnlockedReveal;
+    }
+
+    private void UnhookQuestRevealEvents()
+    {
+        if (_questMgr == null) return;
+        _questMgr.OnQuestUnlocked -= HandleQuestUnlockedReveal;
+    }
+
+    private void HandleQuestUnlockedReveal(RacingQuestType questType)
+    {
+        RevealUnlockSkillForQuest(questType);
+    }
+
+    private void SyncQuestUnlockReveals()
+    {
+        var q = RacingQuestUnlockManager.Instance;
+        if (q == null) return;
+        if (q.IsForcefieldUnlocked) RevealUnlockSkillForQuest(RacingQuestType.Forcefield);
+        if (q.IsTurretUnlocked) RevealUnlockSkillForQuest(RacingQuestType.Turret);
+        if (q.IsCoinFriendUnlocked) RevealUnlockSkillForQuest(RacingQuestType.CoinFriend);
+    }
+
+    public void RefreshQuestUnlockReveals()
+    {
+        SyncQuestUnlockReveals();
+    }
+
+    private void RevealUnlockSkillForQuest(RacingQuestType questType)
+    {
+        SkillType target;
+        switch (questType)
+        {
+            case RacingQuestType.Forcefield:
+                target = SkillType.ForcefieldUnlock;
+                break;
+            case RacingQuestType.Turret:
+                target = SkillType.TurretUnlock;
+                break;
+            default:
+                target = SkillType.CoinFriendUnlock;
+                break;
+        }
+
+        if (_map.TryGetValue(target, out var def) && def != null)
+            RevealSkill(def);
+    }
 }

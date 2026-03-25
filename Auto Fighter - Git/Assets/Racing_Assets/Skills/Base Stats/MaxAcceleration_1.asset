@@ -51,6 +51,6 @@ MonoBehaviour:
   baseSprocketCost: 5
   sprocketCostPerLevel: 3
   progressiveUnlocks:
-  - requiredLevel: 3
+  - requiredLevel: 1
     unlocks:
     - {fileID: 11400000, guid: 8304c1a185e16584ab0cd6813ac19385, type: 2}

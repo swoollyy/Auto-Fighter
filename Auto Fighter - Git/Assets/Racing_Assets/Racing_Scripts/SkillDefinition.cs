@@ -40,7 +40,7 @@ public class SkillDefinition : ScriptableObject
     public bool usesSprockets = false;
 
     [Tooltip("Base sprocket cost for level 1.")]
-    [Min(1)] public int baseSprocketCost = 5;
+    [Min(0)] public int baseSprocketCost = 5;
 
     [Tooltip("Sprocket cost increase per level.")]
     [Min(0)] public int sprocketCostPerLevel = 3;
