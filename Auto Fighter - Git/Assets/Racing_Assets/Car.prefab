@@ -1798,15 +1798,12 @@ MonoBehaviour:
   basePassiveClickStrength: 1
   mashDifficultyPerClickPowerStep: 1.4
   enableMashProgressGauge: 1
-  gaugeDrainRateBase: 0.12
-  gaugeDrainRatePerCrash: 0.06
-  gaugeDrainRateMax: 0.86
-  gaugeFillPerClick: 0.05
-  gaugeFillSpeedBonus: 2
+  gaugeFillPerClick: 0.022
+  gaugeFillSpeedBonus: 1.2
   gaugeGoodThreshold: 0.7
   gaugeMultiplierAtZero: 0.5
-  gaugeMultiplierAtGood: 1.5
-  gaugeMultiplierAtMax: 2
+  gaugeMultiplierAtGood: 1.1
+  gaugeMultiplierAtMax: 1.25
   mashDrainsHealth: 1
   mashDrainsFuel: 1
   mashHealthDrainAtMinSeverity: 0.6
@@ -1817,12 +1814,12 @@ MonoBehaviour:
   mashFuelDrainAtMaxSeverity: 10
   mashFuelDrainPerCrash: 0.25
   mashFuelDrainCap: 15
-  gaugeDrainAtMinSeverity: 0.08
-  gaugeDrainAtMaxSeverity: 0.25
-  gaugeDrainPerCrash: 0.02
-  gaugeDrainCap: 0.75
+  gaugeDrainAtMinSeverity: 0.24
+  gaugeDrainAtMaxSeverity: 0.66
+  gaugeDrainPerCrash: 0.5
+  gaugeDrainCap: 0.95
   enableSprocketRewards: 1
-  sprocketBasePercent: 0.8
+  sprocketBasePercent: 0.04
   sprocketGaugeBonusMax: 1.1
   sprocketMinReward: 1
   sprocketMaxReward: 200

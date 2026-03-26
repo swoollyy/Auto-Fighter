@@ -29,6 +29,8 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField, Min(10f)] private float surfaceMaxDownDist = 200f;
     [Tooltip("Extra meters above detected ground (center Y = ground + half-height + this). Small float so it never clips terrain.")]
     [SerializeField, Min(0f)] private float clearanceAboveGround = 0.08f;
+    [Tooltip("Raycasts for path motion and line preview only hit these layers (road/grass). Leave at Nothing to auto-fill RoadSurface+Grass+Road. Obstacles/props are excluded so the path cannot “bridge” hilltops or ride on props.")]
+    [SerializeField] private LayerMask surfaceGroundLayers;
 
     [Header("Path preview line")]
     [SerializeField, Range(4, 64)] private int previewPathSegments = 36;
@@ -296,6 +298,11 @@ public class CrossTrackObstacle : MonoBehaviour
         CacheTravelLightsIfNeeded();
         SetTravelFxEnabled(false, true);
         ResolveTiltVisualRoot();
+
+        if (surfaceGroundLayers.value == 0)
+        {
+            surfaceGroundLayers = LayerMask.GetMask("RoadSurface", "Grass", "Road");
+        }
     }
 
     // -------------------------- MOVEMENT --------------------------
@@ -1120,21 +1127,20 @@ public class CrossTrackObstacle : MonoBehaviour
         float refY = Mathf.Max(stabilityRef.y, worldProbe.y);
         Vector3 origin = new Vector3(worldProbe.x, refY + surfaceProbeUpOffset, worldProbe.z);
         float maxDist = surfaceProbeUpOffset + surfaceMaxDownDist;
-        RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, maxDist, ~0, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, maxDist, surfaceGroundLayers, QueryTriggerInteraction.Ignore);
 
         if (hits == null || hits.Length == 0)
             return SampleRoadSurfaceLegacy(worldProbe, out normal);
 
-        float desiredSurfY = stabilityRef.y - _pathHeightOffset;
+        // First hit along the ray = topmost surface under the probe (stable; avoids picking
+        // hillside/prop colliders whose Y happens to match a high stabilityRef).
         int best = 0;
-        float bestScore = float.MaxValue;
-        for (int i = 0; i < hits.Length; i++)
+        float bestDist = hits[0].distance;
+        for (int i = 1; i < hits.Length; i++)
         {
-            float dy = Mathf.Abs(hits[i].point.y - desiredSurfY);
-            float score = dy + hits[i].distance * 0.02f;
-            if (score < bestScore)
+            if (hits[i].distance < bestDist)
             {
-                bestScore = score;
+                bestDist = hits[i].distance;
                 best = i;
             }
         }
@@ -1145,7 +1151,9 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private Vector3 SampleRoadSurfaceLegacy(Vector3 worldProbe, out Vector3 normal)
     {
-        Vector3 projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, LayerMask.GetMask("RoadSurface"));
+        Vector3 projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, surfaceGroundLayers);
+        if ((projected - worldProbe).sqrMagnitude < 1e-6f)
+            projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, LayerMask.GetMask("RoadSurface"));
         if ((projected - worldProbe).sqrMagnitude < 1e-6f)
             projected = SpawnUtils.ProjectOntoSurface(worldProbe, out normal, 2f, 50f, null);
         if (normal.sqrMagnitude < 1e-8f) normal = Vector3.up;

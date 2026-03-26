@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 19
   displayName: Max Speed
-  description: Boosts max speed by .7
+  description: Boosts max speed by .35
   maxLevel: 15
   costCurve:
     serializedVersion: 2
@@ -106,7 +106,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.7
+  perLevelAdd: 0.35
   uiPosition: {x: 75, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

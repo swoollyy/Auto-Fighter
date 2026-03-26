@@ -243,6 +243,12 @@ MonoBehaviour:
   treeToppleImpulseMin: 3
   treeToppleImpulseMax: 25
   treeToppleForceHeight: 2
+  enableTreeToppleCrashPopup: 1
+  treeToppleCrashPopupHeight: 1.2
+  enablePropClashCrashPopup: 1
+  propClashPopupHeight: 1
+  propClashMinRelativeSpeed: 2.5
+  propClashPairCooldown: 0.2
   baseImpactVelocityThreshold: 2
   impactDamageCooldown: 0.25
 --- !u!54 &6906296771749627853
@@ -295,6 +301,9 @@ MonoBehaviour:
   surfaceProbeUpOffset: 48
   surfaceMaxDownDist: 200
   clearanceAboveGround: 0.08
+  surfaceGroundLayers:
+    serializedVersion: 2
+    m_Bits: 24576
   previewPathSegments: 36
   previewUpdateEveryFrame: 1
   drawPathGizmos: 1
@@ -306,12 +315,16 @@ MonoBehaviour:
   shakeFullIntensityDistance: 3
   reactLayers:
     serializedVersion: 2
-    m_Bits: 9308289
+    m_Bits: 10356865
+  enableCrossClashCrashPopup: 1
+  crossClashPopupHeight: 1
+  crossClashMinRelativeSpeed: 2
+  crossClashPairCooldown: 0.2
   travelLights: []
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
   pushDeltaVRange: {x: 2.88, y: 6.1}
-  upwardBoostRange: {x: 3, y: 5}
+  upwardBoostRange: {x: 6, y: 10}
   scaleUpwardBoostBySeverity: 0
   minSpeedForUpwardBoost: 1
   maxSpeedForUpwardBoost: 9

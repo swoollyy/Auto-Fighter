@@ -287,6 +287,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         // Center point of the cross (where it tries to hit car)
         SampleSpline(sSpawn, out Vector3 spawnSplinePos, out Vector3 spawnTan);
         LayerMask roadMask = LayerMask.GetMask("RoadSurface");
+        LayerMask roadGrassMask = LayerMask.GetMask("RoadSurface", "Grass", "Road");
         float upOffsetForCast = 10f;
         float maxDown = 50f;
 
@@ -297,6 +298,15 @@ public sealed class CrossObstacleDirector : MonoBehaviour
             maxDown,
             roadMask
         );
+
+        if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
+            spawnSurface = SpawnUtils.ProjectOntoSurface(
+                spawnSplinePos + Vector3.up * upOffsetForCast,
+                out spawnNormal,
+                upOffsetForCast,
+                maxDown,
+                roadGrassMask
+            );
 
         if (Mathf.Approximately(spawnSurface.y, spawnSplinePos.y))
             spawnSurface = SpawnUtils.ProjectOntoSurface(
@@ -335,9 +345,13 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         // Project both endpoints to ground
         Vector3 startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
         if (Mathf.Approximately(startWS.y, startHorizontal.y))
+            startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadGrassMask);
+        if (Mathf.Approximately(startWS.y, startHorizontal.y))
             startWS = SpawnUtils.ProjectOntoSurface(startHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
 
         Vector3 targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadMask);
+        if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
+            targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, roadGrassMask);
         if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
             targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
 

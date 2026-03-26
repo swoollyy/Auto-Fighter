@@ -108,14 +108,15 @@ public class CarCrashMashConfig : MonoBehaviour
 
     [Header("Mash Progress Gauge")]
     [SerializeField] private bool enableMashProgressGauge = true;
-    [SerializeField] private float gaugeDrainRateBase = 0.12f;
-    [SerializeField] private float gaugeDrainRatePerCrash = 0.06f;
-    [SerializeField] private float gaugeDrainRateMax = 0.86f;
     [SerializeField] private float gaugeFillPerClick = 0.05f;
     [SerializeField] private float gaugeFillSpeedBonus = 2f;
+    [Tooltip("Fuel: start of good tier. Sprockets: no gauge factor below this (1×); from here to max tier ramps 1× → Gauge Multiplier At Good.")]
     [SerializeField] private float gaugeGoodThreshold = 0.7f;
+    [Tooltip("Fuel per mash click only. Not used for sprocket payout.")]
     [SerializeField] private float gaugeMultiplierAtZero = 0.5f;
+    [Tooltip("Fuel per mash click; also the high end of the sprocket good-band ramp (sprockets lerp 1× → this between good and max tier).")]
     [SerializeField] private float gaugeMultiplierAtGood = 1.5f;
+    [Tooltip("Fuel per mash click only. Sprockets at max tier use Sprocket Gauge Bonus Max instead, not this value.")]
     [SerializeField] private float gaugeMultiplierAtMax = 2f;
 
     [Header("Mash Drain (Health/Fuel/Gauge)")]
@@ -137,6 +138,7 @@ public class CarCrashMashConfig : MonoBehaviour
     [Header("Sprocket Rewards")]
     [SerializeField] private bool enableSprocketRewards = true;
     [SerializeField] private float sprocketBasePercent = 0.2f;
+    [Tooltip("Extra multiplier on sprocket payout when the mash gauge hit max tier. Below good threshold sprockets get 1× from gauge; from good to max ramps 1 → Gauge Multiplier At Good; max tier uses this value only (not Gauge Multiplier At Max).")]
     [SerializeField] private float sprocketGaugeBonusMax = 1.5f;
     [SerializeField] private int sprocketMinReward = 5;
     [SerializeField] private int sprocketMaxReward = 5000000;
@@ -222,9 +224,6 @@ public class CarCrashMashConfig : MonoBehaviour
     public int BasePassiveClickStrength => basePassiveClickStrength;
     public float MashDifficultyPerClickPowerStep => mashDifficultyPerClickPowerStep;
     public bool EnableMashProgressGauge => enableMashProgressGauge;
-    public float GaugeDrainRateBase => gaugeDrainRateBase;
-    public float GaugeDrainRatePerCrash => gaugeDrainRatePerCrash;
-    public float GaugeDrainRateMax => gaugeDrainRateMax;
     public float GaugeFillPerClick => gaugeFillPerClick;
     public float GaugeFillSpeedBonus => gaugeFillSpeedBonus;
     public float GaugeGoodThreshold => gaugeGoodThreshold;

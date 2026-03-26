@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 17
   displayName: Max Acceleration
-  description: Boosts acceleration by .25
+  description: Boosts acceleration by .4
   maxLevel: 10
   costCurve:
     serializedVersion: 2
@@ -43,7 +43,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.25
+  perLevelAdd: 0.4
   uiPosition: {x: -75, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

@@ -548,9 +548,6 @@ public class CarController : MonoBehaviour
 
     [Header("Mash Gauge / Drain (from CarCrashMashConfig)")]
     private bool enableMashProgressGauge;
-    private float gaugeDrainRateBase;
-    private float gaugeDrainRatePerCrash;
-    private float gaugeDrainRateMax;
     private float gaugeFillPerClick;
     private float gaugeFillSpeedBonus;
     private float gaugeGoodThreshold;
@@ -1302,9 +1299,6 @@ public class CarController : MonoBehaviour
             basePassiveClickStrength = _crashMashConfig.BasePassiveClickStrength;
             mashDifficultyPerClickPowerStep = Mathf.Max(1f, _crashMashConfig.MashDifficultyPerClickPowerStep);
             enableMashProgressGauge = _crashMashConfig.EnableMashProgressGauge;
-            gaugeDrainRateBase = _crashMashConfig.GaugeDrainRateBase;
-            gaugeDrainRatePerCrash = _crashMashConfig.GaugeDrainRatePerCrash;
-            gaugeDrainRateMax = _crashMashConfig.GaugeDrainRateMax;
             gaugeFillPerClick = _crashMashConfig.GaugeFillPerClick;
             gaugeFillSpeedBonus = _crashMashConfig.GaugeFillSpeedBonus;
             gaugeGoodThreshold = _crashMashConfig.GaugeGoodThreshold;
@@ -3125,7 +3119,6 @@ public class CarController : MonoBehaviour
 
     }
 
-
     private void HandleSteering()
     {
         if (rb == null) return;
@@ -3194,7 +3187,12 @@ public class CarController : MonoBehaviour
 
             transform.Rotate(0f, steerAmount, 0f, Space.Self);
 
-            if (isDrifting && speed > 0.1f)
+            bool acceleratingDrift = !_inputsSuppressedThisFrame
+                && !_suppressThrottleBrakeThisFrame
+                && GetAccelerateKeyOrTrigger()
+                && !GetBrakeKeyOrTrigger();
+
+            if (isDrifting && speed > 0.1f && !acceleratingDrift)
             {
                 float sign = Mathf.Sign(steeringInput);
                 Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
@@ -3509,7 +3507,7 @@ public class CarController : MonoBehaviour
                 Vector3 horiz = finalDir.normalized * Mathf.Max(0f, smoothedMag);
                 rb.velocity = new Vector3(horiz.x, y, horiz.z);
 
-                if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f)
+                if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f && !holdingThrottle)
                 {
                     float sign = Mathf.Sign(steeringInput);
                     Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
@@ -4766,6 +4764,25 @@ public class CarController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Sprocket payout only: no bonus below good threshold (1×), ramps to <see cref="gaugeMultiplierAtGood"/>
+    /// up to max threshold; at/above max the curve is 1× so <see cref="sprocketGaugeBonusMax"/> alone covers max tier.
+    /// </summary>
+    private float CalculateSprocketGaugeMultiplier(float peakGauge)
+    {
+        if (peakGauge < gaugeGoodThreshold)
+            return 1f;
+        if (peakGauge >= gaugeMaxThreshold)
+            return 1f;
+
+        float span = gaugeMaxThreshold - gaugeGoodThreshold;
+        if (span < 1e-6f)
+            return gaugeMultiplierAtGood;
+
+        float t = Mathf.InverseLerp(gaugeGoodThreshold, gaugeMaxThreshold, peakGauge);
+        return Mathf.Lerp(1f, gaugeMultiplierAtGood, t);
+    }
+
     // ============================================
     // FUTURE EXPANSION STUBS (implement when ready)
     // ============================================
@@ -5687,18 +5704,12 @@ public class CarController : MonoBehaviour
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr == null) return;
 
-        // Base reward: percentage of total clicks
+        // Clicks × base%; good-band ramp (no sub-good bonus); max tier only via sprocketGaugeBonusMax.
         float baseReward = _totalMashClicksThisSession * sprocketBasePercent;
-
-        // Bonus based on gauge peak using tier system
-        float gaugeBonus = CalculateGaugeMultiplier(_mashGaugePeakValue);
-
-        // Extra bonus if gauge reached max tier
+        float multiplier = CalculateSprocketGaugeMultiplier(_mashGaugePeakValue);
         if (_gaugeMaxedThisSession)
-            gaugeBonus *= sprocketGaugeBonusMax;
-
-        // Calculate final amount
-        int sprocketReward = Mathf.RoundToInt(baseReward * gaugeBonus);
+            multiplier *= sprocketGaugeBonusMax;
+        int sprocketReward = Mathf.RoundToInt(baseReward * multiplier);
 
         // Clamp to min/max
         sprocketReward = Mathf.Clamp(sprocketReward, sprocketMinReward, sprocketMaxReward);
