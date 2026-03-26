@@ -180,6 +180,7 @@ public class RacingSkillUI : MonoBehaviour
         if (!inventoryPanelUI)
             inventoryPanelUI = FindObjectOfType<RacingRunInventoryPanelUI>(true);
 
+        DismissSkillDetailForPanelSwitch();
         inventoryPanelUI?.HidePanel();
         questsPanelUI?.TogglePanel();
         EventSystem.current?.SetSelectedGameObject(null);
@@ -196,9 +197,16 @@ public class RacingSkillUI : MonoBehaviour
         if (!questsPanelUI)
             questsPanelUI = FindObjectOfType<RacingQuestsPanelUI>(true);
 
+        DismissSkillDetailForPanelSwitch();
         questsPanelUI?.HidePanel();
         inventoryPanelUI?.TogglePanel();
         EventSystem.current?.SetSelectedGameObject(null);
+    }
+
+    private void DismissSkillDetailForPanelSwitch()
+    {
+        selectedEntry = null;
+        detailPanel?.HideInfo();
     }
 
     private void HandlePanelSelectionSafety()
@@ -272,9 +280,9 @@ public class RacingSkillUI : MonoBehaviour
     private static bool IsPanelOpen(Object panelScript)
     {
         if (panelScript is RacingQuestsPanelUI q)
-            return q.gameObject.activeInHierarchy && q.enabled;
+            return q.enabled && q.IsPanelOpen;
         if (panelScript is RacingRunInventoryPanelUI i)
-            return i.gameObject.activeInHierarchy && i.enabled;
+            return i.enabled && i.IsPanelOpen;
         return false;
     }
 
@@ -404,6 +412,8 @@ public class RacingSkillUI : MonoBehaviour
     private void TryDismissDetailOnOutsideClick()
     {
         if (!Input.GetMouseButtonDown(0) || detailPanel == null || !detailPanel.IsInfoVisible || !dismissDetailOnOutsideClick)
+            return;
+        if (IsPanelOpen(questsPanelUI) || IsPanelOpen(inventoryPanelUI))
             return;
 
         var es = EventSystem.current;

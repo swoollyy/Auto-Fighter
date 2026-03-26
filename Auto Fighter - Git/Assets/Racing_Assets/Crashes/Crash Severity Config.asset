@@ -46,9 +46,9 @@ MonoBehaviour:
   heavyObstacleMass: 60
   massFactorAtLight: 1
   massFactorAtHeavy: 1.58
-  globalSeverityMultiplier: 0.6
+  globalSeverityMultiplier: 0.4
   minSeverityBlendFromObstacleHeft: 0.22
-  fuelDamageScaleRelativeToHp: 0.45
+  fuelDamageScaleRelativeToHp: 0.25
   perKind:
   - kind: 1
     severityWeight: 1.2

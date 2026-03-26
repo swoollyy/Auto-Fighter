@@ -7179,8 +7179,8 @@ MonoBehaviour:
   closeCallSlowMoEaseOut: 1.08
   closeCallChromatic: 6.38
   closeCallLens: 0
-  closeCallZoomDeltaFOV: 1.24
-  closeCallZoomDuration: 0.801
+  closeCallZoomDeltaFOV: 0
+  closeCallZoomDuration: 0.05
   closeCallClip: {fileID: 8300000, guid: 384c765ebdc60d54c94210079f976a1d, type: 3}
   closeCallVolume: 0.376
   runCompleteCoinClip: {fileID: 8300000, guid: 7284a8bf3288ca74f8b3bf4c3b5c4f39, type: 3}
@@ -7272,8 +7272,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   tuning:
-    forcefieldNoHpDeathRunsRequired: 30
-    turretMashCompletionsRequired: 10
+    forcefieldNoHpDeathRunsRequired: 15
+    turretMashCompletionsRequired: 15
     coinFriendCoinsCollectedRequired: 200
   defaultUnlockedItemSlots: 1
   maxItemSlots: 5
@@ -8395,8 +8395,8 @@ RectTransform:
   - {fileID: 1083425326}
   - {fileID: 663395614}
   - {fileID: 1226099135}
-  - {fileID: 1118833408}
   - {fileID: 1291264736}
+  - {fileID: 1118833408}
   m_Father: {fileID: 277147484}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -13024,7 +13024,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1428109223}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8661b352649d3664da54df7cffbc9f0d, type: 3}
   m_Name: 

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 21
   displayName: Max Fuel
-  description: Boosts Max Fuel by 15
+  description: Boosts Max Fuel by 20
   maxLevel: 40
   costCurve:
     serializedVersion: 2
@@ -52,7 +52,7 @@ MonoBehaviour:
   flatCost: 0
   mode: 0
   baseValue: 0
-  perLevelAdd: 15
+  perLevelAdd: 20
   uiPosition: {x: 0, y: 0}
   revealedAtStart: 1
   revealOnFirstSprocket: 0

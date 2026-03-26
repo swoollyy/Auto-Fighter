@@ -550,6 +550,7 @@ public class CarController : MonoBehaviour
     private bool enableMashProgressGauge;
     private float gaugeFillPerClick;
     private float gaugeFillSpeedBonus;
+    private float gaugeFillSpeedMultiplier;
     private float gaugeGoodThreshold;
     private float gaugeMaxThreshold = 0.92f;
     private float gaugeMultiplierAtZero;
@@ -612,6 +613,7 @@ public class CarController : MonoBehaviour
     private int _flipMashClicksNeeded;
 
     private float _lastMashTime;
+    private int _lastRegisteredMashFrame = -1;
     private float _currentMashSpeed;        // 0 to 1, where 1 = max speed
     private float _mashSpeedSmoothed;
 
@@ -1301,6 +1303,7 @@ public class CarController : MonoBehaviour
             enableMashProgressGauge = _crashMashConfig.EnableMashProgressGauge;
             gaugeFillPerClick = _crashMashConfig.GaugeFillPerClick;
             gaugeFillSpeedBonus = _crashMashConfig.GaugeFillSpeedBonus;
+            gaugeFillSpeedMultiplier = Mathf.Max(0f, _crashMashConfig.GaugeFillSpeedMultiplier);
             gaugeGoodThreshold = _crashMashConfig.GaugeGoodThreshold;
             gaugeMultiplierAtZero = _crashMashConfig.GaugeMultiplierAtZero;
             gaugeMultiplierAtGood = _crashMashConfig.GaugeMultiplierAtGood;
@@ -1533,7 +1536,7 @@ public class CarController : MonoBehaviour
     private void Update()
     {
 
-        if (_flipMashActive && (RacingInputReader.Instance != null ? RacingInputReader.Instance.AnyMashDown : Input.GetKeyDown(KeyCode.Space)))
+        if (_flipMashActive && GetMashRequiredButtonDown())
         {
             RegisterFlipMashClick();
         }
@@ -4357,11 +4360,15 @@ public class CarController : MonoBehaviour
                 passiveRateBonus = Mathf.Max(0f, extraRate) * drainScalePerPassiveStrength;
             }
 
-            // Combine all bonuses
-            _skillDrainMultiplier = 1f + clickDrainBonus + passiveDrainBonus + passiveRateBonus;
-
-            // Clamp to reasonable range
-            _skillDrainMultiplier = Mathf.Clamp(_skillDrainMultiplier, minSkillDrainMultiplier, maxSkillDrainMultiplier);
+            // IMPORTANT:
+            // Mash-related skills should not make the gauge *harder* to fill. Historically this used to
+            // scale drain UP as skills increased (and could combine with other scaling to feel exponential).
+            // We instead convert skill bonuses into a drain multiplier in (0..1], so more skill means
+            // less drain (or at worst unchanged), never more.
+            float totalDrainBonus = Mathf.Max(0f, clickDrainBonus + passiveDrainBonus + passiveRateBonus);
+            float minDrainMult = Mathf.Clamp(minSkillDrainMultiplier, 0.05f, 1f);
+            _skillDrainMultiplier = 1f / (1f + totalDrainBonus);
+            _skillDrainMultiplier = Mathf.Clamp(_skillDrainMultiplier, minDrainMult, 1f);
 
             Debug.Log($"[MashGauge] Skill drain multiplier: {_skillDrainMultiplier:F2} " +
                       $"(clickPower: +{extraClickPower}, passiveStr: +{extraPassiveStrength}, passiveRate: {effectivePassiveClickRate:F1})");
@@ -4631,6 +4638,7 @@ public class CarController : MonoBehaviour
     public void RegisterFlipMashClick()
     {
         if (!_flipMashActive) return;
+        if (_lastRegisteredMashFrame == Time.frameCount) return; // prevent duplicate same-frame clicks from multiple input paths
 
         // Can't recover if dead from fuel OR HP
         if (IsDeadForMashRecovery)
@@ -4638,6 +4646,7 @@ public class CarController : MonoBehaviour
             _flipMashActive = false;
             return;
         }
+        _lastRegisteredMashFrame = Time.frameCount;
 
         _totalMashClicksThisSession += Mathf.Max(1, effectiveClicksPerClick);
 
@@ -4668,7 +4677,6 @@ public class CarController : MonoBehaviour
         }
 
         _flipMashClicks += effectiveClicksPerClick;
-        _totalMashClicksThisSession += Mathf.Max(1, effectivePassiveClickStrength);
 
         // Show per-mash "damage" (click strength) contribution to crash recovery progress.
         if (effectiveClicksPerClick > 0)
@@ -5190,8 +5198,9 @@ public class CarController : MonoBehaviour
 
     private void UpdateMashGauge(float speedRating)
     {
-        // Calculate fill amount with speed bonus AND clicks-per-click multiplier
-        float fillAmount = gaugeFillPerClick * Mathf.Lerp(1f, gaugeFillSpeedBonus, speedRating) * effectiveClicksPerClick;
+        // Speed contribution scales from 1x at slow clicks to (bonus * multiplier) at fastest clicks.
+        float speedFillMultiplier = Mathf.Lerp(1f, gaugeFillSpeedBonus * gaugeFillSpeedMultiplier, speedRating);
+        float fillAmount = gaugeFillPerClick * speedFillMultiplier;
 
         // Add to gauge
         _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
@@ -5986,6 +5995,7 @@ public class CarController : MonoBehaviour
 
         // Optional: treat new crash as a "speed reset" so you can't buffer super-fast clicks through impacts
         _lastMashTime = Time.time;
+        _lastRegisteredMashFrame = -1;
         _currentMashSpeed = 0f;
         _mashSpeedSmoothed = 0f;
     }
@@ -6067,11 +6077,14 @@ public class CarController : MonoBehaviour
 
         // Mash "punishment" scaling: baseline comes from CarCrashMashConfig (baseClicksPerClick).
         // effectiveClicksPerClick is that base after ApplyStatChain (add/mul skills). Each full
-        // click of power above the baseline multiplies required mash by mashDifficultyPerClickPowerStep.
+        // click of power above the baseline used to multiply required mash exponentially, which made
+        // mash strength upgrades feel like they were making recovery harder. Convert this into a
+        // linear *assist* instead (more power => fewer required clicks).
         int powerAboveBaseline = Mathf.Max(0, effectiveClicksPerClick - baseClicksPerClick);
-        float mashStrengthDifficultyMultiplier = Mathf.Pow(mashDifficultyPerClickPowerStep, powerAboveBaseline);
-
-        totalClicks *= mashStrengthDifficultyMultiplier;
+        float step = Mathf.Max(1f, mashDifficultyPerClickPowerStep);
+        float mashStrengthAssistDivisor = 1f + powerAboveBaseline * (step - 1f);
+        if (mashStrengthAssistDivisor > 0f)
+            totalClicks /= mashStrengthAssistDivisor;
 
         return Mathf.Clamp(Mathf.RoundToInt(totalClicks), mashClicksAbsoluteMin, mashClicksAbsoluteMax);
     }

@@ -161,6 +161,17 @@ public class UIManager_Racing : MonoBehaviour
             crashRecoveryButton.onClick.AddListener(OnCrashRecoveryButtonClicked);
         }
 
+        if (smashButton != null)
+        {
+            smashButton.onClick.RemoveAllListeners();
+            smashButton.onClick.AddListener(OnCrashRecoveryButtonClicked);
+            smashButton.interactable = true;
+            if (smashButton.targetGraphic != null)
+                smashButton.targetGraphic.raycastTarget = true;
+        }
+        if (smashButtonLabel != null)
+            smashButtonLabel.raycastTarget = false;
+
         SetSection(UISection.SkillTree);
     }
 

@@ -110,6 +110,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private bool enableMashProgressGauge = true;
     [SerializeField] private float gaugeFillPerClick = 0.05f;
     [SerializeField] private float gaugeFillSpeedBonus = 2f;
+    [Tooltip("Extra multiplier for the speed-based gauge fill bonus. 1 = unchanged, 2 = twice as strong speed bonus.")]
+    [SerializeField, Min(0f)] private float gaugeFillSpeedMultiplier = 1f;
     [Tooltip("Fuel: start of good tier. Sprockets: no gauge factor below this (1×); from here to max tier ramps 1× → Gauge Multiplier At Good.")]
     [SerializeField] private float gaugeGoodThreshold = 0.7f;
     [Tooltip("Fuel per mash click only. Not used for sprocket payout.")]
@@ -226,6 +228,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public bool EnableMashProgressGauge => enableMashProgressGauge;
     public float GaugeFillPerClick => gaugeFillPerClick;
     public float GaugeFillSpeedBonus => gaugeFillSpeedBonus;
+    public float GaugeFillSpeedMultiplier => gaugeFillSpeedMultiplier;
     public float GaugeGoodThreshold => gaugeGoodThreshold;
     public float GaugeMultiplierAtZero => gaugeMultiplierAtZero;
     public float GaugeMultiplierAtGood => gaugeMultiplierAtGood;

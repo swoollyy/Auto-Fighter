@@ -1176,8 +1176,9 @@ public class GameManager_Racing : MonoBehaviour
     private bool RestartAllowedNow()
     {
         // Only allow "Press X to continue" after all slowmo/pause owners are done.
-        return Time.timeScale >= 0.99f
-            && !TimeScaleHub.IsPaused
+        // Note: Run-end may intentionally freeze gameplay with Time.timeScale = 0 (CoFreezeAfterRunComplete),
+        // but input should still work, so do NOT gate on Time.timeScale here.
+        return !TimeScaleHub.IsPaused
             && !TimeScaleHub.IsAnyActive;
     }
 

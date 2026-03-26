@@ -149,6 +149,8 @@ public sealed class RacingRunInventoryPanelUI : MonoBehaviour
         else HideNoActiveItemsWarning();
     }
 
+    public bool IsPanelOpen => panelRoot != null && panelRoot.activeSelf;
+
     /// <summary>
     /// Called by Play flow. Returns true if run can proceed now.
     /// If false, a warning popup was shown and caller should abort start.

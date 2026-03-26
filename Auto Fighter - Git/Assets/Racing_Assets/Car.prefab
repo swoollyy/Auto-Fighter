@@ -1606,8 +1606,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 10
-  fuelUsePerSecondBraking: 10
+  fuelUsePerSecondAtFullThrottle: 9
+  fuelUsePerSecondBraking: 9
   idleFuelUsePerSecond: 5
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
@@ -1779,7 +1779,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 1
+      value: 0.69
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -1796,14 +1796,15 @@ MonoBehaviour:
   baseClicksPerClick: 1
   basePassiveClickRate: 0
   basePassiveClickStrength: 1
-  mashDifficultyPerClickPowerStep: 1.4
+  mashDifficultyPerClickPowerStep: 1.2
   enableMashProgressGauge: 1
-  gaugeFillPerClick: 0.022
-  gaugeFillSpeedBonus: 1.2
+  gaugeFillPerClick: 0.1
+  gaugeFillSpeedBonus: 1.5
+  gaugeFillSpeedMultiplier: 1.05
   gaugeGoodThreshold: 0.7
   gaugeMultiplierAtZero: 0.5
-  gaugeMultiplierAtGood: 1.1
-  gaugeMultiplierAtMax: 1.25
+  gaugeMultiplierAtGood: 1.2
+  gaugeMultiplierAtMax: 1.4
   mashDrainsHealth: 1
   mashDrainsFuel: 1
   mashHealthDrainAtMinSeverity: 0.6
@@ -1815,14 +1816,14 @@ MonoBehaviour:
   mashFuelDrainPerCrash: 0.25
   mashFuelDrainCap: 15
   gaugeDrainAtMinSeverity: 0.24
-  gaugeDrainAtMaxSeverity: 0.66
-  gaugeDrainPerCrash: 0.5
+  gaugeDrainAtMaxSeverity: 0.3
+  gaugeDrainPerCrash: 0.15
   gaugeDrainCap: 0.95
   enableSprocketRewards: 1
-  sprocketBasePercent: 0.04
-  sprocketGaugeBonusMax: 1.1
+  sprocketBasePercent: 0.12
+  sprocketGaugeBonusMax: 2.5
   sprocketMinReward: 1
-  sprocketMaxReward: 200
+  sprocketMaxReward: 800
   flipUprightLift: 0.2
   surfaceMaxSpeedLerpRate: 2.78
   closeCallAfterCrashBlockTime: 1

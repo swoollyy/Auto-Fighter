@@ -422,7 +422,7 @@ public sealed class CarForcefield : MonoBehaviour
             Collider[] npcCols = npcRoot.GetComponentsInChildren<Collider>(true);
             Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
 
-            // Add immunity marker so CarController ignores it even if something still ùtouchesù
+            // Add immunity marker so CarController ignores it even if something still ÔøΩtouchesÔøΩ
             var immunity = npcRoot.GetComponent<LaunchImmunityMarker>();
             if (!immunity) immunity = npcRoot.gameObject.AddComponent<LaunchImmunityMarker>();
             immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
@@ -432,7 +432,7 @@ public sealed class CarForcefield : MonoBehaviour
             {
                 if (!c) continue;
 
-                _recentlyLaunched.Add(c); // so the forcefield proxy wonùt re-handle repeatedly
+                _recentlyLaunched.Add(c); // so the forcefield proxy wonÔøΩt re-handle repeatedly
                 foreach (var carCol in carCols)
                 {
                     if (carCol) Physics.IgnoreCollision(carCol, c, true);
@@ -462,7 +462,7 @@ public sealed class CarForcefield : MonoBehaviour
             if (postFX != null)
                 postFX.PlayBurst();
 
-            // Consume the forcefield (optional ù delete this if you want NPC-crash to NOT consume it)
+            // Consume the forcefield (optional ÔøΩ delete this if you want NPC-crash to NOT consume it)
             SetArmed(false);
             _cooldownRemain = cooldownSeconds;
             if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);

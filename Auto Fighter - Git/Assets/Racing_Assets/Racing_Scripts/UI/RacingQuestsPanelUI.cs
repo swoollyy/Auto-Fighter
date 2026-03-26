@@ -92,6 +92,8 @@ public sealed class RacingQuestsPanelUI : MonoBehaviour
         if (panelRoot.activeSelf) RefreshAllRows();
     }
 
+    public bool IsPanelOpen => panelRoot != null && panelRoot.activeSelf;
+
     private void HandleQuestProgressChanged(RacingQuestType _)
     {
         RefreshAllRows();
