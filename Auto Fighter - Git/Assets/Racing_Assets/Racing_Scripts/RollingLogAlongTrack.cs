@@ -49,6 +49,10 @@ public class RollingLogAlongTrack : MonoBehaviour
     [SerializeField, Min(0f)] private float selfDetachExtraUp = 1.5f;
     [SerializeField, Min(0f)] private float beastKnockHorizontal = 16f;
     [SerializeField, Min(0f)] private float beastKnockUp = 14f;
+    [Header("Scripted overlap fallback")]
+    [Tooltip("Fallback for kinematic-vs-kinematic setups: if collision callbacks don't fire, detect overlaps and still ram bounce-back obstacles.")]
+    [SerializeField] private bool enableScriptedOverlapRamFallback = true;
+    [SerializeField, Min(0f)] private float overlapRamCooldown = 0.2f;
 
     [Header("RacingObstacle ram (props)")]
     [Tooltip("Extra horizontal oomph vs RacingObstacle: base ramHorizontalImpulse is multiplied by this.")]
@@ -88,6 +92,8 @@ public class RollingLogAlongTrack : MonoBehaviour
     private bool _ready;
     private bool _freedToPhysics;
     private Vector3 _cachedWorldVel;
+    private Collider _ramProbeCollider;
+    private readonly Dictionary<int, float> _overlapRamUntilByRootId = new();
 
     public bool IsScriptedAlongPath => _ready && !_freedToPhysics;
     public float CurrentScriptedSpeed => Mathf.Abs(_signedSpeed);
@@ -160,6 +166,7 @@ public class RollingLogAlongTrack : MonoBehaviour
         _rb.constraints = RigidbodyConstraints.None;
 
         ApplyColliderContactOffsets();
+        ResolveRamProbeCollider();
 
         RebuildPath();
         if (_path.Count < 2 || _totalLength <= 0.01f)
@@ -223,6 +230,7 @@ public class RollingLogAlongTrack : MonoBehaviour
     private void OnDisable()
     {
         _ready = false;
+        _overlapRamUntilByRootId.Clear();
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -252,6 +260,101 @@ public class RollingLogAlongTrack : MonoBehaviour
         ReleaseToPhysics(collision, planar, rel, ramHorizontalImpulse * 0.25f, selfDetachExtraUp + ramUpImpulse * 0.35f);
     }
 
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!_ready || _freedToPhysics || other == null)
+            return;
+        if (other.transform == transform || other.transform.IsChildOf(transform))
+            return;
+
+        // Fallback for setups where obstacle colliders are triggers or filtered from collision events.
+        // Still apply ram logic so bounce/cross/shuttle react correctly.
+        Vector3 contact = other.ClosestPoint(transform.position);
+        float relSpeed = Mathf.Max(CurrentScriptedSpeed, 3f);
+        RamOtherObstacle(other, contact, relSpeed);
+    }
+
+    private void ResolveRamProbeCollider()
+    {
+        _ramProbeCollider = null;
+        Collider[] cols = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < cols.Length; i++)
+        {
+            Collider c = cols[i];
+            if (c == null || c.isTrigger) continue;
+            _ramProbeCollider = c;
+            return;
+        }
+    }
+
+    private void ProbeScriptedOverlapRams()
+    {
+        if (!enableScriptedOverlapRamFallback || !_ready || _freedToPhysics) return;
+        if (_ramProbeCollider == null) return;
+
+        float now = Time.time;
+        Collider[] hits = OverlapColliderShape(_ramProbeCollider, ~0);
+        if (hits == null || hits.Length == 0) return;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+
+            var bounce = hit.GetComponentInParent<TrackObstacleBounceBack>();
+            if (bounce == null) continue;
+
+            Transform root = bounce.transform.root != null ? bounce.transform.root : bounce.transform;
+            int id = root.GetInstanceID();
+            if (_overlapRamUntilByRootId.TryGetValue(id, out float until) && now < until)
+                continue;
+
+            Vector3 contact = hit.ClosestPoint(_rb.position);
+            float relSpeed = Mathf.Max(CurrentScriptedSpeed, 3f);
+            RamOtherObstacle(hit, contact, relSpeed);
+            _overlapRamUntilByRootId[id] = now + overlapRamCooldown;
+        }
+    }
+
+    private static Collider[] OverlapColliderShape(Collider col, LayerMask layerMask)
+    {
+        if (col == null) return null;
+
+        Transform t = col.transform;
+        Vector3 scale = t.lossyScale;
+
+        if (col is BoxCollider box)
+        {
+            Vector3 center = t.TransformPoint(box.center);
+            Vector3 halfExtents = Vector3.Scale(box.size * 0.5f, scale);
+            return Physics.OverlapBox(center, halfExtents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
+        }
+
+        if (col is SphereCollider sphere)
+        {
+            Vector3 center = t.TransformPoint(sphere.center);
+            float radius = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * sphere.radius;
+            return Physics.OverlapSphere(center, radius, layerMask, QueryTriggerInteraction.Collide);
+        }
+
+        if (col is CapsuleCollider cap)
+        {
+            float height = cap.height;
+            float radius = cap.radius;
+            int axis = cap.direction; // 0=X, 1=Y, 2=Z
+            Vector3 axisDir = axis == 0 ? Vector3.right : (axis == 1 ? Vector3.up : Vector3.forward);
+            float halfHeight = Mathf.Max(0f, height * 0.5f - radius);
+            Vector3 p1 = t.TransformPoint(cap.center + axisDir * halfHeight);
+            Vector3 p2 = t.TransformPoint(cap.center - axisDir * halfHeight);
+            float r = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * radius;
+            return Physics.OverlapCapsule(p1, p2, r, layerMask, QueryTriggerInteraction.Collide);
+        }
+
+        Bounds b = col.bounds;
+        return Physics.OverlapBox(b.center, b.extents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
+    }
+
     private bool ShouldReleaseOnCollision(Collider o)
     {
         // User intent: only beast strikes or log-vs-log should release from path.
@@ -273,6 +376,16 @@ public class RollingLogAlongTrack : MonoBehaviour
         planar.Normalize();
 
         float relSpeed = Mathf.Max(collision.relativeVelocity.magnitude, CurrentScriptedSpeed, 3f);
+        RamOtherObstacle(o, contact, relSpeed);
+    }
+
+    private void RamOtherObstacle(Collider o, Vector3 contact, float relSpeed)
+    {
+        Vector3 planar = _cachedWorldVel;
+        planar.y = 0f;
+        if (planar.sqrMagnitude < 1e-4f)
+            planar = transform.forward * Mathf.Sign(_signedSpeed);
+        planar.Normalize();
 
         var bounce = o.GetComponentInParent<TrackObstacleBounceBack>();
         if (bounce != null)
@@ -450,6 +563,7 @@ public class RollingLogAlongTrack : MonoBehaviour
 
         _rb.MovePosition(pos);
         _rb.MoveRotation(rot);
+        ProbeScriptedOverlapRams();
     }
 
     private Vector3 ComputeScriptedWorldVelocity()

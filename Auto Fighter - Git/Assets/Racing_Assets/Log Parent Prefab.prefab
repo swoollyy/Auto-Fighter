@@ -199,7 +199,7 @@ MonoBehaviour:
   despawnDistanceFromPlayer: 50
   detachIgnoreLayers:
     serializedVersion: 2
-    m_Bits: 526337
+    m_Bits: 4982785
   ramHorizontalImpulse: 9
   ramUpImpulse: 5
   vehicleRamUpMultiplier: 3.56
