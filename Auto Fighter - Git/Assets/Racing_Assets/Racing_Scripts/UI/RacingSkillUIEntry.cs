@@ -21,6 +21,7 @@ public class RacingSkillUIEntry : MonoBehaviour
 
     private SkillDefinition def;
     private RacingSkillTreeManager mgr;
+    private TMP_Text nodeButtonLabel;
 
     public System.Action<SkillDefinition> Selected;
 
@@ -30,6 +31,9 @@ public class RacingSkillUIEntry : MonoBehaviour
     {
         def = definition;
         mgr = manager;
+
+        CacheNodeButtonLabel();
+        SetNodeButtonLabel(def != null ? def.displayName : string.Empty);
 
         if (nameText) nameText.text = def.displayName;
         if (descText) descText.text = def.description;
@@ -65,6 +69,34 @@ public class RacingSkillUIEntry : MonoBehaviour
             button.raycastTarget = false;
 
         Refresh();
+    }
+
+    private void CacheNodeButtonLabel()
+    {
+        if (nodeButtonLabel != null) return;
+        var rootBtn = GetComponent<Button>();
+        if (rootBtn == null) return;
+
+        TMP_Text[] labels = rootBtn.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < labels.Length; i++)
+        {
+            TMP_Text candidate = labels[i];
+            if (candidate == null) continue;
+            if (nameText != null && candidate == nameText) continue;
+            if (descText != null && candidate == descText) continue;
+            if (levelText != null && candidate == levelText) continue;
+            if (effectText != null && candidate == effectText) continue;
+            if (costText != null && candidate == costText) continue;
+
+            nodeButtonLabel = candidate;
+            break;
+        }
+    }
+
+    private void SetNodeButtonLabel(string labelText)
+    {
+        if (nodeButtonLabel == null) return;
+        nodeButtonLabel.text = labelText ?? string.Empty;
     }
 
     public void Refresh()

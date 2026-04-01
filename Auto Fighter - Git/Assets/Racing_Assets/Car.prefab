@@ -1073,7 +1073,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6311fddafa251d94b87f3f50baf725b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxTotalVelocityMagnitude: 12
+  maxTotalVelocityMagnitude: 10
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1255,8 +1255,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   autoFindVolume: 1
   volume: {fileID: 0}
-  lensIntensity: -0.15
-  lensScale: 0.384
+  lensIntensity: -0.0075
+  lensScale: 0.907
   lensCenterX: 0
   lensCenterY: 0
   bloomIntensity: 2.08
@@ -1779,7 +1779,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.69
+      value: 0.9
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -1796,7 +1796,7 @@ MonoBehaviour:
   baseClicksPerClick: 1
   basePassiveClickRate: 0
   basePassiveClickStrength: 1
-  mashDifficultyPerClickPowerStep: 1.2
+  mashDifficultyPerClickPowerStep: 1.35
   enableMashProgressGauge: 1
   gaugeFillPerClick: 0.1
   gaugeFillSpeedBonus: 1.5

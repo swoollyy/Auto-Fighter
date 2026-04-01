@@ -214,43 +214,14 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         var otherRb = collision.rigidbody;
         if (!otherRb) return;
 
-        // Only consider impacts with other RacingObstacle
-        var otherObstacle = otherRb.GetComponent<RacingObstacle>();
-        if (!otherObstacle) return;
+        var myRb = GetComponentInParent<Rigidbody>();
+        if (myRb == null) return;
 
-        // Feature gate via skill unlock (trees and all obstacles take damage when hit by forcefield-launched objects)
-        var mgr = RacingSkillTreeManager.Instance;
-        if (mgr == null || !mgr.IsForcefieldImpactDamageUnlocked()) return;
-
-        // At least one of the two must be a recently forcefield-launched obstacle
-        bool thisLaunched = false;
-        bool otherLaunched = false;
-
-        var tagThis = GetComponent<ForcefieldLaunchTag>();
-        if (tagThis && tagThis.IsActive) thisLaunched = true;
-
-        var tagOther = otherRb.GetComponent<ForcefieldLaunchTag>();
-        if (tagOther && tagOther.IsActive) otherLaunched = true;
-
-        if (!thisLaunched && !otherLaunched) return;
-
-        // Relative impact speed
-        float relSpeed = collision.relativeVelocity.magnitude;
-
-
-        // Pair cooldown to avoid rapid re-damage
-        int otherId = otherRb.GetInstanceID();
-        if (_lastImpactDamageTime.TryGetValue(otherId, out float lastT))
-        {
-            if (Time.time - lastT < impactDamageCooldown) return;
-        }
-        _lastImpactDamageTime[otherId] = Time.time;
-
-        // Damage amount from skill (base is 1.0)
-        float dmg = mgr.GetForcefieldImpactDamageAmount(1f);
-
-        // Apply damage to both (as non-turret damage, so coins are awarded)
-        this.ApplyDamage(dmg);
-        otherObstacle.ApplyDamage(dmg);
+        ForcefieldImpactDamageHelper.TryApply(
+            collision,
+            myRb,
+            _lastImpactDamageTime,
+            impactDamageCooldown,
+            minRelativeSpeed: 0f);
     }
 }

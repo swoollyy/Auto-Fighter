@@ -6537,7 +6537,7 @@ MonoBehaviour:
     stopAtNormalizedDist: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  carSpacing: 15
+  carSpacing: 10
   maxActiveCars: 12
   minSpawnDistanceAhead: 10
   maxSpawnDistanceAhead: 30.3
@@ -6550,7 +6550,7 @@ MonoBehaviour:
   despawnBehindDistance: 60
   despawnCrashedAfter: 10
   distanceJitter: 5.14
-  spawnChancePerSlot: 0.717
+  spawnChancePerSlot: 0.963
   spawnChanceByDistance:
     serializedVersion: 2
     m_Curve:

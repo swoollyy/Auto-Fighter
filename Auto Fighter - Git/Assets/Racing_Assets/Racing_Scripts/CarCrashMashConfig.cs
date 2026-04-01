@@ -103,7 +103,7 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private int baseClicksPerClick = 1;
     [SerializeField] private float basePassiveClickRate = 0f;
     [SerializeField] private int basePassiveClickStrength = 1;
-    [Tooltip("Each integer step of (effective − baseline) clicks per press multiplies required mash by this. 1 = no extra scaling.")]
+    [Tooltip("Linear mash difficulty tuning for click-strength upgrades (non-compounding). Baseline strength stays 1x; above baseline uses (effective/base) × this value.")]
     [SerializeField, Min(1f)] private float mashDifficultyPerClickPowerStep = 1.4f;
 
     [Header("Mash Progress Gauge")]

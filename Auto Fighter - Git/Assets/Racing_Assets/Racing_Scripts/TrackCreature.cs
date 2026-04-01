@@ -193,6 +193,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected bool isInitialized = false;
     protected bool isDead = false;
 
+    /// <summary>When true, AI/movement is skipped so <see cref="CarForcefield"/> can apply a physics launch before <see cref="Die"/>.</summary>
+    private bool _forcefieldPhysicsLaunchActive;
+
     // Kill tracking
     protected CreatureKillSource killSource = CreatureKillSource.Other;
     protected float currentHealth = 100f;
@@ -461,6 +464,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected virtual void Update()
     {
         if (!isInitialized || isDead) return;
+        if (_forcefieldPhysicsLaunchActive) return;
 
         float dt = Time.deltaTime;
 
@@ -2474,6 +2478,65 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         // Handle special despawn for aggressive creatures
         if (behaviorType == CreatureBehaviorType.Aggressive && config.despawnAfterHit)
+        {
+            CancelInvoke();
+            StopAllCoroutines();
+            Destroy(gameObject, config.despawnDelay);
+        }
+    }
+
+    /// <summary>
+    /// Stops scripted movement and enables a dynamic rigidbody so <see cref="CarForcefield"/> can launch the corpse.
+    /// Call <see cref="FinalizeForcefieldLaunchKill"/> after applying impulse.
+    /// </summary>
+    public virtual bool TryBeginForcefieldPhysicsLaunch(float corpseMass = 55f)
+    {
+        if (isDead || _forcefieldPhysicsLaunchActive) return false;
+
+        _forcefieldPhysicsLaunchActive = true;
+
+        if (behaviorType == CreatureBehaviorType.Aggressive)
+            HideBullRushTelegraph();
+
+        CancelInvoke();
+        StopAllCoroutines();
+
+        if (_allColliders != null)
+        {
+            for (int i = 0; i < _allColliders.Length; i++)
+            {
+                var c = _allColliders[i];
+                if (c != null) c.isTrigger = false;
+            }
+        }
+
+        var rb = GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = gameObject.AddComponent<Rigidbody>();
+
+        rb.mass = Mathf.Max(0.1f, corpseMass);
+        rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.WakeUp();
+
+        return true;
+    }
+
+    /// <summary>
+    /// Awards run-over popup + coin path and destroys via normal death flow (after physics launch).
+    /// </summary>
+    public virtual void FinalizeForcefieldLaunchKill()
+    {
+        if (isDead) return;
+
+        _forcefieldPhysicsLaunchActive = false;
+        killSource = CreatureKillSource.Car;
+        SpawnRunOverPopup();
+        Die();
+
+        if (behaviorType == CreatureBehaviorType.Aggressive && config != null && config.despawnAfterHit)
         {
             CancelInvoke();
             StopAllCoroutines();

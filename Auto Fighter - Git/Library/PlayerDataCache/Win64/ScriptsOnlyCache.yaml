@@ -421,363 +421,363 @@ ScriptsOnlyBuild:
     - Class: 108
       Script: {instanceID: 0}
     - Class: 114
-      Script: {instanceID: 1872}
+      Script: {instanceID: 1818}
     - Class: 114
-      Script: {instanceID: 1876}
+      Script: {instanceID: 1820}
     - Class: 114
-      Script: {instanceID: 1878}
+      Script: {instanceID: 1822}
     - Class: 114
-      Script: {instanceID: 1880}
+      Script: {instanceID: 1824}
     - Class: 114
-      Script: {instanceID: 1884}
+      Script: {instanceID: 1826}
     - Class: 114
-      Script: {instanceID: 1886}
+      Script: {instanceID: 1828}
     - Class: 114
-      Script: {instanceID: 1896}
+      Script: {instanceID: 1830}
     - Class: 114
-      Script: {instanceID: 2064}
+      Script: {instanceID: 1832}
+    - Class: 114
+      Script: {instanceID: 1834}
+    - Class: 114
+      Script: {instanceID: 1836}
+    - Class: 114
+      Script: {instanceID: 1838}
+    - Class: 114
+      Script: {instanceID: 1840}
+    - Class: 114
+      Script: {instanceID: 1842}
+    - Class: 114
+      Script: {instanceID: 1848}
+    - Class: 114
+      Script: {instanceID: 1852}
+    - Class: 114
+      Script: {instanceID: 1854}
+    - Class: 114
+      Script: {instanceID: 1856}
+    - Class: 114
+      Script: {instanceID: 1858}
+    - Class: 114
+      Script: {instanceID: 1862}
+    - Class: 114
+      Script: {instanceID: 1864}
+    - Class: 114
+      Script: {instanceID: 1866}
+    - Class: 114
+      Script: {instanceID: 1928}
+    - Class: 114
+      Script: {instanceID: 1932}
+    - Class: 114
+      Script: {instanceID: 1934}
+    - Class: 114
+      Script: {instanceID: 1936}
+    - Class: 114
+      Script: {instanceID: 1940}
+    - Class: 114
+      Script: {instanceID: 1942}
+    - Class: 114
+      Script: {instanceID: 1952}
     - Class: 114
       Script: {instanceID: 2110}
     - Class: 114
-      Script: {instanceID: 2144}
+      Script: {instanceID: 2152}
     - Class: 114
-      Script: {instanceID: 2228}
+      Script: {instanceID: 2348}
     - Class: 114
-      Script: {instanceID: 2328}
+      Script: {instanceID: 2406}
     - Class: 114
-      Script: {instanceID: 2390}
+      Script: {instanceID: 2482}
     - Class: 114
-      Script: {instanceID: 2470}
+      Script: {instanceID: 2536}
     - Class: 114
-      Script: {instanceID: 2524}
+      Script: {instanceID: 2806}
     - Class: 114
-      Script: {instanceID: 2608}
+      Script: {instanceID: 2976}
     - Class: 114
-      Script: {instanceID: 2808}
+      Script: {instanceID: 3168}
     - Class: 114
-      Script: {instanceID: 2852}
+      Script: {instanceID: 3266}
     - Class: 114
-      Script: {instanceID: 2988}
+      Script: {instanceID: 3574}
     - Class: 114
-      Script: {instanceID: 3184}
+      Script: {instanceID: 3836}
     - Class: 114
-      Script: {instanceID: 3196}
+      Script: {instanceID: 3876}
     - Class: 114
-      Script: {instanceID: 3198}
+      Script: {instanceID: 3926}
     - Class: 114
-      Script: {instanceID: 3296}
+      Script: {instanceID: 4056}
     - Class: 114
-      Script: {instanceID: 3348}
+      Script: {instanceID: 4104}
     - Class: 114
-      Script: {instanceID: 3364}
+      Script: {instanceID: 4120}
     - Class: 114
-      Script: {instanceID: 3620}
+      Script: {instanceID: 4290}
     - Class: 114
-      Script: {instanceID: 3892}
+      Script: {instanceID: 4512}
     - Class: 114
-      Script: {instanceID: 3934}
+      Script: {instanceID: 4754}
     - Class: 114
-      Script: {instanceID: 3984}
+      Script: {instanceID: 4758}
     - Class: 114
-      Script: {instanceID: 4026}
+      Script: {instanceID: 4802}
     - Class: 114
-      Script: {instanceID: 4122}
+      Script: {instanceID: 5484}
     - Class: 114
-      Script: {instanceID: 4172}
+      Script: {instanceID: 5624}
     - Class: 114
-      Script: {instanceID: 4188}
+      Script: {instanceID: 5680}
     - Class: 114
-      Script: {instanceID: 4360}
+      Script: {instanceID: 5740}
     - Class: 114
-      Script: {instanceID: 4496}
+      Script: {instanceID: 5810}
     - Class: 114
-      Script: {instanceID: 4602}
+      Script: {instanceID: 5880}
     - Class: 114
-      Script: {instanceID: 4808}
+      Script: {instanceID: 5914}
     - Class: 114
-      Script: {instanceID: 4866}
+      Script: {instanceID: 6096}
     - Class: 114
-      Script: {instanceID: 4870}
+      Script: {instanceID: 6114}
     - Class: 114
-      Script: {instanceID: 4916}
+      Script: {instanceID: 6136}
     - Class: 114
-      Script: {instanceID: 5350}
+      Script: {instanceID: 6722}
     - Class: 114
-      Script: {instanceID: 5472}
+      Script: {instanceID: 6730}
     - Class: 114
-      Script: {instanceID: 5572}
+      Script: {instanceID: 6776}
     - Class: 114
-      Script: {instanceID: 5626}
+      Script: {instanceID: 6832}
     - Class: 114
-      Script: {instanceID: 5706}
+      Script: {instanceID: 6948}
     - Class: 114
-      Script: {instanceID: 5720}
+      Script: {instanceID: 6980}
     - Class: 114
-      Script: {instanceID: 5782}
+      Script: {instanceID: 7044}
     - Class: 114
-      Script: {instanceID: 5838}
+      Script: {instanceID: 7136}
     - Class: 114
-      Script: {instanceID: 5898}
+      Script: {instanceID: 7158}
     - Class: 114
-      Script: {instanceID: 5972}
+      Script: {instanceID: 7240}
     - Class: 114
-      Script: {instanceID: 6048}
+      Script: {instanceID: 7324}
     - Class: 114
-      Script: {instanceID: 6082}
+      Script: {instanceID: 7336}
     - Class: 114
-      Script: {instanceID: 6276}
+      Script: {instanceID: 7346}
     - Class: 114
-      Script: {instanceID: 6296}
+      Script: {instanceID: 7436}
     - Class: 114
-      Script: {instanceID: 6318}
+      Script: {instanceID: 7504}
     - Class: 114
-      Script: {instanceID: 6346}
+      Script: {instanceID: 7564}
     - Class: 114
-      Script: {instanceID: 6930}
+      Script: {instanceID: 7606}
     - Class: 114
-      Script: {instanceID: 6938}
+      Script: {instanceID: 7792}
     - Class: 114
-      Script: {instanceID: 6990}
+      Script: {instanceID: 8194}
     - Class: 114
-      Script: {instanceID: 7050}
+      Script: {instanceID: 8260}
     - Class: 114
-      Script: {instanceID: 7176}
+      Script: {instanceID: 8388}
     - Class: 114
-      Script: {instanceID: 7208}
+      Script: {instanceID: 8560}
     - Class: 114
-      Script: {instanceID: 7216}
+      Script: {instanceID: 8600}
     - Class: 114
-      Script: {instanceID: 7276}
+      Script: {instanceID: 8648}
     - Class: 114
-      Script: {instanceID: 7370}
+      Script: {instanceID: 8700}
     - Class: 114
-      Script: {instanceID: 7392}
+      Script: {instanceID: 9492}
     - Class: 114
-      Script: {instanceID: 7476}
+      Script: {instanceID: 9664}
     - Class: 114
-      Script: {instanceID: 7570}
+      Script: {instanceID: 9740}
     - Class: 114
-      Script: {instanceID: 7584}
+      Script: {instanceID: 9746}
     - Class: 114
-      Script: {instanceID: 7594}
+      Script: {instanceID: 9804}
     - Class: 114
-      Script: {instanceID: 7696}
+      Script: {instanceID: 9904}
     - Class: 114
-      Script: {instanceID: 7766}
+      Script: {instanceID: 9922}
     - Class: 114
-      Script: {instanceID: 7778}
+      Script: {instanceID: 10028}
     - Class: 114
-      Script: {instanceID: 7834}
+      Script: {instanceID: 10120}
     - Class: 114
-      Script: {instanceID: 7878}
+      Script: {instanceID: 10136}
     - Class: 114
-      Script: {instanceID: 7898}
+      Script: {instanceID: 10232}
     - Class: 114
-      Script: {instanceID: 7906}
+      Script: {instanceID: 10316}
     - Class: 114
-      Script: {instanceID: 8072}
+      Script: {instanceID: 10404}
     - Class: 114
-      Script: {instanceID: 8232}
+      Script: {instanceID: 10408}
     - Class: 114
-      Script: {instanceID: 8240}
+      Script: {instanceID: 10526}
     - Class: 114
-      Script: {instanceID: 8510}
+      Script: {instanceID: 10612}
     - Class: 114
-      Script: {instanceID: 8582}
+      Script: {instanceID: 10732}
     - Class: 114
-      Script: {instanceID: 8656}
+      Script: {instanceID: 10848}
     - Class: 114
-      Script: {instanceID: 8730}
+      Script: {instanceID: 10968}
     - Class: 114
-      Script: {instanceID: 8918}
+      Script: {instanceID: 11098}
     - Class: 114
-      Script: {instanceID: 8958}
+      Script: {instanceID: 11108}
     - Class: 114
-      Script: {instanceID: 9014}
+      Script: {instanceID: 11180}
     - Class: 114
-      Script: {instanceID: 9070}
+      Script: {instanceID: 11198}
     - Class: 114
-      Script: {instanceID: 9146}
+      Script: {instanceID: 11472}
     - Class: 114
-      Script: {instanceID: 9168}
+      Script: {instanceID: 11582}
     - Class: 114
-      Script: {instanceID: 9266}
+      Script: {instanceID: 11612}
     - Class: 114
-      Script: {instanceID: 9482}
+      Script: {instanceID: 11794}
     - Class: 114
-      Script: {instanceID: 9920}
+      Script: {instanceID: 11856}
     - Class: 114
-      Script: {instanceID: 10100}
+      Script: {instanceID: 11880}
     - Class: 114
-      Script: {instanceID: 10182}
+      Script: {instanceID: 11962}
     - Class: 114
-      Script: {instanceID: 10188}
+      Script: {instanceID: 12120}
     - Class: 114
-      Script: {instanceID: 10248}
+      Script: {instanceID: 12124}
     - Class: 114
-      Script: {instanceID: 10282}
+      Script: {instanceID: 12228}
     - Class: 114
-      Script: {instanceID: 10358}
+      Script: {instanceID: 12454}
     - Class: 114
-      Script: {instanceID: 10378}
+      Script: {instanceID: 12716}
     - Class: 114
-      Script: {instanceID: 10452}
+      Script: {instanceID: 12774}
     - Class: 114
-      Script: {instanceID: 10454}
+      Script: {instanceID: 12978}
     - Class: 114
-      Script: {instanceID: 10506}
+      Script: {instanceID: 13228}
     - Class: 114
-      Script: {instanceID: 10518}
+      Script: {instanceID: 13280}
     - Class: 114
-      Script: {instanceID: 10540}
+      Script: {instanceID: 13338}
     - Class: 114
-      Script: {instanceID: 10606}
+      Script: {instanceID: 13642}
     - Class: 114
-      Script: {instanceID: 10608}
+      Script: {instanceID: 13668}
     - Class: 114
-      Script: {instanceID: 10624}
+      Script: {instanceID: 13670}
     - Class: 114
-      Script: {instanceID: 10654}
+      Script: {instanceID: 13806}
     - Class: 114
-      Script: {instanceID: 10660}
+      Script: {instanceID: 13914}
     - Class: 114
-      Script: {instanceID: 10730}
+      Script: {instanceID: 14018}
     - Class: 114
-      Script: {instanceID: 10816}
+      Script: {instanceID: 14176}
     - Class: 114
-      Script: {instanceID: 10844}
+      Script: {instanceID: 14354}
     - Class: 114
-      Script: {instanceID: 10850}
+      Script: {instanceID: 14660}
     - Class: 114
-      Script: {instanceID: 10908}
+      Script: {instanceID: 14662}
     - Class: 114
-      Script: {instanceID: 10912}
+      Script: {instanceID: 14714}
     - Class: 114
-      Script: {instanceID: 11010}
+      Script: {instanceID: 14730}
     - Class: 114
-      Script: {instanceID: 11040}
+      Script: {instanceID: 14984}
     - Class: 114
-      Script: {instanceID: 11136}
+      Script: {instanceID: 15120}
     - Class: 114
-      Script: {instanceID: 11214}
+      Script: {instanceID: 15212}
     - Class: 114
-      Script: {instanceID: 11268}
+      Script: {instanceID: 15254}
     - Class: 114
-      Script: {instanceID: 11396}
+      Script: {instanceID: 15336}
     - Class: 114
-      Script: {instanceID: 11412}
+      Script: {instanceID: 15648}
     - Class: 114
-      Script: {instanceID: 11530}
+      Script: {instanceID: 16256}
     - Class: 114
-      Script: {instanceID: 11664}
+      Script: {instanceID: 16274}
     - Class: 114
-      Script: {instanceID: 11676}
+      Script: {instanceID: 16400}
     - Class: 114
-      Script: {instanceID: 11750}
+      Script: {instanceID: 16404}
     - Class: 114
-      Script: {instanceID: 11768}
+      Script: {instanceID: 16432}
     - Class: 114
-      Script: {instanceID: 11884}
+      Script: {instanceID: 16436}
     - Class: 114
-      Script: {instanceID: 12062}
+      Script: {instanceID: 16490}
     - Class: 114
-      Script: {instanceID: 12142}
+      Script: {instanceID: 16494}
     - Class: 114
-      Script: {instanceID: 12194}
+      Script: {instanceID: 16530}
     - Class: 114
-      Script: {instanceID: 12212}
+      Script: {instanceID: 16576}
     - Class: 114
-      Script: {instanceID: 12230}
+      Script: {instanceID: 16660}
     - Class: 114
-      Script: {instanceID: 12400}
+      Script: {instanceID: 16710}
     - Class: 114
-      Script: {instanceID: 12430}
+      Script: {instanceID: 16726}
     - Class: 114
-      Script: {instanceID: 12492}
+      Script: {instanceID: 16804}
     - Class: 114
-      Script: {instanceID: 12496}
+      Script: {instanceID: 16824}
     - Class: 114
-      Script: {instanceID: 12520}
+      Script: {instanceID: 16938}
     - Class: 114
-      Script: {instanceID: 12522}
+      Script: {instanceID: 17012}
     - Class: 114
-      Script: {instanceID: 12612}
+      Script: {instanceID: 17034}
     - Class: 114
-      Script: {instanceID: 12784}
+      Script: {instanceID: 17154}
     - Class: 114
-      Script: {instanceID: 12788}
+      Script: {instanceID: 17230}
     - Class: 114
-      Script: {instanceID: 12872}
+      Script: {instanceID: 17284}
     - Class: 114
-      Script: {instanceID: 12898}
+      Script: {instanceID: 17344}
     - Class: 114
-      Script: {instanceID: 13126}
+      Script: {instanceID: 17354}
     - Class: 114
-      Script: {instanceID: 13134}
+      Script: {instanceID: 17458}
     - Class: 114
-      Script: {instanceID: 13420}
+      Script: {instanceID: 17472}
     - Class: 114
-      Script: {instanceID: 13484}
+      Script: {instanceID: 17502}
     - Class: 114
-      Script: {instanceID: 13664}
+      Script: {instanceID: 17512}
     - Class: 114
-      Script: {instanceID: 13708}
+      Script: {instanceID: 17664}
     - Class: 114
-      Script: {instanceID: 13974}
+      Script: {instanceID: 17758}
     - Class: 114
-      Script: {instanceID: 14030}
+      Script: {instanceID: 17774}
     - Class: 114
-      Script: {instanceID: 14090}
+      Script: {instanceID: 17862}
     - Class: 114
-      Script: {instanceID: 14416}
+      Script: {instanceID: 17926}
     - Class: 114
-      Script: {instanceID: 14442}
+      Script: {instanceID: 17966}
     - Class: 114
-      Script: {instanceID: 14444}
+      Script: {instanceID: 17992}
     - Class: 114
-      Script: {instanceID: 14592}
+      Script: {instanceID: 18166}
     - Class: 114
-      Script: {instanceID: 14712}
-    - Class: 114
-      Script: {instanceID: 14820}
-    - Class: 114
-      Script: {instanceID: 14990}
-    - Class: 114
-      Script: {instanceID: 15176}
-    - Class: 114
-      Script: {instanceID: 15506}
-    - Class: 114
-      Script: {instanceID: 15508}
-    - Class: 114
-      Script: {instanceID: 15562}
-    - Class: 114
-      Script: {instanceID: 15580}
-    - Class: 114
-      Script: {instanceID: 15604}
-    - Class: 114
-      Script: {instanceID: 15632}
-    - Class: 114
-      Script: {instanceID: 15856}
-    - Class: 114
-      Script: {instanceID: 15858}
-    - Class: 114
-      Script: {instanceID: 15936}
-    - Class: 114
-      Script: {instanceID: 16002}
-    - Class: 114
-      Script: {instanceID: 16100}
-    - Class: 114
-      Script: {instanceID: 16142}
-    - Class: 114
-      Script: {instanceID: 16152}
-    - Class: 114
-      Script: {instanceID: 16230}
-    - Class: 114
-      Script: {instanceID: 16254}
-    - Class: 114
-      Script: {instanceID: 16346}
-    - Class: 114
-      Script: {instanceID: 16552}
+      Script: {instanceID: 18284}
     - Class: 115
       Script: {instanceID: 0}
     - Class: 120
@@ -835,6 +835,174 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
     className: UniversalRenderPipelineAsset
+  - hash:
+      serializedVersion: 2
+      Hash: 10a014f2a144d8451101394cdb0b3907
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: GroundRing
+  - hash:
+      serializedVersion: 2
+      Hash: 79f97726bd47bc33673316c13b00ac5e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: AstarRuntimeBootstrap
+  - hash:
+      serializedVersion: 2
+      Hash: 3f3a51093f170745e1876b84fb71dc31
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: IcePathSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 0c2da2a695703d3c1639d83de9714020
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ShuttleTrackObstacle
+  - hash:
+      serializedVersion: 2
+      Hash: c9704655cdb65f9998cb83f6cc6686a3
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCar
+  - hash:
+      serializedVersion: 2
+      Hash: 7724a5a4c2634dc9d62499d37482dadb
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackCoinSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: e666b2ebda8fce44cd403a0bddf38019
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarController
+  - hash:
+      serializedVersion: 2
+      Hash: 5908105713d3f4e7666625cfae4b5a1c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TerrainDetailGrassPainter
+  - hash:
+      serializedVersion: 2
+      Hash: 7571a9cf982b88d3f22ec27d6b69629a
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackObstacleSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 19b6f208d6bb7325499c123bb707d8df
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackDistanceMeter
+  - hash:
+      serializedVersion: 2
+      Hash: 24940b66259f9ccc3e7c39420ef16114
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ThrownObstacle
+  - hash:
+      serializedVersion: 2
+      Hash: a0bfc9ec8fc20511a3fcd41309eb439d
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: DialogueManager
+  - hash:
+      serializedVersion: 2
+      Hash: ee113f6e8e2ca5692a1b907a92a61afc
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingSkillUI
+  - hash:
+      serializedVersion: 2
+      Hash: 08759a2a2d4c04865797c600fc5e6b2c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarVelocityAndPitch
+  - hash:
+      serializedVersion: 2
+      Hash: 4dc81e5feae0331cff4e0f04a11dbd02
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: PortalWarpController
+  - hash:
+      serializedVersion: 2
+      Hash: a9d3915dab08c6e18e042976f827186c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ForcefieldLaunchTag
+  - hash:
+      serializedVersion: 2
+      Hash: 23ce777f17abe20e89b8041bd4815460
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NPCTrafficCarSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: ce471fb5d16f17a42057892d92a3b4ae
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: Ball
+  - hash:
+      serializedVersion: 2
+      Hash: c9cc5de8d903bb38ce6df4095bfd38b9
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: ForcefieldSkillHook
+  - hash:
+      serializedVersion: 2
+      Hash: 1aaf200e76bb9d7d3a7373b941a40756
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingObstacle
+  - hash:
+      serializedVersion: 2
+      Hash: f3e4c4994a9e8d38717e0de2700bd919
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackGuideBeacon
+  - hash:
+      serializedVersion: 2
+      Hash: 8557f6de366337159447de7e514ea636
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackObstacleBounceBack
+  - hash:
+      serializedVersion: 2
+      Hash: fae4d5e972320b2ca0bad3d6d5e015de
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TweenDamageNumberSystem
+  - hash:
+      serializedVersion: 2
+      Hash: 1b15c6704be9a209b366bcaa17056652
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TrackCreature
+  - hash:
+      serializedVersion: 2
+      Hash: 0b318ca7942fe932d3997ff4e06c2c7a
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarForcefield
+  - hash:
+      serializedVersion: 2
+      Hash: f53c8301e05609bb344e6b604d2fdc26
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CrossObstacleDirector
+  - hash:
+      serializedVersion: 2
+      Hash: 86dc548234b497d78e9cce7f591db977
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: Pinball
+  - hash:
+      serializedVersion: 2
+      Hash: 03116ccae195fd7a0abf1c949396038a
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: MashGaugeUI
   - hash:
       serializedVersion: 2
       Hash: d41ab9b5ea92474f9c0a6937a0607ce1
@@ -933,24 +1101,6 @@ ScriptsOnlyBuild:
     className: CinemachineTriggerAction
   - hash:
       serializedVersion: 2
-      Hash: 3851821d3b8be9f4eb31ce5094dffb6b
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarGroundConfig
-  - hash:
-      serializedVersion: 2
-      Hash: 157d3cf40178d244cd11ae1c9791ead7
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.HID.Editor
-    className: HIDDescriptorWindow
-  - hash:
-      serializedVersion: 2
-      Hash: 5908105713d3f4e7666625cfae4b5a1c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TerrainDetailGrassPainter
-  - hash:
-      serializedVersion: 2
       Hash: 95c8a8c68e664d4868755f06e7c55997
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
@@ -987,12 +1137,6 @@ ScriptsOnlyBuild:
     className: HPPickup
   - hash:
       serializedVersion: 2
-      Hash: a9d3915dab08c6e18e042976f827186c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ForcefieldLaunchTag
-  - hash:
-      serializedVersion: 2
       Hash: 674f86f72fc0bf1ef8d192a4dea794c8
     assemblyName: Cinemachine
     namespaceName: Cinemachine
@@ -1011,12 +1155,6 @@ ScriptsOnlyBuild:
     className: DebugUIHandlerObjectPopupField
   - hash:
       serializedVersion: 2
-      Hash: e55aa1ce223c3e1702adbae0138592c2
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPParabolaWaveEffect
-  - hash:
-      serializedVersion: 2
       Hash: c25874a91e6f5c8cf892615b8eaf1503
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding
@@ -1033,12 +1171,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: PadLightFX
-  - hash:
-      serializedVersion: 2
-      Hash: b40f8ffcaa6b71545b8d6ff04b849814
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: AdvancedDropdownWindow
   - hash:
       serializedVersion: 2
       Hash: 158ea04b653ef20da50f27da42170155
@@ -1063,12 +1195,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: PinballFlipper
-  - hash:
-      serializedVersion: 2
-      Hash: 3f3a51093f170745e1876b84fb71dc31
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: IcePathSpawner
   - hash:
       serializedVersion: 2
       Hash: 66cbe3e65a026cf7393acc5b95a1900f
@@ -1117,18 +1243,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: TimelineAsset
-  - hash:
-      serializedVersion: 2
-      Hash: 7571a9cf982b88d3f22ec27d6b69629a
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackObstacleSpawner
-  - hash:
-      serializedVersion: 2
-      Hash: 6f760b544d20ab09c8916585b1860e23
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: DialogueUI
   - hash:
       serializedVersion: 2
       Hash: b050f641e1dc5a817bf4909a159fadfb
@@ -1195,18 +1309,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerWidget
-  - hash:
-      serializedVersion: 2
-      Hash: 47197d7ff52d5cabc68c51f23237406c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarCrashMashConfig
-  - hash:
-      serializedVersion: 2
-      Hash: 01bb3f04e40b2d04ebec04db7aebbc98
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CameraLineOfSightShield
   - hash:
       serializedVersion: 2
       Hash: 7332c3f4e495412c959fdd2f5ab0f654
@@ -1279,12 +1381,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: FuelPickup
-  - hash:
-      serializedVersion: 2
-      Hash: b838cbada0b03f1cfbaebc8e124f4f39
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.OnScreen
-    className: OnScreenButton
   - hash:
       serializedVersion: 2
       Hash: 1d830bc5cfaaf24301dffea2877f4bea
@@ -1363,12 +1459,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Flow
     namespaceName: Unity.VisualScripting
     className: ScriptMachine
-  - hash:
-      serializedVersion: 2
-      Hash: f53c8301e05609bb344e6b604d2fdc26
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CrossObstacleDirector
   - hash:
       serializedVersion: 2
       Hash: 43ebd945b04bced376c791411cf5a289
@@ -1485,12 +1575,6 @@ ScriptsOnlyBuild:
     className: ActivationTrack
   - hash:
       serializedVersion: 2
-      Hash: 79347f14affaa2233becb1fafa24e8ea
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPEffectUploader
-  - hash:
-      serializedVersion: 2
       Hash: bf16f3f7cc6924018428428f7664a0d0
     assemblyName: Unity.ProBuilder
     namespaceName: UnityEngine.ProBuilder
@@ -1515,28 +1599,10 @@ ScriptsOnlyBuild:
     className: NodeLink2
   - hash:
       serializedVersion: 2
-      Hash: 95426d463074947dcbffc797c44e779c
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI.Editor
-    className: StandaloneInputModuleModuleEditor
-  - hash:
-      serializedVersion: 2
-      Hash: 5835aa044b7ea3413cc6d9d819e95dd9
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputActionDebuggerWindow
-  - hash:
-      serializedVersion: 2
       Hash: 682dfc653b22feea53b38adb3bc66414
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: SignalReceiver
-  - hash:
-      serializedVersion: 2
-      Hash: ee113f6e8e2ca5692a1b907a92a61afc
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingSkillUI
   - hash:
       serializedVersion: 2
       Hash: cacf61280eff55ba0f02a0f286c959ba
@@ -1605,12 +1671,6 @@ ScriptsOnlyBuild:
     className: CinemachineTargetGroup
   - hash:
       serializedVersion: 2
-      Hash: 215d2dc6ec6ea06728398ea39a103cb3
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.OnScreen
-    className: OnScreenStick
-  - hash:
-      serializedVersion: 2
       Hash: 96e7bcfd2d072992dab64ac44058b930
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -1633,12 +1693,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: TextConsoleSimulator
-  - hash:
-      serializedVersion: 2
-      Hash: 14cfa94fb0bf632998adc3c04c7f0e05
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarBoostConfig
   - hash:
       serializedVersion: 2
       Hash: 8fe6d4f095ce838f5396d1867140a9b6
@@ -1665,22 +1719,10 @@ ScriptsOnlyBuild:
     className: CameraController
   - hash:
       serializedVersion: 2
-      Hash: ac63eb01edd4fa4db3b1ef5baa79614e
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarRampConfig
-  - hash:
-      serializedVersion: 2
       Hash: aa349b22cd61b9e8488d736f82590d6b
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: TMP_TextInfoDebugTool
-  - hash:
-      serializedVersion: 2
-      Hash: cd8cc5c160731005af9253efbcb45664
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingCoinCollectionHub
   - hash:
       serializedVersion: 2
       Hash: 81c1ae8a097b2ae92f03307a9a3d2771
@@ -1701,28 +1743,10 @@ ScriptsOnlyBuild:
     className: GridLayoutGroup
   - hash:
       serializedVersion: 2
-      Hash: 90cf308600fb4aeb677786843453ec55
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: RemoteInputPlayerConnection
-  - hash:
-      serializedVersion: 2
       Hash: 98ad84ab9a7070e8ba3b6a616a057e2d
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineBlendListCamera
-  - hash:
-      serializedVersion: 2
-      Hash: 321d63012820ab5664295554eab75567
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingQuestsPanelUI
-  - hash:
-      serializedVersion: 2
-      Hash: 0b318ca7942fe932d3997ff4e06c2c7a
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarForcefield
   - hash:
       serializedVersion: 2
       Hash: f0b3e0c9b5a90386f53945df649c8db3
@@ -1827,12 +1851,6 @@ ScriptsOnlyBuild:
     className: RichAI
   - hash:
       serializedVersion: 2
-      Hash: 86dc548234b497d78e9cce7f591db977
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: Pinball
-  - hash:
-      serializedVersion: 2
       Hash: 0dd14e314956b0d0d83ffcffe60aa46f
     assemblyName: Assembly-CSharp
     namespaceName: TMPro
@@ -1891,12 +1909,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: GroupTrack
-  - hash:
-      serializedVersion: 2
-      Hash: f3e4c4994a9e8d38717e0de2700bd919
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackGuideBeacon
   - hash:
       serializedVersion: 2
       Hash: 5c2a5af4658ede896d072a8a641d706e
@@ -2007,12 +2019,6 @@ ScriptsOnlyBuild:
     className: TextMeshProUGUI
   - hash:
       serializedVersion: 2
-      Hash: ce471fb5d16f17a42057892d92a3b4ae
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: Ball
-  - hash:
-      serializedVersion: 2
       Hash: a184bc1c29b4c77ed2b3eb8cf72cb090
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -2047,12 +2053,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: CrossTrackObstacle
-  - hash:
-      serializedVersion: 2
-      Hash: a34eb0ee6b6375b7f3c5b50ff690fecf
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPJitterEffect
   - hash:
       serializedVersion: 2
       Hash: eefbc0dea6724cdb3486ff0318273b94
@@ -2127,22 +2127,10 @@ ScriptsOnlyBuild:
     className: RacingSkillTreeManager
   - hash:
       serializedVersion: 2
-      Hash: bc75926bfd3609757f7bf33ff766f026
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.EnhancedTouch
-    className: TouchSimulation
-  - hash:
-      serializedVersion: 2
       Hash: 6e60150604ac1c26fb15705173e90e96
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: RacingCurrencyCheat
-  - hash:
-      serializedVersion: 2
-      Hash: fae4d5e972320b2ca0bad3d6d5e015de
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TweenDamageNumberSystem
   - hash:
       serializedVersion: 2
       Hash: 59475f3ae91b4c0ef487acd1e9ebd48e
@@ -2161,12 +2149,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.ProBuilder
     namespaceName: UnityEngine.ProBuilder
     className: TriggerBehaviour
-  - hash:
-      serializedVersion: 2
-      Hash: e63fe08659e7e4647a51098c666f8845
-    assemblyName: Unity.InputSystem
-    namespaceName: 
-    className: DownloadableSample
   - hash:
       serializedVersion: 2
       Hash: 6636f8e52d3158865db3e4af7cc245d7
@@ -2197,12 +2179,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerRow
-  - hash:
-      serializedVersion: 2
-      Hash: 33eb495d99aa9bea4dbe8b4c4e02c7bb
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: InputActionReference
   - hash:
       serializedVersion: 2
       Hash: 47247e29ff0f727264f83a7f754b229c
@@ -2245,18 +2221,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: WheelSkidSpawner
-  - hash:
-      serializedVersion: 2
-      Hash: f2895d46c5e5602db548d67715bad27e
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarDriftConfig
-  - hash:
-      serializedVersion: 2
-      Hash: b57496145dc0ee1f7296ea39c589f03b
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarMovementConfig
   - hash:
       serializedVersion: 2
       Hash: d2ecd94550edf1b56aff07b1f4e41c57
@@ -2325,28 +2289,10 @@ ScriptsOnlyBuild:
     className: VolumetricFogControllerLite
   - hash:
       serializedVersion: 2
-      Hash: 0a4ef3c4e73b2f3eef913e2325924084
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: InputSettings
-  - hash:
-      serializedVersion: 2
       Hash: a89b0448af4e1cd103a77f9fec0a961f
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnSubmitMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: c9704655cdb65f9998cb83f6cc6686a3
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: NPCTrafficCar
-  - hash:
-      serializedVersion: 2
-      Hash: 3077dda6b16399ad3b1da60250cea2e1
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingInputReader
   - hash:
       serializedVersion: 2
       Hash: 5ebc58ec194dd44630b25fcc270ad4af
@@ -2397,12 +2343,6 @@ ScriptsOnlyBuild:
     className: CinemachineStoryboard
   - hash:
       serializedVersion: 2
-      Hash: 155c461f47a0848648cc574cbbda7d52
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: DriftBoostHoldBarUI
-  - hash:
-      serializedVersion: 2
       Hash: e4890c3ec174f5c1a7f8dd24cd6dbaca
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding
@@ -2425,18 +2365,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnParticleCollisionMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 40be2ad159aa1a2b72ecc74cb38c7824
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI
-    className: MultiplayerEventSystem
-  - hash:
-      serializedVersion: 2
-      Hash: 2bbd05175d4cdd21e24f9716cdd24f83
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.XR
-    className: TrackedPoseDriver
   - hash:
       serializedVersion: 2
       Hash: 60d703167e2c750c0878a3bee1650066
@@ -2529,18 +2457,6 @@ ScriptsOnlyBuild:
     className: CinemachineRecomposer
   - hash:
       serializedVersion: 2
-      Hash: 24940b66259f9ccc3e7c39420ef16114
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ThrownObstacle
-  - hash:
-      serializedVersion: 2
-      Hash: d364983c8c6de5e17e35d0d5d4631205
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPZoomEffect
-  - hash:
-      serializedVersion: 2
       Hash: 5c07dd30a788898a98f349bde9e84e19
     assemblyName: Cinemachine
     namespaceName: Cinemachine
@@ -2559,22 +2475,10 @@ ScriptsOnlyBuild:
     className: LifeRewardSO
   - hash:
       serializedVersion: 2
-      Hash: d8389cc92b2c962031a35090f0d7cf2b
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPEffectCoordinator
-  - hash:
-      serializedVersion: 2
       Hash: ff76cf6cf52b4db7b95af6ffadca9288
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: SignalEmitter
-  - hash:
-      serializedVersion: 2
-      Hash: c4cdb902228df56d5b2b639d6a6bbd3c
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: PlayerInputManager
   - hash:
       serializedVersion: 2
       Hash: 8286ac0d1b3ab10dea4945854f16c16e
@@ -2611,18 +2515,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.ResourceManager
     namespaceName: UnityEngine.ResourceManagement.Diagnostics
     className: DiagnosticEventCollector
-  - hash:
-      serializedVersion: 2
-      Hash: a0bfc9ec8fc20511a3fcd41309eb439d
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: DialogueManager
-  - hash:
-      serializedVersion: 2
-      Hash: 0f19765290d81f9e93eff7828a091d40
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: PlayerInput
   - hash:
       serializedVersion: 2
       Hash: ab71d3c5bc70aa835b608238e2fc76ca
@@ -2665,12 +2557,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: SkewTextExample
-  - hash:
-      serializedVersion: 2
-      Hash: ed8e62f07ec878233f5493a335003493
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI
-    className: VirtualMouseInput
   - hash:
       serializedVersion: 2
       Hash: 8703b6ae2b0eefd9dafbc44d8d333fb1
@@ -2781,12 +2667,6 @@ ScriptsOnlyBuild:
     className: RawImage
   - hash:
       serializedVersion: 2
-      Hash: d5e454890c93bccd9c7b0642643dd63e
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TerrainAroundFlatRoad
-  - hash:
-      serializedVersion: 2
       Hash: caa7cab84dd4619d43f84782ae10ab2e
     assemblyName: Unity.ResourceManager
     namespaceName: UnityEngine.ResourceManagement.Util
@@ -2817,28 +2697,10 @@ ScriptsOnlyBuild:
     className: CameraFollowSimple
   - hash:
       serializedVersion: 2
-      Hash: 4dc81e5feae0331cff4e0f04a11dbd02
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: PortalWarpController
-  - hash:
-      serializedVersion: 2
       Hash: 37dbaff32a49c70ff37b8bb15bd24c18
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering
     className: LensFlareComponentSRP
-  - hash:
-      serializedVersion: 2
-      Hash: b1b2729f925915073482bbeee98d23ed
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RollingLogAlongTrack
-  - hash:
-      serializedVersion: 2
-      Hash: fdcdcfa15cc6bb5fb088b98595a63757
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CoinCollectingFriendSkillHook
   - hash:
       serializedVersion: 2
       Hash: 5720b99c6559cf094347d3cfaa23f24e
@@ -2847,34 +2709,16 @@ ScriptsOnlyBuild:
     className: TrackHPSpawner
   - hash:
       serializedVersion: 2
-      Hash: c70f1d1540b7e7cad4e314911a2dd9e8
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarLandingConfig
-  - hash:
-      serializedVersion: 2
       Hash: dd94e9d2539e626f553fe5690b23200a
     assemblyName: Assembly-CSharp
     namespaceName: MirzaBeig.VolumetricFogLite
     className: DemoController
   - hash:
       serializedVersion: 2
-      Hash: 0a93db405e890a0c44aca7e98c0aee6c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TMPRainbowColorEffect
-  - hash:
-      serializedVersion: 2
       Hash: c9b1ea3bf987a2e780a24849503ca72e
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: Benchmark01_UGUI
-  - hash:
-      serializedVersion: 2
-      Hash: ba923e7ce7757b5119b3c302076c1bb5
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CoinCollectingFriend
   - hash:
       serializedVersion: 2
       Hash: e987953190eb4c12cf19df790566dc2c
@@ -2901,28 +2745,10 @@ ScriptsOnlyBuild:
     className: AudioTrack
   - hash:
       serializedVersion: 2
-      Hash: 03116ccae195fd7a0abf1c949396038a
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: MashGaugeUI
-  - hash:
-      serializedVersion: 2
       Hash: ada873da50974d1e7ce247ffb296b0f3
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnCollisionEnterMessageListener
-  - hash:
-      serializedVersion: 2
-      Hash: 5a5b78205f8301455c0c7191f9d61de3
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarVFXAudioConfig
-  - hash:
-      serializedVersion: 2
-      Hash: 79f97726bd47bc33673316c13b00ac5e
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: AstarRuntimeBootstrap
   - hash:
       serializedVersion: 2
       Hash: db79736741eab4b57f517a51185b9563
@@ -2953,18 +2779,6 @@ ScriptsOnlyBuild:
     assemblyName: UnityEngine.UI
     namespaceName: UnityEngine.UI
     className: GraphicRaycaster
-  - hash:
-      serializedVersion: 2
-      Hash: 1aaf200e76bb9d7d3a7373b941a40756
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingObstacle
-  - hash:
-      serializedVersion: 2
-      Hash: c9cc5de8d903bb38ce6df4095bfd38b9
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ForcefieldSkillHook
   - hash:
       serializedVersion: 2
       Hash: 3b5263a98bcc71d9a9d1d78a31b34ced
@@ -3003,12 +2817,6 @@ ScriptsOnlyBuild:
     className: Cinemachine3rdPersonFollow
   - hash:
       serializedVersion: 2
-      Hash: 9ddb37b71c04c3fd7dccda3a49b03010
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarFuelConfig
-  - hash:
-      serializedVersion: 2
       Hash: 002c6e5da091b977ec70120e51ea71d9
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3043,12 +2851,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: Benchmark04
-  - hash:
-      serializedVersion: 2
-      Hash: 08759a2a2d4c04865797c600fc5e6b2c
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarVelocityAndPitch
   - hash:
       serializedVersion: 2
       Hash: 7a0bde3ac6d739f92105cfe5613df2e0
@@ -3091,18 +2893,6 @@ ScriptsOnlyBuild:
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineSmoothPath
-  - hash:
-      serializedVersion: 2
-      Hash: ce048683cb5600cea93d8f42661ea4c0
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CrashSeverityConfig
-  - hash:
-      serializedVersion: 2
-      Hash: 86344100c716167fb86137c127ca9eee
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputActionImporterEditor
   - hash:
       serializedVersion: 2
       Hash: c6369b4cc3be620d6c9300e920bc3d52
@@ -3195,12 +2985,6 @@ ScriptsOnlyBuild:
     className: GroundSurface
   - hash:
       serializedVersion: 2
-      Hash: d85292b1d7ddb10e5a2df5d221dcba86
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: InputActionAsset
-  - hash:
-      serializedVersion: 2
       Hash: 7081418fb055e52db2a331d4c8bec363
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3237,46 +3021,16 @@ ScriptsOnlyBuild:
     className: Mask
   - hash:
       serializedVersion: 2
-      Hash: 164a37e0bc379311785dd54beac44331
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputDebuggerWindow
-  - hash:
-      serializedVersion: 2
       Hash: e636708ac1677b6f3be0cafe31e1bf77
     assemblyName: Cinemachine
     namespaceName: Cinemachine
     className: CinemachineGroupComposer
   - hash:
       serializedVersion: 2
-      Hash: 7724a5a4c2634dc9d62499d37482dadb
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackCoinSpawner
-  - hash:
-      serializedVersion: 2
       Hash: 5dc51b0140815ee83ba613dce32f5b12
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerPersistentCanvas
-  - hash:
-      serializedVersion: 2
-      Hash: 32bfadf4ab14c1e4298d945ac7dbee8f
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputStateWindow
-  - hash:
-      serializedVersion: 2
-      Hash: 0bc7ef1b7516f21320ec49bfd31eef2e
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI
-    className: TrackedDeviceRaycaster
-  - hash:
-      serializedVersion: 2
-      Hash: 11487938c52dbb68351ced7fad2dabaf
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarSteeringConfig
   - hash:
       serializedVersion: 2
       Hash: 4718916586b3818eb69bf65df61f0f3a
@@ -3339,12 +3093,6 @@ ScriptsOnlyBuild:
     className: AIPath
   - hash:
       serializedVersion: 2
-      Hash: e666b2ebda8fce44cd403a0bddf38019
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarController
-  - hash:
-      serializedVersion: 2
       Hash: 70373e18181a2229c9ec8448873d7545
     assemblyName: Cinemachine
     namespaceName: Cinemachine
@@ -3363,12 +3111,6 @@ ScriptsOnlyBuild:
     className: DictionaryAsset
   - hash:
       serializedVersion: 2
-      Hash: 19b6f208d6bb7325499c123bb707d8df
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackDistanceMeter
-  - hash:
-      serializedVersion: 2
       Hash: 3594d8e9fcbd74e51eec80efbf16c599
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
@@ -3385,12 +3127,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.TextMeshPro
     namespaceName: TMPro
     className: TMP_SubMeshUI
-  - hash:
-      serializedVersion: 2
-      Hash: 6e41c16c82acefe0d53cd7138593a01b
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CarHealthConfig
   - hash:
       serializedVersion: 2
       Hash: 0f6b6107168e347e854c0107aa8cb9fb
@@ -3435,18 +3171,6 @@ ScriptsOnlyBuild:
     className: CinemachinePOV
   - hash:
       serializedVersion: 2
-      Hash: ea1b87a3bfed09792e7720338241c7a0
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputDeviceDebuggerWindow
-  - hash:
-      serializedVersion: 2
-      Hash: 08e2446b65d2da7600c6bbdd36de0e56
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem
-    className: InputSystemObject
-  - hash:
-      serializedVersion: 2
       Hash: 05afd034bf7a074278a40ad9e97d8db4
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
@@ -3463,12 +3187,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: TMPro.Examples
     className: ObjectSpin
-  - hash:
-      serializedVersion: 2
-      Hash: a1b61f894a316cd1ec62580d6b38d482
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: NarrativeDirector
   - hash:
       serializedVersion: 2
       Hash: af34f63b7128743bccb7408d661fd4ed
@@ -3531,12 +3249,6 @@ ScriptsOnlyBuild:
     className: UnityOnEndDragMessageListener
   - hash:
       serializedVersion: 2
-      Hash: 23ce777f17abe20e89b8041bd4815460
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: NPCTrafficCarSpawner
-  - hash:
-      serializedVersion: 2
       Hash: c9f181db3b5f0f812880b4d2741acbcf
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3553,12 +3265,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.Timeline
     namespaceName: UnityEngine.Timeline
     className: AnimationPlayableAsset
-  - hash:
-      serializedVersion: 2
-      Hash: 0370b9f95798139b666659c7e1be6147
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI
-    className: BaseInputOverride
   - hash:
       serializedVersion: 2
       Hash: 47ee34eb8b6021efa0289dbbb17a5a85
@@ -3639,12 +3345,6 @@ ScriptsOnlyBuild:
     className: ChannelMixer
   - hash:
       serializedVersion: 2
-      Hash: a267883c01e2bbc08a858e76c07321c7
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RollingLogSpawner
-  - hash:
-      serializedVersion: 2
       Hash: d82086405f46de14829f6b4bcbdd8fc9
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
@@ -3675,12 +3375,6 @@ ScriptsOnlyBuild:
     className: BumperAnimScript
   - hash:
       serializedVersion: 2
-      Hash: 2071f7ac454ae14eafecfd4041edae3a
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputActionEditorWindow
-  - hash:
-      serializedVersion: 2
       Hash: 1ce63d97d1ca25cba2d91d5f32fd5f79
     assemblyName: Unity.VisualScripting.State
     namespaceName: Unity.VisualScripting
@@ -3697,12 +3391,6 @@ ScriptsOnlyBuild:
     assemblyName: Cinemachine
     namespaceName: Cinemachine.PostFX
     className: CinemachinePostProcessing
-  - hash:
-      serializedVersion: 2
-      Hash: 6cf63e9dc888f92a3672d2e4db631c8e
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: PlayerInputManagerEditor
   - hash:
       serializedVersion: 2
       Hash: 049f6aa84fe1cb5359c9338e96d0b07e
@@ -3825,18 +3513,6 @@ ScriptsOnlyBuild:
     className: Benchmark03
   - hash:
       serializedVersion: 2
-      Hash: 36a3b38c1450587ea377bd2ece25d9c4
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: CrashObstacleIdentity
-  - hash:
-      serializedVersion: 2
-      Hash: fc5f473132116619f1c6e566ad803096
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputActionsEditorWindow
-  - hash:
-      serializedVersion: 2
       Hash: df40a0512169ac3aeac42b782dc48902
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -3879,22 +3555,10 @@ ScriptsOnlyBuild:
     className: DebugUIHandlerCanvas
   - hash:
       serializedVersion: 2
-      Hash: 8ed5daadd237bb82e132790f75ffccaf
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: PlayerInputEditor
-  - hash:
-      serializedVersion: 2
       Hash: 29a5b2df2668bfb2c64678657486caaa
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding
     className: MoveInCircle
-  - hash:
-      serializedVersion: 2
-      Hash: a92561298b80715aa69e8fa770123cb5
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI.Editor
-    className: InputSystemUIInputModuleEditor
   - hash:
       serializedVersion: 2
       Hash: 8bbce9932f67ad8e7f4eefec87800f94
@@ -3907,12 +3571,6 @@ ScriptsOnlyBuild:
     assemblyName: Unity.RenderPipelines.Core.Runtime
     namespaceName: UnityEngine.Rendering.UI
     className: DebugUIHandlerColor
-  - hash:
-      serializedVersion: 2
-      Hash: 3074afe1b03a0fb081e176a4ef1b9d09
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.Editor
-    className: InputActionAssetEditor
   - hash:
       serializedVersion: 2
       Hash: 7fdd3ee28e9042c3ec83463d0bb3b230
@@ -4029,12 +3687,6 @@ ScriptsOnlyBuild:
     className: TrackFuelSpawner
   - hash:
       serializedVersion: 2
-      Hash: 10a014f2a144d8451101394cdb0b3907
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: GroundRing
-  - hash:
-      serializedVersion: 2
       Hash: e0737712ea1f9376b4d1832a82df0fa2
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -4045,18 +3697,6 @@ ScriptsOnlyBuild:
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding
     className: AnimationLink
-  - hash:
-      serializedVersion: 2
-      Hash: bc08a2eaa223df863858b8db14d68c6d
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: DialogueSequenceSO
-  - hash:
-      serializedVersion: 2
-      Hash: 8557f6de366337159447de7e514ea636
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackObstacleBounceBack
   - hash:
       serializedVersion: 2
       Hash: e2734bcc7b3e94776ade5d59f54fec1e
@@ -4083,22 +3723,10 @@ ScriptsOnlyBuild:
     className: UnityOnMoveMessageListener
   - hash:
       serializedVersion: 2
-      Hash: aa50095e2ef44361ec42a86a0295e227
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingQuestUnlockManager
-  - hash:
-      serializedVersion: 2
       Hash: 6dfbdb53722d39d4e316ef33be90973c
     assemblyName: Unity.RenderPipelines.Universal.Runtime
     namespaceName: UnityEngine.Rendering.Universal
     className: PostProcessData
-  - hash:
-      serializedVersion: 2
-      Hash: daeac1347f8039f61cd4017ff33bd3c6
-    assemblyName: Unity.InputSystem
-    namespaceName: UnityEngine.InputSystem.UI
-    className: InputSystemUIInputModule
   - hash:
       serializedVersion: 2
       Hash: 24af26b9e20d6aa5ab76dcd99087eb10
@@ -4149,12 +3777,6 @@ ScriptsOnlyBuild:
     className: ObstaclePathPreview
   - hash:
       serializedVersion: 2
-      Hash: 1b15c6704be9a209b366bcaa17056652
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: TrackCreature
-  - hash:
-      serializedVersion: 2
       Hash: c1c9b51f36957c038799b38f2c90ec06
     assemblyName: AstarPathfindingProject
     namespaceName: Pathfinding.Examples
@@ -4167,12 +3789,6 @@ ScriptsOnlyBuild:
     className: CoinDataSO
   - hash:
       serializedVersion: 2
-      Hash: 0c2da2a695703d3c1639d83de9714020
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: ShuttleTrackObstacle
-  - hash:
-      serializedVersion: 2
       Hash: 05542cbd5ac43845488988bf4fc2f487
     assemblyName: Assembly-CSharp
     namespaceName: 
@@ -4183,12 +3799,6 @@ ScriptsOnlyBuild:
     assemblyName: Assembly-CSharp
     namespaceName: 
     className: TweenXPNumberSystem
-  - hash:
-      serializedVersion: 2
-      Hash: 0babe0f50862b1a37a3744b385ca79d5
-    assemblyName: Assembly-CSharp
-    namespaceName: 
-    className: RacingRunInventoryPanelUI
   - hash:
       serializedVersion: 2
       Hash: 568292fb7ea6c4f7a667e5ff76bc7e85
@@ -4231,6 +3841,396 @@ ScriptsOnlyBuild:
     assemblyName: Unity.VisualScripting.Core
     namespaceName: Unity.VisualScripting
     className: UnityOnSliderValueChangedMessageListener
+  - hash:
+      serializedVersion: 2
+      Hash: 321d63012820ab5664295554eab75567
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingQuestsPanelUI
+  - hash:
+      serializedVersion: 2
+      Hash: 7bf9e42b8f0fc61b4e3a9ef563ddf7e4
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RollingLogAlongTrack
+  - hash:
+      serializedVersion: 2
+      Hash: 86344100c716167fb86137c127ca9eee
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputActionImporterEditor
+  - hash:
+      serializedVersion: 2
+      Hash: 32bfadf4ab14c1e4298d945ac7dbee8f
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputStateWindow
+  - hash:
+      serializedVersion: 2
+      Hash: a92561298b80715aa69e8fa770123cb5
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI.Editor
+    className: InputSystemUIInputModuleEditor
+  - hash:
+      serializedVersion: 2
+      Hash: daeac1347f8039f61cd4017ff33bd3c6
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI
+    className: InputSystemUIInputModule
+  - hash:
+      serializedVersion: 2
+      Hash: 0a93db405e890a0c44aca7e98c0aee6c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPRainbowColorEffect
+  - hash:
+      serializedVersion: 2
+      Hash: c70f1d1540b7e7cad4e314911a2dd9e8
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarLandingConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 14cfa94fb0bf632998adc3c04c7f0e05
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarBoostConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 79347f14affaa2233becb1fafa24e8ea
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPEffectUploader
+  - hash:
+      serializedVersion: 2
+      Hash: a34eb0ee6b6375b7f3c5b50ff690fecf
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPJitterEffect
+  - hash:
+      serializedVersion: 2
+      Hash: 40be2ad159aa1a2b72ecc74cb38c7824
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI
+    className: MultiplayerEventSystem
+  - hash:
+      serializedVersion: 2
+      Hash: d5e454890c93bccd9c7b0642643dd63e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TerrainAroundFlatRoad
+  - hash:
+      serializedVersion: 2
+      Hash: 155c461f47a0848648cc574cbbda7d52
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: DriftBoostHoldBarUI
+  - hash:
+      serializedVersion: 2
+      Hash: ed8e62f07ec878233f5493a335003493
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI
+    className: VirtualMouseInput
+  - hash:
+      serializedVersion: 2
+      Hash: c4cdb902228df56d5b2b639d6a6bbd3c
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: PlayerInputManager
+  - hash:
+      serializedVersion: 2
+      Hash: 6cf63e9dc888f92a3672d2e4db631c8e
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: PlayerInputManagerEditor
+  - hash:
+      serializedVersion: 2
+      Hash: 0f19765290d81f9e93eff7828a091d40
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: PlayerInput
+  - hash:
+      serializedVersion: 2
+      Hash: ce048683cb5600cea93d8f42661ea4c0
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CrashSeverityConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 2bbd05175d4cdd21e24f9716cdd24f83
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.XR
+    className: TrackedPoseDriver
+  - hash:
+      serializedVersion: 2
+      Hash: bc08a2eaa223df863858b8db14d68c6d
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: DialogueSequenceSO
+  - hash:
+      serializedVersion: 2
+      Hash: a267883c01e2bbc08a858e76c07321c7
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RollingLogSpawner
+  - hash:
+      serializedVersion: 2
+      Hash: 164a37e0bc379311785dd54beac44331
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputDebuggerWindow
+  - hash:
+      serializedVersion: 2
+      Hash: cd8cc5c160731005af9253efbcb45664
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingCoinCollectionHub
+  - hash:
+      serializedVersion: 2
+      Hash: bc75926bfd3609757f7bf33ff766f026
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.EnhancedTouch
+    className: TouchSimulation
+  - hash:
+      serializedVersion: 2
+      Hash: 11487938c52dbb68351ced7fad2dabaf
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarSteeringConfig
+  - hash:
+      serializedVersion: 2
+      Hash: b40f8ffcaa6b71545b8d6ff04b849814
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: AdvancedDropdownWindow
+  - hash:
+      serializedVersion: 2
+      Hash: 0a4ef3c4e73b2f3eef913e2325924084
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: InputSettings
+  - hash:
+      serializedVersion: 2
+      Hash: 01bb3f04e40b2d04ebec04db7aebbc98
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CameraLineOfSightShield
+  - hash:
+      serializedVersion: 2
+      Hash: 90cf308600fb4aeb677786843453ec55
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: RemoteInputPlayerConnection
+  - hash:
+      serializedVersion: 2
+      Hash: e55aa1ce223c3e1702adbae0138592c2
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPParabolaWaveEffect
+  - hash:
+      serializedVersion: 2
+      Hash: ac63eb01edd4fa4db3b1ef5baa79614e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarRampConfig
+  - hash:
+      serializedVersion: 2
+      Hash: a1b61f894a316cd1ec62580d6b38d482
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: NarrativeDirector
+  - hash:
+      serializedVersion: 2
+      Hash: fc5f473132116619f1c6e566ad803096
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputActionsEditorWindow
+  - hash:
+      serializedVersion: 2
+      Hash: d8389cc92b2c962031a35090f0d7cf2b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPEffectCoordinator
+  - hash:
+      serializedVersion: 2
+      Hash: 0370b9f95798139b666659c7e1be6147
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI
+    className: BaseInputOverride
+  - hash:
+      serializedVersion: 2
+      Hash: 3074afe1b03a0fb081e176a4ef1b9d09
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputActionAssetEditor
+  - hash:
+      serializedVersion: 2
+      Hash: 9ddb37b71c04c3fd7dccda3a49b03010
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarFuelConfig
+  - hash:
+      serializedVersion: 2
+      Hash: ba923e7ce7757b5119b3c302076c1bb5
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CoinCollectingFriend
+  - hash:
+      serializedVersion: 2
+      Hash: f2895d46c5e5602db548d67715bad27e
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarDriftConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 8ed5daadd237bb82e132790f75ffccaf
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: PlayerInputEditor
+  - hash:
+      serializedVersion: 2
+      Hash: 36a3b38c1450587ea377bd2ece25d9c4
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CrashObstacleIdentity
+  - hash:
+      serializedVersion: 2
+      Hash: e63fe08659e7e4647a51098c666f8845
+    assemblyName: Unity.InputSystem
+    namespaceName: 
+    className: DownloadableSample
+  - hash:
+      serializedVersion: 2
+      Hash: b57496145dc0ee1f7296ea39c589f03b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarMovementConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 0babe0f50862b1a37a3744b385ca79d5
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingRunInventoryPanelUI
+  - hash:
+      serializedVersion: 2
+      Hash: 3851821d3b8be9f4eb31ce5094dffb6b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarGroundConfig
+  - hash:
+      serializedVersion: 2
+      Hash: d85292b1d7ddb10e5a2df5d221dcba86
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: InputActionAsset
+  - hash:
+      serializedVersion: 2
+      Hash: 215d2dc6ec6ea06728398ea39a103cb3
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.OnScreen
+    className: OnScreenStick
+  - hash:
+      serializedVersion: 2
+      Hash: aa50095e2ef44361ec42a86a0295e227
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingQuestUnlockManager
+  - hash:
+      serializedVersion: 2
+      Hash: ea1b87a3bfed09792e7720338241c7a0
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputDeviceDebuggerWindow
+  - hash:
+      serializedVersion: 2
+      Hash: fdcdcfa15cc6bb5fb088b98595a63757
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CoinCollectingFriendSkillHook
+  - hash:
+      serializedVersion: 2
+      Hash: d364983c8c6de5e17e35d0d5d4631205
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: TMPZoomEffect
+  - hash:
+      serializedVersion: 2
+      Hash: 2071f7ac454ae14eafecfd4041edae3a
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputActionEditorWindow
+  - hash:
+      serializedVersion: 2
+      Hash: 6f760b544d20ab09c8916585b1860e23
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: DialogueUI
+  - hash:
+      serializedVersion: 2
+      Hash: 08e2446b65d2da7600c6bbdd36de0e56
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: InputSystemObject
+  - hash:
+      serializedVersion: 2
+      Hash: 3077dda6b16399ad3b1da60250cea2e1
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: RacingInputReader
+  - hash:
+      serializedVersion: 2
+      Hash: 33eb495d99aa9bea4dbe8b4c4e02c7bb
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem
+    className: InputActionReference
+  - hash:
+      serializedVersion: 2
+      Hash: 5a5b78205f8301455c0c7191f9d61de3
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarVFXAudioConfig
+  - hash:
+      serializedVersion: 2
+      Hash: b838cbada0b03f1cfbaebc8e124f4f39
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.OnScreen
+    className: OnScreenButton
+  - hash:
+      serializedVersion: 2
+      Hash: 5835aa044b7ea3413cc6d9d819e95dd9
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.Editor
+    className: InputActionDebuggerWindow
+  - hash:
+      serializedVersion: 2
+      Hash: 95426d463074947dcbffc797c44e779c
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI.Editor
+    className: StandaloneInputModuleModuleEditor
+  - hash:
+      serializedVersion: 2
+      Hash: 6e41c16c82acefe0d53cd7138593a01b
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarHealthConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 157d3cf40178d244cd11ae1c9791ead7
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.HID.Editor
+    className: HIDDescriptorWindow
+  - hash:
+      serializedVersion: 2
+      Hash: 47197d7ff52d5cabc68c51f23237406c
+    assemblyName: Assembly-CSharp
+    namespaceName: 
+    className: CarCrashMashConfig
+  - hash:
+      serializedVersion: 2
+      Hash: 0bc7ef1b7516f21320ec49bfd31eef2e
+    assemblyName: Unity.InputSystem
+    namespaceName: UnityEngine.InputSystem.UI
+    className: TrackedDeviceRaycaster
   platform: 19
   scenePathNames:
   - Assets/Scenes/Racer_Incremental.unity

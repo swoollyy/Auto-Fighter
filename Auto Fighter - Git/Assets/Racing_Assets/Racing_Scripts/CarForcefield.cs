@@ -102,6 +102,13 @@ public sealed class CarForcefield : MonoBehaviour
     [SerializeField, Tooltip("If true the forcefield will start on its base cooldown when the car spawns instead of being instantly armed.")]
     private bool startOnCooldown = true;
 
+    [Header("Track creature (beast)")]
+    [SerializeField, Min(0.1f)] private float forcefieldCreatureCorpseMass = 55f;
+
+    [Header("Launch tagging")]
+    [Tooltip("How long the launched body counts as forcefield-launched for obstacle-on-obstacle impact damage.")]
+    [SerializeField, Min(0.5f)] private float forcefieldLaunchTagDuration = 4f;
+
     // Runtime
     private SphereCollider _trigger;
     private bool _armed;
@@ -289,13 +296,21 @@ public sealed class CarForcefield : MonoBehaviour
             if (affectOnlyAggressiveTrackCreatures && creature.BehaviorType != CreatureBehaviorType.Aggressive)
                 return;
 
-            // Avoid processing the same collider multiple times
             if (_recentlyLaunched.Contains(other)) return;
 
-            creature.KilledByForcefield();
+            if (!creature.TryBeginForcefieldPhysicsLaunch(forcefieldCreatureCorpseMass))
+                return;
+
             _recentlyLaunched.Add(other);
 
             Transform creatureRoot = creature.transform.root;
+            Rigidbody creatureRb = creature.GetComponent<Rigidbody>();
+            if (creatureRb == null)
+            {
+                creature.FinalizeForcefieldLaunchKill();
+                return;
+            }
+
             Collider[] creatureCols = creatureRoot.GetComponentsInChildren<Collider>(true);
             Collider[] carCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
 
@@ -312,25 +327,11 @@ public sealed class CarForcefield : MonoBehaviour
             if (ignoreWithCarSeconds > 0f)
                 StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, ignoreWithCarSeconds));
 
-            Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
-            if (launchVFX != null)
-            {
-                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
-                var vfx = Instantiate(launchVFX, fxPos, fxRot);
-                if (parentVfxToObstacle && vfx != null)
-                    vfx.transform.SetParent(creatureRoot, true);
-            }
+            EnsureLaunchImmunity(creatureRb.transform);
+            ApplyForcefieldLaunchPhysicsAndPresentation(other, creatureRb);
+            ArmForcefieldLaunchTag(creatureRb.gameObject);
 
-            if (enableLaunchSlowMo)
-                StartLaunchSlowMo();
-
-            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
-            if (postFX != null)
-                postFX.PlayBurst();
-
-            SetArmed(false);
-            _cooldownRemain = cooldownSeconds;
-            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+            creature.FinalizeForcefieldLaunchKill();
             return;
         }
 
@@ -481,7 +482,6 @@ public sealed class CarForcefield : MonoBehaviour
         Vector3 relVel2 = otherRb2 ? (otherRb2.velocity - (carRigidbody ? carRigidbody.velocity : Vector3.zero))
                                  : (carRigidbody ? -carRigidbody.velocity : Vector3.zero);
         float speed2 = relVel2.magnitude;
-        float sev2 = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, speed2);
 
         var bounceBack = other.GetComponentInParent<TrackObstacleBounceBack>();
         if (bounceBack != null)
@@ -492,11 +492,110 @@ public sealed class CarForcefield : MonoBehaviour
         if (rollingLog != null)
         {
             Vector3 ffCenter = ownerCollider ? ownerCollider.bounds.center : transform.position;
-            // Ensure logs drop scripted pathing immediately; generic force path below applies final impulse.
             rollingLog.ApplyForcefieldLaunch(ffCenter, speed2, 0f, 0f);
         }
         Rigidbody launchRb = PrepareObstacleForLaunch(other);
         if (launchRb == null) return;
+
+        var obstacleCols = launchRb.GetComponentsInChildren<Collider>(true);
+        Collider[] CarCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
+        foreach (var c in obstacleCols)
+        {
+            if (!c) continue;
+            _recentlyLaunched.Add(c);
+            foreach (var carCol in CarCols)
+            {
+                if (carCol) Physics.IgnoreCollision(carCol, c, true);
+            }
+        }
+        if (ignoreWithCarSeconds > 0f)
+            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, ignoreWithCarSeconds));
+
+        ArmForcefieldLaunchTag(launchRb.gameObject);
+        ApplyForcefieldLaunchPhysicsAndPresentation(other, launchRb);
+    }
+
+    private IEnumerator ReenableCollisionsLater(Collider[] obstacleCols, Collider[] carCols, float delay)
+    {
+        float tEnd = Time.time + delay;
+        while (Time.time < tEnd) yield return null;
+
+        foreach (var c in obstacleCols)
+        {
+            if (!c) continue;
+            foreach (var carCol in carCols)
+            {
+                if (carCol) Physics.IgnoreCollision(carCol, c, false);
+            }
+            _recentlyLaunched.Remove(c);
+        }
+    }
+
+    private Rigidbody PrepareObstacleForLaunch(Collider hitCol)
+    {
+        Transform root = hitCol.attachedRigidbody ? hitCol.attachedRigidbody.transform : hitCol.transform.root;
+        if (!root) root = hitCol.transform;
+
+        var cross = root.GetComponentInChildren<CrossTrackObstacle>(true);
+        if (cross != null)
+            cross.DetachFromScriptedPathForForcefield();
+
+        var shuttle = root.GetComponentInChildren<ShuttleTrackObstacle>(true);
+
+        if (disableCrossTrackObstacleOnLaunch)
+        {
+            if (shuttle) shuttle.enabled = false;
+        }
+
+        if (shuttle)
+        {
+            shuttle.ConvertToPhysicsOnHit(); // disable scripted shuttling, allow physics launch
+        }
+
+        // Ensure the launched obstacle has a Rigidbody
+        Rigidbody rb = root.GetComponent<Rigidbody>();
+        if (!rb && addRigidbodyIfMissing)
+        {
+            rb = root.gameObject.AddComponent<Rigidbody>();
+            rb.mass = Mathf.Max(0.1f, defaultAddedMass);
+        }
+        if (!rb) return null;
+
+        if (rb.isKinematic) rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.WakeUp();
+        Physics.SyncTransforms();
+
+        EnsureLaunchImmunity(rb.transform);
+
+        return rb;
+    }
+
+    private void EnsureLaunchImmunity(Transform target)
+    {
+        if (target == null) return;
+        var immunity = target.GetComponent<LaunchImmunityMarker>();
+        if (!immunity) immunity = target.gameObject.AddComponent<LaunchImmunityMarker>();
+        immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
+    }
+
+    private void ArmForcefieldLaunchTag(GameObject host)
+    {
+        if (host == null) return;
+        float dur = Mathf.Max(forcefieldLaunchTagDuration, ignoreWithCarSeconds + 0.5f);
+        var tag = host.GetComponent<ForcefieldLaunchTag>();
+        if (tag == null) tag = host.AddComponent<ForcefieldLaunchTag>();
+        tag.Arm(dur);
+    }
+
+    /// <summary>
+    /// Penetration resolve, ignore car collisions, impulse, VFX/SFX, disarm. Caller sets up creature/obstacle-specific ignore lists where needed.
+    /// </summary>
+    private void ApplyForcefieldLaunchPhysicsAndPresentation(Collider other, Rigidbody launchRb)
+    {
+        if (other == null || launchRb == null) return;
 
         Collider obstaclePrimaryCol = other;
         if (!obstaclePrimaryCol || obstaclePrimaryCol.attachedRigidbody != launchRb)
@@ -522,8 +621,13 @@ public sealed class CarForcefield : MonoBehaviour
             {
                 float soften = 0.65f;
                 Vector3 correction = sepDir * (sepDist * soften);
-                launchRb.MovePosition(launchRb.position + correction);
-                Physics.SyncTransforms();
+                // Horizontal separation only — avoids popping the car upward from hull overlap with tall props.
+                correction.y = 0f;
+                if (correction.sqrMagnitude > 1e-8f)
+                {
+                    launchRb.MovePosition(launchRb.position + correction);
+                    Physics.SyncTransforms();
+                }
             }
         }
 
@@ -537,19 +641,11 @@ public sealed class CarForcefield : MonoBehaviour
         vfxForward2.Normalize();
         Quaternion vfxRot2 = Quaternion.LookRotation(vfxForward2, vfxUp);
 
-        var obstacleCols = launchRb.GetComponentsInChildren<Collider>(true);
-        Collider[] CarCols = _carColliders ?? (ownerCollider ? new[] { ownerCollider } : new Collider[0]);
-        foreach (var c in obstacleCols)
-        {
-            if (!c) continue;
-            _recentlyLaunched.Add(c);
-            foreach (var carCol in CarCols)
-            {
-                if (carCol) Physics.IgnoreCollision(carCol, c, true);
-            }
-        }
-        if (ignoreWithCarSeconds > 0f)
-            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, ignoreWithCarSeconds));
+        Rigidbody otherRb2 = other.attachedRigidbody;
+        Vector3 relVel2 = otherRb2 ? (otherRb2.velocity - (carRigidbody ? carRigidbody.velocity : Vector3.zero))
+                                 : (carRigidbody ? -carRigidbody.velocity : Vector3.zero);
+        float speed2 = relVel2.magnitude;
+        float sev2 = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, speed2);
 
         Vector3 awayDir = other.bounds.center - (ownerCollider ? ownerCollider.bounds.center : transform.position);
         awayDir.y = 0f;
@@ -585,72 +681,12 @@ public sealed class CarForcefield : MonoBehaviour
 
         Play3DClipAtPoint(forcefieldUseClip, vfxPos2, forcefieldUseVolume);
 
-
-        // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
         if (postFX != null)
             postFX.PlayBurst();
 
         SetArmed(false);
         _cooldownRemain = cooldownSeconds;
         if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
-    }
-
-    private IEnumerator ReenableCollisionsLater(Collider[] obstacleCols, Collider[] carCols, float delay)
-    {
-        float tEnd = Time.time + delay;
-        while (Time.time < tEnd) yield return null;
-
-        foreach (var c in obstacleCols)
-        {
-            if (!c) continue;
-            foreach (var carCol in carCols)
-            {
-                if (carCol) Physics.IgnoreCollision(carCol, c, false);
-            }
-            _recentlyLaunched.Remove(c);
-        }
-    }
-
-    private Rigidbody PrepareObstacleForLaunch(Collider hitCol)
-    {
-        Transform root = hitCol.attachedRigidbody ? hitCol.attachedRigidbody.transform : hitCol.transform.root;
-        if (!root) root = hitCol.transform;
-
-        var shuttle = root.GetComponentInChildren<ShuttleTrackObstacle>(true);
-
-        if (disableCrossTrackObstacleOnLaunch)
-        {
-            if (shuttle) shuttle.enabled = false;
-        }
-
-        if (shuttle)
-        {
-            shuttle.ConvertToPhysicsOnHit(); // disable scripted shuttling, allow physics launch
-        }
-
-        // Ensure the launched obstacle has a Rigidbody
-        Rigidbody rb = root.GetComponent<Rigidbody>();
-        if (!rb && addRigidbodyIfMissing)
-        {
-            rb = root.gameObject.AddComponent<Rigidbody>();
-            rb.mass = Mathf.Max(0.1f, defaultAddedMass);
-        }
-        if (!rb) return null;
-
-        if (rb.isKinematic) rb.isKinematic = false;
-        rb.useGravity = true;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-        rb.WakeUp();
-        Physics.SyncTransforms();
-
-        // NEW: Mark obstacle immune to crash logic for the ignore window
-        var immunity = root.GetComponent<LaunchImmunityMarker>();
-        if (!immunity) immunity = root.gameObject.AddComponent<LaunchImmunityMarker>();
-        // Give a tiny grace above ignoreWithCarSeconds to outlast re-enable timing
-        immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
-
-        return rb;
     }
 
     private void StartLaunchSlowMo()

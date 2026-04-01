@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -81,6 +82,11 @@ public class CrossTrackObstacle : MonoBehaviour
     /// <summary>Resolved tilt target; equals <see cref="transform"/> when no separate visual.</summary>
     private Transform _resolvedTiltRoot;
     private Vector3 _smoothedGroundNormal = Vector3.up;
+
+    [Header("Forcefield impact damage (pair cooldown)")]
+    [SerializeField] private float forcefieldImpactPairCooldown = 0.25f;
+
+    private readonly Dictionary<int, float> _forcefieldImpactCooldownByOtherRb = new Dictionary<int, float>(16);
 
     [Header("Travel FX")]
     [Tooltip("All child lights that should only be on while this obstacle is actively traveling on its scripted path.")]
@@ -467,8 +473,21 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!_initialized || !_active || _convertedToPhysics) return;
         if (collision == null || collision.collider == null) return;
+
+        // After physics conversion: skill-gated forcefield chain damage vs other props.
+        if (_convertedToPhysics && _rb != null)
+        {
+            ForcefieldImpactDamageHelper.TryApply(
+                collision,
+                _rb,
+                _forcefieldImpactCooldownByOtherRb,
+                forcefieldImpactPairCooldown,
+                minRelativeSpeed: 0f);
+            return;
+        }
+
+        if (!_initialized || !_active) return;
 
         // Cache impact direction from collision
         Vector3 impactDir = Vector3.zero;
@@ -510,6 +529,12 @@ public class CrossTrackObstacle : MonoBehaviour
     [Tooltip("Speed at which the upward boost reaches its maximum value.")]
     [SerializeField] private float maxSpeedForUpwardBoost = 15f;
 
+    [Header("Guaranteed Path-Preserving Bounce")]
+    [Tooltip("Minimum upward velocity added when the cross obstacle keeps its scripted path after hitting NON-player objects.")]
+    [SerializeField, Min(0f)] private float guaranteedUpwardBounceOnPathPreserve = 0.75f;
+    [Tooltip("Minimum upward velocity added when the cross obstacle keeps path after hitting the player. Kept lower to avoid over-launching the car.")]
+    [SerializeField, Min(0f)] private float guaranteedUpwardBounceOnPlayerHit = 0.35f;
+
     [Header("Explosion Force (When Hit By Heavier Object)")]
     [Tooltip("Enable explosive physics reaction when this obstacle is hit by a heavier object.")]
     [SerializeField] private bool enableExplosionOnHeavierImpact = true;
@@ -535,7 +560,14 @@ public class CrossTrackObstacle : MonoBehaviour
             return;
 
         // Player special-case: ALWAYS keep path, never convert to physics.
+        // Keep behavior narrow: parent-chain match first, then exact active-car root match.
         var car = other.GetComponentInParent<CarController>();
+        if (car == null)
+        {
+            var activeCar = GameManager_Racing.Instance != null ? GameManager_Racing.Instance.ActiveCar : null;
+            if (activeCar != null && other.transform.root == activeCar.transform.root)
+                car = activeCar;
+        }
         if (car != null)
         {
             var playerRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
@@ -565,7 +597,7 @@ public class CrossTrackObstacle : MonoBehaviour
                 Vector3 deltaV = away * dv;
 
                 // Calculate upward boost
-                float upwardBoost = CalculateUpwardBoost(relativeSpeed);
+                float upwardBoost = Mathf.Max(CalculateUpwardBoost(relativeSpeed), guaranteedUpwardBounceOnPlayerHit);
                 deltaV.y += upwardBoost;
 
                 playerRb.AddForce(deltaV * Mathf.Max(0.01f, playerRb.mass), ForceMode.Impulse);
@@ -704,7 +736,7 @@ public class CrossTrackObstacle : MonoBehaviour
                 Vector3 deltaV = away * dv;
 
                 // Calculate upward boost
-                float upwardBoost = CalculateUpwardBoost(relSpeed);
+                float upwardBoost = Mathf.Max(CalculateUpwardBoost(relSpeed), guaranteedUpwardBounceOnPathPreserve);
                 deltaV.y += upwardBoost;
 
                 otherRb.AddForce(deltaV * Mathf.Max(0.01f, otherRb.mass), ForceMode.Impulse);
@@ -790,6 +822,7 @@ public class CrossTrackObstacle : MonoBehaviour
     }
 
 
+
     public Vector3 GetWorldVelocity()
     {
         // If still on scripted motion, return the transform-derived velocity
@@ -842,6 +875,14 @@ public class CrossTrackObstacle : MonoBehaviour
     }
 
     /// <summary>
+    /// Stops scripted cross-track motion so physics / forcefield can control this body (e.g. player forcefield).
+    /// </summary>
+    public void DetachFromScriptedPathForForcefield()
+    {
+        ConvertToPhysicsOnHit();
+    }
+
+    /// <summary>
     /// Standard conversion to physics (when hit by player or reaching end).
     /// </summary>
     private void ConvertToPhysicsOnHit()
@@ -850,7 +891,6 @@ public class CrossTrackObstacle : MonoBehaviour
         _convertedToPhysics = true;
 
         _active = false;           // stop scripted motion
-        enabled = false;           // disable this script completely
 
         if (_rb == null) return;
 
@@ -882,7 +922,6 @@ public class CrossTrackObstacle : MonoBehaviour
         _convertedToPhysics = true;
 
         _active = false;
-        enabled = false;
         SetTravelFxEnabled(false, true);
 
         if (_rb == null) return;

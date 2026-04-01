@@ -1732,6 +1732,9 @@ public class CarController : MonoBehaviour
                 }
             }
 
+            // Crash-origin state: keep post-crash fling caps enforced while mashing/recovering.
+            ApplyCrashVelocityCaps();
+
             // Fuel burn while in recovery
             ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
 
@@ -1786,6 +1789,10 @@ public class CarController : MonoBehaviour
             _wasGroundedLastFrame = _isGrounded;
 
             _crashTimer -= dt;
+
+            // Enforce crash-only velocity caps continuously while crash state is active.
+            // This catches external pushes/collisions that occur after the initial crash impulse.
+            ApplyCrashVelocityCaps();
 
             // Only exit crash state if timer is up AND we've been grounded long enough
             if (_crashTimer <= 0f && _groundedTime >= groundedDurationRequired)
@@ -3063,16 +3070,8 @@ public class CarController : MonoBehaviour
         // Apply the crash impulse with vertical pop
         rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
 
-        // Cap velocity so the car can't be flung too fast
-        float speed = rb.velocity.magnitude;
-        if (speed > maxCrashFlingSpeed && maxCrashFlingSpeed > 0f)
-            rb.velocity = rb.velocity.normalized * maxCrashFlingSpeed;
-        if (maxTotalVelocityMagnitude > 0f)
-        {
-            float s = rb.velocity.magnitude;
-            if (s > maxTotalVelocityMagnitude)
-                rb.velocity = rb.velocity * (maxTotalVelocityMagnitude / s);
-        }
+        // Cap crash launch velocity.
+        ApplyCrashVelocityCaps();
 
         // --- Torque (spin) stays as you had it ---
 
@@ -5373,6 +5372,7 @@ public class CarController : MonoBehaviour
         return impactSpeed;
     }
 
+
     /// <summary>
     /// Central 0–1 crash severity. Uses <see cref="CrashSeverityConfig"/> when assigned; otherwise legacy impact-speed lerp.
     /// </summary>
@@ -5706,6 +5706,25 @@ public class CarController : MonoBehaviour
 
         src.Play();
         Destroy(go, deathExplodeClip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
+    /// <summary>
+    /// Applies crash-only total velocity caps. Intended for crash/recovery windows only.
+    /// </summary>
+    private void ApplyCrashVelocityCaps()
+    {
+        if (rb == null) return;
+
+        float speed = rb.velocity.magnitude;
+
+        if (maxCrashFlingSpeed > 0f && speed > maxCrashFlingSpeed)
+        {
+            rb.velocity = rb.velocity.normalized * maxCrashFlingSpeed;
+            speed = maxCrashFlingSpeed;
+        }
+
+        if (maxTotalVelocityMagnitude > 0f && speed > maxTotalVelocityMagnitude)
+            rb.velocity = rb.velocity * (maxTotalVelocityMagnitude / speed);
     }
 
     private void AwardMashSprockets()
@@ -6075,16 +6094,17 @@ public class CarController : MonoBehaviour
             totalClicks = severityClicks + crashCountClicks + distanceClicks;
         }
 
-        // Mash "punishment" scaling: baseline comes from CarCrashMashConfig (baseClicksPerClick).
-        // effectiveClicksPerClick is that base after ApplyStatChain (add/mul skills). Each full
-        // click of power above the baseline used to multiply required mash exponentially, which made
-        // mash strength upgrades feel like they were making recovery harder. Convert this into a
-        // linear *assist* instead (more power => fewer required clicks).
-        int powerAboveBaseline = Mathf.Max(0, effectiveClicksPerClick - baseClicksPerClick);
+        // Mash click-strength difficulty scaling (non-compounding).
+        // Baseline (effective == base) remains 1x.
+        // Above baseline, required clicks scale linearly from current strength ratio and tuning step,
+        // rather than exponentiating on top of prior levels.
+        int safeBaseClickStrength = Mathf.Max(1, baseClicksPerClick);
+        float strengthRatio = Mathf.Max(1f, (float)effectiveClicksPerClick / safeBaseClickStrength);
         float step = Mathf.Max(1f, mashDifficultyPerClickPowerStep);
-        float mashStrengthAssistDivisor = 1f + powerAboveBaseline * (step - 1f);
-        if (mashStrengthAssistDivisor > 0f)
-            totalClicks /= mashStrengthAssistDivisor;
+        float mashStrengthDifficultyMultiplier = strengthRatio;
+        if (effectiveClicksPerClick > safeBaseClickStrength)
+            mashStrengthDifficultyMultiplier = strengthRatio * step;
+        totalClicks *= mashStrengthDifficultyMultiplier;
 
         return Mathf.Clamp(Mathf.RoundToInt(totalClicks), mashClicksAbsoluteMin, mashClicksAbsoluteMax);
     }

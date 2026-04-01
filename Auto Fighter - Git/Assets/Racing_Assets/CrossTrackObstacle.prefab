@@ -259,7 +259,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
   serializedVersion: 4
-  m_Mass: 3
+  m_Mass: 6
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -328,6 +328,8 @@ MonoBehaviour:
   scaleUpwardBoostBySeverity: 1
   minSpeedForUpwardBoost: 2
   maxSpeedForUpwardBoost: 8
+  guaranteedUpwardBounceOnPathPreserve: 0.75
+  guaranteedUpwardBounceOnPlayerHit: 0.35
   enableExplosionOnHeavierImpact: 1
   explosionForceBase: 15
   explosionForceMassScale: 0.5
@@ -341,7 +343,7 @@ MonoBehaviour:
     m_Curve:
     - serializedVersion: 3
       time: 1
-      value: 7
+      value: 10
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -350,7 +352,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 2.2
-      value: 20
+      value: 23
       inSlope: 0
       outSlope: 0
       tangentMode: 0
