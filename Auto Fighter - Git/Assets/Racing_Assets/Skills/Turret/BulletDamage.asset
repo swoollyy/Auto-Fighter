@@ -15,7 +15,7 @@ MonoBehaviour:
   type: 29
   displayName: Bullet Damage
   description: Increases bullet damage by 1.
-  maxLevel: 2
+  maxLevel: 5
   costCurve:
     serializedVersion: 2
     m_Curve:
@@ -39,6 +39,6 @@ MonoBehaviour:
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 1
-  baseSprocketCost: 5
-  sprocketCostPerLevel: 3
+  baseSprocketCost: 100
+  sprocketCostPerLevel: 100
   progressiveUnlocks: []

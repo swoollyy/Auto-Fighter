@@ -447,6 +447,7 @@
 "Assets/Racing_Assets/Racing_Scripts/Debug/SkidDebugStamp.cs"
 "Assets/Racing_Assets/Racing_Scripts/ExhaustVFXController.cs"
 "Assets/Racing_Assets/Racing_Scripts/FogPulseColorDriver.cs"
+"Assets/Racing_Assets/Racing_Scripts/ForcefieldImpactDamageHelper.cs"
 "Assets/Racing_Assets/Racing_Scripts/ForcefieldLaunchTag.cs"
 "Assets/Racing_Assets/Racing_Scripts/ForcefieldPostFXController.cs"
 "Assets/Racing_Assets/Racing_Scripts/ForcefieldSkillHook.cs"

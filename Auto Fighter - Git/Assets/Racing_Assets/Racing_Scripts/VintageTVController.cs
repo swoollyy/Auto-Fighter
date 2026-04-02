@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 [DisallowMultipleComponent]
 public class VintageTVController : MonoBehaviour
@@ -46,10 +46,25 @@ public class VintageTVController : MonoBehaviour
     [Header("Time Scale")]
     [SerializeField] private float timeScale = 1f;
 
+    [Header("Crash Reaction")]
+    [Tooltip("Extra intensity added at max crash severity (1.0). Scales linearly with severity.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float crashIntensityAdd = 0.45f;
+    [Tooltip("How fast crash contribution eases back to zero after a non-lethal crash.")]
+    [SerializeField] private float crashEaseOutSpeed = 1.8f;
+    [Tooltip("Optional override for lethal (run-ending) crash spike; leave at 1 to use full crashIntensityAdd.")]
+    [Range(0f, 2f)]
+    [SerializeField] private float lethalCrashMultiplier = 1.0f;
+
     // runtime refs
     private Rigidbody _carRb;
     private CarController _car;
     private float _boost01; // 0..1
+    private float _crash01; // 0..1, from severity
+
+    // Cached defaults (as authored in inspector) so crash can spike and ease back to these.
+    private float _defaultIntensity;
+    private float _defaultNoise;
 
     private static readonly int ID_Intensity = Shader.PropertyToID("_Intensity");
     private static readonly int ID_ScanlineStrength = Shader.PropertyToID("_ScanlineStrength");
@@ -64,6 +79,17 @@ public class VintageTVController : MonoBehaviour
     {
         if (vintageMat == null)
             Debug.LogWarning("[VintageTVController] No material assigned. Effect will do nothing.");
+        else
+        {
+            // Derive base settings directly from the assigned material so this
+            // controller follows whatever defaults the shader asset is authored with.
+            baseIntensity = vintageMat.GetFloat(ID_Intensity);
+            noise = vintageMat.GetFloat(ID_Noise);
+        }
+
+        // Cache defaults once so we can always return to them after crash spikes.
+        _defaultIntensity = Mathf.Clamp01(baseIntensity);
+        _defaultNoise = Mathf.Clamp01(noise);
     }
 
     private void OnEnable()
@@ -91,6 +117,10 @@ public class VintageTVController : MonoBehaviour
         if (_boost01 > 0f)
             _boost01 = Mathf.MoveTowards(_boost01, 0f, boostEaseOutSpeed * dt);
 
+        // ease crash contribution back down (for non-lethal crashes)
+        if (_crash01 > 0f)
+            _crash01 = Mathf.MoveTowards(_crash01, 0f, crashEaseOutSpeed * dt);
+
         PushToMaterial();
     }
 
@@ -109,9 +139,11 @@ public class VintageTVController : MonoBehaviour
         _car = active;
         _carRb = _car.GetComponent<Rigidbody>();
 
-        // Subscribe to boost events exposed on CarController :contentReference[oaicite:4]{index=4}
+        // Subscribe to boost and crash events on CarController
         _car.OnBoostStarted += HandleBoostStarted;
         _car.OnBoostEnded += HandleBoostEnded;
+        _car.OnCrash += HandleCrash;
+        _car.OnLethalCrash += HandleLethalCrash;
     }
 
     private void UnbindCarEvents()
@@ -120,11 +152,14 @@ public class VintageTVController : MonoBehaviour
         {
             _car.OnBoostStarted -= HandleBoostStarted;
             _car.OnBoostEnded -= HandleBoostEnded;
+            _car.OnCrash -= HandleCrash;
+            _car.OnLethalCrash -= HandleLethalCrash;
         }
 
         _car = null;
         _carRb = null;
         _boost01 = 0f;
+        _crash01 = 0f;
     }
 
     private void HandleBoostStarted()
@@ -138,6 +173,21 @@ public class VintageTVController : MonoBehaviour
         // don’t hard drop to 0; let the ease-out handle it
     }
 
+    private void HandleCrash(float severity01)
+    {
+        // Non-lethal crash: spike crash contribution based on severity (0..1)
+        severity01 = Mathf.Clamp01(severity01);
+        _crash01 = Mathf.Max(_crash01, severity01);
+    }
+
+    private void HandleLethalCrash(float severity01)
+    {
+        // Run-ending crash: always go to max crash spike (optionally scaled)
+        float sev = Mathf.Clamp01(severity01);
+        float target = Mathf.Clamp01(lethalCrashMultiplier * Mathf.Max(sev, 1f));
+        _crash01 = Mathf.Max(_crash01, target);
+    }
+
     private void PushToMaterial()
     {
         if (vintageMat == null) return;
@@ -148,7 +198,9 @@ public class VintageTVController : MonoBehaviour
             return;
         }
 
-        float intensity = baseIntensity;
+        // Start from the authored default intensity and apply crash scaling first.
+        float crashScale = 1f + (_crash01 * crashIntensityAdd); // 0..(1+crashIntensityAdd)
+        float intensity = Mathf.Clamp01(_defaultIntensity * crashScale);
 
         // Speed contribution (m/s)
         if (scaleWithSpeed && _carRb != null)
@@ -170,7 +222,9 @@ public class VintageTVController : MonoBehaviour
         vintageMat.SetFloat(ID_ScanlineStrength, scanlineStrength);
         vintageMat.SetFloat(ID_ScanlineDensity, scanlineDensity);
         vintageMat.SetFloat(ID_Jitter, jitter);
-        vintageMat.SetFloat(ID_Noise, noise);
+        // Noise scales with the same crash factor so both feel linked.
+        float noiseScale = Mathf.Clamp01(_defaultNoise * crashScale);
+        vintageMat.SetFloat(ID_Noise, noiseScale);
         vintageMat.SetFloat(ID_Vignette, vignette);
         vintageMat.SetFloat(ID_Chromatic, chromatic);
         vintageMat.SetFloat(ID_TimeScale, timeScale);

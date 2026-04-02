@@ -48,8 +48,8 @@ MonoBehaviour:
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 0
-  baseSprocketCost: 5
-  sprocketCostPerLevel: 3
+  baseSprocketCost: 50
+  sprocketCostPerLevel: 5
   progressiveUnlocks:
   - requiredLevel: 1
     unlocks:

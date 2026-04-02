@@ -47,7 +47,10 @@ MonoBehaviour:
   uiPosition: {x: -475, y: -225}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
-  usesSprockets: 0
-  baseSprocketCost: 5
-  sprocketCostPerLevel: 3
-  progressiveUnlocks: []
+  usesSprockets: 1
+  baseSprocketCost: 50
+  sprocketCostPerLevel: 10
+  progressiveUnlocks:
+  - requiredLevel: 3
+    unlocks:
+    - {fileID: 11400000, guid: 11cf876e738e0c84b9c25e95b7983a57, type: 2}

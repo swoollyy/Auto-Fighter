@@ -679,6 +679,11 @@ public class CarController : MonoBehaviour
     public event Action OnBoostStarted;
     public event Action OnBoostEnded;
 
+    /// <summary>Raised when a non-lethal crash occurs; argument is severity 0..1.</summary>
+    public event Action<float> OnCrash;
+    /// <summary>Raised when a crash results in death; argument is severity 0..1 used for damage.</summary>
+    public event Action<float> OnLethalCrash;
+
     private float baseBoostForce;
     private float baseBoostSustainAcceleration;
     private float baseBoostDuration;
@@ -3108,6 +3113,9 @@ public class CarController : MonoBehaviour
                 var gm = GameManager_Racing.Instance;
                 if (gm != null)
                     gm.OnCarCrashLethal(sev01ForDamage);
+
+                // Run-ending crash: notify listeners with severity used for damage.
+                try { OnLethalCrash?.Invoke(sev01ForDamage); } catch { /* ignore listener errors */ }
             }
 
             // Start cooldown AFTER damage
@@ -5524,6 +5532,17 @@ public class CarController : MonoBehaviour
         var gm = GameManager_Racing.Instance;
         if (gm != null && damageWindowOpen)
             gm.OnCarCrash(impactSpeed, severity);
+
+        if (damageWindowOpen)
+        {
+            try { OnCrash?.Invoke(severity); } catch { /* ignore listener errors */ }
+        }
+
+        // Notify listeners (e.g. VintageTVController) about crash severity.
+        if (damageWindowOpen)
+        {
+            try { OnCrash?.Invoke(severity); } catch { /* ignore listener errors */ }
+        }
 
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;

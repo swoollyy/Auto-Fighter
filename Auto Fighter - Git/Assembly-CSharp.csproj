@@ -153,6 +153,7 @@
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\ScreenFlashManager.cs" />
     <Compile Include="Assets\Scripts\BallUIEntry.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\TrackCreatureSpawner.cs" />
+    <Compile Include="Assets\Racing_Assets\Racing_Scripts\ForcefieldImpactDamageHelper.cs" />
     <Compile Include="Assets\Scripts\Brawler.cs" />
     <Compile Include="Assets\TextMesh Pro\Examples &amp; Extras\Scripts\CameraController.cs" />
     <Compile Include="Assets\Racing_Assets\Racing_Scripts\SpawnUtils.cs" />

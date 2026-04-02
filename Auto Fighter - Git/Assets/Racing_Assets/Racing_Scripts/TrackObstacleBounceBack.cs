@@ -74,14 +74,6 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [SerializeField, Tooltip("Layers this obstacle should NOT physically collide with (ex: Player/Car). We still detect hits via overlap query.")]
     private LayerMask noPhysicalCollisionMask;
 
-    [SerializeField, Tooltip("Layers used to detect the car for damage/crash sim (usually same as Player/Car).")]
-    private LayerMask carDetectMask;
-
-    [SerializeField, Min(0.01f)] private float carDetectRadius = 0.6f;
-
-    [Tooltip("When the obstacle is in the air (bounce arc), use this sphere radius for car hit instead of the full collider. Stops hits registering when the car is clear of the visible mesh.")]
-    [SerializeField, Min(0.1f)] private float carHitRadiusWhenAirborne = 0.5f;
-
     [Header("Landing Preview (Decal / GroundRing)")]
     [SerializeField, Tooltip("Use the SAME prefab you use for ThrownObstacleDirector.groundRingPrefab (pooled).")]
     private GameObject landingTelegraphPrefab;
@@ -858,14 +850,10 @@ public class TrackObstacleBounceBack : MonoBehaviour
     {
         if (!damagePlayerOnHit) return;
         if (now < _nextAllowedCarHitTime) return;
-        if (carDetectMask.value == 0) return;
 
-        // When airborne (bounce arc), use a small sphere so we don't hit the car from the full collider floating in the air.
-        Collider[] hits;
-        if (_state == State.Bouncing && carHitRadiusWhenAirborne > 0f)
-            hits = Physics.OverlapSphere(_rb.position, carHitRadiusWhenAirborne, carDetectMask, QueryTriggerInteraction.Collide);
-        else
-            hits = OverlapColliderShape(_col, carDetectMask);
+        // Only use the obstacle's own collider as the hit shape so the hitbox
+        // exactly matches the prefab collider the player authors.
+        Collider[] hits = OverlapColliderShape(_col, ~0);
         if (hits == null || hits.Length == 0) return;
 
         CarController car = null;

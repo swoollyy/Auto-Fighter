@@ -7078,6 +7078,7 @@ GameObject:
   - component: {fileID: 804777576}
   - component: {fileID: 804777577}
   - component: {fileID: 804777578}
+  - component: {fileID: 804777579}
   m_Layer: 0
   m_Name: GameController
   m_TagString: Untagged
@@ -7282,6 +7283,40 @@ MonoBehaviour:
   testAutoCompleteCoinFriendQuest: 0
   equippedItems: 
   unlockedItemOrder: 
+--- !u!114 &804777579
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 804777573}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29e4851b3d4df814cb5ccababbb418cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  vintageMat: {fileID: 2100000, guid: ac4d04d2803fc96478f70adbb9e833b2, type: 2}
+  effectEnabled: 1
+  allowKeyboardToggles: 1
+  toggleKey: 287
+  baseIntensity: 0.206
+  scanlineStrength: 0.45
+  scanlineDensity: 520
+  jitter: 0.12
+  noise: 0.057
+  vignette: 0.25
+  chromatic: 0.08
+  scaleWithSpeed: 0
+  speedMin: 6
+  speedMax: 38
+  speedIntensityAdd: 0.25
+  boostPulse: 0
+  boostIntensityAdd: 0.25
+  boostEaseOutSpeed: 4
+  timeScale: 1
+  crashIntensityAdd: 0.45
+  crashEaseOutSpeed: 1.8
+  lethalCrashMultiplier: 1
 --- !u!1 &828558039
 GameObject:
   m_ObjectHideFlags: 0

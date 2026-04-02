@@ -12,11 +12,22 @@ public class GameManager_Racing : MonoBehaviour
 {
     public enum GameProgressState
     {
+        /// <summary>Initial intro / first-time tutorial sequence.</summary>
         InitIntro = 0,
-        SkillTree = 1,
-        LoadingRun = 2,
-        InRun = 3,
-        RunEnd = 4
+        /// <summary>Front-end menu for this mode (can be same view as SkillTree for now).</summary>
+        MainMenu = 1,
+        /// <summary>Skill tree / garage where you configure builds and spend meta-currency.</summary>
+        SkillTree = 2,
+        /// <summary>Loading and gating while a run scene/track is being prepared.</summary>
+        LoadingRun = 3,
+        /// <summary>Active incremental racing run (core gameplay loop).</summary>
+        InRun = 4,
+        /// <summary>Game is paused via pause menu (overlay on top of current context).</summary>
+        Paused = 5,
+        /// <summary>Post-run breakdown, rewards, and summary.</summary>
+        RunEnd = 6,
+        /// <summary>Dialogue / cutscene sequences that temporarily own flow.</summary>
+        Dialogue = 7
     }
 
     private enum RunFlowState
@@ -1204,6 +1215,34 @@ public class GameManager_Racing : MonoBehaviour
         _progressState = state;
     }
 
+    /// <summary>
+    /// Convenience entry point for wiring a future main menu UI.
+    /// For now this uses the same view as SkillTree, but keeps a distinct enum for clarity.
+    /// </summary>
+    public void EnterMainMenu()
+    {
+        // TODO: when a dedicated main menu exists, activate its canvas here.
+        SetProgressState(GameProgressState.MainMenu);
+    }
+
+    /// <summary>
+    /// Global pause toggle; can be wired to ESC / Start. Pauses time and marks state as Paused.
+    /// Does not change the underlying flow state, only overlays a pause menu.
+    /// </summary>
+    public void TogglePause()
+    {
+        if (_progressState == GameProgressState.Paused)
+        {
+            Time.timeScale = 1f;
+            SetProgressState(IsGameplayLive ? GameProgressState.InRun : GameProgressState.SkillTree);
+        }
+        else if (_progressState == GameProgressState.InRun || _progressState == GameProgressState.SkillTree)
+        {
+            Time.timeScale = 0f;
+            SetProgressState(GameProgressState.Paused);
+        }
+    }
+
     private void TryRaiseFirstSkillTreeEntryNarrativeFlag()
     {
         if (string.IsNullOrWhiteSpace(initFinishedStoryFlag) || string.IsNullOrWhiteSpace(firstSkillTreeEntryStoryFlag))
@@ -1238,17 +1277,35 @@ public class GameManager_Racing : MonoBehaviour
 
     private void HandleDialogueSequenceStarted(DialogueSequenceSO _)
     {
-        // Intro dialogue is the first state players see.
-        if (_progressState == GameProgressState.SkillTree || _progressState == GameProgressState.InitIntro)
-            SetProgressState(GameProgressState.InitIntro);
+        // Any dialogue / cutscene sequence moves the global state into Dialogue.
+        // Init intro vs later narrative is distinguished by story flags, not enum.
+        if (_progressState == GameProgressState.SkillTree ||
+            _progressState == GameProgressState.InitIntro ||
+            _progressState == GameProgressState.RunEnd ||
+            _progressState == GameProgressState.InRun)
+        {
+            SetProgressState(GameProgressState.Dialogue);
+        }
     }
 
     private void HandleDialogueSequenceCompleted(DialogueSequenceSO _)
     {
         // Centralized flow ownership: GameManager decides where to go after dialogue.
-        // Keep previous behavior for run-end narrative while also supporting init intro.
-        if (_progressState == GameProgressState.InitIntro || _progressState == GameProgressState.RunEnd || runEnded)
+        // Init intro and run-end narrative both currently return to SkillTree.
+        if (_progressState == GameProgressState.Dialogue && runEnded)
+        {
             ReturnToSkillTree();
+            return;
+        }
+
+        if (_progressState == GameProgressState.Dialogue &&
+            !runEnded &&
+            (NarrativeDirector.HasStoryFlag(initFinishedStoryFlag) || DialogueManager.Instance == null))
+        {
+            // Finished intro / non-run dialogue, go to front-end (SkillTree/MainMenu view).
+            SetProgressState(GameProgressState.SkillTree);
+            return;
+        }
     }
 
     private void SyncFlowStateFromUISection()

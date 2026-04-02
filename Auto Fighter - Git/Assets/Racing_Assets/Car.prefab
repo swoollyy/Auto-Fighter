@@ -1216,6 +1216,8 @@ MonoBehaviour:
   forcefieldRearmClip: {fileID: 8300000, guid: 20682cd13ca66a04d9e9b0ffe79879d1, type: 3}
   forcefieldRearmVolume: 0.252
   startOnCooldown: 1
+  forcefieldCreatureCorpseMass: 55
+  forcefieldLaunchTagDuration: 4
 --- !u!114 &2006204842711436354
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1800,7 +1802,7 @@ MonoBehaviour:
   enableMashProgressGauge: 1
   gaugeFillPerClick: 0.1
   gaugeFillSpeedBonus: 1.5
-  gaugeFillSpeedMultiplier: 1.05
+  gaugeFillSpeedMultiplier: 1
   gaugeGoodThreshold: 0.7
   gaugeMultiplierAtZero: 0.5
   gaugeMultiplierAtGood: 1.2
@@ -1815,13 +1817,13 @@ MonoBehaviour:
   mashFuelDrainAtMaxSeverity: 10
   mashFuelDrainPerCrash: 0.25
   mashFuelDrainCap: 15
-  gaugeDrainAtMinSeverity: 0.24
-  gaugeDrainAtMaxSeverity: 0.3
-  gaugeDrainPerCrash: 0.15
+  gaugeDrainAtMinSeverity: 0.3
+  gaugeDrainAtMaxSeverity: 0.5
+  gaugeDrainPerCrash: 0.35
   gaugeDrainCap: 0.95
   enableSprocketRewards: 1
   sprocketBasePercent: 0.12
-  sprocketGaugeBonusMax: 2.5
+  sprocketGaugeBonusMax: 1.75
   sprocketMinReward: 1
   sprocketMaxReward: 800
   flipUprightLift: 0.2
