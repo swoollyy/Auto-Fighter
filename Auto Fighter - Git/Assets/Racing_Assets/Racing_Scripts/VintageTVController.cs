@@ -47,24 +47,36 @@ public class VintageTVController : MonoBehaviour
     [SerializeField] private float timeScale = 1f;
 
     [Header("Crash Reaction")]
-    [Tooltip("Extra intensity added at max crash severity (1.0). Scales linearly with severity.")]
+    [Tooltip("Minimum crash severity used for TV spike (0–1). Raw severity below this is treated as this value so light hits still read clearly.")]
     [Range(0f, 1f)]
-    [SerializeField] private float crashIntensityAdd = 0.45f;
+    [SerializeField] private float crashVisualSeverityFloor = 0.5f;
+    [Tooltip("At severity 1.0, intensity/noise scale by (1 + this). E.g. 3 => up to 4× material defaults.")]
+    [SerializeField, Min(0f)] private float crashIntensityAdd = 0.8f;
     [Tooltip("How fast crash contribution eases back to zero after a non-lethal crash.")]
     [SerializeField] private float crashEaseOutSpeed = 1.8f;
-    [Tooltip("Optional override for lethal (run-ending) crash spike; leave at 1 to use full crashIntensityAdd.")]
-    [Range(0f, 2f)]
-    [SerializeField] private float lethalCrashMultiplier = 1.0f;
+    [Tooltip("Multiplier on top of crash spike for lethal / run-ending crash (can exceed 1).")]
+    [SerializeField, Min(0f)] private float lethalCrashMultiplier = 1.0f;
+    [Tooltip("Upper clamp for intensity sent to the shader (raise if crash multiplier should blow past 1).")]
+    [SerializeField, Min(0.01f)] private float maxShaderIntensity = 8f;
+    [Tooltip("Upper clamp for noise sent to the shader.")]
+    [SerializeField, Min(0.01f)] private float maxShaderNoise = 8f;
 
     // runtime refs
     private Rigidbody _carRb;
     private CarController _car;
     private float _boost01; // 0..1
     private float _crash01; // 0..1, from severity
+    private bool _wasDrivingEffects;
 
-    // Cached defaults (as authored in inspector) so crash can spike and ease back to these.
+    // Cached defaults: intensity/noise from material in Awake; rest from inspector at startup.
     private float _defaultIntensity;
     private float _defaultNoise;
+    private float _defaultScanlineStrength;
+    private float _defaultScanlineDensity;
+    private float _defaultJitter;
+    private float _defaultVignette;
+    private float _defaultChromatic;
+    private float _defaultTimeScale;
 
     private static readonly int ID_Intensity = Shader.PropertyToID("_Intensity");
     private static readonly int ID_ScanlineStrength = Shader.PropertyToID("_ScanlineStrength");
@@ -87,9 +99,17 @@ public class VintageTVController : MonoBehaviour
             noise = vintageMat.GetFloat(ID_Noise);
         }
 
-        // Cache defaults once so we can always return to them after crash spikes.
-        _defaultIntensity = Mathf.Clamp01(baseIntensity);
-        _defaultNoise = Mathf.Clamp01(noise);
+        // Cache defaults once so we can always return to them after crash spikes or leaving gameplay.
+        _defaultIntensity = baseIntensity;
+        _defaultNoise = noise;
+        _defaultScanlineStrength = scanlineStrength;
+        _defaultScanlineDensity = scanlineDensity;
+        _defaultJitter = jitter;
+        _defaultVignette = vignette;
+        _defaultChromatic = chromatic;
+        _defaultTimeScale = timeScale;
+
+        ApplyDefaultsToMaterial();
     }
 
     private void OnEnable()
@@ -99,13 +119,34 @@ public class VintageTVController : MonoBehaviour
 
     private void OnDisable()
     {
-        UnbindCarEvents();
+        ResetToDefaultsImmediate();
+    }
+
+    private void OnDestroy()
+    {
+        ResetToDefaultsImmediate();
+    }
+
+    private void OnApplicationQuit()
+    {
+        ResetToDefaultsImmediate();
     }
 
     private void Update()
     {
         if (allowKeyboardToggles && Input.GetKeyDown(toggleKey))
             effectEnabled = !effectEnabled;
+
+        bool shouldDrive = ShouldDriveDynamicEffects();
+        if (!shouldDrive)
+        {
+            if (_wasDrivingEffects)
+                ResetToDefaultsImmediate();
+            _wasDrivingEffects = false;
+            return;
+        }
+
+        _wasDrivingEffects = true;
 
         // if car got respawned, rebind
         if (_car == null)
@@ -122,6 +163,57 @@ public class VintageTVController : MonoBehaviour
             _crash01 = Mathf.MoveTowards(_crash01, 0f, crashEaseOutSpeed * dt);
 
         PushToMaterial();
+    }
+
+    /// <summary>
+    /// Only while an active run with a live car should boost/crash/speed modulate the TV.
+    /// </summary>
+    private static bool ShouldDriveDynamicEffects()
+    {
+        var gm = GameManager_Racing.Instance;
+        if (gm == null) return false;
+        if (gm.ProgressState != GameManager_Racing.GameProgressState.InRun) return false;
+        if (!gm.IsGameplayLive) return false;
+        var car = gm.ActiveCar;
+        if (car == null) return false;
+        return car.gameObject.activeInHierarchy;
+    }
+
+    /// <summary>
+    /// Restore inspector fields + material to cached defaults (material-sourced intensity/noise).
+    /// Call when leaving the run, losing the car, or on quit/disable.
+    /// </summary>
+    private void ResetToDefaultsImmediate()
+    {
+        UnbindCarEvents();
+        _boost01 = 0f;
+        _crash01 = 0f;
+        _wasDrivingEffects = false;
+
+        baseIntensity = _defaultIntensity;
+        noise = _defaultNoise;
+        scanlineStrength = _defaultScanlineStrength;
+        scanlineDensity = _defaultScanlineDensity;
+        jitter = _defaultJitter;
+        vignette = _defaultVignette;
+        chromatic = _defaultChromatic;
+        timeScale = _defaultTimeScale;
+
+        ApplyDefaultsToMaterial();
+    }
+
+    private void ApplyDefaultsToMaterial()
+    {
+        if (vintageMat == null) return;
+
+        vintageMat.SetFloat(ID_Intensity, _defaultIntensity);
+        vintageMat.SetFloat(ID_ScanlineStrength, _defaultScanlineStrength);
+        vintageMat.SetFloat(ID_ScanlineDensity, _defaultScanlineDensity);
+        vintageMat.SetFloat(ID_Jitter, _defaultJitter);
+        vintageMat.SetFloat(ID_Noise, _defaultNoise);
+        vintageMat.SetFloat(ID_Vignette, _defaultVignette);
+        vintageMat.SetFloat(ID_Chromatic, _defaultChromatic);
+        vintageMat.SetFloat(ID_TimeScale, _defaultTimeScale);
     }
 
     private void TryBindToActiveCar()
@@ -175,17 +267,18 @@ public class VintageTVController : MonoBehaviour
 
     private void HandleCrash(float severity01)
     {
-        // Non-lethal crash: spike crash contribution based on severity (0..1)
         severity01 = Mathf.Clamp01(severity01);
+        if (crashVisualSeverityFloor > 0f)
+            severity01 = Mathf.Max(severity01, Mathf.Clamp01(crashVisualSeverityFloor));
         _crash01 = Mathf.Max(_crash01, severity01);
     }
 
     private void HandleLethalCrash(float severity01)
     {
-        // Run-ending crash: always go to max crash spike (optionally scaled)
-        float sev = Mathf.Clamp01(severity01);
-        float target = Mathf.Clamp01(lethalCrashMultiplier * Mathf.Max(sev, 1f));
-        _crash01 = Mathf.Max(_crash01, target);
+        // Run-ending: at least full severity (1), or higher if lethalCrashMultiplier > 1.
+        float floor = Mathf.Max(1f, lethalCrashMultiplier);
+        float fromSev = Mathf.Clamp01(severity01) * Mathf.Max(1f, lethalCrashMultiplier);
+        _crash01 = Mathf.Max(_crash01, Mathf.Max(floor, fromSev));
     }
 
     private void PushToMaterial()
@@ -198,11 +291,9 @@ public class VintageTVController : MonoBehaviour
             return;
         }
 
-        // Start from the authored default intensity and apply crash scaling first.
-        float crashScale = 1f + (_crash01 * crashIntensityAdd); // 0..(1+crashIntensityAdd)
-        float intensity = Mathf.Clamp01(_defaultIntensity * crashScale);
+        float crashScale = 1f + (_crash01 * crashIntensityAdd);
+        float intensity = _defaultIntensity * crashScale;
 
-        // Speed contribution (m/s)
         if (scaleWithSpeed && _carRb != null)
         {
             float spd = _carRb.velocity.magnitude;
@@ -210,21 +301,18 @@ public class VintageTVController : MonoBehaviour
             intensity += s01 * speedIntensityAdd;
         }
 
-        // Boost contribution
         if (boostPulse)
-        {
             intensity += _boost01 * boostIntensityAdd;
-        }
 
-        intensity = Mathf.Clamp01(intensity);
+        intensity = Mathf.Clamp(intensity, 0f, maxShaderIntensity);
+
+        float noiseOut = Mathf.Clamp(_defaultNoise * crashScale, 0f, maxShaderNoise);
 
         vintageMat.SetFloat(ID_Intensity, intensity);
         vintageMat.SetFloat(ID_ScanlineStrength, scanlineStrength);
         vintageMat.SetFloat(ID_ScanlineDensity, scanlineDensity);
         vintageMat.SetFloat(ID_Jitter, jitter);
-        // Noise scales with the same crash factor so both feel linked.
-        float noiseScale = Mathf.Clamp01(_defaultNoise * crashScale);
-        vintageMat.SetFloat(ID_Noise, noiseScale);
+        vintageMat.SetFloat(ID_Noise, noiseOut);
         vintageMat.SetFloat(ID_Vignette, vignette);
         vintageMat.SetFloat(ID_Chromatic, chromatic);
         vintageMat.SetFloat(ID_TimeScale, timeScale);

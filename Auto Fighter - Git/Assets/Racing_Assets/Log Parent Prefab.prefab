@@ -64,8 +64,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0.7071068, w: 0.7071068}
   m_LocalPosition: {x: 0, y: 0.225, z: 0}
-  m_LocalScale: {x: 0.45, y: 0.55, z: 0.45}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 0.41, y: 0.50111115, z: 0.41}
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 3310840959122571544}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: -90}
@@ -139,7 +139,7 @@ CapsuleCollider:
   m_Enabled: 1
   serializedVersion: 2
   m_Radius: 0.5000001
-  m_Height: 2
+  m_Height: 2.36
   m_Direction: 1
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
 --- !u!54 &8107088437883724333
@@ -207,6 +207,8 @@ MonoBehaviour:
   selfDetachExtraUp: 1.5
   beastKnockHorizontal: 7
   beastKnockUp: 5
+  enableScriptedOverlapRamFallback: 1
+  overlapRamCooldown: 0.2
   racingObstacleRamPushMultiplier: 1.15
   racingObstacleRamUpMultiplier: 3.26
   racingObstacleRamPushAdd: 1.25

@@ -28,6 +28,24 @@ public class CarMovementConfig : MonoBehaviour
     [SerializeField] private float maxBrakeDecelPerSecond = 1f;
     [SerializeField] private float maxReverseAccelPerSecond = 5.06f;
 
+    [Header("Slope / ramp assist")]
+    [Tooltip("Extra acceleration along the ground surface when driving uphill (smoothly ramped; helps steep ramps without changing tilt).")]
+    [SerializeField] private bool enableSlopeDriveAssist = true;
+    [Tooltip("Peak extra accel (m/s² style, ForceMode.Acceleration) at max steepness + straight climb.")]
+    [SerializeField] private float slopeDriveAssistMaxAccel = 7.5f;
+    [Tooltip("Below this ground tilt (degrees from flat), assist stays off.")]
+    [SerializeField] private float slopeDriveAssistMinAngle = 10f;
+    [Tooltip("At this tilt and steeper, steepness factor reaches 1.")]
+    [SerializeField] private float slopeDriveAssistMaxAngle = 52f;
+    [Tooltip("How fast assist ramps up when you start climbing (higher = snappier).")]
+    [SerializeField] private float slopeDriveAssistRiseSpeed = 32f;
+    [Tooltip("How fast assist falls off when you crest or release throttle (higher = less lingering).")]
+    [SerializeField] private float slopeDriveAssistFallSpeed = 48f;
+    [Tooltip("If true, no slope assist on boost pads (they already add forward push).")]
+    [SerializeField] private bool slopeDriveAssistDisableOnBoost = true;
+    [Tooltip("If true, no slope assist on ice.")]
+    [SerializeField] private bool slopeDriveAssistDisableOnIce = true;
+
     public float BaseAcceleration => baseAcceleration;
     public float BaseMaxSpeed => baseMaxSpeed;
     public float BaseBrakingForce => baseBrakingForce;
@@ -43,4 +61,13 @@ public class CarMovementConfig : MonoBehaviour
     public float BrakeToReverseSpeed => brakeToReverseSpeed;
     public float MaxBrakeDecelPerSecond => maxBrakeDecelPerSecond;
     public float MaxReverseAccelPerSecond => maxReverseAccelPerSecond;
+
+    public bool EnableSlopeDriveAssist => enableSlopeDriveAssist;
+    public float SlopeDriveAssistMaxAccel => slopeDriveAssistMaxAccel;
+    public float SlopeDriveAssistMinAngle => slopeDriveAssistMinAngle;
+    public float SlopeDriveAssistMaxAngle => slopeDriveAssistMaxAngle;
+    public float SlopeDriveAssistRiseSpeed => slopeDriveAssistRiseSpeed;
+    public float SlopeDriveAssistFallSpeed => slopeDriveAssistFallSpeed;
+    public bool SlopeDriveAssistDisableOnBoost => slopeDriveAssistDisableOnBoost;
+    public bool SlopeDriveAssistDisableOnIce => slopeDriveAssistDisableOnIce;
 }

@@ -25,13 +25,13 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Chromatic: 0.565
+    - _Chromatic: 0.08
     - _Intensity: 0.206
-    - _Jitter: 0.664
+    - _Jitter: 0.12
     - _Noise: 0.057
-    - _ScanlineDensity: 113
-    - _ScanlineStrength: 1
-    - _TimeScale: 0.06
-    - _Vignette: 0.707
+    - _ScanlineDensity: 520
+    - _ScanlineStrength: 0.45
+    - _TimeScale: 1
+    - _Vignette: 0.25
     m_Colors: []
   m_BuildTextureStacks: []

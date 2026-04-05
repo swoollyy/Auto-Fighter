@@ -7311,12 +7311,15 @@ MonoBehaviour:
   speedMax: 38
   speedIntensityAdd: 0.25
   boostPulse: 0
-  boostIntensityAdd: 0.25
+  boostIntensityAdd: 0.673
   boostEaseOutSpeed: 4
   timeScale: 1
-  crashIntensityAdd: 0.45
-  crashEaseOutSpeed: 1.8
-  lethalCrashMultiplier: 1
+  crashVisualSeverityFloor: 0.9
+  crashIntensityAdd: 3.65
+  crashEaseOutSpeed: 0.58
+  lethalCrashMultiplier: 1.607
+  maxShaderIntensity: 8
+  maxShaderNoise: 8
 --- !u!1 &828558039
 GameObject:
   m_ObjectHideFlags: 0

@@ -236,6 +236,16 @@ public class CarController : MonoBehaviour
     private float maxBrakeDecelPerSecond;
     private float maxReverseAccelPerSecond;
 
+    private bool enableSlopeDriveAssist;
+    private float slopeDriveAssistMaxAccel;
+    private float slopeDriveAssistMinAngle;
+    private float slopeDriveAssistMaxAngle;
+    private float slopeDriveAssistRiseSpeed;
+    private float slopeDriveAssistFallSpeed;
+    private bool slopeDriveAssistDisableOnBoost;
+    private bool slopeDriveAssistDisableOnIce;
+    private float _slopeAssistSmoothed;
+
     private float baseSteeringDamp;
     private float currentSteeringDamp;
 
@@ -981,6 +991,14 @@ public class CarController : MonoBehaviour
             brakeToReverseSpeed = _movementConfig.BrakeToReverseSpeed;
             maxBrakeDecelPerSecond = _movementConfig.MaxBrakeDecelPerSecond;
             maxReverseAccelPerSecond = _movementConfig.MaxReverseAccelPerSecond;
+            enableSlopeDriveAssist = _movementConfig.EnableSlopeDriveAssist;
+            slopeDriveAssistMaxAccel = _movementConfig.SlopeDriveAssistMaxAccel;
+            slopeDriveAssistMinAngle = _movementConfig.SlopeDriveAssistMinAngle;
+            slopeDriveAssistMaxAngle = _movementConfig.SlopeDriveAssistMaxAngle;
+            slopeDriveAssistRiseSpeed = _movementConfig.SlopeDriveAssistRiseSpeed;
+            slopeDriveAssistFallSpeed = _movementConfig.SlopeDriveAssistFallSpeed;
+            slopeDriveAssistDisableOnBoost = _movementConfig.SlopeDriveAssistDisableOnBoost;
+            slopeDriveAssistDisableOnIce = _movementConfig.SlopeDriveAssistDisableOnIce;
         }
         else
         {
@@ -989,6 +1007,14 @@ public class CarController : MonoBehaviour
             useExponentialCoast = false; coastDampingPerSecond = 4.48f; coastDecelFactor = 0.74f;
             brakeForwardFactor = 0.7f; reverseAccelFactor = 1.06f; brakeToReverseSpeed = 0.5f;
             maxBrakeDecelPerSecond = 1f; maxReverseAccelPerSecond = 5.06f;
+            enableSlopeDriveAssist = true;
+            slopeDriveAssistMaxAccel = 7.5f;
+            slopeDriveAssistMinAngle = 10f;
+            slopeDriveAssistMaxAngle = 52f;
+            slopeDriveAssistRiseSpeed = 32f;
+            slopeDriveAssistFallSpeed = 48f;
+            slopeDriveAssistDisableOnBoost = true;
+            slopeDriveAssistDisableOnIce = true;
         }
 
         if (_steeringConfig != null)
@@ -1559,7 +1585,7 @@ public class CarController : MonoBehaviour
 
         HandleInput();
 
-        if (GetBoostDown() && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil)
+        if (GetBoostDown() && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil && !isOutOfFuel && !isOutOfHP)
             _boostRequested = true;
 
         if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
@@ -1575,9 +1601,6 @@ public class CarController : MonoBehaviour
             _isBoosting = false;
             _isPostBoost = false;
             _boostRequested = false;
-
-            // Kill sustained acceleration effects
-            rb.velocity *= 0.25f;
 
             PlayDeathVFX();
         }
@@ -1600,6 +1623,43 @@ public class CarController : MonoBehaviour
     private void FixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
+        var gmEarly = GameManager_Racing.Instance;
+        bool runEnded = gmEarly != null && gmEarly.RunEnded;
+        bool handsOffDriving = isOutOfFuel || isOutOfHP;
+
+        // End-of-run: hard-stop (unchanged UX for results / menu).
+        if (runEnded)
+        {
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            _isReorienting = false;
+            return;
+        }
+
+        // Out of fuel or HP: no steering, ramp snap, speed caps, or crash state — let the Rigidbody tumble.
+        if (handsOffDriving)
+        {
+            ReleaseHandsOffDrivingPhysics();
+            _flipMashActive = false;
+            _inCrash = false;
+            _isReorienting = false;
+            _crashTimer = 0f;
+            _groundedTime = 0f;
+            _isBoosting = false;
+            _isPostBoost = false;
+            _postBoostTimer = 0f;
+            _boostTimer = 0f;
+            _boostRequested = false;
+            ClearBoostOverride();
+            ClearAllSpeedBoosts();
+            _closeCallBoosting = false;
+            _currentBoostMaxSpeed = 0f;
+            _activeBoostMaxMult = 1f;
+            return;
+        }
 
         if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
         {
@@ -1617,22 +1677,6 @@ public class CarController : MonoBehaviour
 
         if (_flipMashActive)
         {
-            // If HP hits 0, you're dead: no mash, no flatten.
-            if (IsOutOfHP)
-            {
-                _flipMashActive = false;
-                return;
-            }
-
-            // If fuel hits 0 mid-mash, mash fails/stops
-            if (IsOutOfFuel)
-            {
-                _flipMashActive = false;
-                if (NeedsUprightFlatten())
-                    StartReorientToFlat();
-                return;
-            }
-
             if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
             {
                 _closeCallInvincible = false;
@@ -1863,27 +1907,8 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        var gm = GameManager_Racing.Instance;
+        var gm = gmEarly;
 
-        // PATCH: Only hard-stop on RunEnded or OutOfHP.
-        // Out-of-fuel should coast naturally (no rb.velocity = 0).
-        if ((gm != null && gm.RunEnded) || IsOutOfHP)
-        {
-            // Lock physics state so nothing continues to “drive” or self-correct
-            if (rb != null)
-            {
-                rb.velocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-
-            }
-
-            // Kill any pending reorientation
-            _isReorienting = false;
-
-            return;
-        }
-
-        // If we're out of fuel, still run steering + physics, but NO boost.
         bool outOfFuel = IsOutOfFuel;
         UpdateLandingSpeedPreservation();
         SampleGroundAndUpdateMultipliers();
@@ -1900,6 +1925,7 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
+        ApplyGroundAwareSpeedCapClamp();
 
         CheckBoostFlash();
 
@@ -2361,7 +2387,6 @@ public class CarController : MonoBehaviour
                 }
             }
         }
-
     }
 
     private float GetCurrentSpeedCap()
@@ -2423,6 +2448,64 @@ public class CarController : MonoBehaviour
         return hasAnyBoost ? boostedCap : normalCap;
     }
 
+    /// <summary>
+    /// Caps speed in the ground tangent plane when grounded so ramp / slope driving cannot exceed <see cref="GetCurrentSpeedCap"/>
+    /// while still passing a horizontal-only check. Airborne keeps the legacy horizontal clamp (preserves vertical motion).
+    /// Call after movement, boost, boost pads, ice, and ramp alignment.
+    /// </summary>
+    private void ApplyGroundAwareSpeedCapClamp()
+    {
+        if (rb == null) return;
+
+        bool landingGrace = (Time.time - _lastLandedTime) <= landingNoClampGraceSeconds;
+        if (landingGrace) return;
+        if (skipSpeedClampWhileAirborne && !_isGrounded) return;
+
+        float cap = GetCurrentSpeedCap();
+        if (cap <= 0.001f) return;
+
+        const float capSlack = 0.05f;
+        bool groundedNow = CheckIfGrounded();
+        Vector3 v = rb.velocity;
+
+        if (groundedNow)
+        {
+            Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-6f ? _lastStableGroundNormal.normalized : Vector3.up;
+            float upDot = Mathf.Abs(Vector3.Dot(n, Vector3.up));
+
+            if (upDot < 0.1f)
+            {
+                Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+                float hs = horiz.magnitude;
+                if (hs > cap + capSlack && hs > 1e-6f)
+                {
+                    horiz *= cap / hs;
+                    rb.velocity = new Vector3(horiz.x, v.y, horiz.z);
+                }
+                return;
+            }
+
+            float vn = Vector3.Dot(v, n);
+            Vector3 vTan = v - vn * n;
+            float tanMag = vTan.magnitude;
+            if (tanMag > cap + capSlack && tanMag > 1e-6f)
+            {
+                vTan *= cap / tanMag;
+                rb.velocity = vTan + vn * n;
+            }
+        }
+        else
+        {
+            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+            float horizSpeed = horiz.magnitude;
+            if (horizSpeed > cap + capSlack && horizSpeed > 1e-6f)
+            {
+                horiz *= cap / horizSpeed;
+                rb.velocity = new Vector3(horiz.x, v.y, horiz.z);
+            }
+        }
+    }
+
     private void ClearBoostOverride()
     {
         _boostOverrideActive = false;
@@ -2430,6 +2513,14 @@ public class CarController : MonoBehaviour
         _boostOverrideForce = 0f;
         _boostOverrideDuration = 0f;
         _boostOverrideMaxMult = 0f;
+    }
+
+    private void ReleaseHandsOffDrivingPhysics()
+    {
+        if (rb == null) return;
+        rb.freezeRotation = false;
+        rb.drag = _baseDrag;
+        rb.angularDrag = _baseAngularDrag;
     }
 
     private void WireManagerEvents()
@@ -2473,7 +2564,6 @@ public class CarController : MonoBehaviour
     private void HandleInput()
     {
         var gm = GameManager_Racing.Instance;
-        bool suppressInputs = false;
 
         if (_externalInputLocked)
         {
@@ -2491,53 +2581,35 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        if ((gm != null && gm.RunEnded) || IsOutOfHP)
+        if (gm != null && gm.RunEnded)
         {
-            bool fuelSuppressThrottleBrake = isOutOfFuel; // out of fuel always suppresses throttle/brake
-
-            _suppressThrottleBrakeThisFrame = fuelSuppressThrottleBrake || suppressInputs;
-            _suppressSteeringThisFrame = false;
-            _inputsSuppressedThisFrame = _suppressThrottleBrakeThisFrame;
-
-            // Keep steeringInput dead too
             steeringInput = 0f;
+            _rawSteer = 0f;
+            _boostRequested = false;
+            _boostOverrideActive = false;
+            driftButtonHeld = false;
+            isDrifting = false;
+            driftCharge = 0f;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = true;
+            _inputsSuppressedThisFrame = true;
             return;
         }
 
-        if (isOutOfHP)
+        if (isOutOfFuel || isOutOfHP)
         {
             steeringInput = 0f;
+            _rawSteer = 0f;
             driftCharge = 0f;
             isDrifting = false;
             driftButtonHeld = false;
-
             _boostRequested = false;
             _boostOverrideActive = false;
-
-
-
             _inputsSuppressedThisFrame = true;
             _suppressThrottleBrakeThisFrame = true;
             _suppressSteeringThisFrame = true;
             return;
         }
-
-        if (isOutOfFuel)
-        {
-            driftCharge = 0f;
-            isDrifting = false;
-            driftButtonHeld = false;
-
-            _boostRequested = false;
-            _boostOverrideActive = false;
-
-            _inputsSuppressedThisFrame = true;
-            _suppressThrottleBrakeThisFrame = true;
-            _suppressSteeringThisFrame = false;
-
-            // IMPORTANT: do NOT return; we still want to read/update steeringInput below.
-        }
-
 
         if (_malfunctionTimer > 0f)
             _malfunctionTimer -= Time.deltaTime;
@@ -2787,7 +2859,7 @@ public class CarController : MonoBehaviour
 
         _lastRawSteerValue = rawHorizontal;
 
-        suppressInputs = false;
+        bool suppressInputs = false;
         _currentMalfunctionMultiplier = 1f; // Reset each frame
 
         if (enableDamageMalfunction && _statsInitialized)
@@ -2958,6 +3030,9 @@ public class CarController : MonoBehaviour
         if (rb == null)
             return;
 
+        if (isOutOfFuel || isOutOfHP)
+            return;
+
         if (_inCrash && !_flipMashActive)
             return;
 
@@ -3012,6 +3087,9 @@ public class CarController : MonoBehaviour
         // Store crash info for recovery calculation
         _lastCrashSeverity = Mathf.Clamp01(severity);
         _crashCount++; // counts all crashes for scaling
+
+        // Single hook for all crash entry points (collisions, external damage, bounce-back, etc.)
+        try { OnCrash?.Invoke(sev01); } catch { /* ignore listener errors */ }
 
         // Snapshot situational flags BEFORE we force grounded false.
         _wasAirborneDuringCrash = !_isGrounded;
@@ -3235,8 +3313,6 @@ public class CarController : MonoBehaviour
     {
         if (rb == null) return;
 
-        Vector3 forward = transform.forward;
-
         // Keyboard + gamepad (via RacingInputReader or legacy)
         bool forwardKey = GetAccelerateKeyOrTrigger();
         bool reverseKey = GetBrakeKeyOrTrigger();
@@ -3255,12 +3331,14 @@ public class CarController : MonoBehaviour
             steeringInput = 0f; // if steeringInput is your cached axis
         }
 
+        // Grounded check early so we can use it anywhere in this method.
+        bool groundedNow = CheckIfGrounded();
+
+        // Throttle/brake along car forward (follows ground normals via ramp alignment) — required for steep slopes.
+        Vector3 forward = transform.forward;
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
-
-        // Grounded check early so we can use it anywhere in this method.
-        bool groundedNow = CheckIfGrounded();
 
         // Treat glide the same as drift for physics retention.
         bool driftPhysicsActive = isDrifting || _driftGlideActive;
@@ -3431,6 +3509,24 @@ public class CarController : MonoBehaviour
         {
         }
 
+        // Uphill assist: ramps up/down smoothly so steep ramps don't feel underpowered or jerky.
+        float assistTarget = 0f;
+        Vector3 assistDir = transform.forward;
+        bool throttleForAssist = forwardKey && !isOutOfFuel && maxFuel > 0f && groundedNow;
+        if (throttleForAssist && TryGetSlopeDriveAssist(out Vector3 surfFwd, out float extraA))
+        {
+            assistDir = surfFwd;
+            assistTarget = extraA;
+        }
+
+        float assistDt = Time.fixedDeltaTime;
+        float assistStep = assistTarget > _slopeAssistSmoothed
+            ? slopeDriveAssistRiseSpeed * assistDt
+            : slopeDriveAssistFallSpeed * assistDt;
+        _slopeAssistSmoothed = Mathf.MoveTowards(_slopeAssistSmoothed, assistTarget, assistStep);
+        if (_slopeAssistSmoothed > 1e-4f)
+            rb.AddForce(assistDir * (_slopeAssistSmoothed * _currentMalfunctionMultiplier), ForceMode.Acceleration);
+
         rb.drag = driftPhysicsActive ? effectiveDrag * 0.01f : effectiveDrag;
 
         speed = rb.velocity.magnitude;
@@ -3527,23 +3623,7 @@ public class CarController : MonoBehaviour
                 }
             }
         }
-        else
-        {
-            float cap = GetCurrentSpeedCap();
-
-            Vector3 v = rb.velocity;
-            Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
-            float horizSpeed = horiz.magnitude;
-
-            bool landingGrace = (Time.time - _lastLandedTime) <= landingNoClampGraceSeconds;
-            bool shouldClamp = !(skipSpeedClampWhileAirborne && !_isGrounded) && !landingGrace;
-
-            if (shouldClamp && horizSpeed > cap + 0.5f && horizSpeed > 0.0001f)
-            {
-                Vector3 horizClamped = horiz * (cap / horizSpeed);
-                rb.velocity = new Vector3(horizClamped.x, v.y, horizClamped.z);
-            }
-        }
+        // Non-drift speed cap: ApplyGroundAwareSpeedCapClamp (end of FixedUpdate, after boost pads & ramp sampling).
     }
 
 
@@ -3822,6 +3902,47 @@ public class CarController : MonoBehaviour
             groundLayers,
             QueryTriggerInteraction.Collide
         );
+    }
+
+    /// <summary>
+    /// Extra accel along the surface when climbing (gravity-aware). Used with smoothed blending so it doesn't snap on/off.
+    /// </summary>
+    private bool TryGetSlopeDriveAssist(out Vector3 surfaceForward, out float accelExtra)
+    {
+        surfaceForward = transform.forward;
+        accelExtra = 0f;
+        if (!enableSlopeDriveAssist || rb == null) return false;
+        if (slopeDriveAssistDisableOnBoost && _onBoostSurface) return false;
+        if (slopeDriveAssistDisableOnIce && _onIceSurface) return false;
+
+        Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-6f ? _lastStableGroundNormal.normalized : Vector3.up;
+
+        float cosTilt = Mathf.Clamp(Vector3.Dot(n, Vector3.up), -1f, 1f);
+        float tiltDeg = Mathf.Acos(cosTilt) * Mathf.Rad2Deg;
+
+        float minAng = Mathf.Min(slopeDriveAssistMinAngle, slopeDriveAssistMaxAngle);
+        float maxAng = Mathf.Max(slopeDriveAssistMinAngle, slopeDriveAssistMaxAngle);
+        if (tiltDeg < minAng) return false;
+
+        float steepT = Mathf.InverseLerp(minAng, maxAng, tiltDeg);
+        steepT = Mathf.Clamp01(steepT);
+        steepT = steepT * steepT * (3f - 2f * steepT);
+
+        Vector3 g = Physics.gravity;
+        Vector3 downAlong = Vector3.ProjectOnPlane(g, n);
+        if (downAlong.sqrMagnitude < 1e-10f) return false;
+        downAlong.Normalize();
+
+        surfaceForward = Vector3.ProjectOnPlane(transform.forward, n);
+        if (surfaceForward.sqrMagnitude < 1e-10f) return false;
+        surfaceForward.Normalize();
+
+        float climb = Vector3.Dot(surfaceForward, -downAlong);
+        if (climb <= 0f) return false;
+        climb = Mathf.SmoothStep(0.12f, 1f, climb);
+
+        accelExtra = slopeDriveAssistMaxAccel * steepT * climb;
+        return accelExtra > 1e-4f;
     }
 
     private void AlignToUpVectorPreserveYaw(Vector3 targetUp, float alignSpeed, float dt)
@@ -5533,17 +5654,6 @@ public class CarController : MonoBehaviour
         if (gm != null && damageWindowOpen)
             gm.OnCarCrash(impactSpeed, severity);
 
-        if (damageWindowOpen)
-        {
-            try { OnCrash?.Invoke(severity); } catch { /* ignore listener errors */ }
-        }
-
-        // Notify listeners (e.g. VintageTVController) about crash severity.
-        if (damageWindowOpen)
-        {
-            try { OnCrash?.Invoke(severity); } catch { /* ignore listener errors */ }
-        }
-
         float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, severity);
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
@@ -6268,6 +6378,8 @@ public class CarController : MonoBehaviour
         float before = currentFuel;
         currentFuel = Mathf.Min(maxFuel, currentFuel + amount);
         if (currentFuel > 0f) isOutOfFuel = false;
+        if (rb != null && !isOutOfFuel && !isOutOfHP)
+            rb.freezeRotation = true;
 
         float actual = currentFuel - before;
         if (actual >= minFuelLossForPopup)
@@ -6281,6 +6393,9 @@ public class CarController : MonoBehaviour
         if (maxHP <= 0f || amount <= 0f) return 0f;
         float before = currentHP;
         currentHP = Mathf.Min(maxHP, currentHP + amount);
+        if (currentHP > 0f) isOutOfHP = false;
+        if (rb != null && !isOutOfFuel && !isOutOfHP)
+            rb.freezeRotation = true;
 
         ScreenFlashManager.Heal();
 
