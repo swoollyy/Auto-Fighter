@@ -166,17 +166,29 @@ public class VintageTVController : MonoBehaviour
     }
 
     /// <summary>
-    /// Only while an active run with a live car should boost/crash/speed modulate the TV.
+    /// Boost/crash/speed modulate the TV during the run and through the run-end results screen.
+    /// Resets when flow leaves for skill tree / menu (ProgressState no longer InRun or RunEnd).
     /// </summary>
     private static bool ShouldDriveDynamicEffects()
     {
         var gm = GameManager_Racing.Instance;
         if (gm == null) return false;
-        if (gm.ProgressState != GameManager_Racing.GameProgressState.InRun) return false;
-        if (!gm.IsGameplayLive) return false;
+
+        var state = gm.ProgressState;
         var car = gm.ActiveCar;
-        if (car == null) return false;
-        return car.gameObject.activeInHierarchy;
+        if (car == null || !car.gameObject.activeInHierarchy) return false;
+
+        // Post-run coin breakdown: keep last TV look until skill tree (ReturnToSkillTree).
+        if (state == GameManager_Racing.GameProgressState.RunEnd)
+            return true;
+
+        // Run-end narrative moves to Dialogue before ReturnToSkillTree — don't snap TV off mid-sequence.
+        if (state == GameManager_Racing.GameProgressState.Dialogue && gm.RunEnded)
+            return true;
+
+        if (state != GameManager_Racing.GameProgressState.InRun) return false;
+        if (!gm.IsGameplayLive) return false;
+        return true;
     }
 
     /// <summary>

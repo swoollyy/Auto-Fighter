@@ -866,6 +866,14 @@ public class TrackObstacleBounceBack : MonoBehaviour
         }
         if (car == null) return;
 
+        // Overlap hits bypass CarController.OnCollisionEnter and may beat the forcefield trigger this frame.
+        if (car.TryGetComponent(out CarForcefield forcefield) &&
+            forcefield.TryInterceptObstacleForOverlapHit(_col))
+        {
+            _nextAllowedCarHitTime = now + hitDamageCooldown;
+            return;
+        }
+
         // NOW ignore this specific collider instance (prevents the “yeet” impulse)
         IgnoreCollisionTemporarily(carCol, now);
 

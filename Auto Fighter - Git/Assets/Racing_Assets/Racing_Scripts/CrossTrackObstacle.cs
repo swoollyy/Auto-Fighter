@@ -535,6 +535,10 @@ public class CrossTrackObstacle : MonoBehaviour
     [Tooltip("Minimum upward velocity added when the cross obstacle keeps path after hitting the player. Kept lower to avoid over-launching the car.")]
     [SerializeField, Min(0f)] private float guaranteedUpwardBounceOnPlayerHit = 0.35f;
 
+    [Header("Player / phantom hit")]
+    [Tooltip("Closing speed (|crossVel - carVel|) below this: ignore player touch — no push, cross stays on path. Stops braking/coast phantom hits.")]
+    [SerializeField, Min(0f)] private float minRelativeSpeedForPlayerCrossImpact = 2.25f;
+
     [Header("Explosion Force (When Hit By Heavier Object)")]
     [Tooltip("Enable explosive physics reaction when this obstacle is hit by a heavier object.")]
     [SerializeField] private bool enableExplosionOnHeavierImpact = true;
@@ -560,15 +564,7 @@ public class CrossTrackObstacle : MonoBehaviour
             return;
 
         // Player special-case: ALWAYS keep path, never convert to physics.
-        // Keep behavior narrow: parent-chain match first, then exact active-car root match.
-        var car = other.GetComponentInParent<CarController>();
-        if (car == null)
-        {
-            var activeCar = GameManager_Racing.Instance != null ? GameManager_Racing.Instance.ActiveCar : null;
-            if (activeCar != null && other.transform.root == activeCar.transform.root)
-                car = activeCar;
-        }
-        if (car != null)
+        if (TryResolveActivePlayerFromCollider(other, out CarController car))
         {
             var playerRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
             float myMass = ComputeMassFromScale();
@@ -581,11 +577,12 @@ public class CrossTrackObstacle : MonoBehaviour
 
             if (playerRb != null)
             {
-                // Calculate relative speed for severity scaling
-                float relativeSpeed = _lastVelocity.magnitude;
-                if (playerRb.velocity.sqrMagnitude > 0.01f)
+                float relativeSpeed = (_lastVelocity - playerRb.velocity).magnitude;
+                if (relativeSpeed < minRelativeSpeedForPlayerCrossImpact)
                 {
-                    relativeSpeed = (_lastVelocity - playerRb.velocity).magnitude;
+                    if (debugMassComparison)
+                        Debug.Log($"[CrossTrackObstacle] Skip player touch (relSpeed={relativeSpeed:F2} < min {minRelativeSpeedForPlayerCrossImpact:F2})");
+                    return;
                 }
 
                 Vector3 away = playerRb.position - transform.position;
@@ -596,7 +593,6 @@ public class CrossTrackObstacle : MonoBehaviour
                 float dv = UnityEngine.Random.Range(pushDeltaVRange.x, pushDeltaVRange.y);
                 Vector3 deltaV = away * dv;
 
-                // Calculate upward boost
                 float upwardBoost = Mathf.Max(CalculateUpwardBoost(relativeSpeed), guaranteedUpwardBounceOnPlayerHit);
                 deltaV.y += upwardBoost;
 
@@ -610,6 +606,10 @@ public class CrossTrackObstacle : MonoBehaviour
 
             return; // DO NOT convert this obstacle
         }
+
+        // Never mass-compare the active car (fixes missed CarController parent / root mismatch → phantom explosion).
+        if (IsColliderOnActivePlayerCar(other))
+            return;
 
         Rigidbody otherRb = other.attachedRigidbody ?? other.GetComponentInParent<Rigidbody>();
 
@@ -875,6 +875,39 @@ public class CrossTrackObstacle : MonoBehaviour
     }
 
     /// <summary>
+    /// Car colliders must match even when <see cref="CarController"/> sits on a different root than <c>transform.root</c> (spawn parent, etc.).
+    /// </summary>
+    private static bool TryResolveActivePlayerFromCollider(Collider other, out CarController car)
+    {
+        car = null;
+        if (other == null) return false;
+
+        car = other.GetComponentInParent<CarController>();
+        if (car != null) return true;
+
+        var active = GameManager_Racing.Instance != null ? GameManager_Racing.Instance.ActiveCar : null;
+        if (active == null) return false;
+
+        Transform t = other.transform;
+        if (t == active.transform || t.IsChildOf(active.transform))
+        {
+            car = active;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsColliderOnActivePlayerCar(Collider other)
+    {
+        if (other == null) return false;
+        var active = GameManager_Racing.Instance != null ? GameManager_Racing.Instance.ActiveCar : null;
+        if (active == null) return false;
+        Transform t = other.transform;
+        return t == active.transform || t.IsChildOf(active.transform);
+    }
+
+    /// <summary>
     /// Stops scripted cross-track motion so physics / forcefield can control this body (e.g. player forcefield).
     /// </summary>
     public void DetachFromScriptedPathForForcefield()
@@ -1087,8 +1120,7 @@ public class CrossTrackObstacle : MonoBehaviour
         if (_convertedToPhysics) return;
         if (!IsOnReactLayer(other)) return;
 
-        // NEVER do the “force dynamic + shove” routine to the player/car
-        if (other.GetComponentInParent<CarController>() != null)
+        if (TryResolveActivePlayerFromCollider(other, out _) || IsColliderOnActivePlayerCar(other))
             return;
 
         Rigidbody otherRb =

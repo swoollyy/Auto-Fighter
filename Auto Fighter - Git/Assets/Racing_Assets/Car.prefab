@@ -1435,7 +1435,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseAcceleration: 5.2
-  baseMaxSpeed: 3
+  baseMaxSpeed: 4.3
   baseBrakingForce: 0.003
   baseDrag: 0.13
   coastLowDecelPerSecond: 0.39
@@ -1449,6 +1449,14 @@ MonoBehaviour:
   brakeToReverseSpeed: 0.5
   maxBrakeDecelPerSecond: 1
   maxReverseAccelPerSecond: 5.06
+  enableSlopeDriveAssist: 1
+  slopeDriveAssistMaxAccel: 7.5
+  slopeDriveAssistMinAngle: 10
+  slopeDriveAssistMaxAngle: 52
+  slopeDriveAssistRiseSpeed: 32
+  slopeDriveAssistFallSpeed: 48
+  slopeDriveAssistDisableOnBoost: 1
+  slopeDriveAssistDisableOnIce: 1
 --- !u!114 &4457387338141855682
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1480,12 +1488,12 @@ MonoBehaviour:
   reverseSteerMultiplier: 1
   baseSteeringDamp: 10
   enableSteerTraction: 1
-  steerTractionReorientRate: 5.59
-  steerRollingAccel: 2.25
+  steerTractionReorientRate: 4.51
+  steerRollingAccel: 1.48
   minSpeedForSteerTraction: 0.1
   lateralFrictionWhileSteering: 0.76
-  steerTractionBlendIn: 8.21
-  steerTractionBlendOut: 7.1
+  steerTractionBlendIn: 3.64
+  steerTractionBlendOut: 3.02
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
 --- !u!114 &6905870851410593353
@@ -1559,8 +1567,8 @@ MonoBehaviour:
   closeCallMinSpeed: 2
   closeCallCooldown: 1.42
   closeCallRootCooldown: 4.39
-  iceFrictionTransitionSpeed: 3
-  iceHandlingTransitionSpeed: 4
+  iceFrictionTransitionSpeed: 1.9
+  iceHandlingTransitionSpeed: 2.9
   iceLateralSlideForce: 0.1
   iceVelocityAlignmentStrength: 0.02
 --- !u!114 &1364268315715001057
@@ -1671,6 +1679,8 @@ MonoBehaviour:
   raycastExtraDistance: -0.72
   debugSurfaceRays: 1
   surfaceSampleExtent: 1.13
+  useTippedOverWorldDownSampler: 1
+  tippedOverSurfaceUpDotThreshold: 0.55
 --- !u!114 &2359635645306560026
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1803,7 +1813,8 @@ MonoBehaviour:
   gaugeFillPerClick: 0.1
   gaugeFillSpeedBonus: 1.5
   gaugeFillSpeedMultiplier: 1
-  gaugeGoodThreshold: 0.7
+  gaugeGoodThreshold: 0.6
+  gaugeMaxThreshold: 0.814
   gaugeMultiplierAtZero: 0.5
   gaugeMultiplierAtGood: 1.2
   gaugeMultiplierAtMax: 1.4
@@ -1817,8 +1828,8 @@ MonoBehaviour:
   mashFuelDrainAtMaxSeverity: 10
   mashFuelDrainPerCrash: 0.25
   mashFuelDrainCap: 15
-  gaugeDrainAtMinSeverity: 0.3
-  gaugeDrainAtMaxSeverity: 0.5
+  gaugeDrainAtMinSeverity: 0.25
+  gaugeDrainAtMaxSeverity: 0.45
   gaugeDrainPerCrash: 0.35
   gaugeDrainCap: 0.95
   enableSprocketRewards: 1

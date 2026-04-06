@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a2e06021d1dc60c4f86f5de1aa878c43, type: 3}
   m_Name: Crash Severity Config
   m_EditorClassIdentifier: 
-  minClosingSpeed: 2
-  referenceMaxClosingSpeed: 9
+  minClosingSpeed: 3.2
+  referenceMaxClosingSpeed: 11
   speedSeverityCurve:
     serializedVersion: 2
     m_Curve:
@@ -63,7 +63,7 @@ MonoBehaviour:
     severityWeight: 1.35
     extraScaleBonus: 0
   - kind: 5
-    severityWeight: 1.15
+    severityWeight: 1
     extraScaleBonus: 0
   - kind: 6
     severityWeight: 1.25

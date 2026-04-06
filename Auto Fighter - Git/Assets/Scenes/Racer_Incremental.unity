@@ -4802,9 +4802,9 @@ MonoBehaviour:
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 0
-  fovSpeedMax: 9
+  fovSpeedMax: 7
   fovAtMinSpeed: 45
-  fovAtMaxSpeed: 130
+  fovAtMaxSpeed: 115
   speedFovSmooth: 3.25
   positionFollowSpeed: 3.67
   rotationFollowSpeed: 7.5
@@ -4881,11 +4881,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
   focusWorldOffset: {x: 0, y: 1.2, z: 0}
-  shieldRadius: 0.35
-  castPastFocus: 0.5
+  shieldRadius: 0.58
+  sweepProbeRadius: 0.58
+  castPastFocus: 1.22
+  coneRadialSlop: 0.04
   occluderLayers:
     serializedVersion: 2
-    m_Bits: 16553984
+    m_Bits: 16554112
   excludeFromOccluders:
     serializedVersion: 2
     m_Bits: 1

@@ -3,9 +3,9 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Sphere-cast from the camera toward the car; occluders between lens and target softly fade
-/// by instancing materials and lerping base color alpha (URP Lit / Shader Graph–friendly).
-/// Attach to the GameObject with <see cref="Camera"/>.
+/// Sweeps from the camera toward the follow target: uses a sphere cast to find candidate occluders,
+/// then keeps only hits inside a <b>linear cone</b> (apex at camera, base radius at the focus).
+/// That avoids blurring props that only intersect a fat constant-radius tube beside the true view corridor.
 /// </summary>
 [RequireComponent(typeof(Camera))]
 [DefaultExecutionOrder(50)]
@@ -22,11 +22,17 @@ public class CameraLineOfSightShield : MonoBehaviour
     [SerializeField] private Vector3 focusWorldOffset = new Vector3(0f, 1.2f, 0f);
 
     [Header("Sweep")]
-    [Tooltip("Radius of the cast — wider = harder for thin props to fully block the view cone.")]
+    [Tooltip("Cone base radius at the focus point (apex at camera; 0 at lens). Wider = more occluders caught.")]
     [SerializeField, Min(0.01f)] private float shieldRadius = 0.35f;
 
-    [Tooltip("Extra meters past the focus point to include near-miss occluders.")]
+    [Tooltip("Sphere cast radius used only to gather candidates (should be ≥ cone base radius).")]
+    [SerializeField, Min(0.01f)] private float sweepProbeRadius = 0.45f;
+
+    [Tooltip("Extra meters past the focus along the axis; past the focus the cone radius stays at shieldRadius (cylinder cap).")]
     [SerializeField, Min(0f)] private float castPastFocus = 0.5f;
+
+    [Tooltip("Small extra allowance on cone radius (m) to avoid edge sparkles.")]
+    [SerializeField, Min(0f)] private float coneRadialSlop = 0.04f;
 
     [SerializeField] private LayerMask occluderLayers = ~0;
 
@@ -80,6 +86,13 @@ public class CameraLineOfSightShield : MonoBehaviour
         _cameraFollow = GetComponentInParent<CameraFollow>();
     }
 
+#if UNITY_EDITOR
+    private void OnValidate()
+    {
+        sweepProbeRadius = Mathf.Max(sweepProbeRadius, shieldRadius);
+    }
+#endif
+
     private void LateUpdate()
     {
         if (!enableShield || _camera == null)
@@ -108,11 +121,12 @@ public class CameraLineOfSightShield : MonoBehaviour
 
         Vector3 dir = delta / dist;
         float castDistance = dist + castPastFocus;
+        float probeR = Mathf.Max(sweepProbeRadius, shieldRadius);
 
         int mask = occluderLayers.value & ~excludeFromOccluders.value;
         int count = Physics.SphereCastNonAlloc(
             origin,
-            shieldRadius,
+            probeR,
             dir,
             _hits,
             castDistance,
@@ -139,6 +153,9 @@ public class CameraLineOfSightShield : MonoBehaviour
                     break;
 
                 if (IsDescendantOf(t, cameraRoot))
+                    continue;
+
+                if (!IsHitInsideViewCone(hit.point, origin, focus, dist, shieldRadius, castPastFocus, coneRadialSlop))
                     continue;
 
                 CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
@@ -396,6 +413,44 @@ public class CameraLineOfSightShield : MonoBehaviour
             t = t.parent;
         }
         return false;
+    }
+
+    /// <summary>
+    /// True if <paramref name="worldPoint"/> lies inside the view cone: linear taper from camera (0 radius)
+    /// to <paramref name="focusDist"/> (radius <paramref name="radiusAtFocus"/>), then constant radius until past-focus.
+    /// </summary>
+    private static bool IsHitInsideViewCone(
+        Vector3 worldPoint,
+        Vector3 cameraPos,
+        Vector3 focusPos,
+        float focusDist,
+        float radiusAtFocus,
+        float pastFocus,
+        float radialSlop)
+    {
+        if (focusDist < 0.001f)
+            return false;
+
+        Vector3 axis = (focusPos - cameraPos) / focusDist;
+        Vector3 fromCam = worldPoint - cameraPos;
+        float s = Vector3.Dot(fromCam, axis);
+        if (s < 0f)
+            return false;
+
+        float axialEnd = focusDist + Mathf.Max(0f, pastFocus);
+        if (s > axialEnd)
+            return false;
+
+        Vector3 onAxis = cameraPos + axis * s;
+        float radial = Vector3.Distance(worldPoint, onAxis);
+
+        float maxR;
+        if (s <= focusDist)
+            maxR = radiusAtFocus * (s / focusDist);
+        else
+            maxR = radiusAtFocus;
+
+        return radial <= maxR + radialSlop;
     }
 
     private static void SortHitsByDistance(RaycastHit[] hits, int count)

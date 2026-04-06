@@ -114,6 +114,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField, Min(0f)] private float gaugeFillSpeedMultiplier = 1f;
     [Tooltip("Fuel: start of good tier. Sprockets: no gauge factor below this (1×); from here to max tier ramps 1× → Gauge Multiplier At Good.")]
     [SerializeField] private float gaugeGoodThreshold = 0.7f;
+    [Tooltip("Fill can still reach 100%. At this normalized value and above, mash uses max fuel multiplier / max sprocket tier / MAX UI (not the good-tier band).")]
+    [SerializeField, Range(0.5f, 0.99f)] private float gaugeMaxThreshold = 0.94f;
     [Tooltip("Fuel per mash click only. Not used for sprocket payout.")]
     [SerializeField] private float gaugeMultiplierAtZero = 0.5f;
     [Tooltip("Fuel per mash click; also the high end of the sprocket good-band ramp (sprockets lerp 1× → this between good and max tier).")]
@@ -230,6 +232,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public float GaugeFillSpeedBonus => gaugeFillSpeedBonus;
     public float GaugeFillSpeedMultiplier => gaugeFillSpeedMultiplier;
     public float GaugeGoodThreshold => gaugeGoodThreshold;
+    public float GaugeMaxThreshold => gaugeMaxThreshold;
     public float GaugeMultiplierAtZero => gaugeMultiplierAtZero;
     public float GaugeMultiplierAtGood => gaugeMultiplierAtGood;
     public float GaugeMultiplierAtMax => gaugeMultiplierAtMax;

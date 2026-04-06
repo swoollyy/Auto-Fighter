@@ -381,6 +381,14 @@ public class CarController : MonoBehaviour
     private float raycastExtraDistance;
     private bool debugSurfaceRays;
     private float surfaceSampleExtent;
+    private bool useTippedOverWorldDownSampler;
+    private float tippedOverSurfaceUpDotThreshold;
+    private float groundNormalBlendRate;
+    private float groundNormalMixedSurfaceBlendScale;
+    private float groundNormalMixedGrassMin;
+    private float groundNormalMixedGrassMax;
+    private float roadReturnAssistAccel;
+    private float roadReturnAssistMinSpeed;
 
     [Header("Fuel (from CarFuelConfig)")]
     private float maxFuel;
@@ -562,7 +570,7 @@ public class CarController : MonoBehaviour
     private float gaugeFillSpeedBonus;
     private float gaugeFillSpeedMultiplier;
     private float gaugeGoodThreshold;
-    private float gaugeMaxThreshold = 0.92f;
+    private float gaugeMaxThreshold = 0.94f;
     private float gaugeMultiplierAtZero;
     private float gaugeMultiplierAtGood;
     private float gaugeMultiplierAtMax;
@@ -684,6 +692,8 @@ public class CarController : MonoBehaviour
     private float _groundedTime = 0f;
     private bool _isGrounded = false;
     private Vector3 _lastStableGroundNormal = Vector3.up;
+    /// <summary>Latest spherecast normal; blended into <see cref="_lastStableGroundNormal"/> for driving math.</summary>
+    private Vector3 _groundNormalMeasured = Vector3.up;
     private bool _deathVfxPlayed = false;
 
     public event Action OnBoostStarted;
@@ -1236,11 +1246,27 @@ public class CarController : MonoBehaviour
             raycastExtraDistance = _groundConfig.RaycastExtraDistance;
             debugSurfaceRays = _groundConfig.DebugSurfaceRays;
             surfaceSampleExtent = _groundConfig.SurfaceSampleExtent;
+            useTippedOverWorldDownSampler = _groundConfig.UseTippedOverWorldDownSampler;
+            tippedOverSurfaceUpDotThreshold = _groundConfig.TippedOverSurfaceUpDotThreshold;
+            groundNormalBlendRate = _groundConfig.GroundNormalBlendRate;
+            groundNormalMixedSurfaceBlendScale = _groundConfig.GroundNormalMixedSurfaceBlendScale;
+            groundNormalMixedGrassMin = _groundConfig.GroundNormalMixedGrassMin;
+            groundNormalMixedGrassMax = _groundConfig.GroundNormalMixedGrassMax;
+            roadReturnAssistAccel = _groundConfig.RoadReturnAssistAccel;
+            roadReturnAssistMinSpeed = _groundConfig.RoadReturnAssistMinSpeed;
         }
         else
         {
             samplesX = 6; samplesZ = 6; raycastHeightOffset = 0.5f; raycastExtraDistance = -0.72f;
             debugSurfaceRays = true; surfaceSampleExtent = 1.13f;
+            useTippedOverWorldDownSampler = true;
+            tippedOverSurfaceUpDotThreshold = 0.55f;
+            groundNormalBlendRate = 14f;
+            groundNormalMixedSurfaceBlendScale = 0.42f;
+            groundNormalMixedGrassMin = 0.06f;
+            groundNormalMixedGrassMax = 0.94f;
+            roadReturnAssistAccel = 7f;
+            roadReturnAssistMinSpeed = 2.5f;
         }
 
         if (_rampConfig != null)
@@ -1336,6 +1362,7 @@ public class CarController : MonoBehaviour
             gaugeFillSpeedBonus = _crashMashConfig.GaugeFillSpeedBonus;
             gaugeFillSpeedMultiplier = Mathf.Max(0f, _crashMashConfig.GaugeFillSpeedMultiplier);
             gaugeGoodThreshold = _crashMashConfig.GaugeGoodThreshold;
+            gaugeMaxThreshold = Mathf.Clamp(_crashMashConfig.GaugeMaxThreshold, gaugeGoodThreshold + 0.01f, 0.999f);
             gaugeMultiplierAtZero = _crashMashConfig.GaugeMultiplierAtZero;
             gaugeMultiplierAtGood = _crashMashConfig.GaugeMultiplierAtGood;
             gaugeMultiplierAtMax = _crashMashConfig.GaugeMultiplierAtMax;
@@ -1625,8 +1652,6 @@ public class CarController : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         var gmEarly = GameManager_Racing.Instance;
         bool runEnded = gmEarly != null && gmEarly.RunEnded;
-        bool handsOffDriving = isOutOfFuel || isOutOfHP;
-
         // End-of-run: hard-stop (unchanged UX for results / menu).
         if (runEnded)
         {
@@ -1639,10 +1664,20 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        // Out of fuel or HP: no steering, ramp snap, speed caps, or crash state — let the Rigidbody tumble.
-        if (handsOffDriving)
+        // Out of HP: no scripted steering — let the Rigidbody tumble.
+        if (isOutOfHP)
         {
             ReleaseHandsOffDrivingPhysics();
+            // Keep reading surface under the car (ice/grass/boost pads) every frame, not only when tipped.
+            if (carCollider != null)
+            {
+                SampleGroundAndUpdateMultipliers();
+                ApplyBoostSurfaceForce(true);
+                UpdateIcePhysicsTransitions();
+            }
+            else
+                ResetIcePhysicsImmediate();
+
             _flipMashActive = false;
             _inCrash = false;
             _isReorienting = false;
@@ -1658,6 +1693,40 @@ public class CarController : MonoBehaviour
             _closeCallBoosting = false;
             _currentBoostMaxSpeed = 0f;
             _activeBoostMaxMult = 1f;
+            return;
+        }
+
+        // Out of fuel only: physics tumble, but player can still yaw the car (no throttle/brake/boost pipeline).
+        if (isOutOfFuel)
+        {
+            ReleaseHandsOffDrivingPhysics();
+            if (carCollider != null)
+            {
+                SampleGroundAndUpdateMultipliers();
+                ApplyBoostSurfaceForce(true);
+                UpdateIcePhysicsTransitions();
+            }
+            else
+                ResetIcePhysicsImmediate();
+
+            _flipMashActive = false;
+            _inCrash = false;
+            _isReorienting = false;
+            _crashTimer = 0f;
+            _groundedTime = 0f;
+            _isBoosting = false;
+            _isPostBoost = false;
+            _postBoostTimer = 0f;
+            _boostTimer = 0f;
+            _boostRequested = false;
+            ClearBoostOverride();
+            ClearAllSpeedBoosts();
+            _closeCallBoosting = false;
+            _currentBoostMaxSpeed = 0f;
+            _activeBoostMaxMult = 1f;
+
+            UpdateSteeringInputFixed();
+            HandleSteering();
             return;
         }
 
@@ -1741,6 +1810,9 @@ public class CarController : MonoBehaviour
             // Apply boost surface during recovery
             ApplyBoostSurfaceForce(true);
 
+            // Must run after sampling: friction/handling *current* values lerp toward raycast targets (otherwise ice sticks after leaving ice).
+            UpdateIcePhysicsTransitions();
+
             // === PASSIVE AUTO-CLICKS (Skill-based) ===
             if (effectivePassiveClickRate > 0f)
             {
@@ -1797,6 +1869,9 @@ public class CarController : MonoBehaviour
 
             // Apply boost surface during crash
             ApplyBoostSurfaceForce(true);
+
+            // Lerp physic material / ice handling toward what the rays hit this frame (crash used to skip this → ice forever).
+            UpdateIcePhysicsTransitions();
 
             // Check if grounded during crash
             _isGrounded = CheckIfGrounded();
@@ -1925,6 +2000,8 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
+        SmoothDrivingGroundNormal();
+        ApplyRoadReturnVelocityAssist();
         ApplyGroundAwareSpeedCapClamp();
 
         CheckBoostFlash();
@@ -2014,10 +2091,33 @@ public class CarController : MonoBehaviour
 
         if (currentSpeed >= maxSpeed) return;
 
-        // Apply forward acceleration
+        // Apply acceleration along ground tangent when grounded (matches HandleMovement on ramps/hills).
         Vector3 forwardDir = transform.forward;
-        forwardDir.y = 0f;
-        forwardDir.Normalize();
+        if (carCollider != null && CheckIfGrounded())
+        {
+            Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
+            if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+            {
+                Vector3 n = hit.normal;
+                forwardDir = Vector3.ProjectOnPlane(transform.forward, n);
+                if (forwardDir.sqrMagnitude < 1e-8f)
+                {
+                    forwardDir = transform.forward;
+                    forwardDir.y = 0f;
+                }
+                forwardDir.Normalize();
+            }
+            else
+            {
+                forwardDir.y = 0f;
+                forwardDir.Normalize();
+            }
+        }
+        else
+        {
+            forwardDir.y = 0f;
+            forwardDir.Normalize();
+        }
 
         // Scale force if approaching max speed
         float speedRatio = currentSpeed / maxSpeed;
@@ -2059,7 +2159,8 @@ public class CarController : MonoBehaviour
         // NEW: Ice drift-like physics (rotation vs velocity misalignment)
         bool onIceOrTransitioning = _onIceSurface || _currentIceHandling < 0.99f;
 
-        if (onIceOrTransitioning && !_inCrash && !_isReorienting && rb != null)
+        // Skip arcade ice slide during crash / mash tumble so surface type still updates (friction above) without fighting recovery motion.
+        if (onIceOrTransitioning && !_inCrash && !_flipMashActive && !_isReorienting && rb != null)
         {
             float speed = rb.velocity.magnitude;
 
@@ -2523,6 +2624,27 @@ public class CarController : MonoBehaviour
         rb.angularDrag = _baseAngularDrag;
     }
 
+    /// <summary>
+    /// Snap ice + grip material to non-ice. Used when we stop sampling (hands-off driving) so tumble physics matches the ground visually.
+    /// </summary>
+    private void ResetIcePhysicsImmediate()
+    {
+        _onIceSurface = false;
+        _iceDynamicFrictionTarget = 1f;
+        _iceStaticFrictionTarget = 1f;
+        _iceHandlingTarget = 1f;
+        _currentIceDynamicFriction = 1f;
+        _currentIceStaticFriction = 1f;
+        _currentIceHandling = 1f;
+        _iceSteerCharge01 = 0f;
+        _iceSteerSign = 0;
+        if (_carPhysicMaterial != null)
+        {
+            _carPhysicMaterial.dynamicFriction = _originalDynamicFriction;
+            _carPhysicMaterial.staticFriction = _originalStaticFriction;
+        }
+    }
+
     private void WireManagerEvents()
     {
         var mgr = RacingSkillTreeManager.Instance;
@@ -2596,7 +2718,7 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        if (isOutOfFuel || isOutOfHP)
+        if (isOutOfHP)
         {
             steeringInput = 0f;
             _rawSteer = 0f;
@@ -2608,6 +2730,21 @@ public class CarController : MonoBehaviour
             _inputsSuppressedThisFrame = true;
             _suppressThrottleBrakeThisFrame = true;
             _suppressSteeringThisFrame = true;
+            return;
+        }
+
+        // Out of fuel: free physics — keep steering read/smoothing; no throttle, drift, or boost.
+        if (isOutOfFuel)
+        {
+            _rawSteer = GetSteerRaw();
+            driftCharge = 0f;
+            isDrifting = false;
+            driftButtonHeld = false;
+            _boostRequested = false;
+            _boostOverrideActive = false;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = false;
+            _inputsSuppressedThisFrame = true;
             return;
         }
 
@@ -3261,7 +3398,8 @@ public class CarController : MonoBehaviour
                 (!IsOutOfFuel && (GetAccelerateKeyOrTrigger() || GetBrakeKeyOrTrigger()))
                 || IsOutOfFuel;
 
-            if (speed < minSpeedToSteer && !(allowSteerWhenTryingToMove && tryingToMove))
+            // Out-of-fuel physics mode: always allow yaw (not gated by minSpeedToSteer / allowSteerWhenTryingToMove).
+            if (speed < minSpeedToSteer && !isOutOfFuel && !(allowSteerWhenTryingToMove && tryingToMove))
             {
                 // If you’re using the ice steer “charge”, force it to bleed off so it doesn’t feel sticky.
                 _iceSteerCharge01 = Mathf.MoveTowards(_iceSteerCharge01, 0f, iceSteerRampDownRate * Time.deltaTime);
@@ -3333,9 +3471,10 @@ public class CarController : MonoBehaviour
 
         // Grounded check early so we can use it anywhere in this method.
         bool groundedNow = CheckIfGrounded();
+        RefreshGroundNormalForDriving(groundedNow);
 
-        // Throttle/brake along car forward (follows ground normals via ramp alignment) — required for steep slopes.
-        Vector3 forward = transform.forward;
+        // Throttle/brake along surface tangent when grounded (no need to wait for pitch alignment on steep terrain).
+        Vector3 forward = GetDriveForwardAlongSurface(transform.forward, _lastStableGroundNormal, groundedNow);
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
@@ -3345,7 +3484,8 @@ public class CarController : MonoBehaviour
 
         if (!isOutOfFuel && maxFuel > 0f)
         {
-            bool accelerating = forwardKey;
+            // Brake overrides throttle: both keys = decelerate (reverse/brake path), not full accel.
+            bool accelerating = forwardKey && !reverseKey;
             bool brakingOrReverse = reverseKey;
             bool nearIdleSpeed = speed <= idleSpeedThreshold + 0.001f;
 
@@ -3397,20 +3537,22 @@ public class CarController : MonoBehaviour
                     }
                     else
                     {
-                        float currentLong = Vector3.Dot(rb.velocity, forward);
+                        Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal.normalized : Vector3.up;
+                        Vector3 vTan = Vector3.ProjectOnPlane(rb.velocity, n);
+                        float currentLong = Vector3.Dot(vTan, forward);
 
                         if (currentLong > 0f)
                         {
                             float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 1.0f;
                             float newLong = Mathf.MoveTowards(currentLong, 0f, decel * dt);
-                            SetLongitudinalVelocityClamped(forward, newLong);
+                            SetLongitudinalVelocityAlongSurface(forward, newLong);
                         }
                         else
                         {
                             float reverseAccel = maxReverseAccelPerSecond > 0f ? maxReverseAccelPerSecond : 1.0f;
                             float targetReverseSpeed = -Mathf.Max(1f, effectiveMaxSpeed * 0.4f);
                             float newLong = Mathf.MoveTowards(currentLong, targetReverseSpeed, reverseAccel * dt);
-                            SetLongitudinalVelocityClamped(forward, newLong);
+                            SetLongitudinalVelocityAlongSurface(forward, newLong);
                         }
 
                         ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
@@ -3425,13 +3567,12 @@ public class CarController : MonoBehaviour
                         {
                             float reverseDecel = Mathf.Min(maxReverseAccelPerSecond, 3.5f);
                             float newLong = Mathf.MoveTowards(forwardSpeed, 0f, reverseDecel * Time.fixedDeltaTime);
-                            SetLongitudinalVelocityClamped(forward, newLong);
+                            SetLongitudinalVelocityAlongSurface(forward, newLong);
                         }
                         else if (speed > 0.01f)
                         {
                             float decel = coastLowDecelPerSecond;
-                            float newMag = Mathf.Max(0f, speed - decel * Time.fixedDeltaTime);
-                            rb.velocity = rb.velocity.normalized * newMag;
+                            ApplyCoastDecelAlongSurface(decel, Time.fixedDeltaTime);
                         }
 
                         // Steer rolling traction while coasting
@@ -3471,7 +3612,7 @@ public class CarController : MonoBehaviour
                 // Drifting/gliding with fuel
                 bool consumedFuelThisFrame = false;
 
-                if (accelerating && !brakingOrReverse)
+                if (accelerating)
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
                     // IMPROVED: Apply malfunction multiplier during drift too
@@ -3511,8 +3652,8 @@ public class CarController : MonoBehaviour
 
         // Uphill assist: ramps up/down smoothly so steep ramps don't feel underpowered or jerky.
         float assistTarget = 0f;
-        Vector3 assistDir = transform.forward;
-        bool throttleForAssist = forwardKey && !isOutOfFuel && maxFuel > 0f && groundedNow;
+        Vector3 assistDir = forward;
+        bool throttleForAssist = forwardKey && !reverseKey && !isOutOfFuel && maxFuel > 0f && groundedNow;
         if (throttleForAssist && TryGetSlopeDriveAssist(out Vector3 surfFwd, out float extraA))
         {
             assistDir = surfFwd;
@@ -3543,7 +3684,7 @@ public class CarController : MonoBehaviour
 
                 Vector3 velDir = rb.velocity.sqrMagnitude > 0.0001f ? rb.velocity.normalized : transform.forward;
 
-                bool gentleBrakeWhileDrifting = (reverseKey && !forwardKey);
+                bool gentleBrakeWhileDrifting = reverseKey;
                 bool noThrottleNoBrake = (!forwardKey && !reverseKey);
 
                 if (gentleBrakeWhileDrifting)
@@ -3575,7 +3716,7 @@ public class CarController : MonoBehaviour
                     finalDir = flatForward;
 
                 float targetMagnitude;
-                bool brakingDrift = (reverseKey && !forwardKey);
+                bool brakingDrift = reverseKey;
 
                 bool speedBoostActiveForDrift = _isBoosting || HasAnySpeedBoost;
 
@@ -3672,6 +3813,60 @@ public class CarController : MonoBehaviour
 
     private float surfaceTurnMultiplier = 1f; // runtime surface multiplier for steering (fixes lost multiplier when skills apply)
 
+    /// <summary>
+    /// World-axis bounds, rays along <see cref="Vector3.down"/> — used when the car is tipped so local "underside" samples miss the track.
+    /// </summary>
+    private void AccumulateSurfaceSamplesWorldDownFromColliderBounds(
+        ref float sumMaxSpeedMul,
+        ref float sumAccelMul,
+        ref float sumTurnMul,
+        ref float sumDragMul,
+        ref float sumFuelMul,
+        ref int samplesCounted,
+        ref int nonDefaultSamples,
+        ref int grassSamplesLocal,
+        ref int iceSamples,
+        ref float sumIceDynamicFriction,
+        ref float sumIceStaticFriction,
+        ref float sumIceHandling,
+        ref bool anyBoostRamp,
+        ref float bestBoostAccel,
+        ref float bestBoostMaxSpeed,
+        ref bool boostDuringCrash,
+        ref float boostCrashMult)
+    {
+        Bounds bounds = carCollider.bounds;
+        Vector3 center = bounds.center;
+        Vector3 extents = bounds.extents * surfaceSampleExtent;
+        float minThroughCar = bounds.size.y + raycastHeightOffset + 0.2f;
+        float extraReach = raycastExtraDistance >= 0f ? raycastExtraDistance : -raycastExtraDistance;
+        float rayDistance = minThroughCar + extraReach;
+
+        for (int ix = 0; ix < samplesX; ix++)
+        {
+            float tx = (ix + 0.5f) / samplesX;
+            float x = Mathf.Lerp(center.x - extents.x, center.x + extents.x, tx);
+
+            for (int iz = 0; iz < samplesZ; iz++)
+            {
+                float tz = (iz + 0.5f) / samplesZ;
+                float z = Mathf.Lerp(center.z - extents.z, center.z + extents.z, tz);
+
+                Vector3 origin = new Vector3(x, bounds.max.y + raycastHeightOffset, z);
+
+                if (debugSurfaceRays)
+                    Debug.DrawLine(origin, origin + Vector3.down * rayDistance, new Color(1f, 0.4f, 0.9f));
+
+                EvaluateSurfaceWithIce(origin, rayDistance,
+                    ref sumMaxSpeedMul, ref sumAccelMul, ref sumTurnMul,
+                    ref sumDragMul, ref sumFuelMul,
+                    ref samplesCounted, ref nonDefaultSamples, ref grassSamplesLocal,
+                    ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling,
+                    ref anyBoostRamp, ref bestBoostAccel, ref bestBoostMaxSpeed, ref boostDuringCrash, ref boostCrashMult);
+            }
+        }
+    }
+
     private void SampleGroundAndUpdateMultipliers()
     {
         if (carCollider == null) return;
@@ -3736,7 +3931,19 @@ public class CarController : MonoBehaviour
         float sumIceStaticFriction = 0f;
         float sumIceHandling = 0f;
 
-        if (boxCollider != null)
+        bool tippedForSurface =
+            useTippedOverWorldDownSampler &&
+            Vector3.Dot(transform.up, Vector3.up) < tippedOverSurfaceUpDotThreshold;
+
+        if (tippedForSurface)
+        {
+            AccumulateSurfaceSamplesWorldDownFromColliderBounds(
+                ref sumMaxSpeedMul, ref sumAccelMul, ref sumTurnMul, ref sumDragMul, ref sumFuelMul,
+                ref samplesCounted, ref nonDefaultSamples, ref grassSamplesLocal,
+                ref iceSamples, ref sumIceDynamicFriction, ref sumIceStaticFriction, ref sumIceHandling,
+                ref anyBoostRamp, ref bestBoostAccel, ref bestBoostMaxSpeed, ref boostDuringCrash, ref boostCrashMult);
+        }
+        else if (boxCollider != null)
         {
             Vector3 size = boxCollider.size;
             Vector3 center = boxCollider.center;
@@ -3850,8 +4057,8 @@ public class CarController : MonoBehaviour
                 _onIceSurface = false;
                 _iceDynamicFrictionTarget = 1f;
                 _iceStaticFrictionTarget = 1f;
-            _iceHandlingTarget = 1f;
-        }
+                _iceHandlingTarget = 1f;
+            }
         }
 
         // Use boost from multi-sample if any (more reliable than single ray on ramps); else fallback to single ray
@@ -3902,6 +4109,106 @@ public class CarController : MonoBehaviour
             groundLayers,
             QueryTriggerInteraction.Collide
         );
+    }
+
+    /// <summary>
+    /// Updates <see cref="_lastStableGroundNormal"/> before movement forces so throttle/brake use the same frame's surface.
+    /// (Ramp alignment still runs later for rotation smoothing.)
+    /// </summary>
+    private void RefreshGroundNormalForDriving(bool groundedNow)
+    {
+        if (!groundedNow || carCollider == null) return;
+        Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
+        if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+            _groundNormalMeasured = hit.normal;
+    }
+
+    /// <summary>
+    /// Blends <see cref="_lastStableGroundNormal"/> toward the raycast normal so grass/road lip hits do not snap
+    /// tangent projections and speed caps frame-to-frame.
+    /// </summary>
+    private void SmoothDrivingGroundNormal()
+    {
+        if (rb == null || carCollider == null) return;
+        if (!CheckIfGrounded()) return;
+
+        float dt = Time.fixedDeltaTime;
+        float t = Mathf.Clamp01(groundNormalBlendRate * dt);
+        float g = grassFraction;
+        if (g > groundNormalMixedGrassMin && g < groundNormalMixedGrassMax)
+            t *= groundNormalMixedSurfaceBlendScale;
+
+        _lastStableGroundNormal = Vector3.Slerp(_lastStableGroundNormal, _groundNormalMeasured, t);
+        if (_lastStableGroundNormal.sqrMagnitude < 1e-10f)
+            _lastStableGroundNormal = Vector3.up;
+        else
+            _lastStableGroundNormal.Normalize();
+    }
+
+    /// <summary>
+    /// Small forward assist along horizontal velocity when wheels sample both grass and raised road (reduces “sticking” on the step).
+    /// </summary>
+    private void ApplyRoadReturnVelocityAssist()
+    {
+        if (roadReturnAssistAccel <= 0f || rb == null || carCollider == null) return;
+        if (_onIceSurface) return;
+        if (isDrifting || _driftGlideActive) return;
+        if (!CheckIfGrounded()) return;
+
+        float g = grassFraction;
+        if (g <= groundNormalMixedGrassMin || g >= groundNormalMixedGrassMax) return;
+
+        Vector3 flatV = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+        float mag = flatV.magnitude;
+        if (mag < roadReturnAssistMinSpeed) return;
+
+        float edge01 = 1f - Mathf.Abs(g - 0.5f) * 2f;
+        edge01 = Mathf.Clamp01(edge01);
+        if (edge01 < 0.02f) return;
+
+        rb.AddForce(flatV * (roadReturnAssistAccel * edge01 / Mathf.Max(mag, 0.01f)), ForceMode.Acceleration);
+    }
+
+    /// <summary>World forward projected onto the ground plane when grounded; full <paramref name="worldForward"/> in air.</summary>
+    private static Vector3 GetDriveForwardAlongSurface(Vector3 worldForward, Vector3 groundNormal, bool grounded)
+    {
+        Vector3 f = worldForward.normalized;
+        if (!grounded) return f;
+        Vector3 n = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
+        Vector3 onPlane = Vector3.ProjectOnPlane(f, n);
+        if (onPlane.sqrMagnitude < 1e-10f)
+            return f;
+        return onPlane.normalized;
+    }
+
+    /// <summary>
+    /// Sets speed along <paramref name="surfaceForward"/> while preserving velocity tangent to <see cref="_lastStableGroundNormal"/>.
+    /// </summary>
+    private void SetLongitudinalVelocityAlongSurface(Vector3 surfaceForward, float newLong)
+    {
+        if (rb == null) return;
+        Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal.normalized : Vector3.up;
+        Vector3 v = rb.velocity;
+        Vector3 fwd = surfaceForward.normalized;
+        Vector3 vTan = Vector3.ProjectOnPlane(v, n);
+        Vector3 lateral = vTan - fwd * Vector3.Dot(vTan, fwd);
+        Vector3 newVTan = fwd * newLong + lateral;
+        float vn = Vector3.Dot(v, n);
+        rb.velocity = newVTan + vn * n;
+    }
+
+    private void ApplyCoastDecelAlongSurface(float decel, float dt)
+    {
+        if (rb == null) return;
+        Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal.normalized : Vector3.up;
+        Vector3 v = rb.velocity;
+        Vector3 vTan = Vector3.ProjectOnPlane(v, n);
+        float tanMag = vTan.magnitude;
+        if (tanMag < 0.01f) return;
+        float newTanMag = Mathf.Max(0f, tanMag - decel * dt);
+        vTan *= newTanMag / tanMag;
+        float vn = Vector3.Dot(v, n);
+        rb.velocity = vTan + vn * n;
     }
 
     /// <summary>
@@ -3993,11 +4300,11 @@ public class CarController : MonoBehaviour
             if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
             {
                 targetUp = hit.normal;
-                _lastStableGroundNormal = targetUp;
+                _groundNormalMeasured = hit.normal;
             }
             else
             {
-                targetUp = _lastStableGroundNormal;
+                targetUp = _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal : Vector3.up;
             }
 
             // Align faster while grounded
@@ -5330,7 +5637,7 @@ public class CarController : MonoBehaviour
         float speedFillMultiplier = Mathf.Lerp(1f, gaugeFillSpeedBonus * gaugeFillSpeedMultiplier, speedRating);
         float fillAmount = gaugeFillPerClick * speedFillMultiplier;
 
-        // Add to gauge
+        // Fill can reach 100%; max fuel tier starts at gaugeMaxThreshold (e.g. 0.94).
         _mashGaugeValue = Mathf.Clamp01(_mashGaugeValue + fillAmount);
 
         // Track peak
