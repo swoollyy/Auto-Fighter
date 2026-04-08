@@ -84,6 +84,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private bool enableFlipRecoveryMash = true;
     [SerializeField, Range(-1f, 1f)] private float flipDotThreshold = 0f;
     [SerializeField, Range(0f, 180f)] private float flipAngleThreshold = 80f;
+    [Tooltip("When the car is hit again during an active mash, hide mash UI this long so the impact reads clearly, then show it again (clicks required already increased).")]
+    [SerializeField, Min(0f)] private float mashUiHideSecondsOnExtraHit = 0.45f;
 
     [Header("Crash Recovery Click Calculation")]
     [SerializeField] private int mashClicksMin = 6;
@@ -211,6 +213,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public bool EnableFlipRecoveryMash => enableFlipRecoveryMash;
     public float FlipDotThreshold => flipDotThreshold;
     public float FlipAngleThreshold => flipAngleThreshold;
+    public float MashUiHideSecondsOnExtraHit => mashUiHideSecondsOnExtraHit;
     public int MashClicksMin => mashClicksMin;
     public int MashClicksMaxFromSeverity => mashClicksMaxFromSeverity;
     public int MashClicksPerCrash => mashClicksPerCrash;

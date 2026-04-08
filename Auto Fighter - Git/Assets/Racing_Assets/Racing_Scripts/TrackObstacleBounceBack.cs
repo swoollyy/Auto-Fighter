@@ -7,9 +7,9 @@ using UnityEngine;
 /// <summary>
 /// AAA version:
 /// - Kinematic RB + non-trigger collider => real collisions (can land on other obstacles).
-/// - DOTween drives a smooth bounce param, FixedUpdate applies MovePosition/MoveRotation.
+/// - DOTween drives bounce progress in <b>Fixed</b> update so it stays in lockstep with MovePosition (Update-loop tweens cause huge per-step teleports and phantom hits).
 /// - Always follows track path (cannot be pushed off path), but pushes OTHER obstacles on impact.
-/// - Car hit triggers full crash sim; optionally uses centralized CrashSeverityConfig (see useCentralizedCrashSeverity).
+/// - Car hit triggers full crash sim via OnCollisionEnter (layer matrix must allow obstacle vs car contact).
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -42,6 +42,10 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("If true, bounce + cooldown uses real time (ignores Time.timeScale).")]
     [SerializeField] private bool useUnscaledTime = true;
 
+    [Header("Hit collider while jumping")]
+    [Tooltip("While bouncing, BoxCollider size is set to this on every axis (local). Restored to prefab size when landed / frozen.")]
+    [SerializeField, Min(0.01f)] private float bounceCollisionBoxSize = 0.65f;
+
     [Header("Bounce Arc")]
     [Tooltip("Peak hop height during a bounce (meters).")]
     [SerializeField, Min(0f)] private float bounceJumpHeight = 1.0f;
@@ -71,7 +75,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [SerializeField] private bool keepUpright = true;
 
     [Header("Collision Filtering (AAA)")]
-    [SerializeField, Tooltip("Layers this obstacle should NOT physically collide with (ex: Player/Car). We still detect hits via overlap query.")]
+    [SerializeField, Tooltip("Layers to briefly ignore with this collider after a contact (reduces snagging). Car hits use normal collisions; ensure the layer matrix allows obstacle vs car.")]
     private LayerMask noPhysicalCollisionMask;
 
     [Header("Landing Preview (Decal / GroundRing)")]
@@ -165,6 +169,10 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
     private Rigidbody _rb;
     private Collider _col;
+    private BoxCollider _boxCol;
+    private Vector3 _defaultBoxColliderSize;
+    private Vector3 _defaultBoxColliderCenter;
+    private bool _hasResizableBoxCollider;
 
     private float _telegraphRadiusCached = 1.5f;
     private GameObject _landingTeleInst;
@@ -203,6 +211,13 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
         _rb = GetComponent<Rigidbody>();
         _col = GetComponent<Collider>();
+        _boxCol = _col as BoxCollider;
+        if (_boxCol != null)
+        {
+            _defaultBoxColliderSize = _boxCol.size;
+            _defaultBoxColliderCenter = _boxCol.center;
+            _hasResizableBoxCollider = true;
+        }
 
         // Physics setup: kinematic but collides
         _rb.isKinematic = true;
@@ -227,6 +242,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
         _prevPos = transform.position;
         _estimatedVel = Vector3.zero;
+
+        SetJumpColliderActive(false);
     }
 
     private void OnDisable()
@@ -332,9 +349,6 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _rb.MovePosition(desired);
         _rb.MoveRotation(desiredRot);
 
-        if (_state == State.Bouncing)
-            CheckCarHitQuery(now);
-
         // End bounce when tween completes
         if (t01 >= 0.9999f)
         {
@@ -434,6 +448,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
 
 
         _state = State.Bouncing;
+        SetJumpColliderActive(true);
 
         _bounceStartDist = _dist;
         _bounceEndDist = Mathf.Max(0f, _dist - bounceStepDistance);
@@ -480,10 +495,11 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _bounceTween?.Kill();
         _bounceT = 0f;
 
-        // DOTween drives progress; FixedUpdate applies physics motion
+        // MUST use Fixed update: if this tween runs on the normal Update loop, _bounceT jumps ahead between
+        // FixedUpdate ticks and MovePosition teleports several "frames" of arc at once — feels like a huge hitbox.
         _bounceTween = DOTween.To(() => _bounceT, v => _bounceT = v, 1f, Mathf.Max(0.05f, bounceDuration))
             .SetEase(Ease.OutQuad)
-            .SetUpdate(useUnscaledTime); // true => ignore timeScale
+            .SetUpdate(UpdateType.Fixed, useUnscaledTime);
     }
 
     private void EndBounce(float now, Vector3 finalPos, Quaternion finalRot)
@@ -491,6 +507,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _bounceTween?.Kill();
         _bounceTween = null;
         _bounceT = 1f;
+
+        SetJumpColliderActive(false);
 
         // HARD snap to ground at end, then FREEZE completely until next bounce.
         // This kills the vibration/jitter during cooldown.
@@ -522,6 +540,33 @@ public class TrackObstacleBounceBack : MonoBehaviour
         _state = State.FrozenCooldown;
         _frozenUntil = now + bounceCooldown;
 
+    }
+
+    private void SetJumpColliderActive(bool jumping)
+    {
+        if (!_hasResizableBoxCollider || _boxCol == null) return;
+
+        if (jumping)
+        {
+            float s = Mathf.Max(0.01f, bounceCollisionBoxSize);
+            _boxCol.size = new Vector3(s, s, s);
+            _boxCol.center = _defaultBoxColliderCenter;
+        }
+        else
+        {
+            _boxCol.size = _defaultBoxColliderSize;
+            _boxCol.center = _defaultBoxColliderCenter;
+        }
+
+        RefreshPivotToBottomFromCollider();
+    }
+
+    private void RefreshPivotToBottomFromCollider()
+    {
+        if (_col == null) return;
+        Bounds b = _col.bounds;
+        _pivotToBottomUp = (transform.position.y - b.center.y) + b.extents.y;
+        _pivotToBottomUp = Mathf.Max(0f, _pivotToBottomUp);
     }
 
     private Quaternion ComputeRotation(Vector3 flatForward)
@@ -619,6 +664,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
     {
         float now = useUnscaledTime ? Time.unscaledTime : Time.time;
         IgnoreCollisionTemporarily(collision.collider, now);
+
+        TryHandleCarCollisionEnter(collision, now);
 
         // Other obstacle reaction only
         if (reactToOtherObstacles && obstacleReactMask.value != 0)
@@ -721,6 +768,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (_forcefieldDetached) return;
         _forcefieldDetached = true;
 
+        SetJumpColliderActive(false);
+
         // Kill any tween driving bounce param (if used)
         try { DOTween.Kill(this); } catch { } // safe kill if you used SetId(this) patterns
 
@@ -805,68 +854,21 @@ public class TrackObstacleBounceBack : MonoBehaviour
         return _cumLengths[bestIdx] + bestT * segLen;
     }
 
-    /// <summary>Overlap using the collider's actual shape (box/sphere/capsule) so hitbox matches the visual; avoids inflated AABB when rotated.</summary>
-    private static Collider[] OverlapColliderShape(Collider col, LayerMask layerMask)
+    /// <summary>
+    /// Car damage uses the same contact pipeline as the rest of Unity physics: <see cref="OnCollisionEnter"/> only.
+    /// The obstacle must be allowed to collide with the car in the Physics layer matrix (triggers do not fire this).
+    /// </summary>
+    private void TryHandleCarCollisionEnter(Collision collision, float now)
     {
-        if (col == null) return null;
+        if (_forcefieldDetached || !damagePlayerOnHit || now < _nextAllowedCarHitTime) return;
+        if (_state != State.Bouncing) return;
 
-        Transform t = col.transform;
-        Vector3 scale = t.lossyScale;
+        Collider other = collision.collider;
+        if (other == null || other.isTrigger) return;
 
-        switch (col)
-        {
-            case BoxCollider box:
-            {
-                Vector3 center = t.TransformPoint(box.center);
-                Vector3 halfExtents = Vector3.Scale(box.size * 0.5f, scale);
-                return Physics.OverlapBox(center, halfExtents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
-            }
-            case SphereCollider sphere:
-            {
-                Vector3 center = t.TransformPoint(sphere.center);
-                float radius = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * sphere.radius;
-                return Physics.OverlapSphere(center, radius, layerMask, QueryTriggerInteraction.Collide);
-            }
-            case CapsuleCollider cap:
-            {
-                float height = cap.height;
-                float radius = cap.radius;
-                int axis = cap.direction; // 0=X, 1=Y, 2=Z
-                Vector3 axisDir = axis == 0 ? Vector3.right : (axis == 1 ? Vector3.up : Vector3.forward);
-                float halfHeight = Mathf.Max(0f, height * 0.5f - radius);
-                Vector3 p1 = t.TransformPoint(cap.center + axisDir * halfHeight);
-                Vector3 p2 = t.TransformPoint(cap.center - axisDir * halfHeight);
-                float r = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)) * radius;
-                return Physics.OverlapCapsule(p1, p2, r, layerMask, QueryTriggerInteraction.Collide);
-            }
-            default:
-                // MeshCollider or other: fall back to bounds (may still be slightly generous)
-                Bounds b = col.bounds;
-                return Physics.OverlapBox(b.center, b.extents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
-        }
-    }
-
-    private void CheckCarHitQuery(float now)
-    {
-        if (!damagePlayerOnHit) return;
-        if (now < _nextAllowedCarHitTime) return;
-
-        // Only use the obstacle's own collider as the hit shape so the hitbox
-        // exactly matches the prefab collider the player authors.
-        Collider[] hits = OverlapColliderShape(_col, ~0);
-        if (hits == null || hits.Length == 0) return;
-
-        CarController car = null;
-        Collider carCol = null;
-
-        for (int i = 0; i < hits.Length; i++)
-        {
-            car = hits[i].GetComponentInParent<CarController>();
-            if (car != null) { carCol = hits[i]; break; }
-        }
+        CarController car = other.GetComponentInParent<CarController>();
         if (car == null) return;
 
-        // Overlap hits bypass CarController.OnCollisionEnter and may beat the forcefield trigger this frame.
         if (car.TryGetComponent(out CarForcefield forcefield) &&
             forcefield.TryInterceptObstacleForOverlapHit(_col))
         {
@@ -874,14 +876,23 @@ public class TrackObstacleBounceBack : MonoBehaviour
             return;
         }
 
-        // NOW ignore this specific collider instance (prevents the “yeet” impulse)
-        IgnoreCollisionTemporarily(carCol, now);
+        Vector3 contactPoint = collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : other.ClosestPoint(_rb.position);
 
+        Vector3 contactNormal = collision.contactCount > 0
+            ? collision.GetContact(0).normal
+            : (_rb.position - contactPoint);
 
-        Vector3 contactPoint = carCol.ClosestPoint(_rb.position);
-        Vector3 contactNormal = (_rb.position - contactPoint);
         if (contactNormal.sqrMagnitude < 0.0001f) contactNormal = Vector3.up;
-        contactNormal.Normalize();
+        else contactNormal.Normalize();
+
+        ApplyCarDamageAndDetach(car, other, contactPoint, contactNormal, now);
+    }
+
+    private void ApplyCarDamageAndDetach(CarController car, Collider carCol, Vector3 contactPoint, Vector3 contactNormal, float now)
+    {
+        IgnoreCollisionTemporarily(carCol, now);
 
         Vector3 hitDir = (car.transform.position - _rb.position);
         hitDir.y = 0f;
@@ -913,14 +924,13 @@ public class TrackObstacleBounceBack : MonoBehaviour
                 crashFxSeverity);
         }
 
-        // Lose pathing and react with physics from the collision (same as forcefield detach)
         Vector3 awayFromCar = (_rb.position - car.transform.position);
         awayFromCar.y = 0f;
         if (awayFromCar.sqrMagnitude < 0.0001f) awayFromCar = -hitDir;
         awayFromCar.Normalize();
 
         float impulseMag = carHitDetachImpulse > 0f ? carHitDetachImpulse : _estimatedVel.magnitude;
-        if (impulseMag < 1f) impulseMag = 5f; // minimum so it visibly reacts
+        if (impulseMag < 1f) impulseMag = 5f;
 
         DetachForForcefieldLaunch();
         _rb.AddForce(awayFromCar * impulseMag + Vector3.up * 2f, ForceMode.Impulse);

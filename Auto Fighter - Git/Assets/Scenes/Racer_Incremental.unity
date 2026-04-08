@@ -6624,7 +6624,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
     baseWeight: 1.1
-    startAtNormalizedDist: 0.001
+    startAtNormalizedDist: 0
     fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6640,10 +6640,10 @@ MonoBehaviour:
     passiveFleeFromScared: 1
     passiveScaredDetectRadius: 7
     passiveScaredLoseDistance: 16
-    passiveFleeBaseSpeed: 3.5
-    passiveFleeMaxSpeed: 10
+    passiveFleeBaseSpeed: 3
+    passiveFleeMaxSpeed: 7
     passiveFleeBuildupRate: 3
-    passiveFleeMaxOffRoadDistance: 3
+    passiveFleeMaxOffRoadDistance: 10
     passiveUseBugIdleMovement: 1
     passiveIdleBugMoveSpeed: 1.15
     passiveIdleBugDirectionChangeInterval: 1.05
@@ -6709,7 +6709,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
     baseWeight: 0.5
-    startAtNormalizedDist: 0.03
+    startAtNormalizedDist: 0
     fullWeightNormalizedDist: 0.3
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6753,8 +6753,8 @@ MonoBehaviour:
     scaredHuntPassiveCreatures: 1
     scaredHuntPassiveRadius: 9.2
     scaredPassiveHuntLoseDistance: 13.6
-    scaredBugHuntSpeed: 5.63
-    scaredBugHuntSpeedMultiplier: 1.42
+    scaredBugHuntSpeed: 8
+    scaredBugHuntSpeedMultiplier: 1
     aggressiveIdleUseBugMovement: 0
     aggressiveIdleBugMoveSpeed: 0
     aggressiveIdleBugDirectionChangeInterval: 0.05
@@ -6794,7 +6794,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
     baseWeight: 1
-    startAtNormalizedDist: 0.05
+    startAtNormalizedDist: 0
     fullWeightNormalizedDist: 0.6
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6847,7 +6847,7 @@ MonoBehaviour:
     aggressiveIdleBugForwardRadius: 5
     aggressiveHuntScaredCreatures: 1
     aggressiveHuntRadius: 7.43
-    aggressiveHuntSpeedMultiplier: 1.58
+    aggressiveHuntSpeedMultiplier: 2
     aggressiveHuntNpcTraffic: 1
     aggressiveNpcTrafficDetectRadius: 12.1
     aggressiveDetectionRadius: 6.86
@@ -6873,12 +6873,12 @@ MonoBehaviour:
     impactLift: 3
     impactTorque: 6
     bullRushImpactMultiplier: 1.14
-    despawnAfterHit: 1
+    despawnAfterHit: 0
     despawnDelay: 0.7
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  creatureSpacing: 19
-  maxActiveCreatures: 10
+  creatureSpacing: 15
+  maxActiveCreatures: 30
   minSpawnDistanceAhead: 5
   maxSpawnDistanceAhead: 70
   initialPreSpawnDistance: 70

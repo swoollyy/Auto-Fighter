@@ -30,9 +30,12 @@ public class CarGroundConfig : MonoBehaviour
     [SerializeField, Range(0f, 0.45f)] private float groundNormalMixedGrassMin = 0.06f;
     [SerializeField, Range(0.55f, 1f)] private float groundNormalMixedGrassMax = 0.94f;
 
-    [Tooltip("Acceleration in your horizontal travel direction while straddling grass and road; 0 = off. Softens speed loss on small road height steps.")]
-    [SerializeField, Min(0f)] private float roadReturnAssistAccel = 7f;
-    [SerializeField, Min(0f)] private float roadReturnAssistMinSpeed = 2.5f;
+    [Tooltip("Small upward velocity (m/s, VelocityChange) applied once when surface sampling crosses between mostly-road and mostly-grass. 0 = off.")]
+    [SerializeField, Min(0f)] private float roadGrassTransitionLiftSpeed = 0.35f;
+    [Tooltip("Minimum planar speed (m/s) before a transition lift can trigger.")]
+    [SerializeField, Min(0f)] private float roadGrassTransitionMinSpeed = 2.5f;
+    [Tooltip("Minimum seconds between lifts so grassFraction chatter at ~50% does not spam.")]
+    [SerializeField, Min(0f)] private float roadGrassTransitionLiftCooldown = 0.25f;
 
     public LayerMask GroundLayers => groundLayers;
     public int SamplesX => samplesX;
@@ -48,6 +51,7 @@ public class CarGroundConfig : MonoBehaviour
     public float GroundNormalMixedSurfaceBlendScale => groundNormalMixedSurfaceBlendScale;
     public float GroundNormalMixedGrassMin => groundNormalMixedGrassMin;
     public float GroundNormalMixedGrassMax => groundNormalMixedGrassMax;
-    public float RoadReturnAssistAccel => roadReturnAssistAccel;
-    public float RoadReturnAssistMinSpeed => roadReturnAssistMinSpeed;
+    public float RoadGrassTransitionLiftSpeed => roadGrassTransitionLiftSpeed;
+    public float RoadGrassTransitionMinSpeed => roadGrassTransitionMinSpeed;
+    public float RoadGrassTransitionLiftCooldown => roadGrassTransitionLiftCooldown;
 }

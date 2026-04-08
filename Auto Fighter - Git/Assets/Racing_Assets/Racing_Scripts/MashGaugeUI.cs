@@ -79,7 +79,7 @@ public class MashGaugeUI : MonoBehaviour
     {
         if (!carController) return;
         
-        bool isActive = carController.IsFlipMashActive;
+        bool isActive = carController.IsFlipMashUiVisible;
         
         // Handle visibility
         if (isActive && !_wasActive)

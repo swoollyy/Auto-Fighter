@@ -34,7 +34,7 @@ public enum CreatureKillSource
 /// COLLISION NOTES:
 /// - All creatures use TRIGGER colliders to avoid disrupting car physics
 /// - Passive/Scared: Car drives through them, they die, give coins
-/// - Aggressive: Car drives through, triggers crash via code, then dies
+/// - Aggressive (beast): Player contact applies crash/knockback only; beast keeps hunting. Cross/bounce/log/thrown hits fling it with physics, then it dies/despawns (see <see cref="LaunchAggressiveBeastByObstacleThenDie"/>).
 /// 
 /// REWARD SYSTEM:
 /// - Killed by CAR → Coins (handled here)
@@ -133,8 +133,20 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     [Tooltip("Any collider with one of these tags is treated as an obstacle crush even if it has no Rigidbody.")]
     [SerializeField] private string[] obstacleTags = new string[] { "Obstacle" };
 
-    [Tooltip("Aggressive (big) creature only dies to obstacles with mass >= this threshold. Passive + Scared always die.")]
+    [Tooltip("Unused for Aggressive (beasts use obstacle-type whitelist for crush death). Kept for serialized prefabs.")]
     [SerializeField] private float aggressiveCrushMassThreshold = 80f;
+
+    [Header("Aggressive — lethal obstacle launch")]
+    [Tooltip("Dynamic Rigidbody mass while the beast is being flung by cross / bounce / log / thrown hits.")]
+    [SerializeField, Min(0.1f)] private float obstacleLaunchCorpseMass = 85f;
+    [SerializeField, Min(0f)] private float obstacleLaunchBaseVelocityChange = 9f;
+    [SerializeField, Min(0f)] private float obstacleLaunchSpeedScale = 0.45f;
+    [SerializeField, Min(0f)] private float obstacleLaunchMaxVelocityChange = 34f;
+    [SerializeField, Min(0f)] private float obstacleLaunchUpVelocityChange = 6f;
+    [SerializeField] private float obstacleLaunchTorque = 10f;
+    [Tooltip("Time flying before death/despawn is applied (lets the fling read clearly).")]
+    [SerializeField, Min(0.05f)] private float obstacleLaunchDeathDelay = 0.42f;
+
     [Header("Ground Snapping")]
     [SerializeField] private float groundRayHeight = 2f;
     [SerializeField] private float groundRayDistance = 5f;
@@ -193,7 +205,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected bool isInitialized = false;
     protected bool isDead = false;
 
-    /// <summary>When true, AI/movement is skipped so <see cref="CarForcefield"/> can apply a physics launch before <see cref="Die"/>.</summary>
+    /// <summary>When true, AI/movement is skipped so physics launch can run (forcefield or lethal obstacle fling) before <see cref="Die"/>.</summary>
     private bool _forcefieldPhysicsLaunchActive;
 
     // Kill tracking
@@ -706,10 +718,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// Scared behavior: Wanders until player gets close, then flees.
-    /// </summary>
-    /// <summary>
-    /// Scared behavior: Wanders until player or aggressive creature gets close, then flees.
+    /// Scared behavior: aggressive threats override; otherwise may hunt passive bugs (ignoring cars until hunt ends), else flee from cars, else calm idle/wander.
     /// </summary>
     protected virtual void UpdateScaredBehavior(float dt)
     {
@@ -729,17 +738,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                if (shouldFlee)
+                if (hasAggressiveThreat)
                 {
                     chaseTargetTransform = null;
                     if (currentState != CreatureState.Fleeing)
                         SetState(CreatureState.Fleeing);
 
-                    if (hasAggressiveThreat)
-                    {
-                        currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
-                                           Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
-                    }
+                    currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
+                                       Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
                 }
                 else if (config.scaredHuntPassiveCreatures)
                 {
@@ -748,13 +754,25 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                     {
                         chaseTargetTransform = bug.transform;
                         SetState(CreatureState.Charging);
-                        RunScaredBugHuntCharging(dt, shouldFlee);
+                        RunScaredBugHuntCharging(dt, abortForAggressiveThreat: false);
+                    }
+                    else if (hasPlayerThreat || hasNpcThreat)
+                    {
+                        chaseTargetTransform = null;
+                        if (currentState != CreatureState.Fleeing)
+                            SetState(CreatureState.Fleeing);
                     }
                     else
                     {
                         chaseTargetTransform = null;
                         UpdateScaredCalmIdle(dt);
                     }
+                }
+                else if (shouldFlee)
+                {
+                    chaseTargetTransform = null;
+                    if (currentState != CreatureState.Fleeing)
+                        SetState(CreatureState.Fleeing);
                 }
                 else
                 {
@@ -780,17 +798,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
 
             case CreatureState.Charging:
-                RunScaredBugHuntCharging(dt, shouldFlee);
+                RunScaredBugHuntCharging(dt, abortForAggressiveThreat: hasAggressiveThreat);
                 break;
         }
     }
 
-    /// <summary>Critter chasing a bug (Passive). Aborts if a higher-priority threat appears.</summary>
-    private void RunScaredBugHuntCharging(float dt, bool shouldFlee)
+    /// <summary>Critter chasing a bug (Passive). Player/NPC cars do not abort; only an aggressive creature does.</summary>
+    private void RunScaredBugHuntCharging(float dt, bool abortForAggressiveThreat)
     {
         if (config == null) return;
 
-        if (shouldFlee)
+        if (abortForAggressiveThreat)
         {
             chaseTargetTransform = null;
             SetState(CreatureState.Fleeing);
@@ -2310,6 +2328,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     #region Crush Detection
 
+    /// <summary>
+    /// Aggressive beasts ignore generic moving obstacles (NPC traffic, props). They die only when hit by
+    /// <see cref="RollingLogAlongTrack"/> (handled separately), <see cref="CrossTrackObstacle"/>,
+    /// <see cref="TrackObstacleBounceBack"/>, or <see cref="ThrownObstacle"/>.
+    /// </summary>
+    protected static bool IsLethalObstacleFamilyForAggressiveBeast(Collider obstacleCollider)
+    {
+        if (obstacleCollider == null) return false;
+        if (obstacleCollider.GetComponentInParent<CrossTrackObstacle>() != null) return true;
+        if (obstacleCollider.GetComponentInParent<TrackObstacleBounceBack>() != null) return true;
+        if (obstacleCollider.GetComponentInParent<ThrownObstacle>() != null) return true;
+        return false;
+    }
 
     protected bool IsCrushingCollider(Collider col, out float otherMass, out float otherSpeed)
     {
@@ -2406,25 +2437,27 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (obstacleSpeed < minCrushSpeed)
             return;
 
-        var rollingLog = obstacleCollider.GetComponentInParent<RollingLogAlongTrack>();
-        if (rollingLog != null && behaviorType == CreatureBehaviorType.Aggressive)
+        if (behaviorType == CreatureBehaviorType.Aggressive)
         {
-            rollingLog.ApplyBeastStrike(transform.position, obstacleSpeed);
+            if (_forcefieldPhysicsLaunchActive)
+                return;
+
+            var rollingLog = obstacleCollider.GetComponentInParent<RollingLogAlongTrack>();
+            if (rollingLog != null)
+            {
+                rollingLog.ApplyBeastStrike(transform.position, obstacleSpeed);
+                LaunchAggressiveBeastByObstacleThenDie(obstacleCollider, obstacleSpeed);
+                return;
+            }
+
+            if (!IsLethalObstacleFamilyForAggressiveBeast(obstacleCollider))
+                return;
+
+            LaunchAggressiveBeastByObstacleThenDie(obstacleCollider, obstacleSpeed);
             return;
         }
 
-        // Passive + Scared always die to moving obstacle impacts.
-        // Aggressive (big) only dies if obstacle is "heavy enough".
-        if (behaviorType == CreatureBehaviorType.Aggressive && obstacleMass > 0f)
-        {
-            float threshold = aggressiveCrushMassThreshold;
-            if (config != null)
-                threshold = Mathf.Max(0f, config.aggressiveCrushMassThreshold);
-
-            if (obstacleMass < threshold)
-                return;
-        }
-
+        // Passive + Scared: die to moving obstacle impacts (original behavior).
         if (obstacleCollider.GetComponentInParent<NPCTrafficCar>() != null)
             SpawnNpcTrafficCrushPopup(obstacleCollider);
 
@@ -2460,27 +2493,89 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return;
         }
 
-        // Mark as car kill for coin reward
-        killSource = CreatureKillSource.Car;
-
-        // Aggressive creatures cause crash BEFORE dying (only if no forcefield)
+        // Aggressive (beast): slam the car, stay alive, and go idle so it can hunt again.
         if (behaviorType == CreatureBehaviorType.Aggressive)
         {
             CausePlayerCrash(playerCollider);
             HideBullRushTelegraph();
+            EndBullRush();
+            SetState(CreatureState.Idle);
+            return;
         }
 
-        // Comic popup for running them over
+        // Passive / Scared: run over = die + coin reward
+        killSource = CreatureKillSource.Car;
         SpawnRunOverPopup();
+        Die();
+    }
 
-        // ALL creatures die and give rewards when hit
+    /// <summary>
+    /// Flings the aggressive beast away from the obstacle, then kills it after a short delay (tunable in inspector).
+    /// Uses the same physics takeover as the forcefield path (non-kinematic RB, colliders solid).
+    /// </summary>
+    protected virtual void LaunchAggressiveBeastByObstacleThenDie(Collider obstacleCollider, float obstacleSpeed)
+    {
+        if (isDead || behaviorType != CreatureBehaviorType.Aggressive || obstacleCollider == null) return;
+
+        killSource = CreatureKillSource.Other;
+
+        HideBullRushTelegraph();
+        EndBullRush();
+
+        if (!TryBeginForcefieldPhysicsLaunch(obstacleLaunchCorpseMass))
+            return;
+
+        var rb = GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            Die();
+            return;
+        }
+
+        Vector3 fromObstacle = transform.position - obstacleCollider.bounds.center;
+        fromObstacle.y = 0f;
+        if (fromObstacle.sqrMagnitude < 1e-4f)
+            fromObstacle = -transform.forward;
+        fromObstacle.Normalize();
+
+        float horizontalDv = obstacleLaunchBaseVelocityChange + obstacleSpeed * obstacleLaunchSpeedScale;
+        horizontalDv = Mathf.Min(horizontalDv, obstacleLaunchMaxVelocityChange);
+
+        Vector3 dv = fromObstacle * horizontalDv + Vector3.up * obstacleLaunchUpVelocityChange;
+        rb.AddForce(dv, ForceMode.VelocityChange);
+
+        if (Mathf.Abs(obstacleLaunchTorque) > 0.01f)
+        {
+            Vector3 torqueAxis = Vector3.Cross(Vector3.up, fromObstacle);
+            if (torqueAxis.sqrMagnitude < 1e-6f)
+                torqueAxis = transform.right;
+            else
+                torqueAxis.Normalize();
+            rb.AddTorque(torqueAxis * obstacleLaunchTorque, ForceMode.VelocityChange);
+        }
+
+        StartCoroutine(ObstacleLaunchFinalizeAfterDelayCoroutine());
+    }
+
+    private IEnumerator ObstacleLaunchFinalizeAfterDelayCoroutine()
+    {
+        yield return new WaitForSeconds(obstacleLaunchDeathDelay);
+        FinalizeObstacleLaunchKill();
+    }
+
+    /// <summary>
+    /// Ends obstacle fling phase and runs normal death (no car run-over popup; <see cref="CreatureKillSource.Other"/>).
+    /// </summary>
+    protected virtual void FinalizeObstacleLaunchKill()
+    {
+        if (isDead) return;
+
+        _forcefieldPhysicsLaunchActive = false;
         Die();
 
-        // Handle special despawn for aggressive creatures
-        if (behaviorType == CreatureBehaviorType.Aggressive && config.despawnAfterHit)
+        if (behaviorType == CreatureBehaviorType.Aggressive && config != null && config.despawnAfterHit)
         {
             CancelInvoke();
-            StopAllCoroutines();
             Destroy(gameObject, config.despawnDelay);
         }
     }

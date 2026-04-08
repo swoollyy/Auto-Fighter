@@ -223,10 +223,13 @@ public class UIManager_Racing : MonoBehaviour
 
         UpdateCrashRecoveryUI();
 
-        if (car != null && car.IsFlipMashActive)
+        if (car != null && car.IsFlipMashUiVisible)
         {
             if (smashButton != null)
+            {
                 smashButton.gameObject.SetActive(true);
+                smashButton.interactable = true;
+            }
 
             if (smashButtonLabel != null)
             {
@@ -243,13 +246,16 @@ public class UIManager_Racing : MonoBehaviour
         else
         {
             if (smashButton != null)
+            {
+                smashButton.interactable = false;
                 smashButton.gameObject.SetActive(false);
+            }
         }
 
         // During mash, use CrashMash section for mash UI; in-game HUD root stays visible too (see ApplySectionVisibility).
         if (_currentSection != UISection.Loading && _currentSection != UISection.RunEnd && _currentSection != UISection.SkillTree)
         {
-            SetSection(car.IsFlipMashActive ? UISection.CrashMash : UISection.InGameDefault);
+            SetSection(car.IsFlipMashUiVisible ? UISection.CrashMash : UISection.InGameDefault);
         }
 
         bool inRunHud = _currentSection == UISection.InGameDefault || _currentSection == UISection.CrashMash;
@@ -374,7 +380,7 @@ public class UIManager_Racing : MonoBehaviour
     {
         if (car == null) return;
 
-        bool shouldShow = car.IsFlipMashActive;
+        bool shouldShow = car.IsFlipMashUiVisible;
 
         // Show/hide the UI
         if (shouldShow != _crashRecoveryUIActive)
@@ -391,6 +397,9 @@ public class UIManager_Racing : MonoBehaviour
                 UpdateThresholdMarkerPositions();
             }
         }
+
+        if (crashRecoveryButton != null)
+            crashRecoveryButton.interactable = shouldShow;
 
         // Update progress if active
         if (shouldShow)
@@ -613,8 +622,8 @@ public class UIManager_Racing : MonoBehaviour
 
     public void OnCrashRecoveryButtonClicked()
     {
-        if (car != null)
-            car.RegisterFlipMashClick();
+        if (car == null || !car.IsFlipMashUiVisible) return;
+        car.RegisterFlipMashClick();
     }
 
     public void HideCrashRecoveryUI()

@@ -1681,6 +1681,13 @@ MonoBehaviour:
   surfaceSampleExtent: 1.13
   useTippedOverWorldDownSampler: 1
   tippedOverSurfaceUpDotThreshold: 0.55
+  groundNormalBlendRate: 14
+  groundNormalMixedSurfaceBlendScale: 0.42
+  groundNormalMixedGrassMin: 0.06
+  groundNormalMixedGrassMax: 0.94
+  roadGrassTransitionLiftSpeed: 0.35
+  roadGrassTransitionMinSpeed: 2.5
+  roadGrassTransitionLiftCooldown: 0.25
 --- !u!114 &2359635645306560026
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1713,8 +1720,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   drainScalePerClickPower: 0.5
-  drainScalePerPassiveStrength: 0.12
-  maxSkillDrainMultiplier: 5
+  drainScalePerPassiveStrength: 0
+  maxSkillDrainMultiplier: 2
   minSkillDrainMultiplier: 1
   randomizeMashFaceButton: 1
   allowSpaceMashInEditor: 1
@@ -1770,6 +1777,7 @@ MonoBehaviour:
   enableFlipRecoveryMash: 1
   flipDotThreshold: 0
   flipAngleThreshold: 80
+  mashUiHideSecondsOnExtraHit: 0.45
   mashClicksMin: 6
   mashClicksMaxFromSeverity: 3000
   mashClicksPerCrash: 25
@@ -1791,7 +1799,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.9
+      value: 0.82
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -1802,7 +1810,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   mashProgressTotalDistanceFallback: 1000
-  mashClicksRandomVariance: 0
+  mashClicksRandomVariance: 10
   mashClicksAbsoluteMin: 2
   mashClicksAbsoluteMax: 500000
   baseClicksPerClick: 1
@@ -1814,7 +1822,7 @@ MonoBehaviour:
   gaugeFillSpeedBonus: 1.5
   gaugeFillSpeedMultiplier: 1
   gaugeGoodThreshold: 0.6
-  gaugeMaxThreshold: 0.814
+  gaugeMaxThreshold: 0.94
   gaugeMultiplierAtZero: 0.5
   gaugeMultiplierAtGood: 1.2
   gaugeMultiplierAtMax: 1.4

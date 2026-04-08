@@ -1118,12 +1118,16 @@ public class GameManager_Racing : MonoBehaviour
         _deathStopBurstPlayed = false;
         yield return null;
 
-        uiManager?.SetLoadingState("Placing obstacles...", 0.72f);
-        trackObstacleSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
-        yield return null;
+
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
+        
+        /*
+        uiManager?.SetLoadingState("Placing obstacles...", 0.72f);
+        trackObstacleSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+
         uiManager?.SetLoadingState("Placing environment...", 0.80f);
         trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
@@ -1145,7 +1149,7 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.SetLoadingState("Building navigation...", 0.94f);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
         yield return null;
-
+*/
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
         if (rb != null)

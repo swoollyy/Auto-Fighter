@@ -152,6 +152,9 @@ public class CarController : MonoBehaviour
 
     public bool GetMashRequiredButtonDown()
     {
+        // Mash minigame is suspended while UI is hidden (e.g. extra hit mid-recovery).
+        if (_flipMashActive && !IsFlipMashUiVisible) return false;
+
         var reader = RacingInputReader.Instance;
         if (reader != null)
             return reader.GetMashDown(ToReaderFace(_requiredMashButton));
@@ -387,8 +390,11 @@ public class CarController : MonoBehaviour
     private float groundNormalMixedSurfaceBlendScale;
     private float groundNormalMixedGrassMin;
     private float groundNormalMixedGrassMax;
-    private float roadReturnAssistAccel;
-    private float roadReturnAssistMinSpeed;
+    private float roadGrassTransitionLiftSpeed;
+    private float roadGrassTransitionMinSpeed;
+    private float roadGrassTransitionLiftCooldown;
+    private float _prevGrassFractionForTransitionLift = -1f;
+    private float _lastRoadGrassTransitionLiftTime = -999f;
 
     [Header("Fuel (from CarFuelConfig)")]
     private float maxFuel;
@@ -536,6 +542,7 @@ public class CarController : MonoBehaviour
     private bool enableFlipRecoveryMash;
     private float flipDotThreshold;
     private float flipAngleThreshold;
+    private float mashUiHideSecondsOnExtraHit = 0.45f;
     private int mashClicksMin;
     private int mashClicksMaxFromSeverity;
     private int mashClicksPerCrash;
@@ -629,6 +636,8 @@ public class CarController : MonoBehaviour
     private bool _flipMashActive;
     private int _flipMashClicks;
     private int _flipMashClicksNeeded;
+    /// <summary>Mash UI stays hidden until this time after a secondary hit during mash (<see cref="AddMashDebtFromNewCrash"/>).</summary>
+    private float _flipMashUiShowAgainTime;
 
     private float _lastMashTime;
     private int _lastRegisteredMashFrame = -1;
@@ -636,6 +645,8 @@ public class CarController : MonoBehaviour
     private float _mashSpeedSmoothed;
 
     public bool IsFlipMashActive => _flipMashActive;
+    /// <summary>True when mash recovery is active and the crash-mash HUD/minigame accepts input (false briefly after another hit mid-mash).</summary>
+    public bool IsFlipMashUiVisible => _flipMashActive && Time.time >= _flipMashUiShowAgainTime;
     public float FlipMashProgress => _flipMashClicksNeeded > 0 ? (float)_flipMashClicks / _flipMashClicksNeeded : 0f;
     public int FlipMashClicksRemaining => Mathf.Max(0, _flipMashClicksNeeded - _flipMashClicks);
     public float MashSpeedRating => _mashSpeedSmoothed;  // 0-1, for UI speed indicator
@@ -1252,8 +1263,9 @@ public class CarController : MonoBehaviour
             groundNormalMixedSurfaceBlendScale = _groundConfig.GroundNormalMixedSurfaceBlendScale;
             groundNormalMixedGrassMin = _groundConfig.GroundNormalMixedGrassMin;
             groundNormalMixedGrassMax = _groundConfig.GroundNormalMixedGrassMax;
-            roadReturnAssistAccel = _groundConfig.RoadReturnAssistAccel;
-            roadReturnAssistMinSpeed = _groundConfig.RoadReturnAssistMinSpeed;
+            roadGrassTransitionLiftSpeed = _groundConfig.RoadGrassTransitionLiftSpeed;
+            roadGrassTransitionMinSpeed = _groundConfig.RoadGrassTransitionMinSpeed;
+            roadGrassTransitionLiftCooldown = _groundConfig.RoadGrassTransitionLiftCooldown;
         }
         else
         {
@@ -1265,8 +1277,9 @@ public class CarController : MonoBehaviour
             groundNormalMixedSurfaceBlendScale = 0.42f;
             groundNormalMixedGrassMin = 0.06f;
             groundNormalMixedGrassMax = 0.94f;
-            roadReturnAssistAccel = 7f;
-            roadReturnAssistMinSpeed = 2.5f;
+            roadGrassTransitionLiftSpeed = 0.35f;
+            roadGrassTransitionMinSpeed = 2.5f;
+            roadGrassTransitionLiftCooldown = 0.25f;
         }
 
         if (_rampConfig != null)
@@ -1341,6 +1354,7 @@ public class CarController : MonoBehaviour
             enableFlipRecoveryMash = _crashMashConfig.EnableFlipRecoveryMash;
             flipDotThreshold = _crashMashConfig.FlipDotThreshold;
             flipAngleThreshold = _crashMashConfig.FlipAngleThreshold;
+            mashUiHideSecondsOnExtraHit = Mathf.Max(0f, _crashMashConfig.MashUiHideSecondsOnExtraHit);
             mashClicksMin = _crashMashConfig.MashClicksMin;
             mashClicksMaxFromSeverity = _crashMashConfig.MashClicksMaxFromSeverity;
             mashClicksPerCrash = _crashMashConfig.MashClicksPerCrash;
@@ -1396,6 +1410,7 @@ public class CarController : MonoBehaviour
         {
             perColliderCrashCooldown = 0.5f; surfaceMaxSpeedLerpRate = 2.78f; closeCallAfterCrashBlockTime = 1f;
             mashDifficultyPerClickPowerStep = 1.4f;
+            mashUiHideSecondsOnExtraHit = 0.45f;
             _crashSeverityConfig = null;
             _crashFuelDamageScale = 1f;
         }
@@ -1594,7 +1609,7 @@ public class CarController : MonoBehaviour
     private void Update()
     {
 
-        if (_flipMashActive && GetMashRequiredButtonDown())
+        if (IsFlipMashUiVisible && GetMashRequiredButtonDown())
         {
             RegisterFlipMashClick();
         }
@@ -1727,6 +1742,7 @@ public class CarController : MonoBehaviour
 
             UpdateSteeringInputFixed();
             HandleSteering();
+            CheckBoostFlash();
             return;
         }
 
@@ -1759,7 +1775,7 @@ public class CarController : MonoBehaviour
             }
 
 
-            if (enableMashProgressGauge && _flipMashActive)
+            if (enableMashProgressGauge && _flipMashActive && IsFlipMashUiVisible)
             {
                 float severity = _lastCrashSeverity; // 0 to 1
 
@@ -1814,7 +1830,7 @@ public class CarController : MonoBehaviour
             UpdateIcePhysicsTransitions();
 
             // === PASSIVE AUTO-CLICKS (Skill-based) ===
-            if (effectivePassiveClickRate > 0f)
+            if (effectivePassiveClickRate > 0f && IsFlipMashUiVisible)
             {
                 _passiveClickTimer += Time.fixedDeltaTime;
                 var skillMgr = RacingSkillTreeManager.Instance;
@@ -2001,7 +2017,7 @@ public class CarController : MonoBehaviour
         UpdateIcePhysicsTransitions();
         ApplyRampAlignment(Time.fixedDeltaTime);
         SmoothDrivingGroundNormal();
-        ApplyRoadReturnVelocityAssist();
+        ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
 
         CheckBoostFlash();
@@ -4146,27 +4162,33 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Small forward assist along horizontal velocity when wheels sample both grass and raised road (reduces “sticking” on the step).
+    /// Tiny upward nudge when grass sampling crosses between mostly-road and mostly-grass (replaces old forward accel assist).
     /// </summary>
-    private void ApplyRoadReturnVelocityAssist()
+    private void ApplyRoadGrassTransitionLift()
     {
-        if (roadReturnAssistAccel <= 0f || rb == null || carCollider == null) return;
+        if (roadGrassTransitionLiftSpeed <= 0f || rb == null) return;
         if (_onIceSurface) return;
         if (isDrifting || _driftGlideActive) return;
         if (!CheckIfGrounded()) return;
 
         float g = grassFraction;
-        if (g <= groundNormalMixedGrassMin || g >= groundNormalMixedGrassMax) return;
+        float prev = _prevGrassFractionForTransitionLift;
+        _prevGrassFractionForTransitionLift = g;
+        if (prev < 0f) return;
+
+        bool crossedMid =
+            (prev < 0.5f && g >= 0.5f) ||
+            (prev > 0.5f && g < 0.5f);
+        if (!crossedMid) return;
+
+        float now = Time.time;
+        if (now - _lastRoadGrassTransitionLiftTime < roadGrassTransitionLiftCooldown) return;
 
         Vector3 flatV = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
-        float mag = flatV.magnitude;
-        if (mag < roadReturnAssistMinSpeed) return;
+        if (flatV.magnitude < roadGrassTransitionMinSpeed) return;
 
-        float edge01 = 1f - Mathf.Abs(g - 0.5f) * 2f;
-        edge01 = Mathf.Clamp01(edge01);
-        if (edge01 < 0.02f) return;
-
-        rb.AddForce(flatV * (roadReturnAssistAccel * edge01 / Mathf.Max(mag, 0.01f)), ForceMode.Acceleration);
+        rb.AddForce(Vector3.up * roadGrassTransitionLiftSpeed, ForceMode.VelocityChange);
+        _lastRoadGrassTransitionLiftTime = now;
     }
 
     /// <summary>World forward projected onto the ground plane when grounded; full <paramref name="worldForward"/> in air.</summary>
@@ -5073,6 +5095,7 @@ public class CarController : MonoBehaviour
     public void RegisterFlipMashClick()
     {
         if (!_flipMashActive) return;
+        if (!IsFlipMashUiVisible) return;
         if (_lastRegisteredMashFrame == Time.frameCount) return; // prevent duplicate same-frame clicks from multiple input paths
 
         // Can't recover if dead from fuel OR HP
@@ -5857,6 +5880,11 @@ public class CarController : MonoBehaviour
         if (_isReorienting)
             return;
 
+        // TrackObstacleBounceBack already runs ApplyExternalCrashDamage from its own OnCollisionEnter.
+        // Running the full car crash pipeline here too applies the same impact twice (double TriggerCrash / FX / severity).
+        if (collision.collider.GetComponentInParent<TrackObstacleBounceBack>() != null)
+            return;
+
         // === NEW: FORCEFIELD PROTECTION CHECK ===
         // If the forcefield is armed and this collider is on obstacle layers,
         // the forcefield should handle it - don't process as crash
@@ -6301,6 +6329,33 @@ public class CarController : MonoBehaviour
             SpawnCrashImpactVFX(contactPoint, Vector3.up);
         }
 
+        bool wasMashingTrigger = _flipMashActive;
+        if (wasMashingTrigger && damageWindowOpen)
+        {
+            _lastCrashSeverity = Mathf.Max(_lastCrashSeverity, severity);
+            _crashCount++;
+            _crashSeveritySum += severity;
+
+            ApplyCrashHpAndFuelFromSeverity(severity);
+
+            AddMashDebtFromNewCrash(NeedsFlipRecovery());
+
+            if (RacingPopups.IsReady)
+                RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
+
+            _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+
+            if (rb != null)
+            {
+                Vector3 knockDir = hitDir;
+                knockDir.y += 0.2f;
+                knockDir.Normalize();
+                rb.AddForce(knockDir * impulseMag * 0.5f, ForceMode.VelocityChange);
+            }
+
+            return;
+        }
+
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
     }
 
@@ -6428,8 +6483,8 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// When we get crashed again during an active mash recovery, we don't want a second recovery prompt/sequence.
-    /// We simply increase the remaining click requirement (always grows).
+    /// When we get crashed again during an active mash recovery: bump total clicks needed (never easier than before),
+    /// hide mash UI briefly, then require the player to mash from <b>zero</b> progress again at the new total.
     /// </summary>
     private void AddMashDebtFromNewCrash(bool isFlipped)
     {
@@ -6439,7 +6494,7 @@ public class CarController : MonoBehaviour
         // "How many clicks would recovery require if it started right now?"
         int requiredIfStartedNow = CalculateMashClicksNeeded(isFlipped);
 
-        // Convert that into a total-needed count accounting for clicks already done.
+        // Total difficulty must account for work already done + new crash, then we reset progress to 0 below.
         int desiredTotalNeeded = _flipMashClicks + requiredIfStartedNow;
 
         // Always grow when taking another crash, even if requiredIfStartedNow happens to be smaller.
@@ -6448,7 +6503,19 @@ public class CarController : MonoBehaviour
 
         _flipMashClicksNeeded = Mathf.Clamp(desiredTotalNeeded, mashClicksAbsoluteMin, mashClicksAbsoluteMax);
 
-        // Optional: treat new crash as a "speed reset" so you can't buffer super-fast clicks through impacts
+        _flipMashClicks = 0;
+        _passiveClickTimer = 0f;
+
+        _mashGaugeValue = 0f;
+        _mashGaugePeakValue = 0f;
+        _gaugeMaxedThisSession = false;
+        _totalMashClicksThisSession = 0;
+        _totalFuelGainedThisSession = 0f;
+        _totalSprocketsThisSession = 0;
+
+        _flipMashUiShowAgainTime = Time.time + mashUiHideSecondsOnExtraHit;
+
+        // Treat new crash as a "speed reset" so you can't buffer super-fast clicks through impacts
         _lastMashTime = Time.time;
         _lastRegisteredMashFrame = -1;
         _currentMashSpeed = 0f;
@@ -6462,6 +6529,8 @@ public class CarController : MonoBehaviour
         if (!enableFlipRecoveryMash) return;
 
         ChooseMashFaceButton();
+
+        _flipMashUiShowAgainTime = 0f;
 
         _mashGaugeValue = 0f;
         _mashGaugePeakValue = 0f;

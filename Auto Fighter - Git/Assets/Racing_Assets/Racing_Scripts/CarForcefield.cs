@@ -202,8 +202,8 @@ public sealed class CarForcefield : MonoBehaviour
     public bool IsArmed => _armed;
 
     /// <summary>
-    /// <see cref="TrackObstacleBounceBack"/> (and similar) detect the car with overlap queries instead of
-    /// <see cref="CarController.OnCollisionEnter"/>, so the forcefield trigger may run later or not at all in the same step.
+    /// Some obstacles (or overlap-based checks) can confirm a hit without going through the forcefield trigger first,
+    /// so the trigger may run later or not at all in the same step.
     /// Call this when an obstacle overlap confirms the car is inside the hit volume; if the forcefield consumes the hit, returns true and the caller must not apply crash damage.
     /// </summary>
     public bool TryInterceptObstacleForOverlapHit(Collider obstacleCollider)

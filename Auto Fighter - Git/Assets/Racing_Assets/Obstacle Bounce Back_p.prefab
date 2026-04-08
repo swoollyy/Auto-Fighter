@@ -52,9 +52,25 @@ PrefabInstance:
       propertyPath: rectangleSize.y
       value: 1.7
       objectReference: {fileID: 0}
+    - target: {fileID: 3314179452664020840, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: rewardCurrency
+      value: 5
+      objectReference: {fileID: 0}
     - target: {fileID: 3874382558013832276, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Name
       value: Obstacle Bounce Back
+      objectReference: {fileID: 0}
+    - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: m_Size.x
+      value: 0.65
+      objectReference: {fileID: 0}
+    - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: m_Size.y
+      value: 0.65
+      objectReference: {fileID: 0}
+    - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: m_Size.z
+      value: 0.65
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: carDetectRadius
@@ -62,11 +78,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: obstacleImpulse
-      value: 4.7
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: obstacleUpImpulse
-      value: 2.1
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
+      propertyPath: reactToOtherObstacles
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: landingTelegraphPrefab
@@ -78,7 +98,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: obstacleReactMask.m_Bits
-      value: 11274240
+      value: 11274241
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: centralizedSeverityExtraMultiplier

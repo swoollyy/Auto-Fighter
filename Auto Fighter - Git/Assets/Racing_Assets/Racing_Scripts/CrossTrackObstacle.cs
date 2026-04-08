@@ -78,6 +78,8 @@ public class CrossTrackObstacle : MonoBehaviour
     private ObstaclePathPreview _preview;
     private float _pathHeightOffset;
     private Vector3[] _previewScratch;
+    /// <summary>When true, path line/lights stay off while still on kinematic script (e.g. after hitting a beast but remaining heavier).</summary>
+    private bool _suppressPathPreview;
 
     /// <summary>Resolved tilt target; equals <see cref="transform"/> when no separate visual.</summary>
     private Transform _resolvedTiltRoot;
@@ -151,6 +153,7 @@ public class CrossTrackObstacle : MonoBehaviour
         _initialized = true;
         _active = true;
         _convertedToPhysics = false;
+        _suppressPathPreview = false;
 
         ResolveTiltVisualRoot();
 
@@ -192,6 +195,7 @@ public class CrossTrackObstacle : MonoBehaviour
         if (!previewUpdateEveryFrame) return;
         if (_preview == null || !_initialized || _convertedToPhysics) return;
         if (!_active) return;
+        if (_suppressPathPreview) return;
         RebuildPathPreview();
     }
 
@@ -331,7 +335,7 @@ public class CrossTrackObstacle : MonoBehaviour
             return;
         }
 
-        SetTravelFxEnabled(true);
+        SetTravelFxEnabled(!_suppressPathPreview);
 
         Vector3 current = transform.position;
         float step = speed * Time.fixedDeltaTime;
@@ -760,6 +764,15 @@ public class CrossTrackObstacle : MonoBehaviour
                 Debug.Log("[CrossTrackObstacle] ACTION: cross heavier -> kept path, but other had no rigidbody.");
             }
 
+            var creatureHit = other.GetComponentInParent<TrackCreature>();
+            if (creatureHit != null &&
+                creatureHit.BehaviorType == CreatureBehaviorType.Aggressive &&
+                !creatureHit.IsDead)
+            {
+                _suppressPathPreview = true;
+                SetTravelFxEnabled(false, true);
+            }
+
             return;
         }
 
@@ -1062,6 +1075,7 @@ public class CrossTrackObstacle : MonoBehaviour
             _initialized &&
             _active &&
             !_convertedToPhysics &&
+            !_suppressPathPreview &&
             enabled &&
             _rb != null &&
             _rb.isKinematic &&

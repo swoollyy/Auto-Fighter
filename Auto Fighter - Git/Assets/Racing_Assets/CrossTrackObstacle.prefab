@@ -320,16 +320,18 @@ MonoBehaviour:
   crossClashPopupHeight: 1
   crossClashMinRelativeSpeed: 2
   crossClashPairCooldown: 0.2
+  forcefieldImpactPairCooldown: 0.25
   travelLights: []
   massComparisonTolerance: 0.01
   defaultAddedMass: 4
-  pushDeltaVRange: {x: 2.88, y: 6.1}
-  upwardBoostRange: {x: 2, y: 5}
+  pushDeltaVRange: {x: 2.88, y: 4.57}
+  upwardBoostRange: {x: 2, y: 4}
   scaleUpwardBoostBySeverity: 1
-  minSpeedForUpwardBoost: 2
-  maxSpeedForUpwardBoost: 8
+  minSpeedForUpwardBoost: 1.5
+  maxSpeedForUpwardBoost: 4
   guaranteedUpwardBounceOnPathPreserve: 0.75
   guaranteedUpwardBounceOnPlayerHit: 0.35
+  minRelativeSpeedForPlayerCrossImpact: 2.25
   enableExplosionOnHeavierImpact: 1
   explosionForceBase: 15
   explosionForceMassScale: 0.5

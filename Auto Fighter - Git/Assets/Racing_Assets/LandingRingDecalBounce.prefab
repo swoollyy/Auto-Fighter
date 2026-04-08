@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1915297139897083908}
   - component: {fileID: 5657737309056748023}
   - component: {fileID: 1506699492034272260}
-  m_Layer: 0
+  m_Layer: 2
   m_Name: LandingRingDecalBounce
   m_TagString: Untagged
   m_Icon: {fileID: 0}

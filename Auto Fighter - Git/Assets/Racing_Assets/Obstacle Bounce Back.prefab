@@ -133,6 +133,12 @@ MonoBehaviour:
   treeToppleImpulseMin: 3
   treeToppleImpulseMax: 25
   treeToppleForceHeight: 2
+  enableTreeToppleCrashPopup: 1
+  treeToppleCrashPopupHeight: 1.2
+  enablePropClashCrashPopup: 1
+  propClashPopupHeight: 1
+  propClashMinRelativeSpeed: 2.5
+  propClashPairCooldown: 0.2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &6906296771749627853
@@ -198,11 +204,6 @@ MonoBehaviour:
   noPhysicalCollisionMask:
     serializedVersion: 2
     m_Bits: 131072
-  carDetectMask:
-    serializedVersion: 2
-    m_Bits: 1
-  carDetectRadius: 0.01
-  carHitRadiusWhenAirborne: 0.15
   landingTelegraphPrefab: {fileID: 4108758772899792739, guid: 6e526491afa36544aa8130216c672992, type: 3}
   telegraphRadiusFromCollider: 1
   telegraphRadiusOverride: 1.5
@@ -213,9 +214,13 @@ MonoBehaviour:
   obstacleReactMask:
     serializedVersion: 2
     m_Bits: 11274240
-  obstacleImpulse: 9.48
-  obstacleUpImpulse: 2.8
+  obstacleImpulse: 2
+  obstacleUpImpulse: 2
   obstacleImpactCooldown: 0.08
+  enableObstacleClashCrashPopup: 1
+  obstacleClashPopupHeight: 1
+  obstacleClashMinRelativeSpeed: 2
+  obstacleClashPairCooldown: 0.2
   damagePlayerOnHit: 1
   useCentralizedCrashSeverity: 1
   centralizedSeverityExtraMultiplier: 1
