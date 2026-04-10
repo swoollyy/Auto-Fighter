@@ -194,7 +194,7 @@ public class CrossTrackObstacle : MonoBehaviour
     {
         if (!previewUpdateEveryFrame) return;
         if (_preview == null || !_initialized || _convertedToPhysics) return;
-        if (!_active) return;
+        if (!_active || _rb == null || !_rb.isKinematic) return;
         if (_suppressPathPreview) return;
         RebuildPathPreview();
     }
@@ -319,13 +319,29 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!_initialized || !_active || _convertedToPhysics)
+        if (!_initialized || _convertedToPhysics)
         {
             SetTravelFxEnabled(false, true);
             return;
         }
 
+        // Physics took over without our conversion flags (or desync): never show path line or scripted-drive a dynamic body.
+        if (_rb == null || !_rb.isKinematic)
+        {
+            SetTravelFxEnabled(false, true);
+            if (_active)
+            {
+                _convertedToPhysics = true;
+                _active = false;
+            }
+            return;
+        }
 
+        if (!_active)
+        {
+            SetTravelFxEnabled(false, true);
+            return;
+        }
 
         if (Time.time < _spawnedAt + _initialDelay)
         {
@@ -938,9 +954,9 @@ public class CrossTrackObstacle : MonoBehaviour
 
         _active = false;           // stop scripted motion
 
-        if (_rb == null) return;
-
         SetTravelFxEnabled(false, true);
+
+        if (_rb == null) return;
 
         _rb.isKinematic = false;
         _rb.useGravity = true;
@@ -1199,7 +1215,8 @@ public class CrossTrackObstacle : MonoBehaviour
     /// <summary>
     /// Public property to check if this obstacle is still on its scripted path.
     /// </summary>
-    public bool IsOnScriptedPath => _active && _initialized && !_convertedToPhysics;
+    public bool IsOnScriptedPath =>
+        _active && _initialized && !_convertedToPhysics && _rb != null && _rb.isKinematic;
 
     private Vector3 SampleRoadSurface(Vector3 worldProbe, out Vector3 normal) =>
         SampleRoadSurface(worldProbe, worldProbe, out normal);

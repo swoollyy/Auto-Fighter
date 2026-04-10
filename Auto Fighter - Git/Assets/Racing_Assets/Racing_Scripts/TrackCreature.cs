@@ -262,9 +262,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float bullRushChargeTimer = 0f;       // Timer for charge-up phase
     protected float bullRushActiveTimer = 0f;       // Timer for rush duration
     protected float bullRushCooldownTimer = 0f;    // Cooldown between rushes
-    protected Vector3 bullRushDirection;            // Locked direction for the rush
-    protected float bullRushTargetDistance;         // Distance along track when rush started
-    protected float bullRushStartDistance;          // Our distance along track when rush started
+    protected Vector3 bullRushDirection;            // Rush heading (XZ); steered slightly toward player, not obstacle-avoidance
+
+    /// <summary>World position when the active rush phase began (for overshoot timeout).</summary>
+    private Vector3 _bullRushLaunchStartWorld;
+
+    /// <summary>Horizontal distance to target at rush launch (for overshoot end).</summary>
+    private float _bullRushLaunchDirectDistance;
 
     protected LineRenderer bullRushLineRenderer;
     protected float bullRushLineAlpha = 0f;
@@ -1357,8 +1361,10 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 isBullRushCharging = false;
                 isBullRushActive = true;
                 bullRushActiveTimer = 0f;
-                bullRushStartDistance = currentDistanceAlongTrack;
-                bullRushTargetDistance = spawner.GetDistanceAlongPath(target.position);
+                _bullRushLaunchStartWorld = transform.position;
+                Vector3 toTargetAtLaunch = target.position - transform.position;
+                toTargetAtLaunch.y = 0f;
+                _bullRushLaunchDirectDistance = toTargetAtLaunch.magnitude;
 
                 // Lock the direction at the moment of release
                 Vector3 toTargetFinal = target.position - transform.position;
@@ -1402,44 +1408,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 bullRushDirection.Normalize();
             }
 
-            // Move in rush direction
-            float moveStep = currentSpeed * dt;
-
-            // Convert world direction to track movement
-            spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
-
-            Vector3 flatForward = pathForward;
-            flatForward.y = 0f;
-            if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
-            flatForward.Normalize();
-
-            Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
-
-            // Project rush direction onto track axes
-            float forwardComponent = Vector3.Dot(bullRushDirection, flatForward);
-            float lateralComponent = Vector3.Dot(bullRushDirection, right);
-
-            // Update track position
-            currentDistanceAlongTrack += forwardComponent * moveStep;
-            float totalLength = spawner.GetTotalLength();
-            currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, totalLength);
-
-            // Update lateral position
-            float maxOffTrack = Mathf.Max(0f, config.aggressiveMaxOffTrackDistance);
-            float halfWidth = GetRoadHalfWidth();
-            float maxLateral = halfWidth + maxOffTrack;
-
-            targetLateralOffset += lateralComponent * moveStep;
-            targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLateral, maxLateral);
-            currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, moveStep * 1.5f);
-
+            // World-space motion runs in UpdateMovement along bullRushDirection (not spline projection).
             // ===== CHECK END CONDITIONS =====
             bool rushTimedOut = bullRushActiveTimer >= config.bullRushDuration;
 
-            // Check if we've overshot the target
-            float distTraveled = Mathf.Abs(currentDistanceAlongTrack - bullRushStartDistance);
-            float distToOriginalTarget = Mathf.Abs(bullRushTargetDistance - bullRushStartDistance);
-            bool overshot = distTraveled > (distToOriginalTarget + config.bullRushOvershootDistance);
+            Vector3 horizFromLaunch = transform.position - _bullRushLaunchStartWorld;
+            horizFromLaunch.y = 0f;
+            float traveledFromLaunch = horizFromLaunch.magnitude;
+            bool overshot = traveledFromLaunch > _bullRushLaunchDirectDistance + config.bullRushOvershootDistance;
 
 
             if (rushTimedOut || overshot)
@@ -1646,10 +1622,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null) return;
 
-        // Sample path at current distance
+        // Sample path at current distance (spline frame for normal motion; bull rush uses world XZ below)
         spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
 
-        // Calculate target position
         Vector3 flatForward = pathForward;
         flatForward.y = 0f;
         if (flatForward.sqrMagnitude < 0.0001f)
@@ -1659,38 +1634,56 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
 
         Vector3 targetPos = pathPos + right * currentLateralOffset;
-
-        // Keep current Y for now (ground snap handles Y)
         targetPos.y = transform.position.y;
 
-        // --- NEW: real velocity from position delta ---
         Vector3 prevPos = transform.position;
-
-        // Move toward target position
-        float moveSpeed = Mathf.Max(currentSpeed, 0f); // Use state-driven speed (don't force movement when idle)
-
-        Vector3 desired = targetPos - transform.position;
-        desired.y = 0f;
-
-        float desiredDist = desired.magnitude;
-        Vector3 moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
-
+        float moveSpeed = Mathf.Max(currentSpeed, 0f);
         float step = moveSpeed * dt;
 
-        bool skipAvoidance = isBullRushActive || isBullRushCharging;
+        Vector3 moveDir;
+        float desiredDist;
 
-        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidance)
+        // Active bull rush: straight planar charge along bullRushDirection (homeward steer only, no spline pull / no obstacle weave).
+        if (isBullRushActive && bullRushDirection.sqrMagnitude > 0.01f)
+        {
+            moveDir = bullRushDirection;
+            moveDir.y = 0f;
+            moveDir.Normalize();
+            desiredDist = step;
+        }
+        else
+        {
+            Vector3 desired = targetPos - transform.position;
+            desired.y = 0f;
+            desiredDist = desired.magnitude;
+            moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
+        }
+
+        // No ApplyAvoidanceToMoveDir during bull rush (committed line); other states use normal avoidance steering.
+        bool skipAvoidanceSteer = isBullRushActive || isBullRushCharging;
+
+        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidanceSteer)
         {
             moveDir = ApplyAvoidanceToMoveDir(moveDir, step, flatForward, right);
         }
 
+        Vector3 shoveDir = moveDir.sqrMagnitude > 1e-6f ? moveDir : flatForward;
+        shoveDir.y = 0f;
+        if (shoveDir.sqrMagnitude > 1e-6f) shoveDir.Normalize();
+        else shoveDir = flatForward;
+
         Vector3 newPos = transform.position + moveDir * Mathf.Min(step, desiredDist);
         newPos.y = transform.position.y;
 
-        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && !skipAvoidance)
-            ClampHorizontalMoveToObstacles(prevPos, ref newPos);
+        bool obstacleClampBlocked = false;
+        RaycastHit obstacleClampHit = default;
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0)
+            obstacleClampBlocked = ClampHorizontalMoveToObstacles(prevPos, ref newPos, out obstacleClampHit);
 
         transform.position = newPos;
+
+        if (isBullRushActive && obstacleClampBlocked && config != null && config.bullRushObstaclePushEnabled)
+            TryBullRushDisplaceObstacle(obstacleClampHit, shoveDir, currentSpeed);
 
         Vector3 delta = transform.position - prevPos;
         currentVelocity = delta / Mathf.Max(dt, 0.001f);
@@ -1771,29 +1764,70 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// <summary>
     /// Hard clamp so kinematic movement cannot end inside or past a collider this frame.
     /// </summary>
-    private void ClampHorizontalMoveToObstacles(Vector3 prevWorld, ref Vector3 newWorld)
+    /// <returns>True if movement was shortened and <paramref name="blockingHit"/> is the obstacle along the move segment.</returns>
+    private bool ClampHorizontalMoveToObstacles(Vector3 prevWorld, ref Vector3 newWorld, out RaycastHit blockingHit)
     {
+        blockingHit = default;
+
         Vector3 o0 = prevWorld + Vector3.up * avoidanceCastHeight;
         Vector3 o1 = newWorld + Vector3.up * avoidanceCastHeight;
         Vector3 delta = o1 - o0;
         delta.y = 0f;
         float dist = delta.magnitude;
-        if (dist < 1e-5f) return;
+        if (dist < 1e-5f) return false;
 
         Vector3 dir = delta / dist;
         float r = Mathf.Max(0.06f, avoidanceRadius * 0.9f);
         float maxCast = dist + r * 0.35f;
 
         if (!ObstacleSphereCast(o0, r, dir, out RaycastHit hit, maxCast))
-            return;
+            return false;
 
         float skin = Mathf.Max(0.02f, r * 0.25f);
         float allowed = Mathf.Max(0f, hit.distance - skin);
         if (allowed >= dist - 0.0005f)
-            return;
+            return false;
 
         newWorld = prevWorld + dir * Mathf.Min(dist, allowed);
         newWorld.y = prevWorld.y;
+        blockingHit = hit;
+        return true;
+    }
+
+    /// <summary>
+    /// During bull rush, impart planar velocity to dynamic obstacles we run into (no tunneling — clamp runs every frame).
+    /// </summary>
+    private void TryBullRushDisplaceObstacle(in RaycastHit hit, Vector3 planarShoveDir, float rushSpeed)
+    {
+        if (!isBullRushActive || config == null || !config.bullRushObstaclePushEnabled)
+            return;
+        if (hit.collider == null) return;
+        if (IsPlayerCollider(hit.collider)) return;
+        if (hit.collider.GetComponentInParent<NPCTrafficCar>() != null) return;
+
+        Rigidbody obstacleRb = hit.collider.attachedRigidbody;
+        if (obstacleRb == null)
+            obstacleRb = hit.collider.GetComponentInParent<Rigidbody>();
+        if (obstacleRb == null || obstacleRb.isKinematic) return;
+        if (obstacleRb.transform == transform || obstacleRb.transform.IsChildOf(transform)) return;
+
+        if (config.bullRushObstacleMaxPushMass > 0f && obstacleRb.mass > config.bullRushObstacleMaxPushMass)
+            return;
+
+        planarShoveDir.y = 0f;
+        if (planarShoveDir.sqrMagnitude < 1e-6f)
+        {
+            planarShoveDir = bullRushDirection.sqrMagnitude > 0.01f ? bullRushDirection : transform.forward;
+            planarShoveDir.y = 0f;
+        }
+        if (planarShoveDir.sqrMagnitude < 1e-6f) return;
+        planarShoveDir.Normalize();
+
+        float dv = config.bullRushObstaclePushVelocityChange + Mathf.Max(0f, rushSpeed) * config.bullRushObstaclePushSpeedScale;
+        dv = Mathf.Min(dv, config.bullRushObstaclePushMaxVelocityChange);
+        if (dv <= 0f) return;
+
+        obstacleRb.AddForce(planarShoveDir * dv, ForceMode.VelocityChange);
     }
 
     private float SampleObstacleClearance(Vector3 origin, Vector3 dir, float look)

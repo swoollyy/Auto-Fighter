@@ -60,6 +60,8 @@ public class VintageTVController : MonoBehaviour
     [SerializeField, Min(0.01f)] private float maxShaderIntensity = 8f;
     [Tooltip("Upper clamp for noise sent to the shader.")]
     [SerializeField, Min(0.01f)] private float maxShaderNoise = 8f;
+    [Tooltip("Upper clamp for chromatic aberration when crash scaling is applied.")]
+    [SerializeField, Min(0.01f)] private float maxShaderChromatic = 4f;
 
     // runtime refs
     private Rigidbody _carRb;
@@ -233,7 +235,7 @@ public class VintageTVController : MonoBehaviour
         var gm = GameManager_Racing.Instance;
         if (gm == null) return;
 
-        var active = gm.ActiveCar; // GameManager_Racing already exposes the current car :contentReference[oaicite:3]{index=3}
+        var active = gm.ActiveCar; // current run car from game manager
         if (active == null) return;
 
         if (_car == active) return;
@@ -319,14 +321,16 @@ public class VintageTVController : MonoBehaviour
         intensity = Mathf.Clamp(intensity, 0f, maxShaderIntensity);
 
         float noiseOut = Mathf.Clamp(_defaultNoise * crashScale, 0f, maxShaderNoise);
+        float chromaOut = Mathf.Clamp(_defaultChromatic * crashScale, 0f, maxShaderChromatic);
+        float jitterOut = Mathf.Clamp01(jitter * Mathf.Lerp(1f, 1.4f, _crash01));
 
         vintageMat.SetFloat(ID_Intensity, intensity);
         vintageMat.SetFloat(ID_ScanlineStrength, scanlineStrength);
         vintageMat.SetFloat(ID_ScanlineDensity, scanlineDensity);
-        vintageMat.SetFloat(ID_Jitter, jitter);
+        vintageMat.SetFloat(ID_Jitter, jitterOut);
         vintageMat.SetFloat(ID_Noise, noiseOut);
         vintageMat.SetFloat(ID_Vignette, vignette);
-        vintageMat.SetFloat(ID_Chromatic, chromatic);
+        vintageMat.SetFloat(ID_Chromatic, chromaOut);
         vintageMat.SetFloat(ID_TimeScale, timeScale);
     }
 }

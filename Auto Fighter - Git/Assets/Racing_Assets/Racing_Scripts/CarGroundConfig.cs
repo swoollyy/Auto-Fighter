@@ -37,6 +37,34 @@ public class CarGroundConfig : MonoBehaviour
     [Tooltip("Minimum seconds between lifts so grassFraction chatter at ~50% does not spam.")]
     [SerializeField, Min(0f)] private float roadGrassTransitionLiftCooldown = 0.25f;
 
+    [Header("HP death — tumble (single ground ray)")]
+    [Tooltip("Downward ray length from the car to decide terrain after HP death (grass vs road, etc.).")]
+    [SerializeField, Min(2f)] private float deathHpTerrainRayLength = 56f;
+
+    [Tooltip("Ray start height above the car collider center (world up).")]
+    [SerializeField, Min(0f)] private float deathHpTerrainRayStartHeight = 0.85f;
+
+    [Tooltip("Extra drag multiplier on grass/dirt during HP-death tumble (on top of GroundSurface.dragMultiplier).")]
+    [SerializeField, Min(1f)] private float deathHpGrassDragBoost = 1.45f;
+
+    [Tooltip("Angular drag multiplier on grass during HP-death tumble.")]
+    [SerializeField, Min(1f)] private float deathHpGrassAngularDragBoost = 1.35f;
+
+    [Tooltip("Extra horizontal velocity damping per second on grass while tumbling (0 = drag only).")]
+    [SerializeField, Min(0f)] private float deathHpGrassPlanarDampingPerSecond = 6f;
+
+    [Tooltip("Added to planar damping × (1 + planarSpeed × this). Makes fast slides bleed off quicker on grass.")]
+    [SerializeField, Min(0f)] private float deathHpGrassPlanarDampingPerSpeed = 0.12f;
+
+    [Tooltip("Multiplies Rigidbody.drag from surface after HP death on grass (drag is weak alone for heavy slides).")]
+    [SerializeField, Min(1f)] private float deathHpGrassRigidbodyDragScale = 2.35f;
+
+    [Tooltip("Multiplies tire PhysicMaterial friction on grass during HP tumble (contact grip, not just drag).")]
+    [SerializeField, Min(1f)] private float deathHpGrassFrictionScale = 1.65f;
+
+    [Tooltip("Hard cap on planar speed (m/s) while tumbling on grass after HP death; 0 = use surface max-speed only.")]
+    [SerializeField, Min(0f)] private float deathHpGrassTumbleMaxPlanarSpeed = 11f;
+
     public LayerMask GroundLayers => groundLayers;
     public int SamplesX => samplesX;
     public int SamplesZ => samplesZ;
@@ -54,4 +82,14 @@ public class CarGroundConfig : MonoBehaviour
     public float RoadGrassTransitionLiftSpeed => roadGrassTransitionLiftSpeed;
     public float RoadGrassTransitionMinSpeed => roadGrassTransitionMinSpeed;
     public float RoadGrassTransitionLiftCooldown => roadGrassTransitionLiftCooldown;
+
+    public float DeathHpTerrainRayLength => deathHpTerrainRayLength;
+    public float DeathHpTerrainRayStartHeight => deathHpTerrainRayStartHeight;
+    public float DeathHpGrassDragBoost => deathHpGrassDragBoost;
+    public float DeathHpGrassAngularDragBoost => deathHpGrassAngularDragBoost;
+    public float DeathHpGrassPlanarDampingPerSecond => deathHpGrassPlanarDampingPerSecond;
+    public float DeathHpGrassPlanarDampingPerSpeed => deathHpGrassPlanarDampingPerSpeed;
+    public float DeathHpGrassRigidbodyDragScale => deathHpGrassRigidbodyDragScale;
+    public float DeathHpGrassFrictionScale => deathHpGrassFrictionScale;
+    public float DeathHpGrassTumbleMaxPlanarSpeed => deathHpGrassTumbleMaxPlanarSpeed;
 }

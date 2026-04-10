@@ -205,6 +205,22 @@ public class CreatureTypeConfig
     [Tooltip("Cooldown after a bull rush before the creature can start another one.")]
     [Min(0f)] public float bullRushCooldown = 1.0f;
 
+    [Header("Aggressive - Bull Rush vs obstacles")]
+    [Tooltip("If true, a bull rush shoves dynamic rigidbody obstacles (trees/props) instead of phasing through them. Static colliders still block movement.")]
+    public bool bullRushObstaclePushEnabled = true;
+
+    [Tooltip("Base planar velocity change (VelocityChange) applied to obstacles the rush runs into.")]
+    [Min(0f)] public float bullRushObstaclePushVelocityChange = 7f;
+
+    [Tooltip("Extra push from current rush speed: total uses pushVelocityChange + rushSpeed * this.")]
+    [Min(0f)] public float bullRushObstaclePushSpeedScale = 0.22f;
+
+    [Tooltip("Cap on planar velocity change sent to the obstacle.")]
+    [Min(0f)] public float bullRushObstaclePushMaxVelocityChange = 28f;
+
+    [Tooltip("Do not push obstacles heavier than this (0 = no mass limit).")]
+    [Min(0f)] public float bullRushObstacleMaxPushMass = 900f;
+
     [Header("Aggressive - Bull Rush Telegraph (Line Renderer)")]
     [Tooltip("If true, draws a line showing the bull rush path during charge-up.")]
     public bool bullRushShowTelegraph = true;

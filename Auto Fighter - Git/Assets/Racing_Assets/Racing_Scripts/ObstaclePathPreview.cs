@@ -69,15 +69,33 @@ public class ObstaclePathPreview : MonoBehaviour
 
     public void FadeTo(float targetAlpha, float seconds = -1f)
     {
-        if (seconds <= 0f) seconds = defaultFadeSeconds;
+        if (_fadeCo != null)
+        {
+            StopCoroutine(_fadeCo);
+            _fadeCo = null;
+        }
 
-        if (_fadeCo != null) StopCoroutine(_fadeCo);
-        if(this.gameObject.activeInHierarchy)
+        // seconds < 0  → use default fade length. seconds == 0 → instant (caller uses this for snap hide/show).
+        if (seconds < 0f)
+            seconds = defaultFadeSeconds;
+        if (seconds <= 0f)
+        {
+            _alpha = targetAlpha;
+            ApplyAlpha();
+            if (_lr != null)
+                _lr.enabled = targetAlpha > 0.001f;
+            return;
+        }
+
+        if (gameObject.activeInHierarchy)
             _fadeCo = StartCoroutine(FadeRoutine(targetAlpha, seconds));
     }
 
     private IEnumerator FadeRoutine(float target, float seconds)
     {
+        if (_lr != null && target > 0.01f)
+            _lr.enabled = true;
+
         float start = _alpha;
         float t = 0f;
 
@@ -91,6 +109,8 @@ public class ObstaclePathPreview : MonoBehaviour
 
         _alpha = target;
         ApplyAlpha();
+        if (_lr != null)
+            _lr.enabled = target > 0.001f;
     }
 
     private void LateUpdate()

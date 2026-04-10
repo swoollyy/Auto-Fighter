@@ -396,6 +396,19 @@ public class CarController : MonoBehaviour
     private float _prevGrassFractionForTransitionLift = -1f;
     private float _lastRoadGrassTransitionLiftTime = -999f;
 
+    /// <summary>True when HP-death tumble uses grass-like slowdown (global ray or heavy grass sample fallback).</summary>
+    private bool _hpDeathGrassEffectActive;
+
+    private float deathHpTerrainRayLength = 56f;
+    private float deathHpTerrainRayStartHeight = 0.85f;
+    private float deathHpGrassDragBoost = 1.45f;
+    private float deathHpGrassAngularDragBoost = 1.35f;
+    private float deathHpGrassPlanarDampingPerSecond = 6f;
+    private float deathHpGrassPlanarDampingPerSpeed = 0.12f;
+    private float deathHpGrassRigidbodyDragScale = 2.35f;
+    private float deathHpGrassFrictionScale = 1.65f;
+    private float deathHpGrassTumbleMaxPlanarSpeed = 11f;
+
     [Header("Fuel (from CarFuelConfig)")]
     private float maxFuel;
     private float fuelUsePerSecondAtFullThrottle;
@@ -1266,6 +1279,15 @@ public class CarController : MonoBehaviour
             roadGrassTransitionLiftSpeed = _groundConfig.RoadGrassTransitionLiftSpeed;
             roadGrassTransitionMinSpeed = _groundConfig.RoadGrassTransitionMinSpeed;
             roadGrassTransitionLiftCooldown = _groundConfig.RoadGrassTransitionLiftCooldown;
+            deathHpTerrainRayLength = _groundConfig.DeathHpTerrainRayLength;
+            deathHpTerrainRayStartHeight = _groundConfig.DeathHpTerrainRayStartHeight;
+            deathHpGrassDragBoost = _groundConfig.DeathHpGrassDragBoost;
+            deathHpGrassAngularDragBoost = _groundConfig.DeathHpGrassAngularDragBoost;
+            deathHpGrassPlanarDampingPerSecond = _groundConfig.DeathHpGrassPlanarDampingPerSecond;
+            deathHpGrassPlanarDampingPerSpeed = _groundConfig.DeathHpGrassPlanarDampingPerSpeed;
+            deathHpGrassRigidbodyDragScale = _groundConfig.DeathHpGrassRigidbodyDragScale;
+            deathHpGrassFrictionScale = _groundConfig.DeathHpGrassFrictionScale;
+            deathHpGrassTumbleMaxPlanarSpeed = _groundConfig.DeathHpGrassTumbleMaxPlanarSpeed;
         }
         else
         {
@@ -1280,6 +1302,15 @@ public class CarController : MonoBehaviour
             roadGrassTransitionLiftSpeed = 0.35f;
             roadGrassTransitionMinSpeed = 2.5f;
             roadGrassTransitionLiftCooldown = 0.25f;
+            deathHpTerrainRayLength = 56f;
+            deathHpTerrainRayStartHeight = 0.85f;
+            deathHpGrassDragBoost = 1.45f;
+            deathHpGrassAngularDragBoost = 1.35f;
+            deathHpGrassPlanarDampingPerSecond = 6f;
+            deathHpGrassPlanarDampingPerSpeed = 0.12f;
+            deathHpGrassRigidbodyDragScale = 2.35f;
+            deathHpGrassFrictionScale = 1.65f;
+            deathHpGrassTumbleMaxPlanarSpeed = 11f;
         }
 
         if (_rampConfig != null)
@@ -1682,13 +1713,14 @@ public class CarController : MonoBehaviour
         // Out of HP: no scripted steering — let the Rigidbody tumble.
         if (isOutOfHP)
         {
-            ReleaseHandsOffDrivingPhysics();
-            // Keep reading surface under the car (ice/grass/boost pads) every frame, not only when tipped.
+            ReleaseHandsOffDrivingPhysics(resetDragToDefaults: false);
+            // Single downward ray from the car picks terrain (grass vs road); applies drag / caps like alive driving.
             if (carCollider != null)
             {
-                SampleGroundAndUpdateMultipliers();
+                ApplyHpDeathTerrainFromGlobalRay();
                 ApplyBoostSurfaceForce(true);
                 UpdateIcePhysicsTransitions();
+                ApplyHpDeathSoftGroundGripAndCap();
             }
             else
                 ResetIcePhysicsImmediate();
@@ -1815,7 +1847,10 @@ public class CarController : MonoBehaviour
                     {
                         currentFuel = 0f;
                         _flipMashActive = false;
+                        bool firstEmpty = !isOutOfFuel;
                         isOutOfFuel = true;
+                        if (firstEmpty)
+                            NotifyCrashFeedbackOnly(0.72f);
                     }
                 }
             }
@@ -2632,12 +2667,164 @@ public class CarController : MonoBehaviour
         _boostOverrideMaxMult = 0f;
     }
 
-    private void ReleaseHandsOffDrivingPhysics()
+    /// <param name="resetDragToDefaults">If false, caller must assign <see cref="Rigidbody.drag"/> / angularDrag (HP death uses grass-aware drag).</param>
+    private void ReleaseHandsOffDrivingPhysics(bool resetDragToDefaults = true)
     {
         if (rb == null) return;
         rb.freezeRotation = false;
-        rb.drag = _baseDrag;
-        rb.angularDrag = _baseAngularDrag;
+        if (resetDragToDefaults)
+        {
+            rb.drag = _baseDrag;
+            rb.angularDrag = _baseAngularDrag;
+        }
+    }
+
+    /// <summary>
+    /// After HP death: one world-down ray from the car samples <see cref="GroundSurface"/> so grass uses high drag,
+    /// lower effective speed cap, and extra planar damping — not the default road tumble drag.
+    /// </summary>
+    private void ApplyHpDeathTerrainFromGlobalRay()
+    {
+        if (rb == null || carCollider == null) return;
+
+        _hpDeathGrassEffectActive = false;
+
+        Vector3 origin = carCollider.bounds.center + Vector3.up * deathHpTerrainRayStartHeight;
+        float rayLen = Mathf.Max(2f, deathHpTerrainRayLength);
+
+#if UNITY_EDITOR
+        if (debugSurfaceRays)
+            Debug.DrawRay(origin, Vector3.down * rayLen, new Color(0.2f, 0.85f, 0.35f));
+#endif
+
+        void ClearBoostIceDefaults()
+        {
+            _onBoostSurface = false;
+            _currentBoostAccel = 0f;
+            _currentBoostMaxSpeed = 0f;
+            _currentBoostDuringCrash = false;
+            _currentBoostCrashMultiplier = 0.5f;
+            _onIceSurface = false;
+            _iceDynamicFrictionTarget = 1f;
+            _iceStaticFrictionTarget = 1f;
+            _iceHandlingTarget = 1f;
+        }
+
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayLen, groundLayers, QueryTriggerInteraction.Collide))
+        {
+            GroundSurface surface = hit.collider.GetComponent<GroundSurface>()
+                                    ?? hit.collider.GetComponentInParent<GroundSurface>();
+            if (surface != null)
+            {
+                float maxMul = Mathf.Max(0.01f, surface.maxSpeedMultiplier);
+                float accelMul = Mathf.Max(0.01f, surface.accelerationMultiplier);
+                float turnMul = Mathf.Max(0.01f, surface.turnSpeedMultiplier);
+                float dragMul = Mathf.Max(0.01f, surface.dragMultiplier);
+
+                ClearBoostIceDefaults();
+
+                if (surface.surfaceType == SurfaceType.Grass || surface.surfaceType == SurfaceType.Dirt)
+                    dragMul *= Mathf.Max(1f, deathHpGrassDragBoost);
+
+                ApplySurfaceMultipliers(maxMul, accelMul, turnMul, dragMul);
+
+                grassFraction = surface.surfaceType == SurfaceType.Grass ? 1f : 0f;
+                offDefaultFraction = surface.surfaceType != SurfaceType.Default ? 1f : 0f;
+                currentFuelUseMultiplier = surface.surfaceType == SurfaceType.Grass
+                    ? Mathf.Max(1f, grassFuelUseMultiplier)
+                    : 1f;
+                currentSteeringDamp = baseSteeringDamp;
+
+                if (surface.surfaceType == SurfaceType.Ice)
+                {
+                    _onIceSurface = true;
+                    _iceDynamicFrictionTarget = surface.iceDynamicFrictionMultiplier;
+                    _iceStaticFrictionTarget = surface.iceStaticFrictionMultiplier;
+                    _iceHandlingTarget = surface.iceHandlingMultiplier;
+                }
+
+                if (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp)
+                {
+                    _onBoostSurface = true;
+                    _currentBoostAccel = surface.boostAcceleration;
+                    _currentBoostMaxSpeed = surface.boostMaxSpeed;
+                    _currentBoostDuringCrash = surface.boostDuringCrash;
+                    _currentBoostCrashMultiplier = surface.boostCrashMultiplier;
+                }
+
+                _hpDeathGrassEffectActive = surface.surfaceType == SurfaceType.Grass || surface.surfaceType == SurfaceType.Dirt;
+
+                RefreshSkillEffects();
+                ApplySkillEffects();
+
+                rb.drag = effectiveDrag;
+                rb.angularDrag = _baseAngularDrag *
+                    (_hpDeathGrassEffectActive ? Mathf.Max(1f, deathHpGrassAngularDragBoost) : 1f);
+
+                if (_hpDeathGrassEffectActive && deathHpGrassPlanarDampingPerSecond > 0f)
+                    ApplyHpDeathGrassPlanarDamping(Time.fixedDeltaTime);
+
+                return;
+            }
+        }
+
+        // No GroundSurface on hit: keep multi-sample behavior (mixed grass / ice / boost).
+        ClearBoostIceDefaults();
+        SampleGroundAndUpdateMultipliers();
+        RefreshSkillEffects();
+        ApplySkillEffects();
+
+        rb.drag = effectiveDrag;
+        _hpDeathGrassEffectActive = grassFraction >= 0.5f;
+        rb.angularDrag = _baseAngularDrag *
+            (_hpDeathGrassEffectActive ? Mathf.Max(1f, deathHpGrassAngularDragBoost) : 1f);
+
+        if (_hpDeathGrassEffectActive && deathHpGrassPlanarDampingPerSecond > 0f)
+            ApplyHpDeathGrassPlanarDamping(Time.fixedDeltaTime);
+    }
+
+    private void ApplyHpDeathGrassPlanarDamping(float dt)
+    {
+        if (rb == null || dt <= 0f) return;
+        Vector3 v = rb.velocity;
+        Vector3 h = new Vector3(v.x, 0f, v.z);
+        float mag = h.magnitude;
+        if (mag < 1e-6f) return;
+        float dps = deathHpGrassPlanarDampingPerSecond;
+        if (deathHpGrassPlanarDampingPerSpeed > 0f)
+            dps *= 1f + mag * deathHpGrassPlanarDampingPerSpeed;
+        float damp = Mathf.Exp(-dps * dt);
+        h *= damp;
+        rb.velocity = new Vector3(h.x, v.y, h.z);
+    }
+
+    /// <summary>
+    /// After ice/friction lerp: extra Rigidbody drag + tire friction on grass/dirt so slides don’t ignore surface like road ice.
+    /// Optional hard cap on planar tumble speed (alive grass feels slow mostly from accel; dead slides need this).
+    /// </summary>
+    private void ApplyHpDeathSoftGroundGripAndCap()
+    {
+        if (rb == null || !isOutOfHP || !_hpDeathGrassEffectActive) return;
+
+        rb.drag = Mathf.Min(80f, effectiveDrag * Mathf.Max(1f, deathHpGrassRigidbodyDragScale));
+
+        if (_carPhysicMaterial != null)
+        {
+            float f = Mathf.Max(1f, deathHpGrassFrictionScale);
+            _carPhysicMaterial.dynamicFriction = Mathf.Clamp01(_carPhysicMaterial.dynamicFriction * f);
+            _carPhysicMaterial.staticFriction = Mathf.Clamp01(_carPhysicMaterial.staticFriction * f);
+        }
+
+        if (deathHpGrassTumbleMaxPlanarSpeed <= 0f) return;
+
+        Vector3 v = rb.velocity;
+        Vector3 h = new Vector3(v.x, 0f, v.z);
+        float m = h.magnitude;
+        if (m > deathHpGrassTumbleMaxPlanarSpeed)
+        {
+            h *= deathHpGrassTumbleMaxPlanarSpeed / m;
+            rb.velocity = new Vector3(h.x, v.y, h.z);
+        }
     }
 
     /// <summary>
@@ -3171,6 +3358,16 @@ public class CarController : MonoBehaviour
         return (hpBefore > 0f && currentHP <= 0f) || (fuelBefore > 0f && currentFuel <= 0f);
     }
 
+    /// <summary>
+    /// Fires <see cref="OnCrash"/> for listeners (e.g. Vintage TV) without entering crash physics.
+    /// Used when the car is already out of fuel/HP but should still react visually to impacts.
+    /// </summary>
+    private void NotifyCrashFeedbackOnly(float severity01)
+    {
+        float sev = Mathf.Clamp01(severity01);
+        try { OnCrash?.Invoke(sev); } catch { /* ignore listener errors */ }
+    }
+
     private void TriggerCrash(
         Vector3 hitDirection,
         float crashDuration,
@@ -3184,7 +3381,10 @@ public class CarController : MonoBehaviour
             return;
 
         if (isOutOfFuel || isOutOfHP)
+        {
+            NotifyCrashFeedbackOnly(severity);
             return;
+        }
 
         if (_inCrash && !_flipMashActive)
             return;
@@ -3818,8 +4018,11 @@ public class CarController : MonoBehaviour
         if (currentFuel <= 0f)
         {
             currentFuel = 0f;
+            bool firstEmpty = !isOutOfFuel;
             isOutOfFuel = true;
             Debug.Log("[CarController] Fuel depleted.");
+            if (firstEmpty)
+                NotifyCrashFeedbackOnly(0.72f);
         }
         else
         {
@@ -4569,7 +4772,7 @@ public class CarController : MonoBehaviour
         if (currentFuel <= 0f && !isOutOfFuel)
         {
             isOutOfFuel = true;
-            // if you have any “out of fuel” death handling elsewhere it will pick it up
+            NotifyCrashFeedbackOnly(0.72f);
         }
     }
 
@@ -5913,6 +6116,8 @@ public class CarController : MonoBehaviour
         bool duringMashRecovery = _flipMashActive;
         bool duringCrashState = _inCrash;
 
+        bool hitNpcTraffic = collision.collider.GetComponentInParent<NPCTrafficCar>() != null;
+
         float impactSpeed = collision.relativeVelocity.magnitude;
 
         Vector3 contactNormalEarly = Vector3.up;
@@ -5920,6 +6125,10 @@ public class CarController : MonoBehaviour
             contactNormalEarly = collision.GetContact(0).normal;
 
         impactSpeed = RefineImpactSpeed(collision, contactNormalEarly, impactSpeed);
+
+        // NPC traffic: always count as a real crash for the player (same-direction / rear clips used to fall under minImpactSpeed).
+        if (hitNpcTraffic)
+            impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
 
         if (impactSpeed < minImpactSpeed)
             return;
@@ -6250,7 +6459,9 @@ public class CarController : MonoBehaviour
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
             return;
 
-
+        bool hitNpcTrafficTrigger = other.GetComponentInParent<NPCTrafficCar>() != null;
+        if (IsCloseCallInvincible && hitNpcTrafficTrigger)
+            return;
 
         float impactSpeed = 0f;
         Rigidbody otherRb = other.attachedRigidbody;
@@ -6260,6 +6471,9 @@ public class CarController : MonoBehaviour
             impactSpeed = rb.velocity.magnitude;
 
         impactSpeed = RefineImpactSpeedTrigger(other, impactSpeed);
+
+        if (hitNpcTrafficTrigger)
+            impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
 
         if (impactSpeed < minImpactSpeed)
             return;
@@ -6344,6 +6558,8 @@ public class CarController : MonoBehaviour
                 RacingPopups.Crash(_lastCrashSeverity, GetPopupPosition());
 
             _nextCrashAllowedTime = Time.time + crashDamageCooldown;
+
+            NotifyCrashFeedbackOnly(severity);
 
             if (rb != null)
             {

@@ -4883,7 +4883,7 @@ MonoBehaviour:
   focusWorldOffset: {x: 0, y: 1.2, z: 0}
   shieldRadius: 0.58
   sweepProbeRadius: 0.58
-  castPastFocus: 1.22
+  castPastFocus: 0
   coneRadialSlop: 0.04
   occluderLayers:
     serializedVersion: 2
@@ -6691,6 +6691,11 @@ MonoBehaviour:
     bullRushMaxSteerRate: 15
     bullRushOvershootDistance: 8
     bullRushCooldown: 1
+    bullRushObstaclePushEnabled: 1
+    bullRushObstaclePushVelocityChange: 7
+    bullRushObstaclePushSpeedScale: 0.22
+    bullRushObstaclePushMaxVelocityChange: 28
+    bullRushObstacleMaxPushMass: 900
     bullRushShowTelegraph: 0
     bullRushLineWidth: 0.2
     bullRushLineLength: 25
@@ -6776,6 +6781,11 @@ MonoBehaviour:
     bullRushMaxSteerRate: 15
     bullRushOvershootDistance: 8
     bullRushCooldown: 1
+    bullRushObstaclePushEnabled: 1
+    bullRushObstaclePushVelocityChange: 7
+    bullRushObstaclePushSpeedScale: 0.22
+    bullRushObstaclePushMaxVelocityChange: 28
+    bullRushObstacleMaxPushMass: 900
     bullRushShowTelegraph: 0
     bullRushLineWidth: 0.2
     bullRushLineLength: 25
@@ -6861,6 +6871,11 @@ MonoBehaviour:
     bullRushMaxSteerRate: 0.8
     bullRushOvershootDistance: 21.1
     bullRushCooldown: 5
+    bullRushObstaclePushEnabled: 1
+    bullRushObstaclePushVelocityChange: 7
+    bullRushObstaclePushSpeedScale: 0.22
+    bullRushObstaclePushMaxVelocityChange: 28
+    bullRushObstacleMaxPushMass: 900
     bullRushShowTelegraph: 1
     bullRushLineWidth: 0.15
     bullRushLineLength: 25
@@ -7322,6 +7337,7 @@ MonoBehaviour:
   lethalCrashMultiplier: 1.607
   maxShaderIntensity: 8
   maxShaderNoise: 8
+  maxShaderChromatic: 4
 --- !u!1 &828558039
 GameObject:
   m_ObjectHideFlags: 0
@@ -17816,10 +17832,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.1
+  accelerationMultiplier: 0.7
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.63
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6

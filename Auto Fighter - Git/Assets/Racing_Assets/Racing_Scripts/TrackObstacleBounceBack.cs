@@ -146,7 +146,10 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("Closing speed passed into crash severity (centralized mode) and impact speed for crash sim (fling/torque). Car caps with Max Crash Fling Speed on CarCrashMashConfig.")]
     [SerializeField, Min(0f)] private float crashImpactSpeed = 14f;
 
-    [Tooltip("When the obstacle hits the car, it loses pathing and reacts with physics. Impulse magnitude applied to the obstacle away from the car (0 = use estimated speed).")]
+    [Tooltip("If true (recommended), hitting the player car does not take the obstacle off its bounce spline. NPC traffic is never detached here.")]
+    [SerializeField] private bool keepPathingOnVehicleHit = true;
+
+    [Tooltip("Only used when Keep Pathing On Vehicle Hit is off: obstacle goes dynamic and receives this impulse away from the car (0 = use estimated speed, min 5).")]
     [SerializeField, Min(0f)] private float carHitDetachImpulse = 0f;
 
     [Header("Per-Instance Ignore (Fix global ignore)")]
@@ -929,11 +932,14 @@ public class TrackObstacleBounceBack : MonoBehaviour
         if (awayFromCar.sqrMagnitude < 0.0001f) awayFromCar = -hitDir;
         awayFromCar.Normalize();
 
-        float impulseMag = carHitDetachImpulse > 0f ? carHitDetachImpulse : _estimatedVel.magnitude;
-        if (impulseMag < 1f) impulseMag = 5f;
+        if (!keepPathingOnVehicleHit)
+        {
+            float impulseMag = carHitDetachImpulse > 0f ? carHitDetachImpulse : _estimatedVel.magnitude;
+            if (impulseMag < 1f) impulseMag = 5f;
 
-        DetachForForcefieldLaunch();
-        _rb.AddForce(awayFromCar * impulseMag + Vector3.up * 2f, ForceMode.Impulse);
+            DetachForForcefieldLaunch();
+            _rb.AddForce(awayFromCar * impulseMag + Vector3.up * 2f, ForceMode.Impulse);
+        }
 
         _nextAllowedCarHitTime = now + hitDamageCooldown;
     }

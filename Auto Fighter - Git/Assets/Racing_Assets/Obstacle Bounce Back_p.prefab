@@ -62,15 +62,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Size.x
-      value: 0.65
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Size.y
-      value: 0.65
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4913427648244586458, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: m_Size.z
-      value: 0.65
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: carDetectRadius
@@ -98,7 +98,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: obstacleReactMask.m_Bits
-      value: 11274241
+      value: 11274240
       objectReference: {fileID: 0}
     - target: {fileID: 6432184182409446683, guid: b9399147b3b60a344905ed9780e5c91e, type: 3}
       propertyPath: centralizedSeverityExtraMultiplier
