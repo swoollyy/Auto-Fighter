@@ -1391,6 +1391,18 @@ public class NPCTrafficCar : MonoBehaviour
         return _cumLengths[bestIdx] + bestT * segLen;
     }
 
+    /// <summary>
+    /// Approximate arc-length along this car’s traffic spline under its current position.
+    /// Used by <see cref="NPCTrafficCarSpawner"/> so despawn follows the car as it drives, not its original spawn slot.
+    /// </summary>
+    public bool TryGetDistanceAlongTrack(out float distanceAlong)
+    {
+        distanceAlong = 0f;
+        if (_path.Count < 2 || _cumLengths == null) return false;
+        distanceAlong = Mathf.Clamp(GetDistanceAlongPath(transform.position), 0f, _totalLength);
+        return true;
+    }
+
     private float GetHalfRoadWidth()
     {
         return trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 5f;

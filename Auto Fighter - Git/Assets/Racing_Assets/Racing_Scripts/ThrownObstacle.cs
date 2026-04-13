@@ -652,7 +652,10 @@ public class ThrownObstacle : MonoBehaviour
     {
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null && _rewardOnDestroy > 0)
+        {
             mgr.AddCurrency(_rewardOnDestroy);
+            GameManager_Racing.Instance?.RegisterObstacleReward(_rewardOnDestroy);
+        }
 
         SpawnImpactVFX(transform.position, Vector3.up);
         GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _impactRadius);

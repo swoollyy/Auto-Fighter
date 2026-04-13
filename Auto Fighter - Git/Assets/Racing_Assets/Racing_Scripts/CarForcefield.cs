@@ -405,6 +405,8 @@ public sealed class CarForcefield : MonoBehaviour
             if (postFX != null)
                 postFX.PlayBurst();
 
+            ShowForcefieldInvinciblePopup();
+
             // mark as recently handled
             _recentlyLaunched.Add(other);
 
@@ -479,6 +481,8 @@ public sealed class CarForcefield : MonoBehaviour
 
             if (postFX != null)
                 postFX.PlayBurst();
+
+            ShowForcefieldInvinciblePopup();
 
             // Consume the forcefield (optional � delete this if you want NPC-crash to NOT consume it)
             SetArmed(false);
@@ -701,9 +705,18 @@ public sealed class CarForcefield : MonoBehaviour
         if (postFX != null)
             postFX.PlayBurst();
 
+        ShowForcefieldInvinciblePopup();
+
         SetArmed(false);
         _cooldownRemain = cooldownSeconds;
         if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+    }
+
+    private void ShowForcefieldInvinciblePopup()
+    {
+        if (!RacingPopups.IsReady) return;
+        Vector3 p = (_car != null ? _car.transform.position : transform.position) + Vector3.up * 1.2f;
+        RacingPopups.Invincible(p);
     }
 
     private void StartLaunchSlowMo()

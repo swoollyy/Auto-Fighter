@@ -201,7 +201,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4982785
   ramHorizontalImpulse: 9
-  ramUpImpulse: 5
+  ramUpImpulse: 6.45
   vehicleRamUpMultiplier: 3.56
   vehicleRamHorizontalMultiplier: 1
   selfDetachExtraUp: 1.5
@@ -211,7 +211,7 @@ MonoBehaviour:
   overlapRamCooldown: 0.2
   racingObstacleRamPushMultiplier: 1.15
   racingObstacleRamUpMultiplier: 3.26
-  racingObstacleRamPushAdd: 1.25
+  racingObstacleRamPushAdd: 3
   racingObstacleRamUpAdd: 4.69
   racingObstacleHitShowCrashPopup: 1
   racingObstacleHitPopupHeight: 1.15

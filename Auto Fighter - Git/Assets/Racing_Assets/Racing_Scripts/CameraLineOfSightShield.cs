@@ -3,9 +3,8 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Sweeps from the camera toward the follow target: uses a sphere cast to find candidate occluders,
-/// then keeps only hits inside a <b>linear cone</b> (apex at camera, base radius at the focus).
-/// That avoids blurring props that only intersect a fat constant-radius tube beside the true view corridor.
+/// Occlusion fade between camera and follow target. Default: multi-point line-of-sight samples on the car
+/// silhouette (center, edges, diagonals). Optional legacy mode: sphere cast + linear cone filter.
 /// </summary>
 [RequireComponent(typeof(Camera))]
 [DefaultExecutionOrder(50)]
@@ -34,6 +33,29 @@ public class CameraLineOfSightShield : MonoBehaviour
     [Tooltip("Small extra allowance on cone radius (m) to avoid edge sparkles.")]
     [SerializeField, Min(0f)] private float coneRadialSlop = 0.04f;
 
+    [Header("Line Of Sight Sampling")]
+    [Tooltip("Use multi-point line-of-sight checks to detect true visual blockers between camera and car.")]
+    [SerializeField] private bool useSampledLineOfSight = true;
+
+    [Tooltip("Small cast radius per sample ray. Helps catch thin colliders.")]
+    [SerializeField, Min(0f)] private float losSampleCastRadius = 0.08f;
+
+    [Tooltip("Approximate half-width of the car silhouette used for LOS sample points.")]
+    [SerializeField, Min(0f)] private float targetSampleHalfWidth = 0.9f;
+
+    [Tooltip("Approximate half-height around focus point used for LOS sample points.")]
+    [SerializeField, Min(0f)] private float targetSampleHalfHeight = 0.7f;
+
+    [Tooltip("Include diagonal silhouette samples for more robust occlusion at corners.")]
+    [SerializeField] private bool includeDiagonalSamples = true;
+
+    [Header("Debug Gizmos")]
+    [Tooltip("Automatically draw LOS sample gizmos in the Scene view.")]
+    [SerializeField] private bool drawDebugGizmos = true;
+
+    [Tooltip("Only draw while playing.")]
+    [SerializeField] private bool gizmosOnlyInPlayMode = true;
+
     [SerializeField] private LayerMask occluderLayers = ~0;
 
     [Tooltip("Layers never treated as occluders (e.g. UI, terrain).")]
@@ -60,6 +82,7 @@ public class CameraLineOfSightShield : MonoBehaviour
     private readonly List<Renderer> _scratchRenderers = new List<Renderer>(16);
     private readonly List<Renderer> _nullKeys = new List<Renderer>(4);
     private readonly List<FadeEntry> _teardownQueue = new List<FadeEntry>(16);
+    private readonly List<Vector3> _focusSamples = new List<Vector3>(9);
 
     private RaycastHit[] _hits;
     private readonly Dictionary<Renderer, FadeEntry> _entries = new Dictionary<Renderer, FadeEntry>(32);
@@ -119,53 +142,59 @@ public class CameraLineOfSightShield : MonoBehaviour
             return;
         }
 
-        Vector3 dir = delta / dist;
-        float castDistance = dist + castPastFocus;
-        float probeR = Mathf.Max(sweepProbeRadius, shieldRadius);
-
         int mask = occluderLayers.value & ~excludeFromOccluders.value;
-        int count = Physics.SphereCastNonAlloc(
-            origin,
-            probeR,
-            dir,
-            _hits,
-            castDistance,
-            mask,
-            QueryTriggerInteraction.Ignore);
-
         _wantedHidden.Clear();
 
-        if (count > 0)
+        if (useSampledLineOfSight)
         {
-            SortHitsByDistance(_hits, count);
+            CollectOccludersFromLineOfSightSamples(origin, focus, mask);
+        }
+        else
+        {
+            Vector3 dir = delta / dist;
+            float castDistance = dist + castPastFocus;
+            float probeR = Mathf.Max(sweepProbeRadius, shieldRadius);
+            int count = Physics.SphereCastNonAlloc(
+                origin,
+                probeR,
+                dir,
+                _hits,
+                castDistance,
+                mask,
+                QueryTriggerInteraction.Ignore);
 
-            Transform targetRoot = TargetRoot;
-            Transform cameraRoot = _camera.transform.root;
-
-            for (int i = 0; i < count; i++)
+            if (count > 0)
             {
-                var hit = _hits[i];
-                if (hit.collider == null)
-                    continue;
+                SortHitsByDistance(_hits, count);
 
-                Transform t = hit.collider.transform;
-                if (targetRoot != null && IsDescendantOf(t, targetRoot))
-                    break;
+                Transform targetRoot = TargetRoot;
+                Transform cameraRoot = _camera.transform.root;
 
-                if (IsDescendantOf(t, cameraRoot))
-                    continue;
-
-                if (!IsHitInsideViewCone(hit.point, origin, focus, dist, shieldRadius, castPastFocus, coneRadialSlop))
-                    continue;
-
-                CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
-                for (int r = 0; r < _scratchRenderers.Count; r++)
+                for (int i = 0; i < count; i++)
                 {
-                    Renderer ren = _scratchRenderers[r];
-                    if (ren != null)
-                        _wantedHidden.Add(ren);
+                    var hit = _hits[i];
+                    if (hit.collider == null)
+                        continue;
+
+                    Transform t = hit.collider.transform;
+                    if (targetRoot != null && IsDescendantOf(t, targetRoot))
+                        break;
+
+                    if (IsDescendantOf(t, cameraRoot))
+                        continue;
+
+                    if (!IsHitInsideViewCone(hit.point, origin, focus, dist, shieldRadius, castPastFocus, coneRadialSlop))
+                        continue;
+
+                    CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
+                    for (int r = 0; r < _scratchRenderers.Count; r++)
+                    {
+                        Renderer ren = _scratchRenderers[r];
+                        if (ren != null)
+                            _wantedHidden.Add(ren);
+                    }
+                    _scratchRenderers.Clear();
                 }
-                _scratchRenderers.Clear();
             }
         }
 
@@ -465,6 +494,144 @@ public class CameraLineOfSightShield : MonoBehaviour
                 j--;
             }
             hits[j + 1] = key;
+        }
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (!drawDebugGizmos)
+            return;
+        if (gizmosOnlyInPlayMode && !Application.isPlaying)
+            return;
+
+        Camera camRef = _camera != null ? _camera : GetComponent<Camera>();
+        if (camRef == null)
+            return;
+
+        Transform targetRef = followTarget;
+        if (targetRef == null)
+        {
+            CameraFollow cf = _cameraFollow != null ? _cameraFollow : GetComponentInParent<CameraFollow>();
+            if (cf != null)
+                targetRef = cf.target;
+        }
+        if (targetRef == null)
+            return;
+
+        Vector3 origin = camRef.transform.position;
+        Vector3 focus = targetRef.position + focusWorldOffset;
+        Vector3 toFocus = focus - origin;
+        if (toFocus.sqrMagnitude < 0.0025f)
+            return;
+
+        BuildFocusSamples(origin, focus, _focusSamples);
+
+        Gizmos.color = new Color(0f, 1f, 1f, 0.95f);
+        Gizmos.DrawWireSphere(origin, Mathf.Max(0.03f, losSampleCastRadius));
+
+        for (int i = 0; i < _focusSamples.Count; i++)
+        {
+            Vector3 sample = _focusSamples[i];
+            Gizmos.color = new Color(1f, 0.85f, 0.25f, 0.9f);
+            Gizmos.DrawLine(origin, sample);
+            Gizmos.DrawWireSphere(sample, 0.075f);
+        }
+    }
+
+    private void CollectOccludersFromLineOfSightSamples(Vector3 cameraPos, Vector3 focus, int mask)
+    {
+        BuildFocusSamples(cameraPos, focus, _focusSamples);
+
+        Transform targetRoot = TargetRoot;
+        Transform cameraRoot = _camera.transform.root;
+        float sampleRadius = Mathf.Max(0f, losSampleCastRadius);
+
+        for (int s = 0; s < _focusSamples.Count; s++)
+        {
+            Vector3 sample = _focusSamples[s];
+            Vector3 ray = sample - cameraPos;
+            float distance = ray.magnitude;
+            if (distance < 0.05f)
+                continue;
+
+            Vector3 dir = ray / distance;
+            int count;
+            if (sampleRadius > 0f)
+            {
+                count = Physics.SphereCastNonAlloc(
+                    cameraPos,
+                    sampleRadius,
+                    dir,
+                    _hits,
+                    distance + castPastFocus,
+                    mask,
+                    QueryTriggerInteraction.Ignore);
+            }
+            else
+            {
+                count = Physics.RaycastNonAlloc(
+                    cameraPos,
+                    dir,
+                    _hits,
+                    distance + castPastFocus,
+                    mask,
+                    QueryTriggerInteraction.Ignore);
+            }
+
+            if (count <= 0)
+                continue;
+
+            SortHitsByDistance(_hits, count);
+
+            for (int i = 0; i < count; i++)
+            {
+                var hit = _hits[i];
+                if (hit.collider == null)
+                    continue;
+
+                Transform t = hit.collider.transform;
+                if (targetRoot != null && IsDescendantOf(t, targetRoot))
+                    break;
+
+                if (IsDescendantOf(t, cameraRoot))
+                    continue;
+
+                CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
+                for (int r = 0; r < _scratchRenderers.Count; r++)
+                {
+                    Renderer ren = _scratchRenderers[r];
+                    if (ren != null)
+                        _wantedHidden.Add(ren);
+                }
+                _scratchRenderers.Clear();
+            }
+        }
+    }
+
+    private void BuildFocusSamples(Vector3 cameraPos, Vector3 focus, List<Vector3> output)
+    {
+        output.Clear();
+
+        Vector3 toFocus = focus - cameraPos;
+        Vector3 fwd = toFocus.sqrMagnitude > 0.0001f ? toFocus.normalized : (_camera != null ? _camera.transform.forward : transform.forward);
+        Vector3 right = Vector3.Cross(Vector3.up, fwd);
+        if (right.sqrMagnitude < 0.0001f)
+            right = _camera != null ? _camera.transform.right : transform.right;
+        right.Normalize();
+        Vector3 up = Vector3.Cross(fwd, right).normalized;
+
+        output.Add(focus);
+        output.Add(focus + right * targetSampleHalfWidth);
+        output.Add(focus - right * targetSampleHalfWidth);
+        output.Add(focus + up * targetSampleHalfHeight);
+        output.Add(focus - up * targetSampleHalfHeight);
+
+        if (includeDiagonalSamples)
+        {
+            output.Add(focus + right * targetSampleHalfWidth + up * targetSampleHalfHeight);
+            output.Add(focus + right * targetSampleHalfWidth - up * targetSampleHalfHeight);
+            output.Add(focus - right * targetSampleHalfWidth + up * targetSampleHalfHeight);
+            output.Add(focus - right * targetSampleHalfWidth - up * targetSampleHalfHeight);
         }
     }
 }

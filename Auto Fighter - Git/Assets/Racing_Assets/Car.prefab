@@ -1688,6 +1688,15 @@ MonoBehaviour:
   roadGrassTransitionLiftSpeed: 0.35
   roadGrassTransitionMinSpeed: 2.5
   roadGrassTransitionLiftCooldown: 0.25
+  deathHpTerrainRayLength: 56
+  deathHpTerrainRayStartHeight: 0.85
+  deathHpGrassDragBoost: 1.45
+  deathHpGrassAngularDragBoost: 1.35
+  deathHpGrassPlanarDampingPerSecond: 6
+  deathHpGrassPlanarDampingPerSpeed: 0.12
+  deathHpGrassRigidbodyDragScale: 2.35
+  deathHpGrassFrictionScale: 1.65
+  deathHpGrassTumbleMaxPlanarSpeed: 11
 --- !u!114 &2359635645306560026
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -553,18 +553,15 @@ public class GameManager_Racing : MonoBehaviour
             _pickupCoinsThisRun +
             _obstacleCoinsThisRun;
 
-        int totalSprockets = mgr?.Sprockets ?? 0;
-
-        // 4) Show breakdown + final total in the UI
+        // 4) Show breakdown + wallet total (matches skill tree) and run-only sprockets
         uiManager?.ShowRunComplete(
             distanceInt,
             _distanceCoinsThisRun,
             _pickupCoinsThisRun,
             _obstacleCoinsThisRun,
             totalCoinsThisRun,
-            _sprocketsThisRun,
-            totalSprockets
-        );
+            finalTotalCurrency,
+            _sprocketsThisRun);
         uiManager?.SetSection(UIManager_Racing.UISection.RunEnd);
         PlayRunCompleteCoinSound();
 
@@ -686,8 +683,9 @@ public class GameManager_Racing : MonoBehaviour
             StartCrashSlowMo(sev);
         }
 
-        // Currency penalties (percentage-based)
-        if (enableCurrencyLossOnCrash)
+        // Currency penalties (percentage-based) — only while the run is still open.
+        // After FinalizeRun, the car may still collide; do not change wallet or run totals.
+        if (enableCurrencyLossOnCrash && !_currencyAwarded)
         {
             int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
             if (runCoins > 0)
@@ -697,6 +695,10 @@ public class GameManager_Racing : MonoBehaviour
                 int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
 
                 int removed = DeductRunCoins(loss);
+
+                // Counters and wallet must stay in sync — pickups/obstacles already added via AddCurrency.
+                if (removed > 0)
+                    RacingSkillTreeManager.Instance?.RemoveCurrency(removed);
 
                 if (removed > 0 && RacingPopups.IsReady && carController != null)
                 {

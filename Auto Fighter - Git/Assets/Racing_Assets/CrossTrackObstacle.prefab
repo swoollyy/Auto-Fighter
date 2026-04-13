@@ -259,7 +259,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
   serializedVersion: 4
-  m_Mass: 6
+  m_Mass: 50
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -307,12 +307,13 @@ MonoBehaviour:
   previewPathSegments: 36
   previewUpdateEveryFrame: 1
   drawPathGizmos: 1
-  debugMassComparison: 1
+  debugPathLoss: 0
   enableScreenShake: 1
   shakeIntensity: 0.1
   shakeFrequency: 6
   shakeMaxDistance: 14
   shakeFullIntensityDistance: 3
+  obstacleMass: 12
   reactLayers:
     serializedVersion: 2
     m_Bits: 10356865
@@ -322,49 +323,13 @@ MonoBehaviour:
   crossClashPairCooldown: 0.2
   forcefieldImpactPairCooldown: 0.25
   travelLights: []
-  massComparisonTolerance: 0.01
-  defaultAddedMass: 4
-  pushDeltaVRange: {x: 2.88, y: 4.57}
-  upwardBoostRange: {x: 2, y: 4}
-  scaleUpwardBoostBySeverity: 1
-  minSpeedForUpwardBoost: 1.5
-  maxSpeedForUpwardBoost: 4
-  guaranteedUpwardBounceOnPathPreserve: 0.75
-  guaranteedUpwardBounceOnPlayerHit: 0.35
-  minRelativeSpeedForPlayerCrossImpact: 2.25
   enableExplosionOnHeavierImpact: 1
   explosionForceBase: 15
-  explosionForceMassScale: 0.5
   explosionForceMax: 40
   explosionUpwardBias: 0.121
   explosionTorqueRange: {x: 13.25, y: 20}
   applyMutualExplosion: 1
   mutualExplosionScale: 0.3
-  massByScaleCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 10
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 2.2
-      value: 23
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  fallbackMass: 10
 --- !u!120 &4974092278974423632
 LineRenderer:
   serializedVersion: 2

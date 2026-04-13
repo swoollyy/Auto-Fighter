@@ -4880,11 +4880,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
-  focusWorldOffset: {x: 0, y: 1.2, z: 0}
-  shieldRadius: 0.58
-  sweepProbeRadius: 0.58
+  focusWorldOffset: {x: 0, y: -0.15, z: 0}
+  shieldRadius: 0.25
+  sweepProbeRadius: 0.25
   castPastFocus: 0
   coneRadialSlop: 0.04
+  useSampledLineOfSight: 1
+  losSampleCastRadius: 0.08
+  targetSampleHalfWidth: 0.15
+  targetSampleHalfHeight: 0.15
+  includeDiagonalSamples: 1
+  drawDebugGizmos: 1
+  gizmosOnlyInPlayMode: 1
   occluderLayers:
     serializedVersion: 2
     m_Bits: 16554112
@@ -6624,7 +6631,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
     behaviorType: 0
     baseWeight: 1.1
-    startAtNormalizedDist: 0
+    startAtNormalizedDist: 0.01
     fullWeightNormalizedDist: 0.2
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6638,7 +6645,7 @@ MonoBehaviour:
     passiveWanderSpeed: 1.5
     passiveDirectionChangeInterval: 2
     passiveFleeFromScared: 1
-    passiveScaredDetectRadius: 7
+    passiveScaredDetectRadius: 3.5
     passiveScaredLoseDistance: 16
     passiveFleeBaseSpeed: 3
     passiveFleeMaxSpeed: 7
@@ -6646,9 +6653,9 @@ MonoBehaviour:
     passiveFleeMaxOffRoadDistance: 10
     passiveUseBugIdleMovement: 1
     passiveIdleBugMoveSpeed: 1.15
-    passiveIdleBugDirectionChangeInterval: 1.05
-    passiveIdleBugLateralRadius: 2.2
-    passiveIdleBugForwardRadius: 1.3
+    passiveIdleBugDirectionChangeInterval: 4
+    passiveIdleBugLateralRadius: 8
+    passiveIdleBugForwardRadius: 8
     scaredDetectionRadius: 0
     scaredBaseFleeSpeed: 0
     scaredMaxFleeSpeed: 0
@@ -6714,7 +6721,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
     baseWeight: 0.5
-    startAtNormalizedDist: 0
+    startAtNormalizedDist: 0.035
     fullWeightNormalizedDist: 0.3
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6736,27 +6743,27 @@ MonoBehaviour:
     passiveFleeMaxOffRoadDistance: 3
     passiveUseBugIdleMovement: 1
     passiveIdleBugMoveSpeed: 1.76
-    passiveIdleBugDirectionChangeInterval: 1.05
+    passiveIdleBugDirectionChangeInterval: 6
     passiveIdleBugLateralRadius: 2.2
     passiveIdleBugForwardRadius: 1.3
-    scaredDetectionRadius: 4.69
+    scaredDetectionRadius: 2.4
     scaredBaseFleeSpeed: 2
     scaredMaxFleeSpeed: 5.02
     scaredSpeedBuildupRate: 1.5
     scaredMaxOffRoadDistance: 14.12
     scaredIdleUseBugMovement: 1
     scaredIdleBugMoveSpeed: 1.77
-    scaredIdleBugDirectionChangeInterval: 0.6
-    scaredIdleBugLateralRadius: 2
-    scaredIdleBugForwardRadius: 1.25
+    scaredIdleBugDirectionChangeInterval: 5
+    scaredIdleBugLateralRadius: 10
+    scaredIdleBugForwardRadius: 10
     scaredFleeFromAggressive: 1
-    scaredAggressiveDetectRadius: 5.15
+    scaredAggressiveDetectRadius: 3.1
     scaredAggressiveLoseFearDistance: 7.95
     scaredAggressiveFleeSpeedMultiplier: 1.46
     scaredFleeFromNpcTraffic: 1
-    scaredNpcTrafficDetectRadius: 9.8
+    scaredNpcTrafficDetectRadius: 2.1
     scaredHuntPassiveCreatures: 1
-    scaredHuntPassiveRadius: 9.2
+    scaredHuntPassiveRadius: 5.1
     scaredPassiveHuntLoseDistance: 13.6
     scaredBugHuntSpeed: 8
     scaredBugHuntSpeedMultiplier: 1
@@ -6804,7 +6811,7 @@ MonoBehaviour:
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
     baseWeight: 1
-    startAtNormalizedDist: 0
+    startAtNormalizedDist: 0.086
     fullWeightNormalizedDist: 0.6
     stopAtNormalizedDist: 1
     extraHeightOffset: 0
@@ -6852,15 +6859,15 @@ MonoBehaviour:
     scaredBugHuntSpeedMultiplier: 1.15
     aggressiveIdleUseBugMovement: 1
     aggressiveIdleBugMoveSpeed: 2.1
-    aggressiveIdleBugDirectionChangeInterval: 1.1
-    aggressiveIdleBugLateralRadius: 5
-    aggressiveIdleBugForwardRadius: 5
+    aggressiveIdleBugDirectionChangeInterval: 6
+    aggressiveIdleBugLateralRadius: 12
+    aggressiveIdleBugForwardRadius: 12
     aggressiveHuntScaredCreatures: 1
     aggressiveHuntRadius: 7.43
     aggressiveHuntSpeedMultiplier: 2
     aggressiveHuntNpcTraffic: 1
-    aggressiveNpcTrafficDetectRadius: 12.1
-    aggressiveDetectionRadius: 6.86
+    aggressiveNpcTrafficDetectRadius: 6
+    aggressiveDetectionRadius: 6
     aggressiveChargeSpeed: 4.43
     aggressiveMaxOffTrackDistance: 50
     aggressiveCrushMassThreshold: 24.54
@@ -13794,7 +13801,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  obstacleScaleRange: {x: 1, y: 2.7}
+  obstacleScaleRange: {x: 2, y: 2.7}
   sizeCurve:
     serializedVersion: 2
     m_Curve:
@@ -13871,8 +13878,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
-      value: 0
+      time: 1
+      value: 1
       inSlope: 0
       outSlope: 0
       tangentMode: 34
@@ -13882,14 +13889,14 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  spawnCooldownRandomRange: {x: 1.35, y: 3.56}
-  initialSpawnDelayRange: {x: 6, y: 15}
+  spawnCooldownRandomRange: {x: 2.37, y: 5.84}
+  initialSpawnDelayRange: {x: 6.19, y: 15}
   useActualPathLengthForPrediction: 1
   offRoadPadding: 7
   avoidRampRadius: 4
   rampCheckLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 8192
   curvatureSampleLength: 12
   highCurvatureThreshold: 0.35
   enableYawWeightedMisses: 1
@@ -17833,7 +17840,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   surfaceType: 1
   maxSpeedMultiplier: 0.1
-  accelerationMultiplier: 0.7
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
   dragMultiplier: 0.63
   iceDynamicFrictionMultiplier: 0.15

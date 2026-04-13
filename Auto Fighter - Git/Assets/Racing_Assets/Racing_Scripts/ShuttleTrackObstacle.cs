@@ -1,4 +1,5 @@
 using System.Collections;
+using DG.Tweening;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -103,10 +104,28 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private float _bottomOffset = 0f;
     private float _safeMargin = 0.02f;
 
+    [Header("Physics")]
+    [Tooltip("Rigidbody mass for this mover (crash / physics).")]
+    [SerializeField, Min(0.01f)] private float obstacleMass = 12f;
+
+    [Header("Cross-track interaction")]
+    [Tooltip("When a scripted CrossTrackObstacle hits this shuttle, the cross keeps its path and this shuttle converts to physics with an extra fling.")]
+    [SerializeField] private bool enableCrossTrackRam = true;
+    [Tooltip("Multiplies impact severity used for fling / spin when rammed by a cross (1 = default).")]
+    [SerializeField, Min(0.5f)] private float crossRamImpactSeverityScale = 1.35f;
+    [Tooltip("Minimum relative speed (m/s) assumed for cross ram if collision data is weak.")]
+    [SerializeField, Min(0f)] private float crossRamMinEffectiveSpeed = 7f;
+
+    [Header("Bump — obstacles when shuttle keeps path")]
+    [Tooltip("If true, hitting props (not path-loss instigators) adds upward velocity while the shuttle stays scripted.")]
+    [SerializeField] private bool enableNonPathLossObstacleBump = true;
+    [SerializeField, Min(0f)] private float nonPathLossUpVelocityChange = 3.5f;
+    [SerializeField, Min(0.5f)] private float nonPathLossBumpSpeedRef = 10f;
+    [SerializeField] private Vector2 nonPathLossBumpSpeedScaleRange = new Vector2(0.45f, 1.15f);
+    [SerializeField] private bool nonPathLossWakeKinematicObstacles = true;
+
     [Header("Collision → Convert To Physics")]
-    [Tooltip("When colliding with any collider on these layers the shuttle will drop its scripted path and convert to physics.")]
-    [SerializeField] private LayerMask convertOnCollisionLayers = ~0;
-    [Tooltip("When enabled, ignore RoadSurface/Terrain layer collisions to avoid accidental conversions.")]
+    [Tooltip("When enabled, ignore RoadSurface/Terrain layer collisions (still only converts for log / thrown / bounce-back / aggressive beast).")]
     [SerializeField] private bool ignoreRoadAndTerrain = true;
     [Tooltip("Minimum movement speed (m/s) used when transferring scripted motion into Rigidbody velocity on conversion.")]
     [SerializeField] private float minTransferVelocity = 0.25f;
@@ -153,13 +172,29 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Color of the light during the final warning flash. Set this equal to Travel Light Color if you want them matching.")]
     [SerializeField] private Color launchWarningColor = Color.yellow;
 
+    [Header("Pre-shuttle scale bob (DOTween)")]
+    [Tooltip("Brief scale-up anticipation right before the shuttle moves again from an end wait.")]
+    [SerializeField] private bool enablePreShuttleScaleBob = true;
+    [Tooltip("Transform to scale (uses this component’s transform if null).")]
+    [SerializeField] private Transform scaleBobTarget;
+    [Tooltip("Begin the bob when this many seconds remain in the end wait (should be ≥ rise+fall duration for full effect).")]
+    [SerializeField, Min(0.05f)] private float preShuttleBobLeadTime = 0.4f;
+    [Tooltip("Uniform local scale multiplier at the peak of the bob.")]
+    [SerializeField, Min(1.01f)] private float preShuttleBobPeakMultiplier = 1.08f;
+    [SerializeField, Min(0.02f)] private float preShuttleBobRiseDuration = 0.16f;
+    [SerializeField, Min(0.02f)] private float preShuttleBobFallDuration = 0.14f;
+    [SerializeField] private Ease preShuttleBobRiseEase = Ease.OutBack;
+    [SerializeField] private Ease preShuttleBobFallEase = Ease.InQuad;
+
     [Header("Travel Light State")]
-    [Tooltip("If true, the light is on and yellow while the shuttle is moving.")]
+    [Tooltip("If true, the telegraph light stays on; intensity is low while idle/waiting and higher while moving / ramping to launch.")]
     [SerializeField] private bool useTravelLightDuringMotion = true;
-    [Tooltip("Color of the light while the shuttle is moving.")]
+    [Tooltip("Color of the light while the shuttle is moving (and base tint while idle).")]
     [SerializeField] private Color travelLightColor = Color.yellow;
-    [Tooltip("Multiplier applied to the original light intensity while moving. 1 = same, 2 = double, etc.")]
+    [Tooltip("Multiplier applied to the light’s baseline intensity while moving along the lane.")]
     [SerializeField] private float travelLightIntensityMultiplier = 1.5f;
+    [Tooltip("Multiplier while stopped / waiting before the telegraph ramp (light stays on at this level).")]
+    [SerializeField, Min(0.01f)] private float idleLightIntensityMultiplier = 0.35f;
 
     private Vector3 _prevPosition;
     private Vector3 _lastVelocity;
@@ -174,7 +209,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private int _pendingCollisionFrames = 0;
     private Collider _pendingCollider;
 
+    private Vector3 _scaleBobBaseLocal;
+    private bool _scaleBobBaseCaptured;
+    private bool _preShuttleBobFiredThisWait;
+
     public void SetGenerator(ProceduralTrackGenerator gen) => trackGenerator = gen;
+
+    /// <summary>True while the shuttle is still lane-scripted (not yet knocked to physics).</summary>
+    public bool IsActiveScriptedShuttle => enabled && !_convertedToPhysics && _rb != null && _rb.isKinematic;
 
     private void Awake()
     {
@@ -192,6 +234,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
         _rb.interpolation = RigidbodyInterpolation.None;
         _rb.constraints = RigidbodyConstraints.FreezeRotation;
+        _rb.mass = Mathf.Max(0.01f, obstacleMass);
 
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
@@ -199,8 +242,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         if (telegraphLight)
         {
-            _baseLightIntensity = telegraphLight.intensity;
-            telegraphLight.enabled = false;
+            _baseLightIntensity = Mathf.Max(0.01f, telegraphLight.intensity);
+            if (useTelegraphLight && useTravelLightDuringMotion)
+            {
+                telegraphLight.enabled = true;
+                telegraphLight.color = travelLightColor;
+                telegraphLight.intensity = _baseLightIntensity * idleLightIntensityMultiplier;
+            }
+            else
+                telegraphLight.enabled = false;
         }
 
         _preview = GetComponent<ObstaclePathPreview>();
@@ -273,6 +323,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _lastVelocity = Vector3.zero;
         _spawnGraceUntil = Time.time + 0.1f;
 
+        CaptureScaleBobBase();
         SetTravelFxEnabled(true);
     }
 
@@ -291,6 +342,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         // Ensure light and preview are OFF until Start() properly initializes
         SetTravelFxEnabled(false, true);
+
+        if (_scaleBobBaseCaptured)
+        {
+            KillShuttleScaleTweens(false);
+            GetScaleBobTarget().localScale = _scaleBobBaseLocal;
+        }
     }
 
     private void Update()
@@ -389,8 +446,14 @@ public class ShuttleTrackObstacle : MonoBehaviour
             _pendingCollisionFrames--;
             if (_pendingCollisionFrames <= 0)
             {
-                // Time's up - actually convert to physics now
-                ConvertToPhysicsOnHit();
+                Collider pending = _pendingCollider;
+                _pendingCollider = null;
+
+                // Never drop scripted path from player contact (incl. delayed queue if the car touched during the wait).
+                if (pending != null && pending.enabled
+                    && TrackMoverPathLossSources.IsInstigator(pending)
+                    && !IsPlayerCarCollider(pending))
+                    ConvertToPhysicsOnHit();
             }
         }
     }
@@ -398,16 +461,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private IEnumerator WaitThenResume(float seconds)
     {
         _waiting = true;
+        _preShuttleBobFiredThisWait = false;
 
-        bool telegraphOn = false;
-        bool launchWarningFired = false;
-
-        // Not traveling while waiting: keep all travel FX hard off.
+        // Path preview off while waiting; telegraph light stays on and ramps in this coroutine.
         SetTravelFxEnabled(false, true);
 
         float totalWait = Mathf.Max(0.0001f, seconds);
-        float telegraphStartTime = totalWait * Mathf.Clamp01(telegraphStartPercent);
-        float telegraphDuration = Mathf.Max(0.0001f, totalWait - telegraphStartTime);
 
         float elapsed = 0f;
 
@@ -417,8 +476,16 @@ public class ShuttleTrackObstacle : MonoBehaviour
             float clampedElapsed = Mathf.Min(elapsed, totalWait);
             float timeRemaining = totalWait - clampedElapsed;
 
-            // During wait, keep all lights/path off by requirement.
-            // Launch particles/audio are also skipped while not traveling.
+            UpdateShuttleLightDuringWait(clampedElapsed, totalWait, timeRemaining);
+
+            if (enablePreShuttleScaleBob
+                && _scaleBobBaseCaptured
+                && !_preShuttleBobFiredThisWait
+                && timeRemaining <= preShuttleBobLeadTime)
+            {
+                _preShuttleBobFiredThisWait = true;
+                PlayPreShuttleScaleBob(timeRemaining);
+            }
 
             yield return null;
         }
@@ -477,8 +544,102 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void OnDisable()
     {
         StopAllCoroutines();
+        KillShuttleScaleTweens(true);
         // Ensure FX are killed when disabled
         SetTravelFxEnabled(false, true);
+    }
+
+    private Transform GetScaleBobTarget() => scaleBobTarget != null ? scaleBobTarget : transform;
+
+    private void CaptureScaleBobBase()
+    {
+        _scaleBobBaseLocal = GetScaleBobTarget().localScale;
+        _scaleBobBaseCaptured = true;
+    }
+
+    private void KillShuttleScaleTweens(bool resetToBase)
+    {
+        Transform t = GetScaleBobTarget();
+        DOTween.Kill(t, false);
+        if (resetToBase && _scaleBobBaseCaptured)
+            t.localScale = _scaleBobBaseLocal;
+    }
+
+    private void PlayPreShuttleScaleBob(float timeBudget)
+    {
+        if (!_scaleBobBaseCaptured) return;
+
+        Transform t = GetScaleBobTarget();
+        DOTween.Kill(t, false);
+        t.localScale = _scaleBobBaseLocal;
+
+        float rise = preShuttleBobRiseDuration;
+        float fall = preShuttleBobFallDuration;
+        float total = rise + fall;
+        if (timeBudget > 0f && total > 1e-4f && timeBudget < total)
+        {
+            float k = timeBudget / total;
+            rise = Mathf.Max(0.02f, rise * k);
+            fall = Mathf.Max(0.02f, fall * k);
+        }
+
+        Vector3 peak = _scaleBobBaseLocal * preShuttleBobPeakMultiplier;
+
+        DOTween.Sequence()
+            .SetTarget(t)
+            .SetUpdate(true)
+            .Append(t.DOScale(peak, rise).SetEase(preShuttleBobRiseEase))
+            .Append(t.DOScale(_scaleBobBaseLocal, fall).SetEase(preShuttleBobFallEase));
+    }
+
+    /// <summary>
+    /// Cross wins: cross stays on its spline; this shuttle is launched off the lane.
+    /// Safe if both collision callbacks run — no-ops after first convert.
+    /// </summary>
+    public void ApplyCrossTrackRamFromCross(CrossTrackObstacle cross, Collision collision)
+    {
+        if (!enableCrossTrackRam || _convertedToPhysics || cross == null || !cross.IsOnScriptedPath)
+            return;
+
+        _pendingCollisionFrames = 0;
+        _pendingCollider = null;
+
+        Vector3 planar = Vector3.zero;
+        if (collision != null && collision.relativeVelocity.sqrMagnitude > 1e-4f)
+        {
+            planar = collision.relativeVelocity;
+            planar.y = 0f;
+        }
+
+        if (planar.sqrMagnitude < 1e-4f)
+        {
+            Vector3 cv = cross.GetWorldVelocity();
+            cv.y = 0f;
+            if (cv.sqrMagnitude > 1e-4f)
+                planar = cv;
+        }
+
+        if (planar.sqrMagnitude < 1e-4f)
+        {
+            planar = transform.position - cross.transform.position;
+            planar.y = 0f;
+        }
+
+        if (planar.sqrMagnitude < 1e-6f)
+            planar = cross.transform.forward;
+        planar.Normalize();
+
+        float rel = crossRamMinEffectiveSpeed;
+        if (collision != null && collision.relativeVelocity.sqrMagnitude > 1e-4f)
+            rel = Mathf.Max(rel, collision.relativeVelocity.magnitude);
+        rel = Mathf.Max(rel, cross.GetWorldVelocity().magnitude, _lastVelocity.magnitude);
+        rel *= crossRamImpactSeverityScale;
+
+        _impactDir = planar;
+        _impactSpeed = rel;
+        _hasImpactDir = true;
+
+        ConvertToPhysicsOnHit();
     }
 
     public void ConvertToPhysicsOnHit()
@@ -491,6 +652,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         enabled = false;
         _waiting = false;
 
+        KillShuttleScaleTweens(true);
 
         // Kill all FX immediately
         _fxKilled = true;
@@ -564,28 +726,18 @@ public class ShuttleTrackObstacle : MonoBehaviour
         Physics.SyncTransforms();
     }
 
-    private bool ShouldConvertForCollider(Collider other)
+    /// <summary>
+    /// Matches <see cref="CrossTrackObstacle"/> player detection: scripted shuttle stays on path; car crash is handled by <see cref="CarController"/>.
+    /// </summary>
+    private static bool IsPlayerCarCollider(Collider other)
     {
         if (other == null) return false;
-
-        if (ignoreRoadAndTerrain)
-        {
-            int road = LayerMask.NameToLayer("RoadSurface");
-            int terrain = LayerMask.NameToLayer("Terrain");
-            if (road >= 0 && other.gameObject.layer == road) return false;
-            if (terrain >= 0 && other.gameObject.layer == terrain) return false;
-            if (road >= 0 && other.transform.root != null && other.transform.root.gameObject.layer == road) return false;
-            if (terrain >= 0 && other.transform.root != null && other.transform.root.gameObject.layer == terrain) return false;
-        }
-
-        if (((convertOnCollisionLayers.value) & (1 << other.gameObject.layer)) != 0) return true;
-
-        if (other.transform.root != null)
-        {
-            if (((convertOnCollisionLayers.value) & (1 << other.transform.root.gameObject.layer)) != 0) return true;
-        }
-
-        return false;
+        if (other.GetComponentInParent<CarController>() != null)
+            return true;
+        var active = GameManager_Racing.Instance != null ? GameManager_Racing.Instance.ActiveCar : null;
+        if (active == null) return false;
+        Transform t = other.transform;
+        return t == active.transform || t.IsChildOf(active.transform);
     }
 
     private bool _fxKilled = false;
@@ -623,19 +775,72 @@ public class ShuttleTrackObstacle : MonoBehaviour
             }
         }
 
-        if (telegraphLight != null)
+        // Telegraph light: stay on whenever the shuttle is active; only path preview toggles with travel.
+        if (!_waiting)
+            ApplyShuttleLightOutsideWait(enabledNow);
+    }
+
+    /// <summary>Moving along lane, or idle dim when path preview is off but not in end-wait coroutine.</summary>
+    private void ApplyShuttleLightOutsideWait(bool pathPreviewTraveling)
+    {
+        if (telegraphLight == null || !useTelegraphLight || !useTravelLightDuringMotion)
         {
-            if (enabledNow && useTelegraphLight && useTravelLightDuringMotion)
-            {
-                telegraphLight.enabled = true;
-                telegraphLight.color = travelLightColor;
-                telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0f, travelLightIntensityMultiplier);
-            }
-            else
-            {
+            if (telegraphLight != null && (!useTelegraphLight || !useTravelLightDuringMotion))
                 telegraphLight.enabled = false;
-            }
+            return;
         }
+
+        if (_fxKilled || _convertedToPhysics || !enabled)
+        {
+            telegraphLight.enabled = false;
+            return;
+        }
+
+        telegraphLight.enabled = true;
+        if (pathPreviewTraveling)
+        {
+            telegraphLight.color = travelLightColor;
+            telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0.01f, travelLightIntensityMultiplier);
+        }
+        else
+        {
+            telegraphLight.color = travelLightColor;
+            telegraphLight.intensity = _baseLightIntensity * Mathf.Max(0.01f, idleLightIntensityMultiplier);
+        }
+    }
+
+    private void UpdateShuttleLightDuringWait(float elapsed, float totalWait, float timeRemaining)
+    {
+        if (telegraphLight == null || !useTelegraphLight || !useTravelLightDuringMotion || _fxKilled || _convertedToPhysics)
+            return;
+
+        telegraphLight.enabled = true;
+
+        float tNorm = elapsed / totalWait;
+        float startT = Mathf.Clamp01(telegraphStartPercent);
+        float idleI = _baseLightIntensity * Mathf.Max(0.01f, idleLightIntensityMultiplier);
+        float moveI = _baseLightIntensity * Mathf.Max(0.01f, travelLightIntensityMultiplier);
+
+        if (tNorm < startT)
+        {
+            telegraphLight.color = travelLightColor;
+            telegraphLight.intensity = idleI;
+            return;
+        }
+
+        float teleT = Mathf.InverseLerp(startT, 1f, tNorm);
+        float intensity = Mathf.Lerp(idleI, moveI, teleT);
+        telegraphLight.color = Color.Lerp(travelLightColor, telegraphEndColor, teleT);
+
+        if (launchWarningLeadTime > 0f && timeRemaining <= launchWarningLeadTime)
+        {
+            float w = 1f - Mathf.Clamp01(timeRemaining / launchWarningLeadTime);
+            float warnPeak = moveI * Mathf.Max(1f, launchWarningIntensityMultiplier);
+            intensity = Mathf.Lerp(intensity, warnPeak, w);
+            telegraphLight.color = Color.Lerp(telegraphLight.color, launchWarningColor, w);
+        }
+
+        telegraphLight.intensity = intensity;
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -646,15 +851,48 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         Debug.Log($"[ShuttleTrackObstacle] OnCollisionEnter with {collision.collider.name} (layer={collision.collider.gameObject.layer})");
 
-        if (!IsInConvertLayers(collision.collider.gameObject))
-            return;
-
         if (ignoreRoadAndTerrain)
         {
             int road = LayerMask.NameToLayer("RoadSurface");
             int terrain = LayerMask.NameToLayer("Terrain");
             int l = collision.collider.gameObject.layer;
             if (l == road || l == terrain) return;
+        }
+
+        if (IsPlayerCarCollider(collision.collider))
+        {
+            _pendingCollisionFrames = 0;
+            _pendingCollider = null;
+            return;
+        }
+
+        var cross = collision.collider.GetComponentInParent<CrossTrackObstacle>();
+        if (cross != null && cross.IsOnScriptedPath)
+        {
+            ApplyCrossTrackRamFromCross(cross, collision);
+            return;
+        }
+
+        if (!TrackMoverPathLossSources.IsInstigator(collision.collider))
+        {
+            if (enableNonPathLossObstacleBump)
+            {
+                float rel = collision.relativeVelocity.sqrMagnitude > 1e-6f
+                    ? collision.relativeVelocity.magnitude
+                    : 0f;
+                TrackMoverNonPathBump.TryApplyUpLaunch(
+                    collision.collider,
+                    transform,
+                    _lastVelocity,
+                    rel,
+                    nonPathLossUpVelocityChange,
+                    nonPathLossBumpSpeedScaleRange.x,
+                    nonPathLossBumpSpeedScaleRange.y,
+                    nonPathLossBumpSpeedRef,
+                    nonPathLossWakeKinematicObstacles);
+            }
+
+            return;
         }
 
         // NEW: Store impact data
@@ -709,15 +947,45 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         Debug.Log($"[ShuttleTrackObstacle] OnTriggerEnter with {other.name} (layer={other.gameObject.layer})");
 
-        if (!IsInConvertLayers(other.gameObject))
-            return;
-
         if (ignoreRoadAndTerrain)
         {
             int road = LayerMask.NameToLayer("RoadSurface");
             int terrain = LayerMask.NameToLayer("Terrain");
             int l = other.gameObject.layer;
             if (l == road || l == terrain) return;
+        }
+
+        if (IsPlayerCarCollider(other))
+        {
+            _pendingCollisionFrames = 0;
+            _pendingCollider = null;
+            return;
+        }
+
+        var crossT = other.GetComponentInParent<CrossTrackObstacle>();
+        if (crossT != null && crossT.IsOnScriptedPath)
+        {
+            ApplyCrossTrackRamFromCross(crossT, null);
+            return;
+        }
+
+        if (!TrackMoverPathLossSources.IsInstigator(other))
+        {
+            if (enableNonPathLossObstacleBump)
+            {
+                TrackMoverNonPathBump.TryApplyUpLaunch(
+                    other,
+                    transform,
+                    _lastVelocity,
+                    _lastVelocity.magnitude,
+                    nonPathLossUpVelocityChange,
+                    nonPathLossBumpSpeedScaleRange.x,
+                    nonPathLossBumpSpeedScaleRange.y,
+                    nonPathLossBumpSpeedRef,
+                    nonPathLossWakeKinematicObstacles);
+            }
+
+            return;
         }
 
         Vector3 dir;
@@ -801,8 +1069,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         combined.Expand(0.01f);
 
-        int mask = convertOnCollisionLayers.value;
-        Collider[] hits = Physics.OverlapBox(combined.center, combined.extents, transform.rotation, mask);
+        Collider[] hits = Physics.OverlapBox(
+            combined.center,
+            combined.extents,
+            transform.rotation,
+            ~0,
+            QueryTriggerInteraction.Ignore);
         if (hits == null || hits.Length == 0) return;
 
         foreach (var hit in hits)
@@ -810,6 +1082,19 @@ public class ShuttleTrackObstacle : MonoBehaviour
             if (hit == null) continue;
             if (System.Array.IndexOf(_childColliders, hit) >= 0) continue;
             if (hit.isTrigger) continue;
+
+            if (IsPlayerCarCollider(hit))
+                continue;
+
+            var crossOv = hit.GetComponentInParent<CrossTrackObstacle>();
+            if (crossOv != null && crossOv.IsOnScriptedPath)
+            {
+                ApplyCrossTrackRamFromCross(crossOv, null);
+                return;
+            }
+
+            if (!TrackMoverPathLossSources.IsInstigator(hit))
+                continue;
 
             Debug.Log($"[ShuttleTrackObstacle] Overlap hit {hit.name} (layer={hit.gameObject.layer}) – converting.");
 
@@ -933,12 +1218,6 @@ public class ShuttleTrackObstacle : MonoBehaviour
             if (valid) lo = mid; else hi = mid;
         }
         return lo;
-    }
-
-    private bool IsInConvertLayers(GameObject go)
-    {
-        int layer = go.layer;
-        return (convertOnCollisionLayers.value & (1 << layer)) != 0;
     }
 
     [SerializeField]

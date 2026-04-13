@@ -63,7 +63,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour
     [SerializeField] private float initialPreSpawnDistance = 200f;
 
     [Header("Despawn")]
-    [Tooltip("Despawn cars this far behind the player.")]
+    [Tooltip("Despawn cars whose *current* position along the track spline is this far behind the player (uses each NPC’s live progress, not its spawn slot).")]
     [SerializeField] private float despawnBehindDistance = 30f;
 
     [Tooltip("Also despawn crashed cars after this duration.")]
@@ -372,22 +372,21 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         foreach (var kvp in _carsBySlot)
         {
-            float dist = kvp.Key * carSpacing;
-            bool behind = dist < playerDist - despawnBehindDistance;
-
-            // Also check if crashed and enough time passed
-            bool crashedAndOld = false;
-            if (kvp.Value != null)
+            if (kvp.Value == null)
             {
-                var npc = kvp.Value.GetComponent<NPCTrafficCar>();
-                if (npc != null && npc.HasCrashed)
-                {
-                    // Could track crash time, but simpler: just despawn crashed cars that are behind
-                    crashedAndOld = behind;
-                }
+                _toRemove.Add(kvp.Key);
+                continue;
             }
 
-            if (behind || kvp.Value == null)
+            // Use live arc position so cars that caught up / drive alongside the player are not culled by stale spawn-slot distance.
+            float carDistAlong = kvp.Key * carSpacing;
+            var npc = kvp.Value.GetComponent<NPCTrafficCar>();
+            if (npc != null && npc.TryGetDistanceAlongTrack(out float dAlong))
+                carDistAlong = dAlong;
+
+            bool behind = carDistAlong < playerDist - despawnBehindDistance;
+
+            if (behind)
                 _toRemove.Add(kvp.Key);
         }
 

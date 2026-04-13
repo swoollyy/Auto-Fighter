@@ -183,7 +183,7 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  trackLookAhead: 8.5
+  trackLookAhead: 5
   speed: 3
   randomizeSpeed: 1
   speedRange: {x: 2.5, y: 5}
@@ -204,33 +204,33 @@ MonoBehaviour:
   turnRateFalloffSpeed: 11.4
   accelerationRate: 8
   decelerationRate: 16
-  steeringSmoothTime: 0.15
+  steeringSmoothTime: 0.2
   speedSmoothTime: 0.09
   alignmentTime: 0.34
   headingErrorForFullSteerDeg: 50
   steeringDeadZoneDeg: 2.5
-  steeringDamping: 0.259
+  steeringDamping: 0.28
   alignToGround: 0
   minSpeedForRotation: 1
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 5
+  scanRange: 6
   pathHalfWidth: 1.88
-  scanRayCount: 19
+  scanRayCount: 21
   scanFanAngleDeg: 100
-  forwardThreatConeHalfAngleDeg: 8.5
+  forwardThreatConeHalfAngleDeg: 10
   rayHeight: 0
   rayForwardOffset: 0.4
   hitboxClearance: 1.31
-  reactionTime: 0.637
-  framesToCommitAvoid: 2
+  reactionTime: 0.75
+  framesToCommitAvoid: 3
   avoidSteerWeight: 1
   dodgeHeadingSlewDegPerSec: 39
-  preCommitSteerBlend: 0.38
-  framesForwardClearToExit: 2
+  preCommitSteerBlend: 0.15
+  framesForwardClearToExit: 4
   exitWhenTrackAheadClear: 1
-  trackAheadClearCheckDistance: 3
+  trackAheadClearCheckDistance: 5
   framesTrackAheadClearToExit: 4
   sideNudgeMaxDistance: 3.94
   framesCorridorBlockedToReplan: 2
@@ -238,10 +238,10 @@ MonoBehaviour:
   framesOppositeFlankWinsToFlip: 4
   minRoadRoomToDodge: 0.5
   enableRoadBoundaryDetection: 1
-  roadEdgeProbeWidth: 6
-  roadEdgeSteerWeight: 0.715
-  roadEdgeSoftMargin: 0.25
-  offTrackRecoverySteerWeight: 0.966
+  roadEdgeProbeWidth: 1.2
+  roadEdgeSteerWeight: 0.95
+  roadEdgeSoftMargin: 0.08
+  offTrackRecoverySteerWeight: 0.65
   drawRoadBoundaryDebug: 1
   useHeavyCrashProfile: 0
   crashLayers:

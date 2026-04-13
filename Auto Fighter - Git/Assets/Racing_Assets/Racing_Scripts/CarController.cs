@@ -1883,6 +1883,9 @@ public class CarController : MonoBehaviour
                         // Award passive clicks
                         _flipMashClicks += effectivePassiveClickStrength;
 
+                        if (effectivePassiveClickStrength > 0)
+                            TrySpawnPopupRandomScreen(RacingPopupType.MashClickDamage, effectivePassiveClickStrength);
+
                         // Give partial fuel for passive clicks
                         float passiveFuelReward = effectiveFuelPerClick * 0.5f;
                         if (passiveFuelReward > 0f && maxFuel > 0f)
@@ -4888,6 +4891,7 @@ public class CarController : MonoBehaviour
 
     private void CancelAllBoostState(float lockoutSeconds)
     {
+        bool wasBoosting = _isBoosting;
         _boostRequested = false;
         ClearBoostOverride();
 
@@ -4912,6 +4916,11 @@ public class CarController : MonoBehaviour
 
         // Lock out all boosts for a bit (covers post-crash drift-release + space presses)
         _boostBlockedUntil = Mathf.Max(_boostBlockedUntil, Time.time + Mathf.Max(0f, lockoutSeconds));
+
+        if (wasBoosting)
+        {
+            try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
+        }
     }
 
     private void ApplySkillEffects()
@@ -6130,6 +6139,14 @@ public class CarController : MonoBehaviour
         if (hitNpcTraffic)
             impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
 
+        // Cross / shuttle movers: any contact should crash the car (slow coast-ins used to skip crash while the obstacle still converted / reacted).
+        var hitCol = collision.collider;
+        if (hitCol.GetComponentInParent<CrossTrackObstacle>() != null
+            || hitCol.GetComponentInParent<ShuttleTrackObstacle>() != null)
+        {
+            impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
+        }
+
         if (impactSpeed < minImpactSpeed)
             return;
 
@@ -6202,7 +6219,7 @@ public class CarController : MonoBehaviour
         float impulseMag = impactSpeed * impulsePerUnitSpeed;
         float torqueMag = impactSpeed * torquePerUnitSpeed;
 
-        var otherCol = collision.collider;
+        var otherCol = hitCol;
         var cross = otherCol.GetComponentInParent<CrossTrackObstacle>();
         if (cross != null)
         {
@@ -6474,6 +6491,12 @@ public class CarController : MonoBehaviour
 
         if (hitNpcTrafficTrigger)
             impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
+
+        if (other.GetComponentInParent<CrossTrackObstacle>() != null
+            || other.GetComponentInParent<ShuttleTrackObstacle>() != null)
+        {
+            impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
+        }
 
         if (impactSpeed < minImpactSpeed)
             return;

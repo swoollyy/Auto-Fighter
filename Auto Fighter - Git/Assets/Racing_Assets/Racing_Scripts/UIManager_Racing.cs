@@ -263,14 +263,17 @@ public class UIManager_Racing : MonoBehaviour
     }
 
 
+    /// <param name="coinsEarnedThisRun">Distance + pickup + obstacle coins for this run only.</param>
+    /// <param name="walletCoinsAfterRun">Saved coin total after the run (matches skill tree).</param>
+    /// <param name="sprocketsThisRun">Sprockets earned during this run only (not lifetime save total).</param>
     public void ShowRunComplete(
         int distanceMeters,
         int distanceCoins,
         int pickupCoins,
         int obstacleCoins,
-        int totalCurrency,
-        int sprocketsGained = 0,
-        int totalSprockets = 0)
+        int coinsEarnedThisRun,
+        int walletCoinsAfterRun,
+        int sprocketsThisRun = 0)
     {
         int totalThisRun = distanceCoins + pickupCoins + obstacleCoins;
 
@@ -292,19 +295,16 @@ public class UIManager_Racing : MonoBehaviour
         if (runTotalCurrencyText)
         {
             runTotalCurrencyText.gameObject.SetActive(true);
-            runTotalCurrencyText.text = $"Total Coins: {totalCurrency}";
+            runTotalCurrencyText.text = $"Wallet Total: {walletCoinsAfterRun}";
         }
 
         if (runSprocketsGainedText)
-        {
-            runSprocketsGainedText.gameObject.SetActive(sprocketsGained > 0);
-            runSprocketsGainedText.text = $"Sprockets Earned: +{sprocketsGained}";
-        }
+            runSprocketsGainedText.gameObject.SetActive(false);
 
         if (runTotalSprocketsText)
         {
             runTotalSprocketsText.gameObject.SetActive(true);
-            runTotalSprocketsText.text = $"Total Sprockets: {totalSprockets}";
+            runTotalSprocketsText.text = $"Sprockets This Run: {sprocketsThisRun}";
         }
 
         if (runRestartHintText && string.IsNullOrEmpty(runRestartHintText.text))
