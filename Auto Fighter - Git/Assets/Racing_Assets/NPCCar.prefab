@@ -183,7 +183,7 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  trackLookAhead: 5
+  trackLookAhead: 3
   speed: 3
   randomizeSpeed: 1
   speedRange: {x: 2.5, y: 5}
@@ -215,33 +215,35 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 6
-  pathHalfWidth: 1.88
-  scanRayCount: 21
+  scanRange: 4
+  pathHalfWidth: 2
+  scanRayCount: 19
   scanFanAngleDeg: 100
-  forwardThreatConeHalfAngleDeg: 10
+  forwardThreatConeHalfAngleDeg: 15
   rayHeight: 0
   rayForwardOffset: 0.4
-  hitboxClearance: 1.31
-  reactionTime: 0.75
-  framesToCommitAvoid: 3
+  hitboxClearance: 1
+  reactionTime: 0.86
+  framesToCommitAvoid: 2
   avoidSteerWeight: 1
   dodgeHeadingSlewDegPerSec: 39
   preCommitSteerBlend: 0.15
-  framesForwardClearToExit: 4
+  framesForwardClearToExit: 5
   exitWhenTrackAheadClear: 1
-  trackAheadClearCheckDistance: 5
-  framesTrackAheadClearToExit: 4
-  sideNudgeMaxDistance: 3.94
-  framesCorridorBlockedToReplan: 2
-  oppositeFlankGreenMargin: 5
+  trackAheadClearCheckDistance: 3
+  framesTrackAheadClearToExit: 5
+  sideNudgeMaxDistance: 2.5
+  framesCorridorBlockedToReplan: 4
+  oppositeFlankGreenMargin: 2
   framesOppositeFlankWinsToFlip: 4
-  minRoadRoomToDodge: 0.5
+  minRoadRoomToDodge: 0.2
+  dodgeTowardRoadCenterWeight: 3.2
+  avoidanceLaneCenterSteerBlend: 0.38
   enableRoadBoundaryDetection: 1
-  roadEdgeProbeWidth: 1.2
-  roadEdgeSteerWeight: 0.95
+  roadEdgeProbeWidth: 0.1
+  roadEdgeSteerWeight: 0.7
   roadEdgeSoftMargin: 0.08
-  offTrackRecoverySteerWeight: 0.65
+  offTrackRecoverySteerWeight: 0.3
   drawRoadBoundaryDebug: 1
   useHeavyCrashProfile: 0
   crashLayers:

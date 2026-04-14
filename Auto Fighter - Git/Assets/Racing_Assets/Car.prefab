@@ -1616,9 +1616,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 9
-  fuelUsePerSecondBraking: 9
-  idleFuelUsePerSecond: 5
+  fuelUsePerSecondAtFullThrottle: 0
+  fuelUsePerSecondBraking: 0
+  idleFuelUsePerSecond: 0
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:

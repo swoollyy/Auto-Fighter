@@ -143,6 +143,10 @@ public class NPCTrafficCar : MonoBehaviour
     [FormerlySerializedAs("minTrackRoomToDodge")]
     [Tooltip("Minimum lateral road room (m) before dodging that way.")]
     [SerializeField, Min(0.2f)] private float minRoadRoomToDodge = 2f;
+    [Tooltip("When > 0, dodge picks, ray scores, and headings favor the spline center. Also stops the old 'swerve toward the more open flank' rule from shoving traffic further onto the shoulder.")]
+    [SerializeField, Range(0f, 5f)] private float dodgeTowardRoadCenterWeight = 2.35f;
+    [Tooltip("While committed to an obstacle dodge, blend this much steer toward lane center (0 = dodge only ignores centering).")]
+    [SerializeField, Range(0f, 0.55f)] private float avoidanceLaneCenterSteerBlend = 0.22f;
 
     // -------------------------------------------------------------------------
     // STAY ON ROAD
@@ -516,6 +520,14 @@ public class NPCTrafficCar : MonoBehaviour
             range);
         reactionDist = Mathf.Min(range, reactionDist + clearance * 0.55f);
 
+        Vector3 toCenterFromScan = _scanTrackCenter - _scanOrigin;
+        toCenterFromScan.y = 0f;
+        float toCenterScanMagSq = toCenterFromScan.sqrMagnitude;
+        if (toCenterScanMagSq > 0.01f)
+            toCenterFromScan /= Mathf.Sqrt(toCenterScanMagSq);
+        else
+            toCenterFromScan = _scanTrackFwd;
+
         for (int i = 0; i < scanRayCount; i++)
         {
             float ang = -halfFan + step * i;
@@ -573,11 +585,22 @@ public class NPCTrafficCar : MonoBehaviour
             else
             {
                 Vector3 end = _scanOrigin + rayDir * roadLim;
-                float lateral = Mathf.Abs(Vector3.Dot(end - _scanTrackCenter, _scanTrackRight));
+                float endLat = Vector3.Dot(end - _scanTrackCenter, _scanTrackRight);
+                float lateral = Mathf.Abs(endLat);
                 float halfW = Mathf.Max(0.4f, GetHalfRoadWidth());
                 float centerScore = 1f - Mathf.Clamp01(lateral / halfW);
                 float align = Mathf.Clamp01((Vector3.Dot(rayDir, _scanTrackFwd) + 1f) * 0.5f);
-                float score = roadLim * 5f + centerScore * 2.5f + align * 0.35f;
+                float towardDelta = Mathf.Abs(_distanceFromTrackCenter) - Mathf.Abs(endLat);
+                float towardBonus = Mathf.Max(0f, towardDelta) * (1.35f + dodgeTowardRoadCenterWeight);
+                float rayCentering = 0f;
+                if (dodgeTowardRoadCenterWeight > 0f && toCenterScanMagSq > 0.01f)
+                    rayCentering = Mathf.Max(0f, Vector3.Dot(rayDir, toCenterFromScan)) * (4.2f + dodgeTowardRoadCenterWeight * 1.4f);
+                float wCenter = dodgeTowardRoadCenterWeight;
+                float score = roadLim * Mathf.Max(2.5f, 5f - wCenter * 0.35f)
+                    + centerScore * (2.5f + wCenter * 1.1f)
+                    + align * 0.35f
+                    + towardBonus
+                    + rayCentering;
 
                 if (isLeft)
                 {
@@ -715,7 +738,7 @@ public class NPCTrafficCar : MonoBehaviour
                 _preCommitActive = false;
                 _lockedDodgeSide = ChooseDodgeSide(scan);
                 if (_lockedDodgeSide == 0) _lockedDodgeSide = 1;
-                _dodgeHeading = InitialDodgeHeading(_lockedDodgeSide, scan);
+                _dodgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(_lockedDodgeSide, scan));
                 _corridorBlockedStreak = 0;
                 _oppositeFlankWinStreak = 0;
                 _forwardClearWhileAvoidStreak = 0;
@@ -724,11 +747,11 @@ public class NPCTrafficCar : MonoBehaviour
 
             _ambientSideNudge = sideNudge;
             if (_ambientSideNudge)
-                _nudgeHeading = InitialDodgeHeading(ChooseDodgeSide(scan), scan);
+                _nudgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(ChooseDodgeSide(scan), scan));
 
             _preCommitActive = wantThreat && _forwardThreatStreak > 0 && _forwardThreatStreak < framesToCommitAvoid;
             if (_preCommitActive)
-                _preCommitDir = InitialDodgeHeading(ChooseDodgeSide(scan), scan);
+                _preCommitDir = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(ChooseDodgeSide(scan), scan));
 
             _avoidanceUrgency = wantThreat
                 ? Mathf.Clamp01(Mathf.InverseLerp(scanRange, 4f, scan.ForwardThreatDist))
@@ -779,7 +802,7 @@ public class NPCTrafficCar : MonoBehaviour
                 if (_oppositeFlankWinStreak >= framesOppositeFlankWinsToFlip)
                 {
                     _lockedDodgeSide = opp;
-                    _dodgeHeading = InitialDodgeHeading(_lockedDodgeSide, scan);
+                    _dodgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(_lockedDodgeSide, scan));
                     _corridorBlockedStreak = 0;
                     _oppositeFlankWinStreak = 0;
                 }
@@ -823,51 +846,137 @@ public class NPCTrafficCar : MonoBehaviour
         if (!leftRoom && !rightRoom)
             return _leftEdgeDistance >= _rightEdgeDistance ? -1 : 1;
 
+        int centerSide = TowardTrackCenterDodgeSideSign();
+        if (dodgeTowardRoadCenterWeight > 0f)
+        {
+            float halfW = Mathf.Max(0.35f, GetHalfRoadWidth());
+            float u = Mathf.Clamp01(Mathf.Abs(_distanceFromTrackCenter) / (halfW * 0.92f));
+            float bonus = dodgeTowardRoadCenterWeight * (1.15f + u * 1.8f);
+            if (centerSide == 1)
+                rightScore += bonus;
+            else if (centerSide == -1)
+                leftScore += bonus;
+            else if (Mathf.Abs(_distanceFromTrackCenter) > 0.06f)
+            {
+                if (_distanceFromTrackCenter < 0f)
+                    rightScore += bonus * 0.9f;
+                else
+                    leftScore += bonus * 0.9f;
+            }
+        }
+
         int dg = scan.GreensRight - scan.GreensLeft;
-        if (dg >= 2) return 1;
-        if (dg <= -2) return -1;
+        float halfRoad = GetHalfRoadWidth();
+        bool skipGreenTieBreak = dodgeTowardRoadCenterWeight > 0f &&
+                                 (centerSide != 0 ||
+                                  Mathf.Abs(_distanceFromTrackCenter) > halfRoad * 0.12f);
+        if (!skipGreenTieBreak)
+        {
+            if (dg >= 2) return 1;
+            if (dg <= -2) return -1;
+        }
 
         if (rightScore > leftScore + 0.75f) return 1;
         if (leftScore > rightScore + 0.75f) return -1;
 
-        if (scan.ClosestLeftHit > scan.ClosestRightHit + 0.2f) return -1;
-        if (scan.ClosestRightHit > scan.ClosestLeftHit + 0.2f) return 1;
+        // "Dodge away from closer flank" can shove the car further off-track when already on a shoulder.
+        if (dodgeTowardRoadCenterWeight > 0f && centerSide != 0)
+        {
+            if (scan.ClosestLeftHit > scan.ClosestRightHit + 0.2f && centerSide < 0) return -1;
+            if (scan.ClosestRightHit > scan.ClosestLeftHit + 0.2f && centerSide > 0) return 1;
+        }
+        else
+        {
+            if (scan.ClosestLeftHit > scan.ClosestRightHit + 0.2f) return -1;
+            if (scan.ClosestRightHit > scan.ClosestLeftHit + 0.2f) return 1;
+        }
+
+        if (centerSide != 0)
+            return centerSide;
+
+        if (Mathf.Abs(_distanceFromTrackCenter) > 0.08f)
+            return _distanceFromTrackCenter < 0f ? 1 : -1;
 
         return dg >= 0 ? 1 : -1;
     }
 
+    /// <summary>
+    /// +1 = spline center lies to the car's right (prefer right dodge), -1 = to the car's left.
+    /// Uses car axes so slight crab vs the spline does not flip the wrong way.
+    /// </summary>
+    private int TowardTrackCenterDodgeSideSign()
+    {
+        Vector3 toC = _scanTrackCenter - transform.position;
+        toC.y = 0f;
+        float m2 = toC.sqrMagnitude;
+        if (m2 < 0.04f) return 0;
+        toC /= Mathf.Sqrt(m2);
+        float d = Vector3.Dot(toC, _scanCarRight);
+        if (d > 0.1f) return 1;
+        if (d < -0.1f) return -1;
+        return 0;
+    }
+
     private Vector3 InitialDodgeHeading(int side, ObstacleScan scan)
     {
+        Vector3 d;
         if (side > 0 && scan.HasBestRight)
         {
-            Vector3 d = scan.BestRightDir;
+            d = scan.BestRightDir;
             d.y = 0f;
-            return d.normalized;
+            d = d.normalized;
         }
-        if (side < 0 && scan.HasBestLeft)
+        else if (side < 0 && scan.HasBestLeft)
         {
-            Vector3 d = scan.BestLeftDir;
+            d = scan.BestLeftDir;
             d.y = 0f;
-            return d.normalized;
+            d = d.normalized;
         }
-        return Quaternion.Euler(0f, side * 28f, 0f) * _scanCarForward;
+        else
+            d = Quaternion.Euler(0f, side * 28f, 0f) * _scanCarForward;
+
+        d.y = 0f;
+        return d.sqrMagnitude > 1e-4f ? d.normalized : _scanCarForward;
     }
 
     private Vector3 IdealHeadingForLockedSide(int side, ObstacleScan scan)
     {
+        Vector3 d;
         if (side > 0 && scan.HasBestRight)
         {
-            Vector3 d = scan.BestRightDir;
+            d = scan.BestRightDir;
             d.y = 0f;
-            return d.sqrMagnitude > 1e-4f ? d.normalized : InitialDodgeHeading(side, scan);
+            d = d.sqrMagnitude > 1e-4f ? d.normalized : InitialDodgeHeading(side, scan);
         }
-        if (side < 0 && scan.HasBestLeft)
+        else if (side < 0 && scan.HasBestLeft)
         {
-            Vector3 d = scan.BestLeftDir;
+            d = scan.BestLeftDir;
             d.y = 0f;
-            return d.sqrMagnitude > 1e-4f ? d.normalized : InitialDodgeHeading(side, scan);
+            d = d.sqrMagnitude > 1e-4f ? d.normalized : InitialDodgeHeading(side, scan);
         }
-        return Quaternion.Euler(0f, side * 32f, 0f) * _scanCarForward;
+        else
+            d = Quaternion.Euler(0f, side * 32f, 0f) * _scanCarForward;
+
+        return BlendDodgeHeadingTowardTrackCenter(d);
+    }
+
+    private Vector3 BlendDodgeHeadingTowardTrackCenter(Vector3 d)
+    {
+        d.y = 0f;
+        if (d.sqrMagnitude < 1e-4f) d = _scanCarForward;
+        d.Normalize();
+
+        if (dodgeTowardRoadCenterWeight <= 0.01f)
+            return d;
+
+        Vector3 toC = _scanTrackCenter - transform.position;
+        toC.y = 0f;
+        if (toC.sqrMagnitude < 0.25f)
+            return d;
+
+        toC.Normalize();
+        float blend = Mathf.Clamp01(0.14f + dodgeTowardRoadCenterWeight * 0.09f);
+        return Vector3.Slerp(d, toC, blend).normalized;
     }
 
     private bool OppositeFlankStronger(ObstacleScan scan, int oppSide)
@@ -1027,6 +1136,20 @@ public class NPCTrafficCar : MonoBehaviour
         {
             float w = Mathf.Abs(_roadSteerHint);
             rawSteer = Mathf.Lerp(rawSteer, _roadSteerHint, w);
+        }
+        else if (enableRoadBoundaryDetection && heavyAvoid && avoidanceLaneCenterSteerBlend > 0f)
+        {
+            float halfRoad = GetHalfRoadWidth();
+            if (halfRoad > 0.01f)
+            {
+                float norm = Mathf.Clamp(_distanceFromTrackCenter / halfRoad, -1f, 1f);
+                if (Mathf.Abs(norm) > 0.035f)
+                {
+                    float steerCenter = Mathf.Clamp(-norm, -1f, 1f);
+                    float u = avoidanceLaneCenterSteerBlend * Mathf.Clamp01(Mathf.Abs(norm) * 1.2f);
+                    rawSteer = Mathf.Lerp(rawSteer, steerCenter, u);
+                }
+            }
         }
 
         rawSteer = Mathf.Clamp(rawSteer, -1f, 1f);

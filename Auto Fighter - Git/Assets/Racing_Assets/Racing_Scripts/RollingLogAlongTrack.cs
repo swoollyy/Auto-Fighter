@@ -36,6 +36,14 @@ public class RollingLogAlongTrack : MonoBehaviour
 
     [Header("Lifecycle")]
     [SerializeField, Min(5f)] private float despawnDistanceFromPlayer = 120f;
+    [Tooltip("Despawn scripted logs if they have barely moved for this many seconds.")]
+    [SerializeField, Min(0.25f)] private float stuckDespawnSeconds = 3.5f;
+    [Tooltip("Movement under this distance per FixedUpdate counts as 'not moving' for stuck despawn.")]
+    [SerializeField, Min(0.0001f)] private float stuckMoveEpsilonPerStep = 0.02f;
+
+    [Header("Ramp blocking")]
+    [Tooltip("If enabled, scripted logs stop before entering ramp surfaces instead of climbing onto ramps.")]
+    [SerializeField] private bool stopBeforeRamps = true;
 
     [Header("Physics release")]
     [Tooltip("Optional extra layers to ignore for detaching (in addition to static world with no obstacle scripts).")]
@@ -88,6 +96,8 @@ public class RollingLogAlongTrack : MonoBehaviour
     private float _rollAngleDeg;
     private float _pivotToBottom;
     private Quaternion _prefabRootRotation = Quaternion.identity;
+    private Vector3 _lastScriptedPos;
+    private float _stuckTimer;
 
     private bool _ready;
     private bool _freedToPhysics;
@@ -180,6 +190,8 @@ public class RollingLogAlongTrack : MonoBehaviour
         EstimatePivotToBottom();
         SnapToPath();
         _cachedWorldVel = ComputeScriptedWorldVelocity();
+        _lastScriptedPos = _rb.position;
+        _stuckTimer = 0f;
         _ready = true;
     }
 
@@ -520,13 +532,22 @@ public class RollingLogAlongTrack : MonoBehaviour
         }
 
         float dt = Time.fixedDeltaTime;
-        _s += _signedSpeed * dt;
-        if (_s < 0f || _s > _totalLength)
+        float nextS = _s + _signedSpeed * dt;
+        if (nextS < 0f || nextS > _totalLength)
         {
             Destroy(gameObject);
             return;
         }
 
+        bool blockedByRamp = false;
+        if (stopBeforeRamps && IsRampAtDistance(nextS))
+        {
+            // Keep the log at the bottom cusp of the ramp by refusing forward scripted progress onto ramp surfaces.
+            nextS = _s;
+            blockedByRamp = true;
+        }
+
+        _s = nextS;
         SampleAlongPath(_s, out Vector3 center, out Vector3 pathFwd);
         Vector3 flatFwd = pathFwd;
         flatFwd.y = 0f;
@@ -563,7 +584,50 @@ public class RollingLogAlongTrack : MonoBehaviour
 
         _rb.MovePosition(pos);
         _rb.MoveRotation(rot);
+
+        float moved = Vector3.Distance(pos, _lastScriptedPos);
+        if (moved <= stuckMoveEpsilonPerStep || blockedByRamp)
+            _stuckTimer += dt;
+        else
+            _stuckTimer = 0f;
+        _lastScriptedPos = pos;
+
+        if (_stuckTimer >= stuckDespawnSeconds)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         ProbeScriptedOverlapRams();
+    }
+
+    private bool IsRampAtDistance(float distAlongTrack)
+    {
+        if (_path.Count < 2 || _totalLength <= 0.01f)
+            return false;
+
+        SampleAlongPath(distAlongTrack, out Vector3 center, out Vector3 pathFwd);
+        Vector3 flatFwd = pathFwd;
+        flatFwd.y = 0f;
+        if (flatFwd.sqrMagnitude < 1e-6f)
+            flatFwd = Vector3.forward;
+        flatFwd.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, flatFwd).normalized;
+        float latUse = _lateral;
+        if (trackGenerator != null && lateralClampFraction > 0f)
+        {
+            float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
+            latUse = Mathf.Clamp(latUse, -half, half);
+        }
+
+        Vector3 targetXZ = center + right * latUse;
+        Vector3 origin = targetXZ + Vector3.up * raycastStartHeight;
+        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, raycastStartHeight + raycastDownDistance, roadLayer, QueryTriggerInteraction.Ignore))
+            return false;
+
+        GroundSurface surface = hit.collider != null ? hit.collider.GetComponentInParent<GroundSurface>() : null;
+        return surface != null && surface.surfaceType == SurfaceType.Ramp;
     }
 
     private Vector3 ComputeScriptedWorldVelocity()
