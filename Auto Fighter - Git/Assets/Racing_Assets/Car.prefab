@@ -157,7 +157,7 @@ GameObject:
   - component: {fileID: 7490744666494611502}
   - component: {fileID: 1147264246116621049}
   - component: {fileID: 4897139379748032514}
-  m_Layer: 0
+  m_Layer: 1
   m_Name: VisualForcefield
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -6153,6 +6153,14 @@ public class CarController : MonoBehaviour
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
             return;
 
+        if (hitNpcTraffic)
+        {
+            GameObject initiator = collision.contactCount > 0
+                ? collision.GetContact(0).otherCollider.gameObject
+                : collision.collider.gameObject;
+            Debug.Log("Crash Initiator " + initiator.name + " via OnCollisionEnter");
+        }
+
         if (IsCloseCallInvincible)
         {
             // Bump the obstacle away
@@ -6479,6 +6487,8 @@ public class CarController : MonoBehaviour
         bool hitNpcTrafficTrigger = other.GetComponentInParent<NPCTrafficCar>() != null;
         if (IsCloseCallInvincible && hitNpcTrafficTrigger)
             return;
+        if (hitNpcTrafficTrigger)
+            Debug.Log("Crash Initiator " + other.gameObject.name + " via OnTriggerEnter");
 
         float impactSpeed = 0f;
         Rigidbody otherRb = other.attachedRigidbody;

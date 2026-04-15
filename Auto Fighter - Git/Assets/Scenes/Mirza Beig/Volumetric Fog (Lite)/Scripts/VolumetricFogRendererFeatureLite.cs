@@ -216,12 +216,12 @@ namespace MirzaBeig.VolumetricFogLite
                 // Save full-res colour screen and set texture in material (for in-shader compositing).
 
                 Blit(cmd, cameraTargetHandle, colourTextureHandle);
-                settings.compositeMaterial.SetTexture(settings.compositeMaterialColourTextureName, colourTextureHandle);
+                //settings.compositeMaterial.SetTexture(settings.compositeMaterialColourTextureName, colourTextureHandle);
 
                 // Save depth texture and assign to material.
 
                 Blit(cmd, cameraTargetHandle, depthTextureHandle, settings.depthMaterial);
-                settings.compositeMaterial.SetTexture(settings.compositeMaterialDepthTextureName, depthTextureHandle);
+                //settings.compositeMaterial.SetTexture(settings.compositeMaterialDepthTextureName, depthTextureHandle);
 
                 // Render fog.
 
@@ -232,11 +232,11 @@ namespace MirzaBeig.VolumetricFogLite
                 // You can also use Shader Graph's URP Buffer node -> BlitSource (_BlitTexture),
                 // which will be whatever is passed as the blit source on the Blit command.
 
-                settings.compositeMaterial.SetTexture(settings.compositeMaterialFogTextureName, fogTextureHandle);
+                //settings.compositeMaterial.SetTexture(settings.compositeMaterialFogTextureName, fogTextureHandle);
 
                 // Composite.
 
-                Blit(cmd, fogTextureHandle, cameraTargetHandle, settings.compositeMaterial);
+                //Blit(cmd, fogTextureHandle, cameraTargetHandle, settings.compositeMaterial);
 
                 // Execute the command buffer, then release it back to the pool.
 

@@ -107,7 +107,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.85, y: 1, z: 0.85}
+  m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &9137398506818108145
 MonoBehaviour:
@@ -183,12 +183,12 @@ MonoBehaviour:
   trackGenerator: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  trackLookAhead: 3
+  trackLookAhead: 2
   speed: 3
   randomizeSpeed: 1
   speedRange: {x: 2.5, y: 5}
   slowDownWhileAvoiding: 1
-  avoidingSpeedMultiplier: 0.809
+  avoidingSpeedMultiplier: 1
   roadLayer:
     serializedVersion: 2
     m_Bits: 8192
@@ -199,12 +199,12 @@ MonoBehaviour:
   raycastDownDistance: 20
   groundClearance: 0.02
   validateMovementOnDriveable: 0
-  baseTurnRateDegPerSec: 88
-  minTurnRateDegPerSec: 25
+  baseTurnRateDegPerSec: 210
+  minTurnRateDegPerSec: 70
   turnRateFalloffSpeed: 11.4
   accelerationRate: 8
   decelerationRate: 16
-  steeringSmoothTime: 0.2
+  steeringSmoothTime: 0.35
   speedSmoothTime: 0.09
   alignmentTime: 0.34
   headingErrorForFullSteerDeg: 50
@@ -215,43 +215,54 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 4
+  scanRange: 4.5
   pathHalfWidth: 2
-  scanRayCount: 19
-  scanFanAngleDeg: 100
-  forwardThreatConeHalfAngleDeg: 15
+  scanRayCount: 20
+  scanFanAngleDeg: 88
+  forwardThreatConeHalfAngleDeg: 16
   rayHeight: 0
   rayForwardOffset: 0.4
-  hitboxClearance: 1
-  reactionTime: 0.86
-  framesToCommitAvoid: 2
-  avoidSteerWeight: 1
-  dodgeHeadingSlewDegPerSec: 39
+  hitboxClearance: 2.2
+  avoidanceOverlapRadiusMultiplier: 0.25
+  reactionTime: 0.7
+  framesToCommitAvoid: 1
+  avoidSteerWeight: 0.75
+  dodgeHeadingSlewDegPerSec: 45
   preCommitSteerBlend: 0.15
-  framesForwardClearToExit: 5
+  framesForwardClearToExit: 4
   exitWhenTrackAheadClear: 1
   trackAheadClearCheckDistance: 3
-  framesTrackAheadClearToExit: 5
-  sideNudgeMaxDistance: 2.5
+  framesTrackAheadClearToExit: 4
+  sideNudgeMaxDistance: 3
+  minAvoidTimeBeforeExit: 0.15
+  obstacleAheadBlocksExitDistance: 0.5
+  obstacleBehindRequiredForExit: 0.25
+  recoveryMinDuration: 0.2
+  recoveryClearFramesToExit: 2
+  recoveryHeadingErrorDeg: 9
+  recoveryLaneHoldSteerBlend: 0.5
+  recoveryMaxSteer: 1
+  followCruiseLaneHoldBlend: 0.3
   framesCorridorBlockedToReplan: 4
   oppositeFlankGreenMargin: 2
   framesOppositeFlankWinsToFlip: 4
   minRoadRoomToDodge: 0.2
-  dodgeTowardRoadCenterWeight: 3.2
+  dodgeTowardRoadCenterWeight: 4.7
   avoidanceLaneCenterSteerBlend: 0.38
   enableRoadBoundaryDetection: 1
-  roadEdgeProbeWidth: 0.1
-  roadEdgeSteerWeight: 0.7
+  roadEdgeProbeWidth: 0.2
+  roadEdgeSteerWeight: 0.35
   roadEdgeSoftMargin: 0.08
-  offTrackRecoverySteerWeight: 0.3
+  offTrackRecoverySteerWeight: 0.25
   drawRoadBoundaryDebug: 1
   useHeavyCrashProfile: 0
   crashLayers:
     serializedVersion: 2
     m_Bits: 9177089
   ignoreRoadAndTerrain: 1
-  enableOverlapDetection: 1
+  enableOverlapDetection: 0
   overlapCheckInterval: 0.1
+  crashOverlapRadiusMultiplier: 0.35
   minTransferVelocity: 1
   crashBounceUp: 4
   crashBounceBack: 6
@@ -262,7 +273,7 @@ MonoBehaviour:
   crashVFXLifetime: 5
   destroyAfterCrash: 1
   destroyDelay: 5
-  addNavmeshCutOnCrash: 1
+  addNavmeshCutOnCrash: 0
   crashCutUsePrefab: 0
   crashCutPrefab: {fileID: 0}
   crashCutBoxSize: {x: 2.5, y: 3, z: 2.5}
@@ -287,8 +298,10 @@ MonoBehaviour:
   drawDestinationGizmo: 1
   drawObstacleRays: 1
   drawSteeringDebug: 1
-  autoFitRootColliderToVisual: 1
-  replaceUnsupportedRootCollider: 1
+  drawOverlapSphereGizmo: 1
+  drawCrashOverlapDetectionGizmo: 1
+  autoFitRootColliderToVisual: 0
+  replaceUnsupportedRootCollider: 0
 --- !u!1 &5239580411566504930
 GameObject:
   m_ObjectHideFlags: 0
@@ -300,7 +313,7 @@ GameObject:
   - component: {fileID: 6972445036149711971}
   - component: {fileID: 7402958783283330004}
   - component: {fileID: 900835486040736853}
-  m_Layer: 19
+  m_Layer: 1
   m_Name: Spot Light
   m_TagString: Untagged
   m_Icon: {fileID: 0}

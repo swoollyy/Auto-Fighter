@@ -17,6 +17,7 @@ public class NPCTrafficCar : MonoBehaviour
     {
         FollowingTrack,
         AvoidingObstacle,
+        RecoveringFromAvoid,
     }
 
     // -------------------------------------------------------------------------
@@ -102,6 +103,8 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField, Min(0f)] private float rayForwardOffset = 0.85f;
     [FormerlySerializedAs("avoidanceClearanceDistance")]
     [SerializeField, Min(0f)] private float hitboxClearance = 0.85f;
+    [Tooltip("Scales the overlap-sphere radius used by avoidance threat checks (and its debug gizmo).")]
+    [SerializeField, Range(0.25f, 2f)] private float avoidanceOverlapRadiusMultiplier = 1f;
     [FormerlySerializedAs("avoidancePredictionTime")]
     [Tooltip("Seconds × speed ≈ reaction distance cap.")]
     [SerializeField, Range(0.12f, 1.2f)] private float reactionTime = 0.5f;
@@ -131,6 +134,24 @@ public class NPCTrafficCar : MonoBehaviour
     [Tooltip("Side hits: soft nudge only when a forward threat still exists or scrape is very close.")]
     [FormerlySerializedAs("sideObstacleSoftDistance")]
     [SerializeField, Min(2f)] private float sideNudgeMaxDistance = 11f;
+    [Tooltip("Minimum time spent in avoiding phase before we allow exit back to pure track-follow.")]
+    [SerializeField, Min(0f)] private float minAvoidTimeBeforeExit = 0.45f;
+    [Tooltip("If the remembered threat point is still this far ahead, keep dodging.")]
+    [SerializeField, Min(0f)] private float obstacleAheadBlocksExitDistance = 8f;
+    [Tooltip("Obstacle point must be at least this far behind forward axis before exit is allowed.")]
+    [SerializeField, Min(0f)] private float obstacleBehindRequiredForExit = 2f;
+    [Tooltip("After dodge: time to hold lateral offset while aligning heading to track.")]
+    [SerializeField, Min(0f)] private float recoveryMinDuration = 0.45f;
+    [Tooltip("After dodge: require this many clear frames before returning to full track-follow.")]
+    [SerializeField, Min(1)] private int recoveryClearFramesToExit = 4;
+    [Tooltip("Heading error to track forward that counts as stabilized during recovery.")]
+    [SerializeField, Range(0.5f, 25f)] private float recoveryHeadingErrorDeg = 6f;
+    [Tooltip("During recovery, blend toward the frozen lateral lane target.")]
+    [SerializeField, Range(0f, 1f)] private float recoveryLaneHoldSteerBlend = 0.35f;
+    [Tooltip("Maximum absolute steering input allowed during recovery (prevents overshoot swings).")]
+    [SerializeField, Range(0.1f, 1f)] private float recoveryMaxSteer = 0.45f;
+    [Tooltip("After recovery, keep cruising near the recovered lateral offset (0 = ignore).")]
+    [SerializeField, Range(0f, 1f)] private float followCruiseLaneHoldBlend = 0.42f;
 
     [Header("F — Avoidance stability")]
     [Tooltip("Frames the committed corridor must be blocked before we allow a side flip.")]
@@ -174,6 +195,8 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private bool ignoreRoadAndTerrain = true;
     [SerializeField] private bool enableOverlapDetection = false;
     [SerializeField] private float overlapCheckInterval = 0f;
+    [Tooltip("Scales crash overlap-detection radius used by enableOverlapDetection (and red debug sphere).")]
+    [SerializeField, Range(0.2f, 2f)] private float crashOverlapRadiusMultiplier = 1f;
     [SerializeField] private float minTransferVelocity = 2f;
     [SerializeField] private float crashBounceUp = 4f;
     [SerializeField] private float crashBounceBack = 6f;
@@ -221,6 +244,8 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private bool drawDestinationGizmo = true;
     [SerializeField] private bool drawObstacleRays = true;
     [SerializeField] private bool drawSteeringDebug = true;
+    [SerializeField] private bool drawOverlapSphereGizmo = true;
+    [SerializeField] private bool drawCrashOverlapDetectionGizmo = true;
 
     [Header("K — Collider Alignment")]
     [Tooltip("Auto-fit the root collider to this car's visual renderers on init. Helps large variant prefabs keep hitbox aligned.")]
@@ -271,6 +296,11 @@ public class NPCTrafficCar : MonoBehaviour
     private Vector3 _nudgeHeading = Vector3.forward;
     private bool _preCommitActive;
     private Vector3 _preCommitDir = Vector3.forward;
+    private float _avoidPhaseTime;
+    private float _recoveryPhaseTime;
+    private int _recoveryClearStreak;
+    private float _recoveryTargetLateralOffset;
+    private float _cruiseTargetLateralOffset;
 
     // Scan context (valid during one FixedUpdate avoidance pass)
     private Vector3 _scanOrigin;
@@ -370,6 +400,11 @@ public class NPCTrafficCar : MonoBehaviour
         _ambientSideNudge = false;
         _preCommitActive = false;
         _lockedDodgeSide = 0;
+        _avoidPhaseTime = 0f;
+        _recoveryPhaseTime = 0f;
+        _recoveryClearStreak = 0;
+        _recoveryTargetLateralOffset = 0f;
+        _cruiseTargetLateralOffset = 0f;
         _dodgeHeading = transform.forward;
         _dodgeHeading.y = 0f;
         if (_dodgeHeading.sqrMagnitude < 1e-4f) _dodgeHeading = Vector3.forward;
@@ -473,13 +508,17 @@ public class NPCTrafficCar : MonoBehaviour
 
         public float BestLeftClear;
         public float BestRightClear;
+        public float BestCenterClear;
         public Vector3 BestLeftDir;
         public Vector3 BestRightDir;
+        public Vector3 BestCenterDir;
         public bool HasBestLeft;
         public bool HasBestRight;
+        public bool HasBestCenter;
 
         public int GreensLeft;
         public int GreensRight;
+        public int GreensCenter;
         public int ObstacleRayHits;
 
         public float ClosestLeftHit;
@@ -498,10 +537,13 @@ public class NPCTrafficCar : MonoBehaviour
             ThreatPoint = transform.position,
             BestLeftClear = 0f,
             BestRightClear = 0f,
+            BestCenterClear = 0f,
             HasBestLeft = false,
             HasBestRight = false,
+            HasBestCenter = false,
             GreensLeft = 0,
             GreensRight = 0,
+            GreensCenter = 0,
             ObstacleRayHits = 0,
             ClosestLeftHit = scanRange * 2f,
             ClosestRightHit = scanRange * 2f,
@@ -550,6 +592,7 @@ public class NPCTrafficCar : MonoBehaviour
                 {
                     if (isLeft) s.GreensLeft++;
                     else if (isRight) s.GreensRight++;
+                    else s.GreensCenter++;
                     if (drawObstacleRays)
                         Debug.DrawRay(_scanOrigin, rayDir * roadLim, Color.green);
                     continue;
@@ -620,6 +663,16 @@ public class NPCTrafficCar : MonoBehaviour
                         s.BestRightClear = score;
                         s.BestRightDir = rayDir;
                         s.HasBestRight = true;
+                    }
+                }
+                else
+                {
+                    s.GreensCenter++;
+                    if (isForwardCone && score > s.BestCenterClear)
+                    {
+                        s.BestCenterClear = score;
+                        s.BestCenterDir = rayDir;
+                        s.HasBestCenter = true;
                     }
                 }
 
@@ -706,7 +759,8 @@ public class NPCTrafficCar : MonoBehaviour
         if (_col != null)
         {
             Vector3 c = _col.bounds.center;
-            float r = Mathf.Max(0.15f, _avoidanceSphereRadius + hitboxClearance);
+            float rBase = _avoidanceSphereRadius + hitboxClearance;
+            float r = Mathf.Max(0.15f, rBase * Mathf.Max(0.01f, avoidanceOverlapRadiusMultiplier));
             int n = Physics.OverlapSphereNonAlloc(c, r, _overlapHits, obstacleDetectionLayers, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
             {
@@ -737,12 +791,14 @@ public class NPCTrafficCar : MonoBehaviour
                 _ambientSideNudge = false;
                 _preCommitActive = false;
                 _lockedDodgeSide = ChooseDodgeSide(scan);
-                if (_lockedDodgeSide == 0) _lockedDodgeSide = 1;
                 _dodgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(_lockedDodgeSide, scan));
                 _corridorBlockedStreak = 0;
                 _oppositeFlankWinStreak = 0;
                 _forwardClearWhileAvoidStreak = 0;
                 _trackAheadClearStreak = 0;
+                _avoidPhaseTime = 0f;
+                _recoveryPhaseTime = 0f;
+                _recoveryClearStreak = 0;
             }
 
             _ambientSideNudge = sideNudge;
@@ -768,9 +824,41 @@ public class NPCTrafficCar : MonoBehaviour
             return;
         }
 
+        if (_phase == NpcDrivePhase.RecoveringFromAvoid)
+        {
+            _preCommitActive = false;
+            _ambientSideNudge = false;
+            _avoidanceUrgency = 0f;
+
+            if (scan.HasThreatPoint)
+            {
+                _avoidanceObstaclePoint = scan.ThreatPoint;
+                _avoidanceObstaclePointValid = true;
+                _lastPrimaryThreatId = scan.PrimaryThreatId;
+            }
+
+            // Recovery is interrupted by new threat; immediately re-enter full dodge mode.
+            if (wantThreat || overlapThreat)
+            {
+                _phase = NpcDrivePhase.AvoidingObstacle;
+                _lockedDodgeSide = ChooseDodgeSide(scan);
+                _dodgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(_lockedDodgeSide, scan));
+                _smoothedSteering = 0f;
+                _steeringVel = 0f;
+                _corridorBlockedStreak = 0;
+                _oppositeFlankWinStreak = 0;
+                _forwardClearWhileAvoidStreak = 0;
+                _trackAheadClearStreak = 0;
+                _avoidPhaseTime = 0f;
+            }
+
+            return;
+        }
+
         // --- AvoidingObstacle ---
         _preCommitActive = false;
         _ambientSideNudge = false;
+        _avoidPhaseTime += Mathf.Max(0f, dt);
 
         if (scan.HasThreatPoint)
         {
@@ -795,13 +883,13 @@ public class NPCTrafficCar : MonoBehaviour
 
         if (_corridorBlockedStreak >= framesCorridorBlockedToReplan)
         {
-            int opp = -_lockedDodgeSide;
-            if (OppositeFlankStronger(scan, opp))
+            int replannedLane = ChooseDodgeSide(scan);
+            if (replannedLane != _lockedDodgeSide)
             {
                 _oppositeFlankWinStreak++;
                 if (_oppositeFlankWinStreak >= framesOppositeFlankWinsToFlip)
                 {
-                    _lockedDodgeSide = opp;
+                    _lockedDodgeSide = replannedLane;
                     _dodgeHeading = BlendDodgeHeadingTowardTrackCenter(InitialDodgeHeading(_lockedDodgeSide, scan));
                     _corridorBlockedStreak = 0;
                     _oppositeFlankWinStreak = 0;
@@ -826,11 +914,32 @@ public class NPCTrafficCar : MonoBehaviour
 
         bool exitByForward = _forwardClearWhileAvoidStreak >= framesForwardClearToExit;
         bool exitByTrack = exitWhenTrackAheadClear && _trackAheadClearStreak >= framesTrackAheadClearToExit;
-
-        if (exitByForward || exitByTrack)
+        bool exitTimeSatisfied = _avoidPhaseTime >= minAvoidTimeBeforeExit;
+        bool threatStillAhead = false;
+        if (_avoidanceObstaclePointValid)
         {
-            _phase = NpcDrivePhase.FollowingTrack;
-            ResetAvoidanceInternalState();
+            Vector3 toThreat = _avoidanceObstaclePoint - transform.position;
+            toThreat.y = 0f;
+            float along = Vector3.Dot(toThreat, _scanCarForward);
+            threatStillAhead = along > -obstacleBehindRequiredForExit && along < obstacleAheadBlocksExitDistance;
+        }
+
+        if ((exitByForward || exitByTrack) && exitTimeSatisfied && !threatStillAhead)
+        {
+            _phase = NpcDrivePhase.RecoveringFromAvoid;
+            _recoveryPhaseTime = 0f;
+            _recoveryClearStreak = 0;
+            _recoveryTargetLateralOffset = _distanceFromTrackCenter;
+            _smoothedSteering = 0f;
+            _steeringVel = 0f;
+            _avoidanceUrgency = 0f;
+            _forwardThreatStreak = 0;
+            _forwardClearWhileAvoidStreak = 0;
+            _trackAheadClearStreak = 0;
+            _corridorBlockedStreak = 0;
+            _oppositeFlankWinStreak = 0;
+            _ambientSideNudge = false;
+            _preCommitActive = false;
         }
     }
 
@@ -838,12 +947,11 @@ public class NPCTrafficCar : MonoBehaviour
     {
         bool leftRoom = _leftEdgeDistance >= minRoadRoomToDodge;
         bool rightRoom = _rightEdgeDistance >= minRoadRoomToDodge;
-        float leftScore = scan.HasBestLeft ? scan.BestLeftClear : -1f;
-        float rightScore = scan.HasBestRight ? scan.BestRightClear : -1f;
+        float leftScore = scan.HasBestLeft && leftRoom ? scan.BestLeftClear : -999f;
+        float rightScore = scan.HasBestRight && rightRoom ? scan.BestRightClear : -999f;
+        float centerScore = scan.HasBestCenter ? scan.BestCenterClear : -999f;
 
-        if (!leftRoom && rightRoom) return 1;
-        if (!rightRoom && leftRoom) return -1;
-        if (!leftRoom && !rightRoom)
+        if (!leftRoom && !rightRoom && centerScore <= -900f)
             return _leftEdgeDistance >= _rightEdgeDistance ? -1 : 1;
 
         int centerSide = TowardTrackCenterDodgeSideSign();
@@ -863,33 +971,53 @@ public class NPCTrafficCar : MonoBehaviour
                 else
                     leftScore += bonus * 0.9f;
             }
+            else
+                centerScore += bonus * 0.65f;
         }
 
-        int dg = scan.GreensRight - scan.GreensLeft;
-        float halfRoad = GetHalfRoadWidth();
-        bool skipGreenTieBreak = dodgeTowardRoadCenterWeight > 0f &&
-                                 (centerSide != 0 ||
-                                  Mathf.Abs(_distanceFromTrackCenter) > halfRoad * 0.12f);
-        if (!skipGreenTieBreak)
+        // Green-ray density influence, with a small center preference to break local side bias.
+        leftScore += scan.GreensLeft * 0.13f;
+        rightScore += scan.GreensRight * 0.13f;
+        centerScore += scan.GreensCenter * 0.2f;
+
+        // Avoid committing toward an immediately tight flank.
+        if (scan.ClosestLeftHit < sideNudgeMaxDistance)
+            leftScore -= (sideNudgeMaxDistance - scan.ClosestLeftHit) * 0.22f;
+        if (scan.ClosestRightHit < sideNudgeMaxDistance)
+            rightScore -= (sideNudgeMaxDistance - scan.ClosestRightHit) * 0.22f;
+        if (scan.ForwardThreat)
+            centerScore -= Mathf.Clamp01(Mathf.InverseLerp(scanRange, 3f, scan.ForwardThreatDist)) * 0.45f;
+
+        float best = Mathf.Max(leftScore, Mathf.Max(centerScore, rightScore));
+        if (best <= -900f)
         {
-            if (dg >= 2) return 1;
-            if (dg <= -2) return -1;
+            if (centerSide != 0) return centerSide;
+            return 0;
         }
 
-        if (rightScore > leftScore + 0.75f) return 1;
-        if (leftScore > rightScore + 0.75f) return -1;
+        bool centerAllowed = centerScore > -900f;
+        if (centerAllowed && scan.ForwardThreat)
+        {
+            // Under active forward threat, center must actually deflect and clearly beat flanks.
+            if (!scan.HasBestCenter)
+                centerAllowed = false;
+            else
+            {
+                float centerAngle = Mathf.Abs(Vector3.SignedAngle(_scanCarForward, scan.BestCenterDir, Vector3.up));
+                float threatNearness = Mathf.Clamp01(Mathf.InverseLerp(scanRange, 3f, scan.ForwardThreatDist));
+                float minAngle = Mathf.Lerp(3f, 10f, threatNearness);
+                float flankBest = Mathf.Max(leftScore, rightScore);
+                bool clearlyBetter = centerScore >= flankBest + Mathf.Lerp(0.2f, 1.0f, threatNearness);
+                centerAllowed = centerAngle >= minAngle && clearlyBetter;
+            }
+        }
 
-        // "Dodge away from closer flank" can shove the car further off-track when already on a shoulder.
-        if (dodgeTowardRoadCenterWeight > 0f && centerSide != 0)
-        {
-            if (scan.ClosestLeftHit > scan.ClosestRightHit + 0.2f && centerSide < 0) return -1;
-            if (scan.ClosestRightHit > scan.ClosestLeftHit + 0.2f && centerSide > 0) return 1;
-        }
-        else
-        {
-            if (scan.ClosestLeftHit > scan.ClosestRightHit + 0.2f) return -1;
-            if (scan.ClosestRightHit > scan.ClosestLeftHit + 0.2f) return 1;
-        }
+        // If center is close to the best option and safe, prefer it for smoother pathing.
+        if (centerAllowed && centerScore >= best - 0.4f)
+            return 0;
+
+        if (rightScore > leftScore) return 1;
+        if (leftScore > rightScore) return -1;
 
         if (centerSide != 0)
             return centerSide;
@@ -897,6 +1025,7 @@ public class NPCTrafficCar : MonoBehaviour
         if (Mathf.Abs(_distanceFromTrackCenter) > 0.08f)
             return _distanceFromTrackCenter < 0f ? 1 : -1;
 
+        int dg = scan.GreensRight - scan.GreensLeft;
         return dg >= 0 ? 1 : -1;
     }
 
@@ -920,7 +1049,13 @@ public class NPCTrafficCar : MonoBehaviour
     private Vector3 InitialDodgeHeading(int side, ObstacleScan scan)
     {
         Vector3 d;
-        if (side > 0 && scan.HasBestRight)
+        if (side == 0 && scan.HasBestCenter)
+        {
+            d = scan.BestCenterDir;
+            d.y = 0f;
+            d = d.normalized;
+        }
+        else if (side > 0 && scan.HasBestRight)
         {
             d = scan.BestRightDir;
             d.y = 0f;
@@ -942,7 +1077,13 @@ public class NPCTrafficCar : MonoBehaviour
     private Vector3 IdealHeadingForLockedSide(int side, ObstacleScan scan)
     {
         Vector3 d;
-        if (side > 0 && scan.HasBestRight)
+        if (side == 0 && scan.HasBestCenter)
+        {
+            d = scan.BestCenterDir;
+            d.y = 0f;
+            d = d.sqrMagnitude > 1e-4f ? d.normalized : InitialDodgeHeading(side, scan);
+        }
+        else if (side > 0 && scan.HasBestRight)
         {
             d = scan.BestRightDir;
             d.y = 0f;
@@ -1089,12 +1230,35 @@ public class NPCTrafficCar : MonoBehaviour
                 float w = Mathf.Lerp(avoidSteerWeight, 0.97f, _avoidanceUrgency);
                 targetDir = Vector3.Slerp(trackFwd, _dodgeHeading, w).normalized;
             }
+            else if (_phase == NpcDrivePhase.RecoveringFromAvoid)
+            {
+                targetDir = trackFwd;
+                float halfRoad = Mathf.Max(0.35f, GetHalfRoadWidth());
+                float targetLat = Mathf.Clamp(_recoveryTargetLateralOffset, -halfRoad * 0.95f, halfRoad * 0.95f);
+                float latErr = _distanceFromTrackCenter - targetLat;
+                float normErr = Mathf.Clamp(latErr / halfRoad, -1f, 1f);
+                if (Mathf.Abs(normErr) > 0.015f && recoveryLaneHoldSteerBlend > 0f)
+                {
+                    Vector3 holdDir = (trackFwd + _scanTrackRight * Mathf.Clamp(-normErr * 0.45f, -0.35f, 0.35f)).normalized;
+                    targetDir = Vector3.Slerp(trackFwd, holdDir, recoveryLaneHoldSteerBlend).normalized;
+                }
+            }
             else
             {
+                float halfRoad = Mathf.Max(0.35f, GetHalfRoadWidth());
+                float cruiseLat = Mathf.Clamp(_cruiseTargetLateralOffset, -halfRoad * 0.95f, halfRoad * 0.95f);
+                float cruiseErr = _distanceFromTrackCenter - cruiseLat;
+                float cruiseNorm = Mathf.Clamp(cruiseErr / halfRoad, -1f, 1f);
+                if (Mathf.Abs(cruiseNorm) > 0.02f && followCruiseLaneHoldBlend > 0f)
+                {
+                    Vector3 cruiseDir = (trackFwd + _scanTrackRight * Mathf.Clamp(-cruiseNorm * 0.42f, -0.3f, 0.3f)).normalized;
+                    targetDir = Vector3.Slerp(targetDir, cruiseDir, followCruiseLaneHoldBlend).normalized;
+                }
+
                 if (_preCommitActive)
-                    targetDir = Vector3.Slerp(trackFwd, _preCommitDir, preCommitSteerBlend).normalized;
+                    targetDir = Vector3.Slerp(targetDir, _preCommitDir, preCommitSteerBlend).normalized;
                 else if (_ambientSideNudge)
-                    targetDir = Vector3.Slerp(trackFwd, _nudgeHeading, preCommitSteerBlend * 0.55f).normalized;
+                    targetDir = Vector3.Slerp(targetDir, _nudgeHeading, preCommitSteerBlend * 0.55f).normalized;
             }
         }
 
@@ -1132,9 +1296,12 @@ public class NPCTrafficCar : MonoBehaviour
         _prevAngleToTarget = angleToTarget;
 
         bool heavyAvoid = _phase == NpcDrivePhase.AvoidingObstacle;
+        bool recovering = _phase == NpcDrivePhase.RecoveringFromAvoid;
         if (enableRoadBoundaryDetection && !heavyAvoid && Mathf.Abs(_roadSteerHint) > 0.04f)
         {
             float w = Mathf.Abs(_roadSteerHint);
+            if (recovering)
+                w *= 0.2f;
             rawSteer = Mathf.Lerp(rawSteer, _roadSteerHint, w);
         }
         else if (enableRoadBoundaryDetection && heavyAvoid && avoidanceLaneCenterSteerBlend > 0f)
@@ -1153,7 +1320,11 @@ public class NPCTrafficCar : MonoBehaviour
         }
 
         rawSteer = Mathf.Clamp(rawSteer, -1f, 1f);
+        if (recovering)
+            rawSteer = Mathf.Clamp(rawSteer, -recoveryMaxSteer, recoveryMaxSteer);
         float smoothT = heavyAvoid ? steeringSmoothTime * 0.52f : steeringSmoothTime;
+        if (recovering)
+            smoothT = steeringSmoothTime * 1.35f;
         _smoothedSteering = Mathf.SmoothDamp(_smoothedSteering, rawSteer, ref _steeringVel, smoothT);
 
         if (drawSteeringDebug)
@@ -1166,6 +1337,9 @@ public class NPCTrafficCar : MonoBehaviour
 
     private void UpdateMovement(float dt)
     {
+        if (_phase == NpcDrivePhase.RecoveringFromAvoid)
+            UpdateRecoveryPhase(dt);
+
         float speedF = Mathf.InverseLerp(0f, turnRateFalloffSpeed, _currentSpeed);
         float turnRate = Mathf.Lerp(baseTurnRateDegPerSec, minTurnRateDegPerSec, speedF);
         float turnAmt = _smoothedSteering * turnRate * dt;
@@ -1235,6 +1409,41 @@ public class NPCTrafficCar : MonoBehaviour
                 }
                 transform.rotation = targetRot;
             }
+        }
+    }
+
+    private void UpdateRecoveryPhase(float dt)
+    {
+        _recoveryPhaseTime += Mathf.Max(0f, dt);
+
+        bool noForwardThreat = _forwardThreatStreak == 0;
+        if (!noForwardThreat && _avoidanceObstaclePointValid)
+        {
+            Vector3 toThreat = _avoidanceObstaclePoint - transform.position;
+            toThreat.y = 0f;
+            float along = Vector3.Dot(toThreat, _scanCarForward);
+            noForwardThreat = along < -obstacleBehindRequiredForExit;
+        }
+
+        float headingErr = Mathf.Abs(Vector3.SignedAngle(_currentForward, _scanTrackFwd, Vector3.up));
+        bool headingStable = headingErr <= recoveryHeadingErrorDeg;
+        bool laneHoldNearTarget = Mathf.Abs(_distanceFromTrackCenter - _recoveryTargetLateralOffset) <= Mathf.Max(0.25f, GetHalfRoadWidth() * 0.14f);
+        bool minTimeMet = _recoveryPhaseTime >= recoveryMinDuration;
+
+        if (noForwardThreat && headingStable && laneHoldNearTarget && minTimeMet)
+            _recoveryClearStreak++;
+        else
+            _recoveryClearStreak = 0;
+
+        if (_recoveryClearStreak >= recoveryClearFramesToExit)
+        {
+            _phase = NpcDrivePhase.FollowingTrack;
+            _recoveryPhaseTime = 0f;
+            _recoveryClearStreak = 0;
+            _cruiseTargetLateralOffset = _recoveryTargetLateralOffset;
+            _recoveryTargetLateralOffset = 0f;
+            _avoidanceObstaclePointValid = false;
+            _lastPrimaryThreatId = -1;
         }
     }
 
@@ -1649,7 +1858,7 @@ public class NPCTrafficCar : MonoBehaviour
 
         Vector3 impactDir = collision.contactCount > 0 ? -collision.GetContact(0).normal : transform.forward;
         float impactSpeed = collision.relativeVelocity.magnitude;
-        TriggerCrash(impactDir, impactSpeed, collision.collider);
+        TriggerCrash(impactDir, impactSpeed, collision.collider, "OnCollisionEnter");
     }
 
     private void OnTriggerEnter(Collider other)
@@ -1660,7 +1869,7 @@ public class NPCTrafficCar : MonoBehaviour
 
         Vector3 impactDir = (other.transform.position - transform.position).normalized;
         if (impactDir.sqrMagnitude < 0.001f) impactDir = transform.forward;
-        TriggerCrash(impactDir, _lastVelocity.magnitude, other);
+        TriggerCrash(impactDir, _lastVelocity.magnitude, other, "OnTriggerEnter");
     }
 
     private void CheckOverlapAndCrash()
@@ -1669,7 +1878,8 @@ public class NPCTrafficCar : MonoBehaviour
         if (crashLayers.value == 0) return;
         if (_col == null) return;
 
-        float r = Mathf.Max(0.05f, GetPlanarColliderRadius(_col) + 0.05f);
+        float baseR = GetPlanarColliderRadius(_col) + 0.05f;
+        float r = Mathf.Max(0.05f, baseR * Mathf.Max(0.01f, crashOverlapRadiusMultiplier));
         Collider[] hits = Physics.OverlapSphere(_col.bounds.center, r, crashLayers, QueryTriggerInteraction.Ignore);
         if (hits == null) return;
 
@@ -1684,7 +1894,7 @@ public class NPCTrafficCar : MonoBehaviour
                     out Vector3 pushDir, out float pushDist))
             {
                 Vector3 impactDir = pushDist > 0.0001f ? -pushDir : (other.transform.position - transform.position).normalized;
-                TriggerCrash(impactDir, _lastVelocity.magnitude, other);
+                TriggerCrash(impactDir, _lastVelocity.magnitude, other, "OverlapSphere");
                 return;
             }
         }
@@ -1711,9 +1921,13 @@ public class NPCTrafficCar : MonoBehaviour
         return true;
     }
 
-    private void TriggerCrash(Vector3 impactDir, float impactSpeed, Collider other)
+    private void TriggerCrash(Vector3 impactDir, float impactSpeed, Collider other, string crashMethod)
     {
         if (_crashed) return;
+
+        if (other != null && other.GetComponentInParent<CarController>() != null)
+            Debug.Log("Crash Initiator " + other.gameObject.name + " via " + crashMethod);
+
         _crashed = true;
         EnableCrashNavmeshCut();
 
@@ -1862,7 +2076,7 @@ public class NPCTrafficCar : MonoBehaviour
         impactDir.y = 0f;
         if (impactDir.sqrMagnitude < 0.0001f) impactDir = transform.forward;
         impactDir.Normalize();
-        TriggerCrash(impactDir, impactSpeed, source != null ? source : _col);
+        TriggerCrash(impactDir, impactSpeed, source != null ? source : _col, "ForceCrashFromForcefield");
     }
 
     public void SetGenerator(ProceduralTrackGenerator generator)
@@ -1905,6 +2119,35 @@ public class NPCTrafficCar : MonoBehaviour
             Gizmos.DrawWireSphere(c, baseR);
             Gizmos.color = new Color(1f, 0.65f, 0.15f, 0.7f);
             Gizmos.DrawWireSphere(c, clearR);
+        }
+
+        if (drawOverlapSphereGizmo)
+        {
+            float overlapR = Application.isPlaying
+                ? Mathf.Max(0.15f, (_avoidanceSphereRadius + hitboxClearance) * Mathf.Max(0.01f, avoidanceOverlapRadiusMultiplier))
+                : 1.2f;
+            Vector3 overlapCenter = (_col != null)
+                ? _col.bounds.center
+                : transform.position + Vector3.up * Mathf.Max(0.4f, rayHeight);
+            Gizmos.color = new Color(1f, 0.25f, 0.8f, 0.85f);
+            Gizmos.DrawWireSphere(overlapCenter, overlapR);
+        }
+
+        if (drawCrashOverlapDetectionGizmo)
+        {
+            float crashR = 0.9f;
+            Vector3 crashCenter = transform.position + Vector3.up * Mathf.Max(0.4f, rayHeight);
+            if (_col != null)
+            {
+                crashCenter = _col.bounds.center;
+                float baseR = GetPlanarColliderRadius(_col) + 0.05f;
+                crashR = Mathf.Max(0.05f, baseR * Mathf.Max(0.01f, crashOverlapRadiusMultiplier));
+            }
+
+            Gizmos.color = enableOverlapDetection
+                ? new Color(1f, 0.1f, 0.1f, 0.92f)
+                : new Color(0.55f, 0.55f, 0.55f, 0.75f);
+            Gizmos.DrawWireSphere(crashCenter, crashR);
         }
     }
 }
