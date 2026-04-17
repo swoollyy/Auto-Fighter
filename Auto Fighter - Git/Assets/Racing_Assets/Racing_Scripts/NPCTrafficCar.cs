@@ -168,6 +168,12 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField, Range(0f, 5f)] private float dodgeTowardRoadCenterWeight = 2.35f;
     [Tooltip("While committed to an obstacle dodge, blend this much steer toward lane center (0 = dodge only ignores centering).")]
     [SerializeField, Range(0f, 0.55f)] private float avoidanceLaneCenterSteerBlend = 0.22f;
+    [Tooltip("If a forward threat is closer than this (m), commit to Avoiding on the first confirmed threat frame (still needs streak ≥ 1). 0 = only use Frames To Commit.")]
+    [SerializeField, Min(0f)] private float urgentThreatCommitUnderDistance = 14f;
+    [Tooltip("While a forward threat is closer than this (m), never pick a weak center dodge when a flank is viable — reduces dead-ahead wobble and late flank commits.")]
+    [SerializeField, Min(0f)] private float deadAheadForbidCenterUnderDistance = 22f;
+    [Tooltip("Left vs right ray scores must beat the previous flank pick by at least this much before switching sides. Stops symmetric obstacles from flipping dodge every frame.")]
+    [SerializeField, Min(0f)] private float dodgeFlankScoreHysteresis = 4f;
 
     // -------------------------------------------------------------------------
     // STAY ON ROAD
@@ -301,6 +307,8 @@ public class NPCTrafficCar : MonoBehaviour
     private int _recoveryClearStreak;
     private float _recoveryTargetLateralOffset;
     private float _cruiseTargetLateralOffset;
+    /// <summary>Last chosen flank dodge: -1 left, +1 right, 0 none / center. Reduces left-right flip on tied scores.</summary>
+    private int _lastFlankDodgePick;
 
     // Scan context (valid during one FixedUpdate avoidance pass)
     private Vector3 _scanOrigin;
@@ -405,6 +413,7 @@ public class NPCTrafficCar : MonoBehaviour
         _recoveryClearStreak = 0;
         _recoveryTargetLateralOffset = 0f;
         _cruiseTargetLateralOffset = 0f;
+        _lastFlankDodgePick = 0;
         _dodgeHeading = transform.forward;
         _dodgeHeading.y = 0f;
         if (_dodgeHeading.sqrMagnitude < 1e-4f) _dodgeHeading = Vector3.forward;
@@ -785,7 +794,11 @@ public class NPCTrafficCar : MonoBehaviour
 
         if (_phase == NpcDrivePhase.FollowingTrack)
         {
-            if (_forwardThreatStreak >= framesToCommitAvoid || overlapThreat)
+            bool urgentCommit = urgentThreatCommitUnderDistance > 0.05f &&
+                                scan.ForwardThreat &&
+                                scan.ForwardThreatDist < urgentThreatCommitUnderDistance &&
+                                _forwardThreatStreak >= 1;
+            if (_forwardThreatStreak >= framesToCommitAvoid || overlapThreat || urgentCommit)
             {
                 _phase = NpcDrivePhase.AvoidingObstacle;
                 _ambientSideNudge = false;
@@ -820,6 +833,9 @@ public class NPCTrafficCar : MonoBehaviour
             }
             else if (!overlapThreat)
                 _avoidanceObstaclePointValid = false;
+
+            if (!wantThreat)
+                _lastFlankDodgePick = 0;
 
             return;
         }
@@ -883,7 +899,7 @@ public class NPCTrafficCar : MonoBehaviour
 
         if (_corridorBlockedStreak >= framesCorridorBlockedToReplan)
         {
-            int replannedLane = ChooseDodgeSide(scan);
+            int replannedLane = ChooseDodgeSide(scan, respectFlankHysteresis: false);
             if (replannedLane != _lockedDodgeSide)
             {
                 _oppositeFlankWinStreak++;
@@ -943,7 +959,8 @@ public class NPCTrafficCar : MonoBehaviour
         }
     }
 
-    private int ChooseDodgeSide(ObstacleScan scan)
+    /// <param name="respectFlankHysteresis">False when replanning after a blocked corridor so we can switch to the clearly better flank.</param>
+    private int ChooseDodgeSide(ObstacleScan scan, bool respectFlankHysteresis = true)
     {
         bool leftRoom = _leftEdgeDistance >= minRoadRoomToDodge;
         bool rightRoom = _rightEdgeDistance >= minRoadRoomToDodge;
@@ -952,7 +969,11 @@ public class NPCTrafficCar : MonoBehaviour
         float centerScore = scan.HasBestCenter ? scan.BestCenterClear : -999f;
 
         if (!leftRoom && !rightRoom && centerScore <= -900f)
-            return _leftEdgeDistance >= _rightEdgeDistance ? -1 : 1;
+        {
+            int e = _leftEdgeDistance >= _rightEdgeDistance ? -1 : 1;
+            _lastFlankDodgePick = e;
+            return e;
+        }
 
         int centerSide = TowardTrackCenterDodgeSideSign();
         if (dodgeTowardRoadCenterWeight > 0f)
@@ -991,7 +1012,12 @@ public class NPCTrafficCar : MonoBehaviour
         float best = Mathf.Max(leftScore, Mathf.Max(centerScore, rightScore));
         if (best <= -900f)
         {
-            if (centerSide != 0) return centerSide;
+            if (centerSide != 0)
+            {
+                _lastFlankDodgePick = centerSide;
+                return centerSide;
+            }
+            _lastFlankDodgePick = 0;
             return 0;
         }
 
@@ -1012,21 +1038,77 @@ public class NPCTrafficCar : MonoBehaviour
             }
         }
 
+        // Head-on / close threats: "center" is often a shallow forward ray that barely decides a side — force a flank when possible.
+        if (centerAllowed && scan.ForwardThreat && deadAheadForbidCenterUnderDistance > 0.05f &&
+            scan.ForwardThreatDist < deadAheadForbidCenterUnderDistance)
+        {
+            bool flankViable = (scan.HasBestLeft && leftRoom) || (scan.HasBestRight && rightRoom);
+            if (flankViable)
+                centerAllowed = false;
+        }
+
         // If center is close to the best option and safe, prefer it for smoother pathing.
         if (centerAllowed && centerScore >= best - 0.4f)
+        {
+            _lastFlankDodgePick = 0;
             return 0;
+        }
 
-        if (rightScore > leftScore) return 1;
-        if (leftScore > rightScore) return -1;
+        int flankPick;
+        if (rightScore > leftScore) flankPick = 1;
+        else if (leftScore > rightScore) flankPick = -1;
+        else
+        {
+            // Tie: dodge away from the threat's lateral position (stable for dead-ahead obstacles).
+            if (scan.HasThreatPoint)
+            {
+                Vector3 toT = scan.ThreatPoint - transform.position;
+                toT.y = 0f;
+                float latThreat = Vector3.Dot(toT, _scanCarRight);
+                if (Mathf.Abs(latThreat) > 0.12f)
+                    flankPick = latThreat > 0f ? -1 : 1;
+                else
+                    flankPick = TieBreakFlankWhenNoThreatLateral(centerSide);
+            }
+            else
+                flankPick = TieBreakFlankWhenNoThreatLateral(centerSide);
+        }
 
+        // Hysteresis: symmetric scores flip dodge side every frame without a margin.
+        if (respectFlankHysteresis &&
+            dodgeFlankScoreHysteresis > 0.01f &&
+            _lastFlankDodgePick != 0 &&
+            flankPick != 0 &&
+            flankPick != _lastFlankDodgePick &&
+            leftScore > -900f &&
+            rightScore > -900f &&
+            Mathf.Abs(rightScore - leftScore) < dodgeFlankScoreHysteresis)
+        {
+            int h = _lastFlankDodgePick;
+            bool hOk = (h < 0 && scan.HasBestLeft && leftRoom) || (h > 0 && scan.HasBestRight && rightRoom);
+            if (hOk)
+                flankPick = h;
+        }
+
+        // If hysteresis or tie picked an infeasible flank, take the other side.
+        if (flankPick < 0 && (!scan.HasBestLeft || !leftRoom))
+            flankPick = (scan.HasBestRight && rightRoom) ? 1 : -1;
+        if (flankPick > 0 && (!scan.HasBestRight || !rightRoom))
+            flankPick = (scan.HasBestLeft && leftRoom) ? -1 : 1;
+
+        _lastFlankDodgePick = flankPick;
+        return flankPick;
+    }
+
+    /// <summary>When left/right scores tie and threat is centered, stable secondary tie-breakers.</summary>
+    private int TieBreakFlankWhenNoThreatLateral(int centerSide)
+    {
         if (centerSide != 0)
             return centerSide;
-
         if (Mathf.Abs(_distanceFromTrackCenter) > 0.08f)
             return _distanceFromTrackCenter < 0f ? 1 : -1;
-
-        int dg = scan.GreensRight - scan.GreensLeft;
-        return dg >= 0 ? 1 : -1;
+        // Stable per-instance so two identical cars do not always pick the same side.
+        return (GetInstanceID() & 1) == 0 ? 1 : -1;
     }
 
     /// <summary>

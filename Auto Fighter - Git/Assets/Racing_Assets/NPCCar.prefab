@@ -215,20 +215,20 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 4.5
+  scanRange: 5.5
   pathHalfWidth: 2
   scanRayCount: 20
-  scanFanAngleDeg: 88
-  forwardThreatConeHalfAngleDeg: 16
+  scanFanAngleDeg: 100
+  forwardThreatConeHalfAngleDeg: 13
   rayHeight: 0
   rayForwardOffset: 0.4
-  hitboxClearance: 2.2
+  hitboxClearance: 2.7
   avoidanceOverlapRadiusMultiplier: 0.25
   reactionTime: 0.7
   framesToCommitAvoid: 1
   avoidSteerWeight: 0.75
   dodgeHeadingSlewDegPerSec: 45
-  preCommitSteerBlend: 0.15
+  preCommitSteerBlend: 0
   framesForwardClearToExit: 4
   exitWhenTrackAheadClear: 1
   trackAheadClearCheckDistance: 3
@@ -239,16 +239,19 @@ MonoBehaviour:
   obstacleBehindRequiredForExit: 0.25
   recoveryMinDuration: 0.2
   recoveryClearFramesToExit: 2
-  recoveryHeadingErrorDeg: 9
-  recoveryLaneHoldSteerBlend: 0.5
+  recoveryHeadingErrorDeg: 3
+  recoveryLaneHoldSteerBlend: 0.15
   recoveryMaxSteer: 1
-  followCruiseLaneHoldBlend: 0.3
+  followCruiseLaneHoldBlend: 0.05
   framesCorridorBlockedToReplan: 4
   oppositeFlankGreenMargin: 2
   framesOppositeFlankWinsToFlip: 4
   minRoadRoomToDodge: 0.2
-  dodgeTowardRoadCenterWeight: 4.7
+  dodgeTowardRoadCenterWeight: 0
   avoidanceLaneCenterSteerBlend: 0.38
+  urgentThreatCommitUnderDistance: 3
+  deadAheadForbidCenterUnderDistance: 5
+  dodgeFlankScoreHysteresis: 2
   enableRoadBoundaryDetection: 1
   roadEdgeProbeWidth: 0.2
   roadEdgeSteerWeight: 0.35
