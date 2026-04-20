@@ -97,6 +97,12 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField, Range(20f, 100f)] private float scanFanAngleDeg = 62f;
     [Tooltip("Center cone: hits here count as forward threat.")]
     [SerializeField, Range(8f, 70f)] private float forwardThreatConeHalfAngleDeg = 16f;
+    [Tooltip("Multiply forward-threat half-angle (red debug rays) after a dodge and optionally while avoiding — keeps obstacles in the “danger cone” so traffic is less likely to steer back into them.")]
+    [SerializeField, Min(1f)] private float forwardThreatConeDangerBoostMultiplier = 1.35f;
+    [Tooltip("After leaving AvoidingObstacle (recovery starts), keep the widened forward threat cone for this many seconds. 0 = post-dodge boost off.")]
+    [SerializeField, Min(0f)] private float postDodgeThreatConeBoostDuration = 2f;
+    [Tooltip("If true, the danger boost also applies during AvoidingObstacle, not only for the post-dodge timer.")]
+    [SerializeField] private bool widenForwardThreatConeWhileAvoiding = true;
     [FormerlySerializedAs("obstacleRayHeight")]
     [SerializeField, Min(0f)] private float rayHeight = 0.5f;
     [FormerlySerializedAs("obstacleRayForwardOffset")]
@@ -291,6 +297,7 @@ public class NPCTrafficCar : MonoBehaviour
     private Vector3 _dodgeHeading = Vector3.forward;
     private int _lockedDodgeSide; // -1 = left, +1 = right
     private int _forwardThreatStreak;
+    private float _postDodgeThreatConeBoostEndTime = -1f;
     private int _forwardClearWhileAvoidStreak;
     private int _trackAheadClearStreak;
     private int _corridorBlockedStreak;
@@ -393,6 +400,7 @@ public class NPCTrafficCar : MonoBehaviour
         _boostEndTime = 0f;
         _onBoostPad = false;
         _avoidanceSphereRadius = 0f;
+        _postDodgeThreatConeBoostEndTime = -1f;
     }
 
     private void ResetAvoidanceInternalState()
@@ -562,7 +570,8 @@ public class NPCTrafficCar : MonoBehaviour
         float range = scanRange;
         float halfFan = scanFanAngleDeg * 0.5f;
         float step = scanRayCount > 1 ? scanFanAngleDeg / (scanRayCount - 1) : 0f;
-        float halfThreat = Mathf.Min(halfFan - 0.01f, forwardThreatConeHalfAngleDeg);
+        float boostedHalfAngle = forwardThreatConeHalfAngleDeg * ForwardThreatConeDangerMultiplierCurrent();
+        float halfThreat = Mathf.Min(halfFan - 0.01f, boostedHalfAngle);
 
         float clearance = Mathf.Max(0.08f, _avoidanceSphereRadius + hitboxClearance);
         float reactionDist = Mathf.Clamp(
@@ -696,6 +705,19 @@ public class NPCTrafficCar : MonoBehaviour
         s.SideNudgeCandidate = sideClose && (forwardStillRelevant || scrape);
 
         return s;
+    }
+
+    /// <summary>Widens the forward “red cone” after a dodge and optionally while actively avoiding.</summary>
+    private float ForwardThreatConeDangerMultiplierCurrent()
+    {
+        if (forwardThreatConeDangerBoostMultiplier <= 1f)
+            return 1f;
+
+        bool postDodge = postDodgeThreatConeBoostDuration > 0f && Time.time < _postDodgeThreatConeBoostEndTime;
+        bool whileAvoid = widenForwardThreatConeWhileAvoiding && _phase == NpcDrivePhase.AvoidingObstacle;
+        if (postDodge || whileAvoid)
+            return forwardThreatConeDangerBoostMultiplier;
+        return 1f;
     }
 
     private bool IsHitInOurPath(Vector3 hitPoint)
@@ -956,6 +978,9 @@ public class NPCTrafficCar : MonoBehaviour
             _oppositeFlankWinStreak = 0;
             _ambientSideNudge = false;
             _preCommitActive = false;
+
+            if (postDodgeThreatConeBoostDuration > 0f && forwardThreatConeDangerBoostMultiplier > 1f)
+                _postDodgeThreatConeBoostEndTime = Time.time + postDodgeThreatConeBoostDuration;
         }
     }
 
@@ -1920,6 +1945,32 @@ public class NPCTrafficCar : MonoBehaviour
         }
         else if (!boost)
             _onBoostPad = false;
+    }
+
+    /// <summary>
+    /// Scripted <see cref="RollingLogAlongTrack"/> uses a kinematic rigidbody; NPC traffic also moves kinematically.
+    /// PhysX does not report <see cref="OnCollisionEnter"/> between those two, so the log overlap-probes each step and calls here.
+    /// </summary>
+    public void ApplyScriptedRollingLogOverlapHit(RollingLogAlongTrack log, Collider logCollider, Vector3 contactWorld, float impactSpeed)
+    {
+        if (_crashed || log == null || logCollider == null) return;
+        if (!ShouldCrashWith(logCollider)) return;
+
+        _rollingLogRamPending = false;
+        if (log.TryGetVehicleRamImpulse(null, out Vector3 planarU, out float hi, out float ui))
+        {
+            _rollingLogRamPending = true;
+            _rollingLogPlanarUnit = planarU;
+            _rollingLogHorizImpulse = hi;
+            _rollingLogUpImpulse = ui;
+        }
+
+        Vector3 impactDir = transform.position - contactWorld;
+        impactDir.y = 0f;
+        if (impactDir.sqrMagnitude < 0.001f) impactDir = -transform.forward;
+        impactDir.Normalize();
+
+        TriggerCrash(impactDir, impactSpeed, logCollider, "RollingLogOverlap");
     }
 
     private void OnCollisionEnter(Collision collision)

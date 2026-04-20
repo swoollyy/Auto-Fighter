@@ -107,7 +107,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
+  m_Size: {x: 0.8, y: 0.8, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &9137398506818108145
 MonoBehaviour:
@@ -167,7 +167,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 1
   m_Constraints: 0
-  m_CollisionDetection: 1
+  m_CollisionDetection: 2
 --- !u!114 &2781239470516158656
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -186,7 +186,7 @@ MonoBehaviour:
   trackLookAhead: 2
   speed: 3
   randomizeSpeed: 1
-  speedRange: {x: 2.5, y: 5}
+  speedRange: {x: 2, y: 6}
   slowDownWhileAvoiding: 1
   avoidingSpeedMultiplier: 1
   roadLayer:
@@ -199,12 +199,12 @@ MonoBehaviour:
   raycastDownDistance: 20
   groundClearance: 0.02
   validateMovementOnDriveable: 0
-  baseTurnRateDegPerSec: 210
-  minTurnRateDegPerSec: 70
+  baseTurnRateDegPerSec: 270
+  minTurnRateDegPerSec: 100
   turnRateFalloffSpeed: 11.4
   accelerationRate: 8
   decelerationRate: 16
-  steeringSmoothTime: 0.35
+  steeringSmoothTime: 0.3
   speedSmoothTime: 0.09
   alignmentTime: 0.34
   headingErrorForFullSteerDeg: 50
@@ -220,38 +220,41 @@ MonoBehaviour:
   scanRayCount: 20
   scanFanAngleDeg: 100
   forwardThreatConeHalfAngleDeg: 13
+  forwardThreatConeDangerBoostMultiplier: 1.8
+  postDodgeThreatConeBoostDuration: 1.1
+  widenForwardThreatConeWhileAvoiding: 1
   rayHeight: 0
   rayForwardOffset: 0.4
-  hitboxClearance: 2.7
-  avoidanceOverlapRadiusMultiplier: 0.25
+  hitboxClearance: 5
+  avoidanceOverlapRadiusMultiplier: 0.4
   reactionTime: 0.7
   framesToCommitAvoid: 1
-  avoidSteerWeight: 0.75
+  avoidSteerWeight: 0.85
   dodgeHeadingSlewDegPerSec: 45
   preCommitSteerBlend: 0
   framesForwardClearToExit: 4
   exitWhenTrackAheadClear: 1
   trackAheadClearCheckDistance: 3
   framesTrackAheadClearToExit: 4
-  sideNudgeMaxDistance: 3
+  sideNudgeMaxDistance: 4.5
   minAvoidTimeBeforeExit: 0.15
   obstacleAheadBlocksExitDistance: 0.5
   obstacleBehindRequiredForExit: 0.25
   recoveryMinDuration: 0.2
   recoveryClearFramesToExit: 2
   recoveryHeadingErrorDeg: 3
-  recoveryLaneHoldSteerBlend: 0.15
+  recoveryLaneHoldSteerBlend: 0.45
   recoveryMaxSteer: 1
-  followCruiseLaneHoldBlend: 0.05
+  followCruiseLaneHoldBlend: 0.2
   framesCorridorBlockedToReplan: 4
   oppositeFlankGreenMargin: 2
   framesOppositeFlankWinsToFlip: 4
   minRoadRoomToDodge: 0.2
   dodgeTowardRoadCenterWeight: 0
   avoidanceLaneCenterSteerBlend: 0.38
-  urgentThreatCommitUnderDistance: 3
-  deadAheadForbidCenterUnderDistance: 5
-  dodgeFlankScoreHysteresis: 2
+  urgentThreatCommitUnderDistance: 5
+  deadAheadForbidCenterUnderDistance: 9
+  dodgeFlankScoreHysteresis: 3
   enableRoadBoundaryDetection: 1
   roadEdgeProbeWidth: 0.2
   roadEdgeSteerWeight: 0.35
@@ -298,11 +301,11 @@ MonoBehaviour:
   boostPadDuration: 0.58
   boostPadThreshold: 1.3
   verboseDebug: 0
-  drawDestinationGizmo: 1
-  drawObstacleRays: 1
-  drawSteeringDebug: 1
-  drawOverlapSphereGizmo: 1
-  drawCrashOverlapDetectionGizmo: 1
+  drawDestinationGizmo: 0
+  drawObstacleRays: 0
+  drawSteeringDebug: 0
+  drawOverlapSphereGizmo: 0
+  drawCrashOverlapDetectionGizmo: 0
   autoFitRootColliderToVisual: 0
   replaceUnsupportedRootCollider: 0
 --- !u!1 &5239580411566504930

@@ -61,6 +61,8 @@ public class RollingLogAlongTrack : MonoBehaviour
     [Tooltip("Fallback for kinematic-vs-kinematic setups: if collision callbacks don't fire, detect overlaps and still ram bounce-back obstacles.")]
     [SerializeField] private bool enableScriptedOverlapRamFallback = true;
     [SerializeField, Min(0f)] private float overlapRamCooldown = 0.2f;
+    [Tooltip("Scripted logs and NPCTrafficCar are both kinematic while driving; PhysX will not emit contact callbacks between them. Overlap probe applies the same crash+ram as a real collision.")]
+    [SerializeField] private bool enableScriptedNpcTrafficOverlapHit = true;
 
     [Header("RacingObstacle ram (props)")]
     [Tooltip("Extra horizontal oomph vs RacingObstacle: base ramHorizontalImpulse is multiplied by this.")]
@@ -104,6 +106,7 @@ public class RollingLogAlongTrack : MonoBehaviour
     private Vector3 _cachedWorldVel;
     private Collider _ramProbeCollider;
     private readonly Dictionary<int, float> _overlapRamUntilByRootId = new();
+    private readonly Dictionary<int, float> _overlapNpcHitUntilByRootId = new();
 
     public bool IsScriptedAlongPath => _ready && !_freedToPhysics;
     public float CurrentScriptedSpeed => Mathf.Abs(_signedSpeed);
@@ -119,6 +122,7 @@ public class RollingLogAlongTrack : MonoBehaviour
     /// <summary>
     /// Planar push unit and impulse strengths for player/NPC vehicles. NPC applies Δv = impulse / mass in <see cref="NPCTrafficCar"/> to match <see cref="Rigidbody.AddForce"/> Impulse.
     /// </summary>
+    /// <param name="collision">Optional; unused except for API symmetry with <see cref="OnCollisionEnter"/>. May be null for overlap-driven hits.</param>
     public bool TryGetVehicleRamImpulse(Collision collision, out Vector3 planarUnit, out float horizontalImpulse, out float upImpulse)
     {
         planarUnit = Vector3.forward;
@@ -243,6 +247,7 @@ public class RollingLogAlongTrack : MonoBehaviour
     {
         _ready = false;
         _overlapRamUntilByRootId.Clear();
+        _overlapNpcHitUntilByRootId.Clear();
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -326,6 +331,37 @@ public class RollingLogAlongTrack : MonoBehaviour
             float relSpeed = Mathf.Max(CurrentScriptedSpeed, 3f);
             RamOtherObstacle(hit, contact, relSpeed);
             _overlapRamUntilByRootId[id] = now + overlapRamCooldown;
+        }
+    }
+
+    private void ProbeScriptedNpcTrafficOverlapHits()
+    {
+        if (!enableScriptedNpcTrafficOverlapHit || !_ready || _freedToPhysics) return;
+        if (_ramProbeCollider == null) return;
+
+        float now = Time.time;
+        Collider[] hits = OverlapColliderShape(_ramProbeCollider, ~0);
+        if (hits == null || hits.Length == 0) return;
+
+        Collider logSolid = _ramProbeCollider;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+
+            var npc = hit.GetComponentInParent<NPCTrafficCar>();
+            if (npc == null) continue;
+
+            Transform root = npc.transform.root != null ? npc.transform.root : npc.transform;
+            int id = root.GetInstanceID();
+            if (_overlapNpcHitUntilByRootId.TryGetValue(id, out float until) && now < until)
+                continue;
+
+            Vector3 contact = hit.ClosestPoint(_rb.position);
+            float relSpeed = Mathf.Max(CurrentScriptedSpeed, 3f);
+            npc.ApplyScriptedRollingLogOverlapHit(this, logSolid, contact, relSpeed);
+            _overlapNpcHitUntilByRootId[id] = now + overlapRamCooldown;
         }
     }
 
@@ -599,6 +635,7 @@ public class RollingLogAlongTrack : MonoBehaviour
         }
 
         ProbeScriptedOverlapRams();
+        ProbeScriptedNpcTrafficOverlapHits();
     }
 
     private bool IsRampAtDistance(float distAlongTrack)
