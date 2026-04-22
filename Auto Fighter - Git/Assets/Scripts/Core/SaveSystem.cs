@@ -124,6 +124,9 @@ namespace AutoFighter.Core
         /// </summary>
         private static SaveData Migrate(SaveData data)
         {
+            if (data.cursorSpeedPixelsPerSecond <= 0f)
+                data.cursorSpeedPixelsPerSecond = SaveData.DefaultCursorSpeedPixelsPerSecond;
+
             if (data.version == SaveData.CurrentVersion) return data;
 
             // Example pattern for future migrations:

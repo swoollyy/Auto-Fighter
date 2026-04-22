@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AutoFighter.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -72,6 +73,8 @@ public class SkillTreeVirtualCursor : MonoBehaviour
 
         if (skillTreeUi == null)
             skillTreeUi = FindObjectOfType<RacingSkillUI>();
+
+        SyncCursorSpeedFromSave();
     }
 
     void OnEnable()
@@ -95,6 +98,7 @@ public class SkillTreeVirtualCursor : MonoBehaviour
     void Update()
     {
         if (!_eventSystem || !_raycaster || !cursorRect || !canvas) return;
+        SyncCursorSpeedFromSave();
 
         if (autoSwitchInput)
             DetectAndSwitchMode();
@@ -387,5 +391,18 @@ public class SkillTreeVirtualCursor : MonoBehaviour
 
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, screenPos, _uiCam, out Vector2 local))
             cursorRect.anchoredPosition = local;
+    }
+
+    private void SyncCursorSpeedFromSave()
+    {
+        if (SaveSystem.Current == null) return;
+
+        float saved = Mathf.Clamp(
+            SaveSystem.Current.cursorSpeedPixelsPerSecond,
+            SaveData.MinCursorSpeedPixelsPerSecond,
+            SaveData.MaxCursorSpeedPixelsPerSecond);
+
+        if (!Mathf.Approximately(cursorSpeedPixelsPerSecond, saved))
+            cursorSpeedPixelsPerSecond = saved;
     }
 }

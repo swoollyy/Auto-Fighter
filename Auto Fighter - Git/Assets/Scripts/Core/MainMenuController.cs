@@ -20,6 +20,9 @@ namespace AutoFighter.Core
         [SerializeField] private Button playButton;
         [SerializeField] private Button optionsButton;
         [SerializeField] private Button quitButton;
+        [Tooltip("Optional root CanvasGroup for your base menu (Play/Options/Quit area). " +
+                 "Used to block controller raycasts while modal panels are open.")]
+        [SerializeField] private CanvasGroup mainMenuCanvasGroup;
 
         [Header("Reset Save (corner button)")]
         [FormerlySerializedAs("newGameButton")]
@@ -36,6 +39,25 @@ namespace AutoFighter.Core
         [SerializeField] private GameObject optionsPanel;
         [Tooltip("Button inside the options panel that closes it (X / Back).")]
         [SerializeField] private Button optionsCloseButton;
+        [Tooltip("Optional cursor-speed slider in options. Saves to SaveSystem and applies globally.")]
+        [SerializeField] private Slider cursorSpeedSlider;
+        [Tooltip("Optional value label for cursor speed (e.g. '1300').")]
+        [SerializeField] private TMP_Text cursorSpeedValueLabel;
+        [SerializeField] private float cursorSpeedSliderMin = 300f;
+        [SerializeField] private float cursorSpeedSliderMax = 900f;
+        [Header("Cursor Speed Display Mapping")]
+        [Tooltip("Displayed value when slider is at cursorSpeedSliderMin.")]
+        [SerializeField] private float cursorSpeedDisplayMin = 1f;
+        [Tooltip("Displayed value when slider is at cursorSpeedSliderMax.")]
+        [SerializeField] private float cursorSpeedDisplayMax = 10f;
+        [Tooltip("Number of decimal places shown in the display label.")]
+        [SerializeField, Range(0, 4)] private int cursorSpeedDisplayDecimals = 2;
+
+        [Header("Name Entry (optional)")]
+        [Tooltip("If assigned, this panel opens when Play is pressed and no player name exists.")]
+        [SerializeField] private GameObject nameEntryPanel;
+        [Tooltip("Controller for submitting and saving player names from the panel.")]
+        [SerializeField] private NameEntryPanelController nameEntryController;
 
         [Header("Dynamic Labels (optional)")]
         [Tooltip("If assigned, this text becomes 'Continue' when a save has progress, " +
@@ -50,6 +72,9 @@ namespace AutoFighter.Core
         [SerializeField] private string welcomeNewPlayerText = "Welcome, New Player!";
         [Tooltip("Shown when the save has a player name. Use {0} as the name placeholder.")]
         [SerializeField] private string welcomeReturningFormat = "Welcome back, {0}!";
+
+        private SliderCommitNotifier _cursorSpeedCommitNotifier;
+        private float _pendingCursorSpeedValue;
 
         private void Awake()
         {
@@ -67,9 +92,15 @@ namespace AutoFighter.Core
             if (resetSaveConfirmNo != null) resetSaveConfirmNo.onClick.AddListener(CancelResetSave);
 
             if (optionsCloseButton != null) optionsCloseButton.onClick.AddListener(CloseOptions);
+            if (nameEntryController != null) nameEntryController.Submitted += OnNameSubmitted;
+            if (cursorSpeedSlider != null) cursorSpeedSlider.onValueChanged.AddListener(OnCursorSpeedSliderChanged);
+            EnsureCursorSpeedSliderCommitNotifier();
 
             if (resetSaveConfirmPanel != null) resetSaveConfirmPanel.SetActive(false);
             if (optionsPanel != null) optionsPanel.SetActive(false);
+            if (nameEntryPanel != null) nameEntryPanel.SetActive(false);
+            InitializeCursorSpeedSliderFromSave();
+            UpdateModalInputState();
 
             RefreshUI();
         }
@@ -85,6 +116,10 @@ namespace AutoFighter.Core
             if (resetSaveConfirmNo != null) resetSaveConfirmNo.onClick.RemoveListener(CancelResetSave);
 
             if (optionsCloseButton != null) optionsCloseButton.onClick.RemoveListener(CloseOptions);
+            if (nameEntryController != null) nameEntryController.Submitted -= OnNameSubmitted;
+            if (cursorSpeedSlider != null) cursorSpeedSlider.onValueChanged.RemoveListener(OnCursorSpeedSliderChanged);
+            if (_cursorSpeedCommitNotifier != null)
+                _cursorSpeedCommitNotifier.Committed -= OnCursorSpeedSliderCommitted;
         }
 
         private void RefreshUI()
@@ -124,6 +159,12 @@ namespace AutoFighter.Core
 
         private void OnPlayClicked()
         {
+            if (ShouldAskForName())
+            {
+                OpenNameEntryPanel();
+                return;
+            }
+
             if (string.IsNullOrEmpty(gameplaySceneName))
             {
                 Debug.LogError("[MainMenuController] Gameplay scene name is empty.");
@@ -152,11 +193,102 @@ namespace AutoFighter.Core
             }
 
             optionsPanel.SetActive(!optionsPanel.activeSelf);
+            UpdateModalInputState();
         }
 
         private void CloseOptions()
         {
-            if (optionsPanel != null) optionsPanel.SetActive(false);
+            if (optionsPanel != null)
+            {
+                optionsPanel.SetActive(false);
+                UpdateModalInputState();
+            }
+        }
+
+        private void InitializeCursorSpeedSliderFromSave()
+        {
+            if (SaveSystem.Current == null) SaveSystem.Load();
+
+            if (cursorSpeedSlider == null) return;
+
+            cursorSpeedSlider.minValue = cursorSpeedSliderMin;
+            cursorSpeedSlider.maxValue = cursorSpeedSliderMax;
+
+            float savedValue = SaveSystem.Current != null
+                ? SaveSystem.Current.cursorSpeedPixelsPerSecond
+                : SaveData.DefaultCursorSpeedPixelsPerSecond;
+            float clamped = Mathf.Clamp(savedValue, cursorSpeedSliderMin, cursorSpeedSliderMax);
+            cursorSpeedSlider.SetValueWithoutNotify(clamped);
+            _pendingCursorSpeedValue = clamped;
+            UpdateCursorSpeedValueLabel(clamped);
+        }
+
+        private void OnCursorSpeedSliderChanged(float nextValue)
+        {
+            float clamped = Mathf.Clamp(nextValue, cursorSpeedSliderMin, cursorSpeedSliderMax);
+            _pendingCursorSpeedValue = clamped;
+            UpdateCursorSpeedValueLabel(clamped);
+        }
+
+        private void OnCursorSpeedSliderCommitted(float committedValue)
+        {
+            if (SaveSystem.Current == null) SaveSystem.Load();
+            if (SaveSystem.Current == null) return;
+
+            float clamped = Mathf.Clamp(committedValue, cursorSpeedSliderMin, cursorSpeedSliderMax);
+            SaveSystem.Current.cursorSpeedPixelsPerSecond = clamped;
+            SaveSystem.Save();
+        }
+
+        private void UpdateCursorSpeedValueLabel(float value)
+        {
+            if (cursorSpeedValueLabel != null)
+            {
+                float mapped = MapSliderValueToDisplayValue(value);
+                cursorSpeedValueLabel.text = mapped.ToString($"F{cursorSpeedDisplayDecimals}");
+            }
+        }
+
+        private float MapSliderValueToDisplayValue(float sliderValue)
+        {
+            float sliderRange = cursorSpeedSliderMax - cursorSpeedSliderMin;
+            if (sliderRange <= 0.0001f) return cursorSpeedDisplayMin;
+
+            float t = Mathf.InverseLerp(cursorSpeedSliderMin, cursorSpeedSliderMax, sliderValue);
+            return Mathf.Lerp(cursorSpeedDisplayMin, cursorSpeedDisplayMax, t);
+        }
+
+        private void EnsureCursorSpeedSliderCommitNotifier()
+        {
+            if (cursorSpeedSlider == null) return;
+
+            _cursorSpeedCommitNotifier = cursorSpeedSlider.GetComponent<SliderCommitNotifier>();
+            if (_cursorSpeedCommitNotifier == null)
+                _cursorSpeedCommitNotifier = cursorSpeedSlider.gameObject.AddComponent<SliderCommitNotifier>();
+
+            _cursorSpeedCommitNotifier.Committed -= OnCursorSpeedSliderCommitted;
+            _cursorSpeedCommitNotifier.Committed += OnCursorSpeedSliderCommitted;
+        }
+
+        private bool ShouldAskForName()
+        {
+            if (nameEntryPanel == null || nameEntryController == null) return false;
+            return string.IsNullOrWhiteSpace(SaveSystem.Current != null ? SaveSystem.Current.playerName : string.Empty);
+        }
+
+        private void OpenNameEntryPanel()
+        {
+            if (nameEntryPanel == null) return;
+            nameEntryPanel.SetActive(true);
+            UpdateModalInputState();
+        }
+
+        private void OnNameSubmitted(string playerName)
+        {
+            if (nameEntryPanel != null) nameEntryPanel.SetActive(false);
+            UpdateModalInputState();
+            RefreshUI();
+            Debug.Log($"[MainMenuController] Player name set to '{playerName}'.");
         }
 
         // ── Reset Save ──────────────────────────────────────────────────────
@@ -183,13 +315,51 @@ namespace AutoFighter.Core
             SaveSystem.Delete();
             SaveSystem.Load();
             if (resetSaveConfirmPanel != null) resetSaveConfirmPanel.SetActive(false);
+            InitializeCursorSpeedSliderFromSave();
+            UpdateModalInputState();
             RefreshUI();
             Debug.Log("[MainMenuController] Save wiped. Menu refreshed.");
         }
 
         private void CancelResetSave()
         {
-            if (resetSaveConfirmPanel != null) resetSaveConfirmPanel.SetActive(false);
+            if (resetSaveConfirmPanel != null)
+            {
+                resetSaveConfirmPanel.SetActive(false);
+                UpdateModalInputState();
+            }
+        }
+
+        private void UpdateModalInputState()
+        {
+            bool modalOpen =
+                (optionsPanel != null && optionsPanel.activeInHierarchy) ||
+                (nameEntryPanel != null && nameEntryPanel.activeInHierarchy) ||
+                (resetSaveConfirmPanel != null && resetSaveConfirmPanel.activeInHierarchy);
+
+            bool canUseCanvasGroupBlocking = mainMenuCanvasGroup != null
+                                             && !IsChildOfMainMenuGroup(optionsPanel)
+                                             && !IsChildOfMainMenuGroup(nameEntryPanel)
+                                             && !IsChildOfMainMenuGroup(resetSaveConfirmPanel);
+
+            if (canUseCanvasGroupBlocking)
+            {
+                mainMenuCanvasGroup.interactable = !modalOpen;
+                mainMenuCanvasGroup.blocksRaycasts = !modalOpen;
+            }
+
+            // Always keep explicit button gating so base controls never click
+            // through modal panels, even when CanvasGroup can't be safely used.
+            if (playButton != null) playButton.interactable = !modalOpen;
+            if (optionsButton != null) optionsButton.interactable = !modalOpen;
+            if (quitButton != null) quitButton.interactable = !modalOpen;
+            if (resetSaveButton != null) resetSaveButton.interactable = !modalOpen && HasProgress();
+        }
+
+        private bool IsChildOfMainMenuGroup(GameObject panel)
+        {
+            if (mainMenuCanvasGroup == null || panel == null) return false;
+            return panel.transform.IsChildOf(mainMenuCanvasGroup.transform);
         }
 
         // ── Quit ────────────────────────────────────────────────────────────

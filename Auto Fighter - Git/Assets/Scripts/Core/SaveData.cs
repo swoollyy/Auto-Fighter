@@ -11,6 +11,9 @@ namespace AutoFighter.Core
     public class SaveData
     {
         public const int CurrentVersion = 1;
+        public const float DefaultCursorSpeedPixelsPerSecond = 1300f;
+        public const float MinCursorSpeedPixelsPerSecond = 300f;
+        public const float MaxCursorSpeedPixelsPerSecond = 3000f;
 
         public int version = CurrentVersion;
 
@@ -22,6 +25,7 @@ namespace AutoFighter.Core
         public long softCurrency;
         public int highestLevelReached;
         public int totalRuns;
+        public float cursorSpeedPixelsPerSecond = DefaultCursorSpeedPixelsPerSecond;
 
         public static SaveData CreateDefault()
         {
