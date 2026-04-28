@@ -22,6 +22,8 @@ public class TMPJitterEffect : MonoBehaviour
     private TMP_MeshInfo[] _ownCache;
     private bool _textChanged = true;
     private float _time;
+    private float[] _ampMul;
+    private float[] _spdMul;
 
     private void Awake()
     {
@@ -70,9 +72,12 @@ public class TMPJitterEffect : MonoBehaviour
             Vector3[] sourceVertices = rest[materialIndex].vertices;
             Vector3[] destVertices = textInfo.meshInfo[materialIndex].vertices;
 
-            float px = Mathf.PerlinNoise(i * 0.5f, _time * speed) * 2f - 1f;
-            float py = Mathf.PerlinNoise(i * 0.5f + 100f, _time * speed) * 2f - 1f;
-            Vector3 jitter = new Vector3(px, py, 0) * effectiveScale;
+            float ampMul = (_ampMul != null && i < _ampMul.Length) ? _ampMul[i] : 1f;
+            float spdMul = (_spdMul != null && i < _spdMul.Length) ? _spdMul[i] : 1f;
+
+            float px = Mathf.PerlinNoise(i * 0.5f, _time * speed * spdMul) * 2f - 1f;
+            float py = Mathf.PerlinNoise(i * 0.5f + 100f, _time * speed * spdMul) * 2f - 1f;
+            Vector3 jitter = new Vector3(px, py, 0) * (effectiveScale * ampMul);
 
             destVertices[vertexIndex + 0] = sourceVertices[vertexIndex + 0] + jitter;
             destVertices[vertexIndex + 1] = sourceVertices[vertexIndex + 1] + jitter;
@@ -88,7 +93,14 @@ public class TMPJitterEffect : MonoBehaviour
     {
         var coord = GetComponent<TMPEffectCoordinator>();
         if (coord != null && coord.HasRestCache())
+        {
+            if (_textChanged)
+            {
+                RebuildMultipliers(characterCount);
+                _textChanged = false;
+            }
             return coord.GetRestCache();
+        }
 
         if (_textChanged || _ownCache == null)
         {
@@ -97,9 +109,17 @@ public class TMPJitterEffect : MonoBehaviour
             characterCount = textInfo.characterCount;
             if (characterCount == 0) return null;
             _ownCache = textInfo.CopyMeshInfoVertexData();
+            RebuildMultipliers(characterCount);
             _textChanged = false;
         }
         return _ownCache;
+    }
+
+    private void RebuildMultipliers(int characterCount)
+    {
+        if (string.IsNullOrEmpty(linkTag)) { _ampMul = null; _spdMul = null; return; }
+        TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "amp", usePositionalFallback: true, ref _ampMul);
+        TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "spd", usePositionalFallback: false, ref _spdMul);
     }
 
     private void UploadMesh(TMP_TextInfo textInfo)

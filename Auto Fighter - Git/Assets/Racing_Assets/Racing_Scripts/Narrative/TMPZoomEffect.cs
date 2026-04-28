@@ -22,6 +22,7 @@ public class TMPZoomEffect : MonoBehaviour
     private TMP_MeshInfo[] _ownCache;
     private bool _textChanged = true;
     private float _time;
+    private float[] _ampMul;
 
     private void Awake()
     {
@@ -57,7 +58,6 @@ public class TMPZoomEffect : MonoBehaviour
 
         _time += useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
         float wave = (Mathf.Sin(_time * pulseSpeed * Mathf.PI * 2f) + 1f) * 0.5f;
-        float scale = baseScale + scaleAmplitude * wave;
 
         for (int i = 0; i < characterCount; i++)
         {
@@ -68,6 +68,9 @@ public class TMPZoomEffect : MonoBehaviour
             int materialIndex = charInfo.materialReferenceIndex;
             int vertexIndex = charInfo.vertexIndex;
             Vector3[] destVertices = textInfo.meshInfo[materialIndex].vertices;
+
+            float ampMul = (_ampMul != null && i < _ampMul.Length) ? _ampMul[i] : 1f;
+            float scale = baseScale + scaleAmplitude * ampMul * wave;
 
             // Scale from current vertices so wave/jitter are preserved
             Vector3 center = (destVertices[vertexIndex + 0] + destVertices[vertexIndex + 2]) * 0.5f;
@@ -85,7 +88,14 @@ public class TMPZoomEffect : MonoBehaviour
     {
         var coord = GetComponent<TMPEffectCoordinator>();
         if (coord != null && coord.HasRestCache())
+        {
+            if (_textChanged)
+            {
+                RebuildMultipliers(characterCount);
+                _textChanged = false;
+            }
             return coord.GetRestCache();
+        }
 
         if (_textChanged)
         {
@@ -94,9 +104,16 @@ public class TMPZoomEffect : MonoBehaviour
             characterCount = textInfo.characterCount;
             if (characterCount == 0) return null;
             _ownCache = textInfo.CopyMeshInfoVertexData();
+            RebuildMultipliers(characterCount);
             _textChanged = false;
         }
         return _ownCache;
+    }
+
+    private void RebuildMultipliers(int characterCount)
+    {
+        if (string.IsNullOrEmpty(linkTag)) { _ampMul = null; return; }
+        TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "amp", usePositionalFallback: true, ref _ampMul);
     }
 
     private void UploadMesh(TMP_TextInfo textInfo)

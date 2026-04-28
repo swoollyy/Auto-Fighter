@@ -149,7 +149,9 @@ public class DialogueManager : MonoBehaviour
                 }
             }
 
-            dialogueUI?.SetLine(line.speakerName, line.text, line.portrait);
+            string resolvedSpeaker = NarrativeTokens.Resolve(line.speakerName);
+            string resolvedText = NarrativeTokens.Resolve(line.text);
+            dialogueUI?.SetLine(resolvedSpeaker, resolvedText, line.portrait);
 
             if (line.autoAdvance)
             {

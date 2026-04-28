@@ -27,6 +27,8 @@ public class TMPRainbowColorEffect : MonoBehaviour
     private TMP_MeshInfo[] _ownCache;
     private bool _textChanged = true;
     private float _time;
+    private float[] _hueMul;
+    private float[] _charHueOffset;
 
     private void Awake()
     {
@@ -79,7 +81,10 @@ public class TMPRainbowColorEffect : MonoBehaviour
             Color32[] destColors = textInfo.meshInfo[materialIndex].colors32;
             if (destColors == null || vertexIndex + 3 >= destColors.Length) continue;
 
-            float hue = Mathf.Repeat(baseHue + i * huePerCharacter, 1f);
+            float charOffset = (_charHueOffset != null && i < _charHueOffset.Length)
+                ? _charHueOffset[i]
+                : i * huePerCharacter;
+            float hue = Mathf.Repeat(baseHue + charOffset, 1f);
             Color rgb = Color.HSVToRGB(hue, saturation, value);
             rgb.r = Mathf.Clamp01(rgb.r);
             rgb.g = Mathf.Clamp01(rgb.g);
@@ -113,15 +118,43 @@ public class TMPRainbowColorEffect : MonoBehaviour
     {
         var coord = GetComponent<TMPEffectCoordinator>();
         if (coord != null && coord.HasRestCache())
+        {
+            if (_textChanged)
+            {
+                RebuildHueOffsets(characterCount);
+                _textChanged = false;
+            }
             return coord.GetRestCache();
+        }
 
         if (_textChanged || _ownCache == null)
         {
             _ownCache = textInfo.CopyMeshInfoVertexData();
+            RebuildHueOffsets(characterCount);
             _textChanged = false;
             _time = 0f;
         }
         return _ownCache;
+    }
+
+    private void RebuildHueOffsets(int characterCount)
+    {
+        int alloc = Mathf.Max(characterCount, 1);
+        if (_charHueOffset == null || _charHueOffset.Length < alloc)
+            _charHueOffset = new float[alloc];
+
+        if (!string.IsNullOrEmpty(linkTag))
+            TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "hue", usePositionalFallback: true, ref _hueMul);
+        else
+            _hueMul = null;
+
+        float cumulative = 0f;
+        for (int i = 0; i < characterCount; i++)
+        {
+            _charHueOffset[i] = cumulative;
+            float mul = (_hueMul != null && i < _hueMul.Length) ? _hueMul[i] : 1f;
+            cumulative += huePerCharacter * mul;
+        }
     }
 
     private static Color32 MultiplyKeepAlpha(Color32 baseColor, Color32 tint)

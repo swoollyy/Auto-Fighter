@@ -24,6 +24,16 @@ public class DialogueUI : MonoBehaviour
     [Tooltip("Characters revealed per second (unscaled).")]
     [SerializeField, Min(10f)] private float typewriterCharsPerSecond = 60f;
 
+    [Header("Per-phrase speed (via <link> tags)")]
+    [Tooltip("Speed multiplier for <link=\"slow\">...</link>. <1 = slower, >1 = faster.")]
+    [SerializeField, Min(0.05f)] private float slowMultiplier = 0.35f;
+    [Tooltip("Speed multiplier for <link=\"fast\">...</link>.")]
+    [SerializeField, Min(0.05f)] private float fastMultiplier = 2.5f;
+    [Tooltip("Speed multiplier for <link=\"pause\">...</link>. Use this on short spans (a comma, ellipsis) for dramatic beats.")]
+    [SerializeField, Min(0.01f)] private float pauseMultiplier = 0.12f;
+    [Tooltip("Per-link extra delay (seconds) applied BEFORE revealing the span. Use with <link=\"hold:0.5\">...</link> for custom beats.")]
+    [SerializeField] private bool supportCustomSpeedAndHoldTags = true;
+
     [Header("Portrait (optional)")]
     [SerializeField] private Image portraitImage;
     [Tooltip("Sprite to use when no portrait is set for a line.")]
@@ -44,6 +54,10 @@ public class DialogueUI : MonoBehaviour
     private bool _typewriterComplete;
     /// <summary>When using typewriter, we reveal by vertex alpha; this is the number of characters currently visible. Mesh is built once (full text) so link effects don't restart.</summary>
     private int _visibleCharacterCount;
+    /// <summary>Per-character speed multiplier (1.0 = base rate). Built from <link> tags each time a line is set.</summary>
+    private float[] _charSpeedMultipliers;
+    /// <summary>Per-character extra hold (seconds) applied BEFORE revealing that character. Built from <link="hold:X"> tags.</summary>
+    private float[] _charHoldSeconds;
 
     /// <summary>True when the current line is fully revealed (or when typewriter is disabled).</summary>
     public bool IsTypewriterComplete => !useTypewriterEffect || _typewriterComplete;
@@ -110,6 +124,7 @@ public class DialogueUI : MonoBehaviour
             {
                 _typewriterComplete = false;
                 _visibleCharacterCount = 0;
+                BuildPerCharacterTimingTables();
                 if (_typewriterRoutine != null)
                     StopCoroutine(_typewriterRoutine);
                 _typewriterRoutine = StartCoroutine(TypewriterRevealRoutine());
@@ -192,15 +207,149 @@ public class DialogueUI : MonoBehaviour
             _typewriterRoutine = null;
             yield break;
         }
-        float revealed = 0f;
-        while (revealed < total)
+
+        float baseRate = Mathf.Max(1f, typewriterCharsPerSecond);
+        int nextChar = 0;
+        float timeDebt = 0f;
+        float holdRemaining = GetHold(0);
+
+        while (nextChar < total)
         {
-            revealed += typewriterCharsPerSecond * Time.unscaledDeltaTime;
-            _visibleCharacterCount = Mathf.Min(Mathf.FloorToInt(revealed), total);
+            float dt = Time.unscaledDeltaTime;
+
+            // Spend time on the pre-character hold first (used by <link="hold:X">).
+            if (holdRemaining > 0f)
+            {
+                if (dt <= holdRemaining)
+                {
+                    holdRemaining -= dt;
+                    yield return null;
+                    continue;
+                }
+                dt -= holdRemaining;
+                holdRemaining = 0f;
+            }
+
+            timeDebt += dt;
+            float secondsPerChar = 1f / (baseRate * GetMultiplier(nextChar));
+            while (nextChar < total && timeDebt >= secondsPerChar)
+            {
+                timeDebt -= secondsPerChar;
+                nextChar++;
+                if (nextChar < total)
+                {
+                    holdRemaining = GetHold(nextChar);
+                    if (holdRemaining > 0f) break; // Let the outer loop consume the hold next frame.
+                    secondsPerChar = 1f / (baseRate * GetMultiplier(nextChar));
+                }
+            }
+
+            _visibleCharacterCount = nextChar;
             yield return null;
         }
+
         _visibleCharacterCount = total;
         _typewriterComplete = true;
         _typewriterRoutine = null;
+    }
+
+    private float GetMultiplier(int charIndex)
+    {
+        if (_charSpeedMultipliers == null || charIndex < 0 || charIndex >= _charSpeedMultipliers.Length)
+            return 1f;
+        float m = _charSpeedMultipliers[charIndex];
+        return m > 0f ? m : 1f;
+    }
+
+    private float GetHold(int charIndex)
+    {
+        if (_charHoldSeconds == null || charIndex < 0 || charIndex >= _charHoldSeconds.Length)
+            return 0f;
+        return _charHoldSeconds[charIndex];
+    }
+
+    /// <summary>
+    /// Scan <see cref="TMP_TextInfo.linkInfo"/> and fill per-character speed/hold tables
+    /// from recognized link IDs: "slow", "fast", "pause", "speed:X", "hold:X".
+    /// </summary>
+    private void BuildPerCharacterTimingTables()
+    {
+        if (dialogueText == null)
+        {
+            _charSpeedMultipliers = null;
+            _charHoldSeconds = null;
+            return;
+        }
+
+        TMP_TextInfo info = dialogueText.textInfo;
+        int total = info != null ? info.characterCount : 0;
+
+        if (_charSpeedMultipliers == null || _charSpeedMultipliers.Length < total)
+            _charSpeedMultipliers = new float[Mathf.Max(total, 1)];
+        if (_charHoldSeconds == null || _charHoldSeconds.Length < total)
+            _charHoldSeconds = new float[Mathf.Max(total, 1)];
+        for (int i = 0; i < total; i++)
+        {
+            _charSpeedMultipliers[i] = 1f;
+            _charHoldSeconds[i] = 0f;
+        }
+        if (total == 0 || info.linkInfo == null) return;
+
+        int linkCount = info.linkCount;
+        for (int l = 0; l < linkCount; l++)
+        {
+            TMP_LinkInfo link = info.linkInfo[l];
+            string id = link.GetLinkID();
+            if (string.IsNullOrEmpty(id)) continue;
+
+            float multiplier;
+            float holdSeconds;
+            if (!TryResolveLinkTiming(id, out multiplier, out holdSeconds))
+                continue;
+
+            int first = link.linkTextfirstCharacterIndex;
+            int length = link.linkTextLength;
+            int end = Mathf.Min(first + length, total);
+            for (int c = Mathf.Max(0, first); c < end; c++)
+            {
+                if (multiplier > 0f) _charSpeedMultipliers[c] = multiplier;
+            }
+            if (holdSeconds > 0f && first >= 0 && first < total)
+                _charHoldSeconds[first] += holdSeconds;
+        }
+    }
+
+    /// <summary>
+    /// Parse a link ID into a speed multiplier and/or a pre-reveal hold.
+    /// Supported IDs: "slow", "fast", "pause", "speed:0.3", "hold:0.5".
+    /// Returns false for unrelated link IDs (so link effects / other systems keep working).
+    /// </summary>
+    private bool TryResolveLinkTiming(string id, out float multiplier, out float holdSeconds)
+    {
+        multiplier = 0f;
+        holdSeconds = 0f;
+
+        if (string.Equals(id, "slow", System.StringComparison.OrdinalIgnoreCase))
+        { multiplier = slowMultiplier; return true; }
+        if (string.Equals(id, "fast", System.StringComparison.OrdinalIgnoreCase))
+        { multiplier = fastMultiplier; return true; }
+        if (string.Equals(id, "pause", System.StringComparison.OrdinalIgnoreCase))
+        { multiplier = pauseMultiplier; return true; }
+
+        if (!supportCustomSpeedAndHoldTags) return false;
+
+        int colon = id.IndexOf(':');
+        if (colon <= 0 || colon >= id.Length - 1) return false;
+        string key = id.Substring(0, colon);
+        string val = id.Substring(colon + 1);
+        if (!float.TryParse(val, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f))
+            return false;
+
+        if (string.Equals(key, "speed", System.StringComparison.OrdinalIgnoreCase))
+        { multiplier = Mathf.Max(0.01f, f); return true; }
+        if (string.Equals(key, "hold", System.StringComparison.OrdinalIgnoreCase))
+        { holdSeconds = Mathf.Max(0f, f); return true; }
+
+        return false;
     }
 }

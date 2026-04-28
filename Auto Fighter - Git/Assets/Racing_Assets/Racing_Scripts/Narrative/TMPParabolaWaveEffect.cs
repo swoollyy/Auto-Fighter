@@ -27,6 +27,7 @@ public class TMPParabolaWaveEffect : MonoBehaviour
     private bool _textChanged = true;
     private float _time;
     private float _textMinX = float.MaxValue, _textMaxX = float.MinValue;
+    private float[] _ampMul;
 
     private void Awake()
     {
@@ -79,7 +80,8 @@ public class TMPParabolaWaveEffect : MonoBehaviour
 
             // Phase from rest position so wave is consistent; add offset on top of CURRENT vertices so wave stacks with jitter etc.
             float centerX = (restVerts[vertexIndex + 0].x + restVerts[vertexIndex + 2].x) * 0.5f;
-            float offsetY = Mathf.Sin((centerX - _textMinX) * k + _time) * amplitude;
+            float ampMul = (_ampMul != null && i < _ampMul.Length) ? _ampMul[i] : 1f;
+            float offsetY = Mathf.Sin((centerX - _textMinX) * k + _time) * amplitude * ampMul;
             Vector3 offset = new Vector3(0f, offsetY, 0f);
 
             destVertices[vertexIndex + 0] = destVertices[vertexIndex + 0] + offset;
@@ -100,6 +102,11 @@ public class TMPParabolaWaveEffect : MonoBehaviour
             TMP_MeshInfo[] rest = coord.GetRestCache();
             if (rest != null && _textMinX > _textMaxX)
                 ComputeTextBounds(textInfo, rest, out _textMinX, out _textMaxX);
+            if (_textChanged)
+            {
+                RebuildMultipliers(characterCount);
+                _textChanged = false;
+            }
             return rest;
         }
 
@@ -111,10 +118,17 @@ public class TMPParabolaWaveEffect : MonoBehaviour
             if (characterCount == 0) return null;
             _ownCache = textInfo.CopyMeshInfoVertexData();
             ComputeTextBounds(textInfo, _ownCache, out _textMinX, out _textMaxX);
+            RebuildMultipliers(characterCount);
             _textChanged = false;
             _time = 0f;
         }
         return _ownCache;
+    }
+
+    private void RebuildMultipliers(int characterCount)
+    {
+        if (string.IsNullOrEmpty(linkTag)) { _ampMul = null; return; }
+        TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "amp", usePositionalFallback: true, ref _ampMul);
     }
 
     private void ComputeTextBounds(TMP_TextInfo textInfo, TMP_MeshInfo[] meshInfo, out float minX, out float maxX)

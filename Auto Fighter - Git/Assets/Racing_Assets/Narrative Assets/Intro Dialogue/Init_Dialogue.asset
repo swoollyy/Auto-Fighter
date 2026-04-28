@@ -14,7 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   lines:
   - speakerName: Overseer
-    text: Oh... <link="wave"><link="rainbow">heyyyyyyyyyyyy!</link></link>
+    text: <link="jitter"> Oh... <link="hold:0.5"> uhh... </link> </link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  - speakerName: '{player_name}'
+    text: <link="jitter">...</link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -58,7 +64,7 @@ MonoBehaviour:
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerName: Overseer
-    text: ...
+    text: <link="jitter">...</link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
