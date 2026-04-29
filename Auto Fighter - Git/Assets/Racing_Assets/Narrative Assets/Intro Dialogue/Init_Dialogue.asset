@@ -12,9 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2f00befe1fee4a4bb665e496d2a78fc, type: 3}
   m_Name: Init_Dialogue
   m_EditorClassIdentifier: 
+  authoringColorReference: {r: 0.4528302, g: 0.4528302, b: 0.4528302, a: 1}
   lines:
   - speakerName: Overseer
-    text: <link="jitter"> Oh... <link="hold:0.5"> uhh... </link> </link>
+    text: <link="jitter:amp=2, spd=0.8"> Oh...</link> <link="hold:1.5"> <link="jitter:amp=2,
+      spd=3.1"> <size=42> <color=#747474>  uhh... </color> </size> </link> </link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0

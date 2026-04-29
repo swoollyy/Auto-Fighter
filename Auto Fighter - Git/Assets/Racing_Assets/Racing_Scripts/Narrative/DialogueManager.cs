@@ -67,6 +67,8 @@ public class DialogueManager : MonoBehaviour
         DialogueLineData line = GetCurrentLine();
         if (line.autoAdvance)
             return; // advance is handled by coroutine
+        if (dialogueUI != null && !dialogueUI.CanAcceptAdvanceInput)
+            return;
 
         if (Input.GetKeyDown(advanceKey) || (advanceOnClickOrSouth && (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || IsSouthButtonDown())))
         {

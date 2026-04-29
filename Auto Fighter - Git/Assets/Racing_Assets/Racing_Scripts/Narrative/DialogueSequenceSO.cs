@@ -7,6 +7,10 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Racing/Narrative/Dialogue Sequence", fileName = "DialogueSeq_New")]
 public class DialogueSequenceSO : ScriptableObject
 {
+    [Header("Authoring reference (not used at runtime)")]
+    [Tooltip("Inspector color picker for authoring narrative colors. Copy as hex and use in <color=#RRGGBB> tags.")]
+    public Color authoringColorReference = Color.white;
+
     [Tooltip("Dialogue lines in order. Played one by one; player (or auto) advances.")]
     public DialogueLineData[] lines = new DialogueLineData[0];
 

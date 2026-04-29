@@ -1,5 +1,6 @@
 using UnityEngine;
 using TMPro;
+using System.Collections.Generic;
 
 /// <summary>
 /// Vertex color animation: rainbow cycle on &lt;link="rainbow"&gt;...&lt;/link&gt; (or whole line if link tag empty).
@@ -29,6 +30,8 @@ public class TMPRainbowColorEffect : MonoBehaviour
     private float _time;
     private float[] _hueMul;
     private float[] _charHueOffset;
+    private float[] _phaseOffset;
+    private float[] _direction;
 
     private void Awake()
     {
@@ -84,7 +87,9 @@ public class TMPRainbowColorEffect : MonoBehaviour
             float charOffset = (_charHueOffset != null && i < _charHueOffset.Length)
                 ? _charHueOffset[i]
                 : i * huePerCharacter;
-            float hue = Mathf.Repeat(baseHue + charOffset, 1f);
+            float phase = (_phaseOffset != null && i < _phaseOffset.Length) ? _phaseOffset[i] : 0f;
+            float dir = (_direction != null && i < _direction.Length) ? _direction[i] : 1f;
+            float hue = Mathf.Repeat(baseHue * dir + charOffset + phase, 1f);
             Color rgb = Color.HSVToRGB(hue, saturation, value);
             rgb.r = Mathf.Clamp01(rgb.r);
             rgb.g = Mathf.Clamp01(rgb.g);
@@ -142,6 +147,16 @@ public class TMPRainbowColorEffect : MonoBehaviour
         int alloc = Mathf.Max(characterCount, 1);
         if (_charHueOffset == null || _charHueOffset.Length < alloc)
             _charHueOffset = new float[alloc];
+        if (_phaseOffset == null || _phaseOffset.Length < alloc)
+            _phaseOffset = new float[alloc];
+        if (_direction == null || _direction.Length < alloc)
+            _direction = new float[alloc];
+
+        for (int i = 0; i < characterCount; i++)
+        {
+            _phaseOffset[i] = 0f;
+            _direction[i] = 1f;
+        }
 
         if (!string.IsNullOrEmpty(linkTag))
             TMPLinkEffectHelper.BuildPerCharMultipliers(_text.text, characterCount, linkTag, "hue", usePositionalFallback: true, ref _hueMul);
@@ -154,6 +169,45 @@ public class TMPRainbowColorEffect : MonoBehaviour
             _charHueOffset[i] = cumulative;
             float mul = (_hueMul != null && i < _hueMul.Length) ? _hueMul[i] : 1f;
             cumulative += huePerCharacter * mul;
+        }
+
+        if (string.IsNullOrEmpty(linkTag)) return;
+
+        // Per-span phase and direction overrides:
+        // - phase=P or offset=P shifts where hue starts (0..1 wraps the color wheel).
+        // - rev=1 (or reverse=1 / dir=-1) runs that span backwards through hues.
+        var ranges = new List<TMPLinkEffectHelper.LinkRange>();
+        TMPLinkEffectHelper.ParseAllLinkRanges(_text.text, ranges);
+        for (int r = 0; r < ranges.Count; r++)
+        {
+            TMPLinkEffectHelper.LinkRange range = ranges[r];
+            if (!TMPLinkEffectHelper.MatchesBaseTag(range.id, linkTag))
+                continue;
+
+            TMPLinkEffectHelper.LinkParams parsed = TMPLinkEffectHelper.ParseLinkId(range.id);
+            float phase = 0f;
+            bool hasPhase = false;
+            if (parsed.named != null)
+            {
+                if (parsed.named.TryGetValue("phase", out float p)) { phase = p; hasPhase = true; }
+                else if (parsed.named.TryGetValue("offset", out float o)) { phase = o; hasPhase = true; }
+            }
+
+            bool reverse = false;
+            if (parsed.named != null)
+            {
+                if (parsed.named.TryGetValue("rev", out float rev)) reverse = rev > 0f;
+                else if (parsed.named.TryGetValue("reverse", out float rev2)) reverse = rev2 > 0f;
+                else if (parsed.named.TryGetValue("dir", out float dir)) reverse = dir < 0f;
+            }
+
+            int start = Mathf.Clamp(range.start, 0, characterCount);
+            int end = Mathf.Clamp(range.end, 0, characterCount);
+            for (int i = start; i < end; i++)
+            {
+                if (hasPhase) _phaseOffset[i] = phase;
+                if (reverse) _direction[i] = -1f;
+            }
         }
     }
 

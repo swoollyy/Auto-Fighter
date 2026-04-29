@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -49,6 +50,9 @@ public class DialogueUI : MonoBehaviour
     [SerializeField] private TMP_Text advanceHintText;
     [Tooltip("e.g. \"Space to continue\"")]
     [SerializeField] private string advanceHintString = "Space to continue";
+    [Header("Input safety")]
+    [Tooltip("Ignore skip/advance input for a short time right after setting a line. Helps prevent first-line auto-skip from startup clicks/keypresses.")]
+    [SerializeField, Min(0f)] private float inputGraceSecondsAfterSetLine = 0.1f;
 
     private Coroutine _typewriterRoutine;
     private bool _typewriterComplete;
@@ -58,9 +62,12 @@ public class DialogueUI : MonoBehaviour
     private float[] _charSpeedMultipliers;
     /// <summary>Per-character extra hold (seconds) applied BEFORE revealing that character. Built from <link="hold:X"> tags.</summary>
     private float[] _charHoldSeconds;
+    private float _lineSetAtUnscaledTime;
 
     /// <summary>True when the current line is fully revealed (or when typewriter is disabled).</summary>
     public bool IsTypewriterComplete => !useTypewriterEffect || _typewriterComplete;
+    /// <summary>True once the per-line input grace window has elapsed.</summary>
+    public bool CanAcceptAdvanceInput => Time.unscaledTime >= _lineSetAtUnscaledTime + inputGraceSecondsAfterSetLine;
 
     private void Awake()
     {
@@ -124,6 +131,7 @@ public class DialogueUI : MonoBehaviour
             {
                 _typewriterComplete = false;
                 _visibleCharacterCount = 0;
+                _lineSetAtUnscaledTime = Time.unscaledTime;
                 BuildPerCharacterTimingTables();
                 if (_typewriterRoutine != null)
                     StopCoroutine(_typewriterRoutine);
@@ -239,7 +247,13 @@ public class DialogueUI : MonoBehaviour
                 if (nextChar < total)
                 {
                     holdRemaining = GetHold(nextChar);
-                    if (holdRemaining > 0f) break; // Let the outer loop consume the hold next frame.
+                    if (holdRemaining > 0f)
+                    {
+                        // Treat hold as a hard pacing break so queued reveal time from before the hold
+                        // does not instantly dump characters after the hold ends.
+                        timeDebt = 0f;
+                        break; // Let the outer loop consume the hold next frame.
+                    }
                     secondsPerChar = 1f / (baseRate * GetMultiplier(nextChar));
                 }
             }
@@ -293,30 +307,66 @@ public class DialogueUI : MonoBehaviour
             _charSpeedMultipliers[i] = 1f;
             _charHoldSeconds[i] = 0f;
         }
-        if (total == 0 || info.linkInfo == null) return;
+        if (total == 0) return;
 
-        int linkCount = info.linkCount;
-        for (int l = 0; l < linkCount; l++)
+        List<TMPLinkEffectHelper.LinkRange> ranges = new List<TMPLinkEffectHelper.LinkRange>();
+        TMPLinkEffectHelper.ParseAllLinkRanges(dialogueText.text, ranges);
+        if (ranges.Count == 0) return;
+
+        // Apply outer links first; nested inner links can override speed when they overlap.
+        ranges.Sort((a, b) =>
         {
-            TMP_LinkInfo link = info.linkInfo[l];
-            string id = link.GetLinkID();
-            if (string.IsNullOrEmpty(id)) continue;
+            if (a.start != b.start) return a.start.CompareTo(b.start);
+            int aLen = a.end - a.start;
+            int bLen = b.end - b.start;
+            return bLen.CompareTo(aLen);
+        });
+
+        for (int l = 0; l < ranges.Count; l++)
+        {
+            TMPLinkEffectHelper.LinkRange range = ranges[l];
+            string id = range.id;
+            if (string.IsNullOrEmpty(id))
+                continue;
 
             float multiplier;
             float holdSeconds;
             if (!TryResolveLinkTiming(id, out multiplier, out holdSeconds))
                 continue;
 
-            int first = link.linkTextfirstCharacterIndex;
-            int length = link.linkTextLength;
-            int end = Mathf.Min(first + length, total);
-            for (int c = Mathf.Max(0, first); c < end; c++)
+            int first = Mathf.Max(0, range.start);
+            int end = Mathf.Min(total, range.end);
+            for (int c = first; c < end; c++)
             {
                 if (multiplier > 0f) _charSpeedMultipliers[c] = multiplier;
             }
-            if (holdSeconds > 0f && first >= 0 && first < total)
-                _charHoldSeconds[first] += holdSeconds;
+            if (holdSeconds > 0f)
+            {
+                int holdChar = FindFirstNonWhitespaceVisibleCharacter(first, end);
+                if (holdChar >= 0 && holdChar < total)
+                    _charHoldSeconds[holdChar] += holdSeconds;
+            }
         }
+    }
+
+    /// <summary>
+    /// Returns the first visible-character index in [start, end) whose source character is not whitespace.
+    /// Falls back to start when no non-whitespace character exists in the range.
+    /// </summary>
+    private int FindFirstNonWhitespaceVisibleCharacter(int start, int end)
+    {
+        if (dialogueText == null || dialogueText.textInfo == null)
+            return start;
+        TMP_TextInfo info = dialogueText.textInfo;
+        int lo = Mathf.Clamp(start, 0, info.characterCount);
+        int hi = Mathf.Clamp(end, 0, info.characterCount);
+        for (int i = lo; i < hi; i++)
+        {
+            char c = info.characterInfo[i].character;
+            if (!char.IsWhiteSpace(c))
+                return i;
+        }
+        return lo;
     }
 
     /// <summary>
