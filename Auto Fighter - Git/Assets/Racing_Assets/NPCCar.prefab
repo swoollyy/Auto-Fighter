@@ -215,13 +215,13 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 5.5
+  scanRange: 6
   pathHalfWidth: 2
   scanRayCount: 20
   scanFanAngleDeg: 100
-  forwardThreatConeHalfAngleDeg: 13
+  forwardThreatConeHalfAngleDeg: 15
   forwardThreatConeDangerBoostMultiplier: 1.8
-  postDodgeThreatConeBoostDuration: 1.1
+  postDodgeThreatConeBoostDuration: 0.5
   widenForwardThreatConeWhileAvoiding: 1
   rayHeight: 0
   rayForwardOffset: 0.4

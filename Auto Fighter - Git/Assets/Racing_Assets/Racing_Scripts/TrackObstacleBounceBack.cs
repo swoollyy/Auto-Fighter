@@ -225,7 +225,8 @@ public class TrackObstacleBounceBack : MonoBehaviour
         // Physics setup: kinematic but collides
         _rb.isKinematic = true;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
-        _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+        // This mover uses MovePosition while kinematic; speculative CCD helps prevent tunneling through other movers.
+        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
 
 
     }
@@ -793,6 +794,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     private void IgnoreCollisionTemporarily(Collider other, float now)
     {
         if (other == null || _col == null) return;
+        if (ShouldNeverTemporarilyIgnore(other)) return;
 
         int bit = 1 << other.gameObject.layer;
         if ((noPhysicalCollisionMask.value & bit) == 0) return;
@@ -800,6 +802,18 @@ public class TrackObstacleBounceBack : MonoBehaviour
         Physics.IgnoreCollision(_col, other);
 
         _ignoredUntil[other] = now + ignoreCollisionSeconds;
+    }
+
+    private static bool ShouldNeverTemporarilyIgnore(Collider other)
+    {
+        if (other == null) return false;
+
+        // Keep physical contact with scripted movers so they cannot phase through each other.
+        if (other.GetComponentInParent<CrossTrackObstacle>() != null) return true;
+        if (other.GetComponentInParent<ShuttleTrackObstacle>() != null) return true;
+        if (other.GetComponentInParent<TrackObstacleBounceBack>() != null) return true;
+
+        return false;
     }
 
 

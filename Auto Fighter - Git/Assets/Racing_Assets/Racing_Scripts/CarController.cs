@@ -1863,6 +1863,7 @@ public class CarController : MonoBehaviour
 
             // Must run after sampling: friction/handling *current* values lerp toward raycast targets (otherwise ice sticks after leaving ice).
             UpdateIcePhysicsTransitions();
+            ApplyCrashSurfaceResistanceFromCurrentGround();
 
             // === PASSIVE AUTO-CLICKS (Skill-based) ===
             if (effectivePassiveClickRate > 0f && IsFlipMashUiVisible)
@@ -1926,6 +1927,7 @@ public class CarController : MonoBehaviour
 
             // Lerp physic material / ice handling toward what the rays hit this frame (crash used to skip this → ice forever).
             UpdateIcePhysicsTransitions();
+            ApplyCrashSurfaceResistanceFromCurrentGround();
 
             // Check if grounded during crash
             _isGrounded = CheckIfGrounded();
@@ -6409,6 +6411,27 @@ public class CarController : MonoBehaviour
     /// <summary>
     /// Applies crash-only total velocity caps. Intended for crash/recovery windows only.
     /// </summary>
+    private void ApplyCrashSurfaceResistanceFromCurrentGround()
+    {
+        if (rb == null) return;
+
+        // During crash/mash we still sample current ground every FixedUpdate; use it to damp sliding by surface.
+        rb.drag = Mathf.Max(0f, currentDrag) * Mathf.Max(0f, crashDragMultiplier);
+        rb.angularDrag = crashAngularDrag;
+
+        float surfacePlanarCap = Mathf.Max(0.05f, currentMaxSpeed);
+        Vector3 planar = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        float planarSpeed = planar.magnitude;
+        if (planarSpeed <= surfacePlanarCap || planarSpeed <= 0.0001f)
+            return;
+
+        // Soft falloff keeps transitions natural when crossing ice -> road -> grass during a crash slide.
+        float bleedRate = (planarSpeed - surfacePlanarCap) * 0.45f + surfacePlanarCap * 0.35f;
+        float targetPlanarSpeed = Mathf.MoveTowards(planarSpeed, surfacePlanarCap, bleedRate * Time.fixedDeltaTime);
+        Vector3 newPlanar = planar * (targetPlanarSpeed / planarSpeed);
+        rb.velocity = new Vector3(newPlanar.x, rb.velocity.y, newPlanar.z);
+    }
+
     private void ApplyCrashVelocityCaps()
     {
         if (rb == null) return;

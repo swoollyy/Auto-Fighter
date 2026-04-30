@@ -135,6 +135,15 @@ namespace AutoFighter.Core
             if (_eventSystem == null) return;
             SyncCursorSpeedFromSave();
 
+            if (!IsCursorAllowedForCurrentGameState())
+            {
+                ReleaseActivePointerIfAny();
+                Cursor.visible = false;
+                if (cursorRect != null && cursorRect.gameObject.activeSelf)
+                    cursorRect.gameObject.SetActive(false);
+                return;
+            }
+
             if (autoSwitchInputMode) DetectAndSwitchMode();
 
             if (_mode == ControlMode.Mouse)
@@ -582,6 +591,15 @@ namespace AutoFighter.Core
                 return Gamepad.current.leftTrigger.wasPressedThisFrame;
 #endif
             return Input.GetKeyDown(legacyCapsLockButton);
+        }
+
+        private static bool IsCursorAllowedForCurrentGameState()
+        {
+            var gm = global::GameManager_Racing.Instance;
+            if (gm == null) return true;
+
+            // Hide cursor during active driving loop; menus (pause, skill tree, options, etc.) remain cursor-enabled.
+            return gm.ProgressState != global::GameManager_Racing.GameProgressState.InRun;
         }
     }
 }
