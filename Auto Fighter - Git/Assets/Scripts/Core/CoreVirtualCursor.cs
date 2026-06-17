@@ -25,6 +25,37 @@ namespace AutoFighter.Core
 
         private static CoreVirtualCursor _instance;
 
+        public static CoreVirtualCursor Instance => _instance;
+
+        public static bool IsManagingVisibility =>
+            _instance != null &&
+            _instance.enableVirtualCursor &&
+            !ShouldRacingInputReaderManageCursorVisibility();
+
+        /// <summary>
+        /// When false, <see cref="RacingInputReader"/> must not toggle Cursor.visible.
+        /// </summary>
+        public static bool ShouldRacingInputReaderManageCursorVisibility()
+        {
+            if (_instance == null || !_instance.enableVirtualCursor)
+                return true;
+
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return false;
+
+            var gm = global::GameManager_Racing.Instance;
+            if (gm == null)
+                return false;
+
+            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue)
+                return false;
+
+            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.LoadingRun)
+                return false;
+
+            return gm.ProgressState == global::GameManager_Racing.GameProgressState.InRun;
+        }
+
         [Header("Enable")]
         [SerializeField] private bool enableVirtualCursor = true;
         [SerializeField] private bool autoSwitchInputMode = true;
@@ -49,8 +80,10 @@ namespace AutoFighter.Core
         [Header("Cursor Visual")]
         [SerializeField] private Canvas cursorCanvas;
         [SerializeField] private RectTransform cursorRect;
-        [SerializeField] private Color cursorColor = new Color(1f, 1f, 1f, 0.95f);
-        [SerializeField] private Vector2 cursorSize = new Vector2(22f, 22f);
+        [SerializeField] private Color fallbackCursorColor = new Color(1f, 1f, 1f, 0.95f);
+        [SerializeField] private Vector2 fallbackCursorSize = new Vector2(22f, 22f);
+
+        private CoreVirtualCursorSettings _settings;
 
         [Header("Controller Click")]
         [SerializeField] private bool lockEventSystemSelectionToClickedObject = true;
@@ -66,6 +99,7 @@ namespace AutoFighter.Core
         private Vector2 _screenPos;
         private Vector2 _lastMousePos;
         private float _lastMouseActivityTime;
+        private float _lastMouseKeyboardActivityTime;
         private float _lastControllerActivityTime;
         private float _nextAllowedControllerClickTime;
         private ControlMode _mode = ControlMode.Mouse;
@@ -98,10 +132,21 @@ namespace AutoFighter.Core
             _instance = this;
             DontDestroyOnLoad(gameObject);
 
+            _settings = Resources.Load<CoreVirtualCursorSettings>(CoreVirtualCursorSettings.DefaultResourcesPath);
+            if (_settings == null)
+            {
+                Debug.LogWarning(
+                    "[CoreVirtualCursor] Missing settings asset. In the Unity editor, use menu " +
+                    "AutoFighter > Virtual Cursor Settings to create/open it, then assign your cursor prefab.");
+            }
+
             SceneManager.sceneLoaded += OnSceneLoaded;
             CacheEventSystemAndCamera();
             EnsureCursorVisual();
             SyncCursorSpeedFromSave();
+            float now = Time.unscaledTime;
+            _lastMouseActivityTime = now;
+            _lastMouseKeyboardActivityTime = now;
             SetMode(ControlMode.Mouse, false);
         }
 
@@ -125,7 +170,7 @@ namespace AutoFighter.Core
         {
             _lastMousePos = Input.mousePosition;
             _screenPos = ClampToScreen(_lastMousePos);
-            ApplyScreenPosToCursor(_screenPos);
+            ApplyCursorVisibility(IsCursorAllowedForCurrentGameState());
         }
 
         private void Update()
@@ -138,21 +183,25 @@ namespace AutoFighter.Core
             if (!IsCursorAllowedForCurrentGameState())
             {
                 ReleaseActivePointerIfAny();
-                Cursor.visible = false;
-                if (cursorRect != null && cursorRect.gameObject.activeSelf)
-                    cursorRect.gameObject.SetActive(false);
+                if (autoSwitchInputMode)
+                    DetectAndSwitchMode();
+                ApplyCursorVisibility(mechanicActive: false);
                 return;
             }
 
-            if (autoSwitchInputMode) DetectAndSwitchMode();
+            if (autoSwitchInputMode)
+                DetectAndSwitchMode();
 
             if (_mode == ControlMode.Mouse)
             {
                 ReleaseActivePointerIfAny();
                 _screenPos = ClampToScreen(Input.mousePosition);
                 ApplyScreenPosToCursor(_screenPos);
+                ApplyCursorVisibility(mechanicActive: true);
                 return;
             }
+
+            ApplyCursorVisibility(mechanicActive: true);
 
             float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             Vector2 stick = ReadControllerMoveVector();
@@ -180,8 +229,12 @@ namespace AutoFighter.Core
 
             bool mouseClicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
             bool mouseScrolled = Mathf.Abs(Input.mouseScrollDelta.y) > 0.01f;
-            if (mouseMoved || mouseClicked || mouseScrolled)
+            bool mouseHeld = Input.GetMouseButton(0) || Input.GetMouseButton(1) || Input.GetMouseButton(2);
+            if (mouseMoved || mouseClicked || mouseScrolled || mouseHeld)
                 _lastMouseActivityTime = Time.unscaledTime;
+
+            if (ReadKeyboardActivity())
+                _lastMouseKeyboardActivityTime = Time.unscaledTime;
 
             Vector2 stick = ReadControllerMoveVector();
             bool stickActive = stick.magnitude >= Mathf.Max(deadZone, stickActivateThreshold);
@@ -189,7 +242,8 @@ namespace AutoFighter.Core
             if (stickActive || controllerClicked)
                 _lastControllerActivityTime = Time.unscaledTime;
 
-            if (_lastControllerActivityTime > _lastMouseActivityTime)
+            float lastMouseKeyboardActivity = Mathf.Max(_lastMouseActivityTime, _lastMouseKeyboardActivityTime);
+            if (_lastControllerActivityTime > lastMouseKeyboardActivity)
             {
                 if (_mode != ControlMode.Controller)
                     SetMode(ControlMode.Controller, true);
@@ -205,21 +259,49 @@ namespace AutoFighter.Core
         {
             _mode = nextMode;
 
-            if (_mode == ControlMode.Mouse)
-            {
-                Cursor.visible = true;
-                if (cursorRect != null) cursorRect.gameObject.SetActive(false);
-                return;
-            }
-
-            if (snapVirtualToMouse)
+            if (snapVirtualToMouse || _mode == ControlMode.Mouse)
                 _screenPos = ClampToScreen(Input.mousePosition);
             else
                 _screenPos = ClampToScreen(_screenPos);
 
-            Cursor.visible = false;
-            if (cursorRect != null) cursorRect.gameObject.SetActive(true);
             ApplyScreenPosToCursor(_screenPos);
+            ApplyCursorVisibility(IsCursorAllowedForCurrentGameState());
+        }
+
+        /// <summary>
+        /// Single place that decides OS vs virtual cursor visibility.
+        /// Mouse/keyboard: OS cursor on. Controller: virtual cursor on (when mechanic is active).
+        /// </summary>
+        private void ApplyCursorVisibility(bool mechanicActive)
+        {
+            Cursor.lockState = CursorLockMode.None;
+
+            if (!mechanicActive)
+            {
+                HideCustomCursor();
+                // Dialogue: stable OS cursor for mouse/keyboard; no cursor during loading/in-run.
+                Cursor.visible = IsDialogueOrCutsceneBlocked() && _mode == ControlMode.Mouse;
+                return;
+            }
+
+            if (_mode == ControlMode.Mouse)
+            {
+                HideCustomCursor();
+                Cursor.visible = true;
+                return;
+            }
+
+            Cursor.visible = false;
+            ShowCustomCursor();
+        }
+
+        private static bool IsDialogueOrCutsceneBlocked()
+        {
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return true;
+
+            var gm = global::GameManager_Racing.Instance;
+            return gm != null && gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue;
         }
 
         private void ClickUnderCursor()
@@ -439,7 +521,19 @@ namespace AutoFighter.Core
                 DontDestroyOnLoad(canvasGo);
             }
 
-            if (cursorRect == null)
+            if (cursorRect != null)
+                return;
+
+            RectTransform prefab = _settings != null ? _settings.CursorVisualPrefab : null;
+            if (prefab != null)
+            {
+                cursorRect = Instantiate(prefab, cursorCanvas.transform);
+                cursorRect.name = prefab.name;
+
+                foreach (var graphic in cursorRect.GetComponentsInChildren<Graphic>(true))
+                    graphic.raycastTarget = false;
+            }
+            else
             {
                 var cursorGo = new GameObject("VirtualCursor", typeof(RectTransform), typeof(Image));
                 cursorGo.transform.SetParent(cursorCanvas.transform, false);
@@ -447,18 +541,24 @@ namespace AutoFighter.Core
                 cursorRect.anchorMin = new Vector2(0.5f, 0.5f);
                 cursorRect.anchorMax = new Vector2(0.5f, 0.5f);
                 cursorRect.pivot = new Vector2(0.5f, 0.5f);
-                cursorRect.sizeDelta = cursorSize;
+                cursorRect.sizeDelta = fallbackCursorSize;
 
                 var image = cursorGo.GetComponent<Image>();
-                image.color = cursorColor;
+                image.color = fallbackCursorColor;
                 image.raycastTarget = false;
             }
-            else
-            {
-                cursorRect.sizeDelta = cursorSize;
-                var image = cursorRect.GetComponent<Image>();
-                if (image != null) image.color = cursorColor;
-            }
+        }
+
+        private void ShowCustomCursor()
+        {
+            if (cursorRect != null)
+                cursorRect.gameObject.SetActive(true);
+        }
+
+        private void HideCustomCursor()
+        {
+            if (cursorRect != null && cursorRect.gameObject.activeSelf)
+                cursorRect.gameObject.SetActive(false);
         }
 
         private static Vector2 ClampToScreen(Vector2 value)
@@ -485,6 +585,15 @@ namespace AutoFighter.Core
                 return Gamepad.current.leftStick.ReadValue();
 #endif
             return new Vector2(Input.GetAxisRaw(legacyAxisX), Input.GetAxisRaw(legacyAxisY));
+        }
+
+        private bool ReadKeyboardActivity()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (Keyboard.current != null)
+                return Keyboard.current.anyKey.wasPressedThisFrame;
+#endif
+            return Input.inputString.Length > 0 || Input.anyKeyDown;
         }
 
         private bool ReadControllerSubmitDown()
@@ -595,8 +704,17 @@ namespace AutoFighter.Core
 
         private static bool IsCursorAllowedForCurrentGameState()
         {
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return false;
+
             var gm = global::GameManager_Racing.Instance;
             if (gm == null) return true;
+
+            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue)
+                return false;
+
+            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.LoadingRun)
+                return false;
 
             // Hide cursor during active driving loop; menus (pause, skill tree, options, etc.) remain cursor-enabled.
             return gm.ProgressState != global::GameManager_Racing.GameProgressState.InRun;
