@@ -1,3 +1,4 @@
+using AutoFighter.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -338,6 +339,7 @@ public class RacingInputReader : MonoBehaviour
     private void UpdateCursorVisibilityByDevice()
     {
         if (!autoHideCursorByInputDevice) return;
+        if (!CoreVirtualCursor.ShouldRacingInputReaderManageCursorVisibility()) return;
 
         bool mouseUsed = false;
         if (Mouse.current != null)

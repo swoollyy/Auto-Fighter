@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public sealed class CrossObstacleDirector : MonoBehaviour
+public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private CarController car;
@@ -80,6 +80,8 @@ public sealed class CrossObstacleDirector : MonoBehaviour
     private const float CarSearchInterval = 0.5f;
     private bool _hasEverSpawned;
     private bool _wasBelowSpeed = true;
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     private Vector3 _lastDebugStart;
     private Vector3 _lastDebugEnd;
@@ -169,8 +171,17 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         _wasBelowSpeed = below;
 
+        if (_queueState.IsControlled)
+        {
+            _cooldownRemain -= Time.deltaTime;
+            if (_cooldownRemain <= 0f && !below && _queueState.TrySubmit(this))
+                _cooldownRemain = 0.05f;
+            return;
+        }
+
         _cooldownRemain -= Time.deltaTime;
-        if (_cooldownRemain <= 0f) TrySpawnPredictive();
+        if (_cooldownRemain <= 0f)
+            TrySpawnPredictive();
     }
 
     private bool ValidSetup()
@@ -197,9 +208,9 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         _trackTotalLength = accum;
     }
 
-    private void TrySpawnPredictive()
+    private bool TrySpawnPredictive()
     {
-        if (_smoothedSpeed < minPlayerSpeed) return;
+        if (_smoothedSpeed < minPlayerSpeed) return false;
 
         float sCar = distanceMeter.DistanceAlongTrack;
         float distanceNorm = Mathf.Clamp01(_trackTotalLength > 0f ? sCar / _trackTotalLength : 0f);
@@ -239,7 +250,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
             tCenter *= Mathf.Clamp(maxCurvatureHorizonScale, 0.25f, 1f);
 
         float remaining = _trackTotalLength - sCar;
-        if (remaining <= minLeadDistance) { _cooldownRemain = effectiveCooldown; return; }
+        if (remaining <= minLeadDistance) { _cooldownRemain = effectiveCooldown; return false; }
 
         float predictedLeadDistance = _smoothedSpeed * tCenter;
 
@@ -336,7 +347,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         if (avoidRampRadius > 0f && WouldCrossIntersectRamp(spawnSurface, halfRoad))
         {
             _cooldownRemain = effectiveCooldown;
-            return;
+            return false;
         }
 
         Vector3 startHorizontal = new Vector3(spawnSurface.x, 0f, spawnSurface.z) + lateral * sideSign * offTrackOffset;
@@ -369,6 +380,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour
 
         var inst = Instantiate(crossObstaclePrefab, startWS, spawnRot);
         _hasEverSpawned = true;
+        _queueLastSpawn.Record(spawnSurface, crossObstaclePrefab.name);
         inst.transform.localScale *= finalScale;
 
         // **NEW: Get parent's bottom offset and adjust position**
@@ -397,6 +409,8 @@ public sealed class CrossObstacleDirector : MonoBehaviour
                       $"vCross={crossSpeed:F2}, yawBase={yawErrorDeg:F1}, yawFinal={appliedYaw:F1}, " +
                       $"size={finalScale:F2}, curvature={curvatureFactor:F2}");
         }
+
+        return true;
     }
 
     /// <summary>Returns true if a ramp (GroundSurface.Ramp) is within the cross area so we should not spawn.</summary>
@@ -506,6 +520,16 @@ public sealed class CrossObstacleDirector : MonoBehaviour
         position = Vector3.Lerp(a, b, t);
         tangent = (b - a).normalized;
     }
+
+    public string SpawnQueueLabel => "Cross Obstacles";
+    public bool IsSpawnQueueReady => enabledSpawning && ValidSetup() && _smoothedSpeed >= minPlayerSpeed;
+    public bool HasSpawnQueueCapacity => true;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(TrySpawnPredictive);
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 
 #if UNITY_EDITOR
 private void OnDrawGizmosSelected()

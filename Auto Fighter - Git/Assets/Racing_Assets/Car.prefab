@@ -1434,9 +1434,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8b5b3e22a58bf94a83288c2181a771f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 5.2
-  baseMaxSpeed: 4.3
-  baseBrakingForce: 0.003
+  baseAcceleration: 5.5
+  baseMaxSpeed: 5
+  baseBrakingForce: 0.009
   baseDrag: 0.13
   coastLowDecelPerSecond: 0.39
   coastHighDecelPerSecond: 5.55
@@ -1616,9 +1616,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 9
-  fuelUsePerSecondBraking: 9
-  idleFuelUsePerSecond: 5
+  fuelUsePerSecondAtFullThrottle: 4
+  fuelUsePerSecondBraking: 4
+  idleFuelUsePerSecond: 1
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:

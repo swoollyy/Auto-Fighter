@@ -48,6 +48,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
     [SerializeField] private CrossObstacleDirector crossObstacleDirector;
+    [SerializeField] private BounceBackObstacleSpawner bounceBackObstacleSpawner;
     [SerializeField] private ThrownObstacleDirector thrownObstacleDirector;
     [SerializeField] private RollingLogSpawner rollingLogSpawner;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
@@ -57,6 +58,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
     [SerializeField] private TrackCreatureSpawner creatureSpawner;
     [SerializeField] private TrackEnvironmentSpawner trackEnvironmentSpawner;
+    [SerializeField] private TrackSpawnerQueue trackSpawnerQueue;
     [SerializeField] private TerrainDetailGrassPainter terrainGrassPainter; 
 
     [Header("NavMesh (for NPC AI)")]
@@ -1068,9 +1070,11 @@ public class GameManager_Racing : MonoBehaviour
         if (creatureSpawner == null) creatureSpawner = FindObjectOfType<TrackCreatureSpawner>(true);
         if (trackEnvironmentSpawner == null) trackEnvironmentSpawner = FindObjectOfType<TrackEnvironmentSpawner>(true);
         if (crossObstacleDirector == null) crossObstacleDirector = FindObjectOfType<CrossObstacleDirector>(true);
+        if (bounceBackObstacleSpawner == null) bounceBackObstacleSpawner = FindObjectOfType<BounceBackObstacleSpawner>(true);
         if (thrownObstacleDirector == null) thrownObstacleDirector = FindObjectOfType<ThrownObstacleDirector>(true);
         if (rollingLogSpawner == null) rollingLogSpawner = FindObjectOfType<RollingLogSpawner>(true);
         if (iceScreenFlashDriver == null) iceScreenFlashDriver = FindObjectOfType<IcePathScreenFlashDriver>(true);
+        if (trackSpawnerQueue == null) trackSpawnerQueue = FindObjectOfType<TrackSpawnerQueue>(true);
     }
 
     private IEnumerator CoHandleTrackGenerated(ProceduralTrackGenerator gen)
@@ -1143,10 +1147,13 @@ public class GameManager_Racing : MonoBehaviour
         yield return null;
         uiManager?.SetLoadingState("Spawning hazards...", 0.89f);
         icePathSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
-                rollingLogSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        rollingLogSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        bounceBackObstacleSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
         uiManager?.SetLoadingState("Spawning traffic...", 0.91f);
         npcCarSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        yield return null;
+        trackSpawnerQueue?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
         uiManager?.SetLoadingState("Building navigation...", 0.94f);
         AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);

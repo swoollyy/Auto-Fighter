@@ -9,7 +9,7 @@ using UnityEngine;
 /// Works similarly to TrackObstacleSpawner with pre-spawn and streaming options.
 /// </summary>
 [DisallowMultipleComponent]
-public class IcePathSpawner : MonoBehaviour
+public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -114,6 +114,8 @@ public class IcePathSpawner : MonoBehaviour
 
     private GroundSurface _prefabGroundSurface;
     private IcePath _prefabIcePath;
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {
@@ -160,7 +162,22 @@ public class IcePathSpawner : MonoBehaviour
 
     private void Update()
     {
-        if (!streamSpawnDuringRun || _path.Count < 2 || playerTransform == null || iceMaterial == null)
+        if (_path.Count < 2 || playerTransform == null || iceMaterial == null)
+            return;
+
+        if (_queueState.IsControlled)
+        {
+            DespawnBehindIcePaths(GetPlayerDistance());
+            _updateTimer += Time.deltaTime;
+            if (_updateTimer >= updateInterval)
+            {
+                _updateTimer = 0f;
+                _queueState.TrySubmit(this);
+            }
+            return;
+        }
+
+        if (!streamSpawnDuringRun)
             return;
 
         _updateTimer += Time.deltaTime;
@@ -311,6 +328,11 @@ public class IcePathSpawner : MonoBehaviour
             TrySpawnIcePathAtDistance(slot, dist);
         }
 
+        DespawnBehindIcePaths(playerDist);
+    }
+
+    private void DespawnBehindIcePaths(float playerDist)
+    {
         _toRemove.Clear();
         foreach (var kvp in _icePathsBySlot)
         {
@@ -327,6 +349,51 @@ public class IcePathSpawner : MonoBehaviour
 
             _icePathsBySlot.Remove(slot);
         }
+    }
+
+    private bool TrySpawnOneAhead()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return false;
+
+        float playerDist = GetPlayerDistance();
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / icePathSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / icePathSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_icePathsBySlot.ContainsKey(slot))
+                continue;
+
+            if (_icePathsBySlot.Count >= maxActiveIcePaths)
+                break;
+
+            float dist = slot * icePathSpacing;
+            if (dist < playerDist + minSpawnDistanceAhead)
+                continue;
+
+            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = (globalSpawnChanceByDistance != null)
+                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f)
+                continue;
+
+            if (Random.value > effectiveChance)
+                continue;
+
+            int before = _icePathsBySlot.Count;
+            TrySpawnIcePathAtDistance(slot, dist);
+            if (_icePathsBySlot.Count > before)
+                return true;
+        }
+
+        return false;
     }
 
     private float GetPlayerDistance()
@@ -381,6 +448,10 @@ public class IcePathSpawner : MonoBehaviour
         stripGO.transform.localScale = Vector3.one;
 
         BuildIceStripMesh(stripGO, startDist, totalIceLen);
+
+        float centerDist = Mathf.Clamp(startDist + totalIceLen * 0.5f, 0f, _totalLength);
+        SampleAlongPath(centerDist, out Vector3 centerPos, out _);
+        _queueLastSpawn.Record(centerPos, "Ice Path");
 
         if (verboseDebug)
             Debug.Log($"[IcePathSpawner] Spawned ice path at slot {slot}, distance {startDist:F1}m");
@@ -670,4 +741,13 @@ public class IcePathSpawner : MonoBehaviour
         }
     }
 
+    public string SpawnQueueLabel => "Ice Paths";
+    public bool IsSpawnQueueReady => _path.Count >= 2 && playerTransform != null && iceMaterial != null && iceSegmentPrefab != null;
+    public bool HasSpawnQueueCapacity => _icePathsBySlot.Count < maxActiveIcePaths;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(TrySpawnOneAhead);
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 }

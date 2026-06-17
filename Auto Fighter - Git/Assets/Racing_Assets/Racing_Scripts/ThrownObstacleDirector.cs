@@ -18,7 +18,7 @@ using UnityEngine;
 /// - Aim error is applied AFTER intercept refinement and BEFORE final ground projection, so it cannot be overwritten.
 /// </summary>
 [DisallowMultipleComponent]
-public class ThrownObstacleDirector : MonoBehaviour
+public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -104,6 +104,8 @@ public class ThrownObstacleDirector : MonoBehaviour
 
     private float _cooldown;
     private readonly List<ThrownObstacle> _active = new();
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     // base scales so pooled objects do not compound scale
     private readonly Dictionary<GameObject, Vector3> _prefabBaseScales = new();
@@ -139,10 +141,19 @@ public class ThrownObstacleDirector : MonoBehaviour
 
         _active.RemoveAll(x => x == null || !x.gameObject.activeInHierarchy);
 
-        int allowedConcurrent = ScaleConcurrentByTrackProgress(maxConcurrent);
+        if (_queueState.IsControlled)
+        {
+            int allowedConcurrent = ScaleConcurrentByTrackProgress(maxConcurrent);
+            _cooldown -= Time.deltaTime;
+            if (_cooldown <= 0f && _active.Count < allowedConcurrent && _queueState.TrySubmit(this))
+                _cooldown = Mathf.Max(0.1f, spawnCooldownBase * 0.25f);
+            return;
+        }
+
+        int allowedConcurrentAutonomous = ScaleConcurrentByTrackProgress(maxConcurrent);
 
         _cooldown -= Time.deltaTime;
-        if (_cooldown <= 0f && _active.Count < allowedConcurrent)
+        if (_cooldown <= 0f && _active.Count < allowedConcurrentAutonomous)
         {
             TrySpawn();
             if (_cooldown <= 0f)
@@ -394,6 +405,8 @@ public class ThrownObstacleDirector : MonoBehaviour
             previewSpawned,
             distanceNorm
         );
+
+        _queueLastSpawn.Record(interceptPos, chosenPrefab.name);
 
         // cooldown
         float baseCd = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, distanceNorm);
@@ -737,4 +750,20 @@ public class ThrownObstacleDirector : MonoBehaviour
             total += Vector3.Distance(pts[i - 1], pts[i]);
         return total;
     }
+
+    public string SpawnQueueLabel => "Thrown Obstacles";
+    public bool IsSpawnQueueReady => enabledSpawning && trackGenerator != null && playerTransform != null &&
+                                     (projectilePrefabPlain != null || projectilePrefabExplosive != null);
+    public bool HasSpawnQueueCapacity => _active.Count < ScaleConcurrentByTrackProgress(maxConcurrent);
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(() =>
+    {
+        int before = _active.Count;
+        TrySpawn();
+        return _active.Count > before;
+    });
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 }

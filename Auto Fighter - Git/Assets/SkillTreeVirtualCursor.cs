@@ -58,6 +58,14 @@ public class SkillTreeVirtualCursor : MonoBehaviour
 
     void Awake()
     {
+        if (CoreVirtualCursor.Instance != null)
+        {
+            if (cursorRect != null)
+                cursorRect.gameObject.SetActive(false);
+            enabled = false;
+            return;
+        }
+
         if (!canvas) canvas = GetComponentInParent<Canvas>();
         if (!cursorRect) Debug.LogError("[SkillTreeVirtualCursor] cursorRect not set.");
         if (!canvas) Debug.LogError("[SkillTreeVirtualCursor] canvas not set/found.");

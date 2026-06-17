@@ -27,7 +27,7 @@ public class ObstacleType
 /// Streams obstacles along the procedural track.
 /// Works similarly to TrackCoinSpawner but uses lower spawn frequency and avoids pattern spawning.
 /// </summary>
-public class TrackObstacleSpawner : MonoBehaviour
+public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -106,17 +106,34 @@ public class TrackObstacleSpawner : MonoBehaviour
     private float _updateTimer;
     private int _lastClosestIdx = 0;
     private List<int> _toRemove = new();
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     private void Update()
     {
         if (_path.Count < 2 || playerTransform == null || !HasAnyValidObstacleType())
             return;
 
+        if (_queueState.IsControlled)
+        {
+            DespawnBehindObstacles(GetPlayerDistance());
+            _updateTimer += Time.deltaTime;
+            if (_updateTimer >= updateInterval)
+            {
+                _updateTimer = 0f;
+                _queueState.TrySubmit(this);
+            }
+            return;
+        }
+
+        if (!streamSpawnDuringRun)
+            return;
+
         _updateTimer += Time.deltaTime;
         if (_updateTimer < updateInterval) return;
 
         _updateTimer = 0f;
-        StreamObstacles();   // this will now respect streamSpawnDuringRun
+        StreamObstacles();
     }
 
 
@@ -230,6 +247,11 @@ public class TrackObstacleSpawner : MonoBehaviour
         // ---------------------------
         // 2) Despawn behind player
         // ---------------------------
+        DespawnBehindObstacles(playerDist);
+    }
+
+    private void DespawnBehindObstacles(float playerDist)
+    {
         _toRemove.Clear();
         foreach (var kvp in _obstaclesBySlot)
         {
@@ -246,6 +268,51 @@ public class TrackObstacleSpawner : MonoBehaviour
 
             _obstaclesBySlot.Remove(slot);
         }
+    }
+
+    private bool TrySpawnOneAhead()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return false;
+
+        float playerDist = GetPlayerDistance();
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / obstacleSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / obstacleSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_obstaclesBySlot.ContainsKey(slot))
+                continue;
+
+            if (_obstaclesBySlot.Count >= maxActiveObstacles)
+                break;
+
+            float dist = slot * obstacleSpacing;
+            if (dist < playerDist + minSpawnDistanceAhead)
+                continue;
+
+            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = (globalSpawnChanceByDistance != null)
+                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f)
+                continue;
+
+            if (Random.value > effectiveChance)
+                continue;
+
+            int before = _obstaclesBySlot.Count;
+            TrySpawnObstacleAtDistance(slot, dist);
+            if (_obstaclesBySlot.Count > before)
+                return true;
+        }
+
+        return false;
     }
 
 
@@ -340,6 +407,7 @@ public class TrackObstacleSpawner : MonoBehaviour
             obstacle.transform.position = hit.point + hit.normal * parentBottomOffset + right * finalLateral;
 
             _obstaclesBySlot[slot] = obstacle;
+            _queueLastSpawn.Record(obstacle.transform.position, chosenPrefab.name);
         }
     }
 
@@ -658,5 +726,13 @@ public class TrackObstacleSpawner : MonoBehaviour
         _updateTimer = 0f;
     }
 
-
+    public string SpawnQueueLabel => "Track Obstacles";
+    public bool IsSpawnQueueReady => _path.Count >= 2 && playerTransform != null && HasAnyValidObstacleType();
+    public bool HasSpawnQueueCapacity => _obstaclesBySlot.Count < maxActiveObstacles;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(TrySpawnOneAhead);
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 }

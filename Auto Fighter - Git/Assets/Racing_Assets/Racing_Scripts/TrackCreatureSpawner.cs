@@ -10,7 +10,7 @@ using Random = UnityEngine.Random;
 /// Mirrors TrackObstacleSpawner and NPCTrafficCarSpawner patterns for consistency.
 /// Supports passive (bug), scared (critter), and aggressive (beast) creature behaviors.
 /// </summary>
-public class TrackCreatureSpawner : MonoBehaviour
+public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -95,6 +95,8 @@ public class TrackCreatureSpawner : MonoBehaviour
     private int _maxSlotIndex;
     private float _updateTimer;
     private int _lastClosestIdx;
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     #region Unity Lifecycle
 
@@ -102,6 +104,18 @@ public class TrackCreatureSpawner : MonoBehaviour
     {
         if (_path.Count < 2 || playerTransform == null || !HasAnyValidCreatureType())
             return;
+
+        if (_queueState.IsControlled)
+        {
+            DespawnBehind(GetPlayerDistance());
+            _updateTimer += Time.deltaTime;
+            if (_updateTimer >= updateInterval)
+            {
+                _updateTimer = 0f;
+                _queueState.TrySubmit(this);
+            }
+            return;
+        }
 
         if (!streamSpawnDuringRun)
             return;
@@ -302,6 +316,51 @@ public class TrackCreatureSpawner : MonoBehaviour
         DespawnBehind(playerDist);
     }
 
+    private bool TrySpawnOneAhead()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return false;
+
+        float playerDist = GetPlayerDistance();
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / creatureSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / creatureSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_creaturesBySlot.ContainsKey(slot))
+                continue;
+
+            if (_creaturesBySlot.Count >= maxActiveCreatures)
+                break;
+
+            float dist = slot * creatureSpacing;
+            if (dist < playerDist + minSpawnDistanceAhead)
+                continue;
+
+            float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float difficultyMult = spawnChanceByDistance != null
+                ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
+                : 1f;
+
+            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            if (effectiveChance <= 0f)
+                continue;
+
+            if (Random.value > effectiveChance)
+                continue;
+
+            int before = _creaturesBySlot.Count;
+            TrySpawnCreatureAtDistance(slot, dist);
+            if (_creaturesBySlot.Count > before)
+                return true;
+        }
+
+        return false;
+    }
+
     private void DespawnBehind(float playerDist)
     {
         _toRemove.Clear();
@@ -423,6 +482,8 @@ public class TrackCreatureSpawner : MonoBehaviour
 
         // Spawn the creature
         GameObject creature = Instantiate(chosenType.prefab, spawnPos, rot, parent);
+
+        _queueLastSpawn.Record(creature.transform.position, chosenType.prefab.name);
 
         // Initialize the creature behavior
         InitializeCreatureBehavior(creature, chosenType, sampleDist);
@@ -661,6 +722,16 @@ public class TrackCreatureSpawner : MonoBehaviour
             _creaturesBySlot.Remove(slotToRemove.Value);
         }
     }
+
+    public string SpawnQueueLabel => "Creatures";
+    public bool IsSpawnQueueReady => _path.Count >= 2 && playerTransform != null && HasAnyValidCreatureType();
+    public bool HasSpawnQueueCapacity => _creaturesBySlot.Count < maxActiveCreatures;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(TrySpawnOneAhead);
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 
     #endregion
 }

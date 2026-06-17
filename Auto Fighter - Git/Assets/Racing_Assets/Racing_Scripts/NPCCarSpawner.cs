@@ -8,7 +8,7 @@ using UnityEngine;
 /// Spawns cars ahead of the player that drive forward.
 /// Mirrors TrackObstacleSpawner patterns for consistency.
 /// </summary>
-public class NPCTrafficCarSpawner : MonoBehaviour
+public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -129,6 +129,8 @@ public class NPCTrafficCarSpawner : MonoBehaviour
     private int _maxSlotIndex;
     private float _updateTimer;
     private int _lastClosestIdx;
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     private void Update()
     {
@@ -141,6 +143,18 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         if (_path.Count < 2 || playerTransform == null || !HasAnyValidCarType())
             return;
+
+        if (_queueState.IsControlled)
+        {
+            DespawnBehind(GetPlayerDistance());
+            _updateTimer += Time.deltaTime;
+            if (_updateTimer >= updateInterval)
+            {
+                _updateTimer = 0f;
+                _queueState.TrySubmit(this);
+            }
+            return;
+        }
 
         if (!streamSpawnDuringRun)
             return;
@@ -329,6 +343,46 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         // Despawn far behind
         DespawnBehind(playerDist);
+    }
+
+    private bool TrySpawnOneAhead()
+    {
+        if (_totalLength <= 0f || _maxSlotIndex <= 0)
+            return false;
+
+        float playerDist = GetPlayerDistance();
+        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
+
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / carSpacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / carSpacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            int before = _carsBySlot.Count;
+            TrySpawnAtSlot(slot, playerDist);
+            if (_carsBySlot.Count > before)
+                return true;
+        }
+
+        if (allowSpawnBehind)
+        {
+            float behindStartDist = Mathf.Clamp(playerDist - maxSpawnDistanceBehind, 0f, _totalLength);
+            float behindEndDist = Mathf.Clamp(playerDist - minSpawnDistanceBehind, 0f, _totalLength);
+
+            int behindStartSlot = Mathf.Clamp(Mathf.FloorToInt(behindStartDist / carSpacing), 0, _maxSlotIndex);
+            int behindEndSlot = Mathf.Clamp(Mathf.FloorToInt(behindEndDist / carSpacing), 0, _maxSlotIndex);
+
+            for (int slot = behindStartSlot; slot <= behindEndSlot; slot++)
+            {
+                int before = _carsBySlot.Count;
+                TrySpawnAtSlot(slot, playerDist);
+                if (_carsBySlot.Count > before)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private void TrySpawnAtSlot(int slot, float playerDist)
@@ -534,6 +588,8 @@ public class NPCTrafficCarSpawner : MonoBehaviour
 
         // Spawn
         GameObject car = Instantiate(chosenPrefab, hit.point + Vector3.up * carHeightOffset, rot, parent);
+
+        _queueLastSpawn.Record(car.transform.position, chosenPrefab.name);
 
         // Inject track generator reference
         var npcScript = car.GetComponent<NPCTrafficCar>();
@@ -781,6 +837,16 @@ public class NPCTrafficCarSpawner : MonoBehaviour
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         );
     }
+
+    public string SpawnQueueLabel => "NPC Traffic";
+    public bool IsSpawnQueueReady => _path.Count >= 2 && playerTransform != null && HasAnyValidCarType();
+    public bool HasSpawnQueueCapacity => _carsBySlot.Count < maxActiveCars;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(TrySpawnOneAhead);
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 }
 
 /// <summary>

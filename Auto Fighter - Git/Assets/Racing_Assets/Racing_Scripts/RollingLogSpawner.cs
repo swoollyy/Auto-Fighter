@@ -5,7 +5,7 @@ using UnityEngine;
 /// Randomly spawns rolling logs on the procedural track. Toward-player rolls use negative arclength speed and spawn ahead of the player;
 /// with-player rolls use positive speed and spawn behind. Enable <see cref="allowBothTravelDirections"/> to pick randomly.
 /// </summary>
-public class RollingLogSpawner : MonoBehaviour
+public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
     [Header("References")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
@@ -60,42 +60,73 @@ public class RollingLogSpawner : MonoBehaviour
 
     private float _nextSpawnTime;
     private readonly List<RollingLogAlongTrack> _active = new();
+    private readonly TrackSpawnQueuePendingState _queueState = new();
+    private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
 
     private void Update()
     {
-        if (!enableSpawning || rollingLogPrefab == null || trackGenerator == null || playerTransform == null)
+        if (_queueState.IsControlled)
+        {
+            PruneActive();
+            if (CanOfferSpawnRequest() && _queueState.TrySubmit(this))
+                ScheduleNextSpawn();
             return;
+        }
+
+        AttemptSpawnOnce(scheduleOnFailure: true);
+    }
+
+    private bool CanOfferSpawnRequest()
+    {
+        if (!enableSpawning || rollingLogPrefab == null || trackGenerator == null || playerTransform == null)
+            return false;
+        if (_path.Count < 2 || _totalLength <= 0.01f)
+            return false;
+        if (_active.Count >= maxActiveLogs)
+            return false;
+        if (Time.time < _nextSpawnTime)
+            return false;
+
+        float playerS = GetPlayerDistance();
+        float norm = _totalLength > 1e-4f ? playerS / _totalLength : 0f;
+        return norm >= minNormalizedProgressToSpawn;
+    }
+
+    private bool AttemptSpawnOnce(bool scheduleOnFailure)
+    {
+        if (!enableSpawning || rollingLogPrefab == null || trackGenerator == null || playerTransform == null)
+            return false;
 
         if (_path.Count < 2 || _totalLength <= 0.01f)
-            return;
+            return false;
 
         PruneActive();
 
         if (_active.Count >= maxActiveLogs)
-            return;
+            return false;
 
-        if (Time.time < _nextSpawnTime)
-            return;
+        if (scheduleOnFailure && Time.time < _nextSpawnTime)
+            return false;
 
         float playerS = GetPlayerDistance();
         float norm = _totalLength > 1e-4f ? playerS / _totalLength : 0f;
         if (norm < minNormalizedProgressToSpawn)
         {
-            ScheduleNextSpawn();
-            return;
+            if (scheduleOnFailure) ScheduleNextSpawn();
+            return false;
         }
 
         bool towardPlayer = !allowBothTravelDirections || Random.value < towardPlayerDirectionWeight;
         if (!TryComputeSpawnDistance(playerS, towardPlayer, out float spawnS, out float signedSpeed))
         {
-            ScheduleNextSpawn();
-            return;
+            if (scheduleOnFailure) ScheduleNextSpawn();
+            return false;
         }
 
-        if (!TrySpawnAt(spawnS, signedSpeed))
+        bool spawned = TrySpawnAt(spawnS, signedSpeed);
+        if (scheduleOnFailure)
             ScheduleNextSpawn();
-        else
-            ScheduleNextSpawn();
+        return spawned;
     }
 
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
@@ -207,6 +238,7 @@ public class RollingLogSpawner : MonoBehaviour
         // Preserve prefab root rotation (e.g. -90 Z mesh tilt). RollingLogAlongTrack applies track heading on top.
         GameObject inst = Instantiate(rollingLogPrefab, spawnPos, Quaternion.identity, parent);
         inst.transform.localRotation = rollingLogPrefab.transform.localRotation;
+        _queueLastSpawn.Record(spawnPos, rollingLogPrefab.name);
 
         var roll = inst.GetComponentInChildren<RollingLogAlongTrack>(true);
         if (roll == null)
@@ -322,4 +354,14 @@ public class RollingLogSpawner : MonoBehaviour
             (-p0 + 3f * p1 - 3f * p2 + p3) * (t * t * t)
         );
     }
+
+    public string SpawnQueueLabel => "Rolling Logs";
+    public bool IsSpawnQueueReady => enableSpawning && rollingLogPrefab != null && trackGenerator != null && playerTransform != null && _path.Count >= 2;
+    public bool HasSpawnQueueCapacity => _active.Count < maxActiveLogs;
+    public bool HasPendingSpawnRequest => _queueState.HasPending;
+    public bool TrySubmitSpawnRequest() => _queueState.TrySubmit(this);
+    public bool TryExecutePendingSpawn() => _queueState.TryExecute(() => AttemptSpawnOnce(scheduleOnFailure: false));
+    public bool TryConsumeLastSpawnReport(out TrackSpawnQueueSpawnReport report) => _queueLastSpawn.TryConsume(out report);
+    public void CancelPendingSpawnRequest() => _queueState.Cancel();
+    public void SetQueueControlledAutonomous(bool controlled, TrackSpawnerQueue owner = null) => _queueState.Bind(controlled, owner);
 }
