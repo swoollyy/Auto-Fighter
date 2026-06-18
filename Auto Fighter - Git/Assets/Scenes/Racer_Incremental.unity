@@ -4747,9 +4747,9 @@ MonoBehaviour:
   driftRotationLagMultiplier: 0.1
   boostVFXObject: {fileID: 115066103}
   boostZoomOutDeltaFOV: 6.57
-  boostZoomOutDuration: 0.82
   boostFovRampIn: 0.12
   boostFovRampOut: 1.88
+  boostFovOffsetSpeedFalloff: 0.85
   enableZRoll: 1
   invertZRoll: 0
   zRollScale: 0.24
@@ -4815,9 +4815,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
-  focusWorldOffset: {x: 0, y: -0.15, z: 0}
-  shieldRadius: 0.65
-  sweepProbeRadius: 0.75
+  focusWorldOffset: {x: 0, y: 0, z: 0}
+  shieldRadius: 0.35
+  sweepProbeRadius: 0.4
   castPastFocus: 0.25
   coneRadialSlop: 0.06
   useSampledLineOfSight: 1
@@ -4826,7 +4826,7 @@ MonoBehaviour:
   targetSampleHalfHeight: 0.65
   includeDiagonalSamples: 1
   useVolumetricOverlap: 1
-  collectFromOccluderRoot: 1
+  collectFromOccluderRoot: 0
   useRendererBoundsFallback: 1
   includeTriggerColliders: 1
   losAxisRingSamples: 2
@@ -5139,6 +5139,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: c6ea18c72fd94ca4e9e9f3e3d82822d2, type: 2}
   - {fileID: 11400000, guid: 859e79d01e7720044a21dc44eb1b9490, type: 2}
   - {fileID: 11400000, guid: 6b20b536e1ab7c444bef6d17ea2d8b53, type: 2}
+  - {fileID: 11400000, guid: 74aa01dab42ceac488ef5d49df30ab0a, type: 2}
   randomScreenMaxAttempts: 8
   randomScreenMinSeparation: 8.25
   randomScreenMemorySeconds: 0.35
@@ -6125,7 +6126,8 @@ MonoBehaviour:
   playerTransform: {fileID: 0}
   obstacleParent: {fileID: 0}
   preSpawnOnInitialize: 1
-  streamSpawnDuringRun: 0
+  streamSpawnDuringRun: 1
+  streamWhileQueueControlled: 1
   obstacleTypes:
   - id: Boulder
     prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
@@ -7099,7 +7101,7 @@ MonoBehaviour:
   trackCoinSpawner: {fileID: 796779773}
   trackObstacleSpawner: {fileID: 796779774}
   crossObstacleDirector: {fileID: 1466983249}
-  bounceBackObstacleSpawner: {fileID: 0}
+  bounceBackObstacleSpawner: {fileID: 796779784}
   thrownObstacleDirector: {fileID: 1127221276}
   rollingLogSpawner: {fileID: 1950602004}
   trackFuelSpawner: {fileID: 796779776}
@@ -7109,7 +7111,7 @@ MonoBehaviour:
   iceScreenFlashDriver: {fileID: 1843897590}
   creatureSpawner: {fileID: 796779780}
   trackEnvironmentSpawner: {fileID: 796779781}
-  trackSpawnerQueue: {fileID: 0}
+  trackSpawnerQueue: {fileID: 804777580}
   terrainGrassPainter: {fileID: 796779782}
   enableNavMeshBaking: 0
   navMeshSurface: {fileID: 0}
@@ -7326,7 +7328,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 804777573}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2086ad40aae5f444e83d139fdb44fbbc, type: 3}
+  m_Script: {fileID: 11500000, guid: 188c3788cf8eeb547859cf1b9d8091a7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   entries:
@@ -7335,36 +7337,48 @@ MonoBehaviour:
     burstCount: 0
     spacingInBurst: 0
     cooldownAfterUse: 0
+    participateInQueue: 1
+    takeoverAutonomousSpawning: 1
   - source: {fileID: 1950602004}
     weight: 1
     burstCount: 0
     spacingInBurst: 0
     cooldownAfterUse: 0
+    participateInQueue: 1
+    takeoverAutonomousSpawning: 1
   - source: {fileID: 1127221276}
-    weight: 1
+    weight: 3
     burstCount: 0
     spacingInBurst: 0
     cooldownAfterUse: 0
+    participateInQueue: 1
+    takeoverAutonomousSpawning: 1
   - source: {fileID: 796779779}
     weight: 1
     burstCount: 0
     spacingInBurst: 0
     cooldownAfterUse: 0
+    participateInQueue: 1
+    takeoverAutonomousSpawning: 1
   - source: {fileID: 796779784}
     weight: 1
     burstCount: 0
     spacingInBurst: 0
     cooldownAfterUse: 0
+    participateInQueue: 1
+    takeoverAutonomousSpawning: 1
   enableQueue: 1
   takeoverAutonomousSpawning: 1
   playbackMode: 0
   loop: 1
-  startDelay: 2.5
-  intervalSeconds: 4
-  intervalJitter: {x: 0.85, y: 2}
+  startDelay: 4
+  intervalSeconds: 9
+  intervalJitter: {x: 1, y: 4}
+  scaleJitterByProgress: 1
+  intervalJitterAtFullProgress: {x: 3, y: 6.5}
   failedSpawnRetryDelay: 0.35
   waveStaggerSeconds: 0.15
-  minNormalizedProgress: 0
+  minNormalizedProgress: 0.075
   trackGenerator: {fileID: 796779767}
   logQueueEvents: 1
 --- !u!1 &828558039
@@ -13109,7 +13123,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1428109223}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8661b352649d3664da54df7cffbc9f0d, type: 3}
   m_Name: 

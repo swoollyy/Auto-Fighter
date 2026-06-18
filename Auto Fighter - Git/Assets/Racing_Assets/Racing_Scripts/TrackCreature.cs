@@ -113,6 +113,16 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     private float avoidanceResponse =
 12f;
 
+    [Header("Wander Unstick")]
+    [Tooltip("Window (seconds) over which net progress is measured to detect circling / being pinned against an edge or obstacle.")]
+    [SerializeField, Min(0.1f)] private float wanderStuckWindowSeconds = 1f;
+
+    [Tooltip("If net displacement over the window is below this fraction of the distance actually traveled, treat it as stuck (e.g. spinning in a circle) and repick a clear path.")]
+    [SerializeField, Range(0.05f, 0.9f)] private float wanderProgressRatioThreshold = 0.4f;
+
+    [Tooltip("A candidate wander direction is accepted when its straight-line clearance is at least this fraction of the look-ahead distance.")]
+    [SerializeField, Range(0.2f, 1f)] private float wanderPathClearFraction = 0.6f;
+
     [Header("Aggressive - Priority")]
     public float aggressivePlayerPriorityRadius = 12f;
 
@@ -227,6 +237,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float wanderDirectionX; // -1 to 1 lateral direction
     protected float wanderDirectionZ; // -1 to 1 forward/back direction
     protected float nextWanderChangeTime;
+
+    // Wander unstick (circling / pinned detection over a time window)
+    private Vector3 _wanderStuckAnchorPos;
+    private Vector3 _wanderStuckLastPos;
+    private float _wanderStuckWindowTimer;
+    private float _wanderStuckDistanceAccum;
 
 
     // Idle "bug" wiggle state (used by Scared while not detected)
@@ -946,11 +962,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     protected virtual void UpdateWandering(float dt)
     {
-        // Update wander timer and potentially change direction
+        // Detect circling / being pinned and immediately repick a clear path (don't wait for the timer).
+        UpdateWanderStuckCheck(dt);
+
+        // Update wander timer and potentially change direction (validated so the new heading isn't blocked).
         wanderTimer += dt;
         if (wanderTimer >= nextWanderChangeTime)
         {
-            ResetWanderDirection();
+            PickValidWanderDirection();
         }
 
 
@@ -2932,7 +2951,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected void ResetWanderDirection()
     {
         wanderTimer = 0f;
-        nextWanderChangeTime = config.passiveDirectionChangeInterval * Random.Range(0.7f, 1.3f);
+        nextWanderChangeTime = (config != null ? config.passiveDirectionChangeInterval : 2f) * Random.Range(0.7f, 1.3f);
 
         // Random lateral direction
         wanderDirectionX = Random.Range(-1f, 1f);
@@ -2951,6 +2970,144 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             wanderDirectionZ = 1f;
         }
+
+        ResetWanderStuckTracking();
+    }
+
+    /// <summary>(Re)seed the circling/pinned detection window from the current position.</summary>
+    private void ResetWanderStuckTracking()
+    {
+        _wanderStuckAnchorPos = transform.position;
+        _wanderStuckLastPos = transform.position;
+        _wanderStuckWindowTimer = 0f;
+        _wanderStuckDistanceAccum = 0f;
+    }
+
+    /// <summary>
+    /// Detects when the creature keeps moving but makes little net progress (spinning in a tight
+    /// circle, hugging an obstacle, or pinned at the road edge) and forces a fresh, clear heading.
+    /// </summary>
+    private void UpdateWanderStuckCheck(float dt)
+    {
+        Vector3 pos = transform.position;
+
+        Vector3 framePlanar = pos - _wanderStuckLastPos;
+        framePlanar.y = 0f;
+        _wanderStuckDistanceAccum += framePlanar.magnitude;
+        _wanderStuckLastPos = pos;
+
+        _wanderStuckWindowTimer += dt;
+        if (_wanderStuckWindowTimer < Mathf.Max(0.1f, wanderStuckWindowSeconds))
+            return;
+
+        Vector3 net = pos - _wanderStuckAnchorPos;
+        net.y = 0f;
+        float netDisplacement = net.magnitude;
+
+        // Travelled a meaningful amount this window, but ended up roughly where it started => circling / pinned.
+        bool movedEnoughToJudge = _wanderStuckDistanceAccum > 0.05f;
+        bool littleNetProgress = netDisplacement < _wanderStuckDistanceAccum * wanderProgressRatioThreshold;
+
+        if (movedEnoughToJudge && littleNetProgress)
+            PickValidWanderDirection();
+        else
+            ResetWanderStuckTracking();
+    }
+
+    /// <summary>
+    /// Picks a new wander heading whose straight-line path is clear of avoidance-layer obstacles and
+    /// that doesn't drive straight into the road edge. Falls back to the clearest sampled option.
+    /// </summary>
+    protected void PickValidWanderDirection()
+    {
+        wanderTimer = 0f;
+        nextWanderChangeTime = (config != null ? config.passiveDirectionChangeInterval : 2f) * Random.Range(0.7f, 1.3f);
+
+        if (spawner == null)
+        {
+            ResetWanderDirection();
+            return;
+        }
+
+        spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 pathForward);
+        Vector3 flatF = pathForward;
+        flatF.y = 0f;
+        if (flatF.sqrMagnitude < 1e-6f)
+            flatF = transform.forward;
+        flatF.y = 0f;
+        flatF.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, flatF).normalized;
+
+        float halfWidth = GetRoadHalfWidth();
+        float maxLateral = halfWidth * 0.8f;
+        bool atRightEdge = currentLateralOffset > maxLateral - 0.05f;
+        bool atLeftEdge = currentLateralOffset < -maxLateral + 0.05f;
+
+        bool useAvoidanceChecks = enableMovementAvoidance && GetAvoidanceLayerMask().value != 0;
+        Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+        float look = Mathf.Max(avoidanceLookAhead, Mathf.Max(currentSpeed, config != null ? config.passiveWanderSpeed : 1f) * 0.5f + 0.5f);
+        float requiredClear = look * wanderPathClearFraction;
+
+        float bestX = 0f, bestZ = 1f, bestClear = -1f;
+        bool foundValid = false;
+
+        const int attempts = 12;
+        for (int i = 0; i < attempts; i++)
+        {
+            float dirX = Random.Range(-1f, 1f);
+            float dirZ = Random.Range(0.1f, 1f); // forward bias avoids near-zero-forward goals that pin at the edge
+
+            // Don't aim further into the road edge we're already pressed against.
+            if (atRightEdge && dirX > 0f) dirX = -dirX;
+            if (atLeftEdge && dirX < 0f) dirX = -dirX;
+
+            Vector3 worldDir = flatF * dirZ + right * dirX;
+            worldDir.y = 0f;
+            if (worldDir.sqrMagnitude < 1e-6f)
+                continue;
+            worldDir.Normalize();
+
+            float clear = useAvoidanceChecks ? SampleObstacleClearance(origin, worldDir, look) : look;
+
+            if (clear > bestClear)
+            {
+                bestClear = clear;
+                bestX = dirX;
+                bestZ = dirZ;
+            }
+
+            if (clear >= requiredClear)
+            {
+                bestX = dirX;
+                bestZ = dirZ;
+                foundValid = true;
+                break;
+            }
+        }
+
+        // If nothing was clear ahead, steer back toward the track center as a safe fallback.
+        if (!foundValid && bestClear < requiredClear * 0.5f)
+        {
+            bestX = currentLateralOffset > 0f ? -0.6f : 0.6f;
+            bestZ = 0.8f;
+        }
+
+        float mag = Mathf.Sqrt(bestX * bestX + bestZ * bestZ);
+        if (mag > 1e-4f)
+        {
+            wanderDirectionX = bestX / mag;
+            wanderDirectionZ = bestZ / mag;
+        }
+        else
+        {
+            wanderDirectionX = 0f;
+            wanderDirectionZ = 1f;
+        }
+
+        // Commit the lateral goal toward the chosen side so the creature actually heads that way.
+        targetLateralOffset = Mathf.Clamp(currentLateralOffset + wanderDirectionX * maxLateral, -maxLateral, maxLateral);
+
+        ResetWanderStuckTracking();
     }
 
     #endregion

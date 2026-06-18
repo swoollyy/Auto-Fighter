@@ -47,7 +47,12 @@ public class TrackSpawnerQueue : MonoBehaviour
     [Header("Timing")]
     [SerializeField, Min(0f)] private float startDelay = 1.5f;
     [SerializeField, Min(0.05f)] private float intervalSeconds = 1.25f;
+    [Tooltip("Jitter range (X = min, Y = max multiplier on intervalSeconds). When Scale Jitter By Progress is on, this is the range at 0% track progress.")]
     [SerializeField] private Vector2 intervalJitter = new(0.85f, 1.15f);
+    [Tooltip("If true, the jitter range lerps from intervalJitter (0% progress) to intervalJitterAtFullProgress (100% progress).")]
+    [SerializeField] private bool scaleJitterByProgress = false;
+    [Tooltip("Jitter range (X = min, Y = max) used at 100% track progress when Scale Jitter By Progress is on.")]
+    [SerializeField] private Vector2 intervalJitterAtFullProgress = new(0.6f, 1.4f);
     [SerializeField, Min(0.05f)] private float failedSpawnRetryDelay = 0.35f;
     [SerializeField, Min(0f)] private float waveStaggerSeconds = 0.15f;
 
@@ -67,6 +72,7 @@ public class TrackSpawnerQueue : MonoBehaviour
     private int _sequentialIndex;
     private bool _running;
     private Coroutine _playbackRoutine;
+    private TrackDistanceMeter _distanceMeter;
 
     public bool AcceptSpawnRequest(ITrackSpawnQueueSource source)
     {
@@ -95,6 +101,7 @@ public class TrackSpawnerQueue : MonoBehaviour
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {
         trackGenerator = generator;
+        _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
         _sequentialIndex = 0;
         _running = true;
         _pending.Clear();
@@ -341,7 +348,15 @@ public class TrackSpawnerQueue : MonoBehaviour
 
     private float GetIntervalSeconds(Entry usedEntry)
     {
-        float jitter = UnityEngine.Random.Range(intervalJitter.x, intervalJitter.y);
+        Vector2 jitterRange = intervalJitter;
+        if (scaleJitterByProgress && TryGetNormalizedProgress(out float progress))
+        {
+            jitterRange = new Vector2(
+                Mathf.Lerp(intervalJitter.x, intervalJitterAtFullProgress.x, progress),
+                Mathf.Lerp(intervalJitter.y, intervalJitterAtFullProgress.y, progress));
+        }
+
+        float jitter = UnityEngine.Random.Range(jitterRange.x, jitterRange.y);
         float wait = Mathf.Max(0.05f, intervalSeconds * jitter);
 
         if (usedEntry != null && usedEntry.cooldownAfterUse > 0f)
@@ -373,9 +388,21 @@ public class TrackSpawnerQueue : MonoBehaviour
         if (minNormalizedProgress <= 0f)
             return true;
 
-        float total = 0f;
-        float player = 0f;
+        // No usable track data -> don't block playback.
+        if (!TryGetNormalizedProgress(out float progress))
+            return true;
 
+        return progress >= minNormalizedProgress;
+    }
+
+    /// <summary>
+    /// Player progress along the track as 0..1. Returns false when track length can't be determined.
+    /// </summary>
+    private bool TryGetNormalizedProgress(out float progress)
+    {
+        progress = 0f;
+
+        float total = 0f;
         if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
         {
             var pts = trackGenerator.PathPoints;
@@ -383,13 +410,14 @@ public class TrackSpawnerQueue : MonoBehaviour
                 total += Vector3.Distance(pts[i - 1], pts[i]);
         }
 
-        var meter = FindObjectOfType<TrackDistanceMeter>();
-        if (meter != null)
-            player = meter.DistanceAlongTrack;
-
         if (total <= 0.01f)
-            return true;
+            return false;
 
-        return (player / total) >= minNormalizedProgress;
+        if (_distanceMeter == null)
+            _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+
+        float player = _distanceMeter != null ? _distanceMeter.DistanceAlongTrack : 0f;
+        progress = Mathf.Clamp01(player / total);
+        return true;
     }
 }

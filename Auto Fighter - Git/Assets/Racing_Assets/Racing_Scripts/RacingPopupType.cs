@@ -15,7 +15,8 @@ public enum RacingPopupType
     MashClickBonus,
 
     // Boost / Speed
-    BoostActivate,
+    BoostActivate,   // Drift-release boost
+    BoostPad,        // Boost pad / ramp surface boost
     SpeedBonus,
 
     // Combo / Multiplier

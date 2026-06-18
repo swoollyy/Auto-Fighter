@@ -145,6 +145,16 @@ public static class RacingPopups
     public static void NearMiss(Vector3 position)
         => Spawn(RacingPopupType.NearMiss, "NEAR MISS!", position);
 
+    // === BOOST POPUPS (separate styles for drift boost vs boost pad/ramp) ===
+
+    /// <summary>Drift-release boost popup. Uses the BoostActivate style asset.</summary>
+    public static void DriftBoost(Vector3 position)
+        => Spawn(RacingPopupType.BoostActivate, 0f, position);
+
+    /// <summary>Boost pad / ramp surface popup. Uses the BoostPad style asset.</summary>
+    public static void BoostPad(Vector3 position)
+        => Spawn(RacingPopupType.BoostPad, 0f, position);
+
     public static void Generic(string text, Vector3 position)
         => Spawn(RacingPopupType.Generic, text, position);
 

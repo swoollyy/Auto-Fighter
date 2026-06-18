@@ -861,6 +861,9 @@ public class CarController : MonoBehaviour
     private Quaternion _reorientTargetRot;
 
     private bool _onBoostSurface;
+    private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
+    private float _nextBoostPadPopupTime;            // re-trigger guard for boost-pad popup
+    private const float BOOST_PAD_POPUP_COOLDOWN = 0.5f;
     private float _currentBoostAccel;
     private float _currentBoostMaxSpeed;
     private bool _currentBoostDuringCrash;
@@ -1906,6 +1909,7 @@ public class CarController : MonoBehaviour
         bool outOfFuel = IsOutOfFuel;
         UpdateLandingSpeedPreservation();
         SampleGroundAndUpdateMultipliers();
+        HandleBoostSurfacePopup();        // boost pad / ramp popup on entry
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateSteeringInputFixed();
@@ -1987,6 +1991,23 @@ public class CarController : MonoBehaviour
         // Keep yaw, remove pitch/roll
         Vector3 e = transform.eulerAngles;
         _reorientTargetRot = Quaternion.Euler(0f, e.y, 0f);
+    }
+
+    /// <summary>
+    /// Spawns the boost-pad/ramp popup once when the car drives onto a boost surface
+    /// (rising edge of <see cref="_onBoostSurface"/>), guarded by a short cooldown.
+    /// </summary>
+    private void HandleBoostSurfacePopup()
+    {
+        if (_onBoostSurface && !_wasOnBoostSurface
+            && enablePopupText && RacingPopups.IsReady
+            && Time.time >= _nextBoostPadPopupTime)
+        {
+            RacingPopups.BoostPad(GetPopupPosition());
+            _nextBoostPadPopupTime = Time.time + BOOST_PAD_POPUP_COOLDOWN;
+        }
+
+        _wasOnBoostSurface = _onBoostSurface;
     }
 
     private void ApplyBoostSurfaceForce(bool duringCrashOrRecovery)
@@ -2381,6 +2402,10 @@ public class CarController : MonoBehaviour
 
             _boostTimer = Mathf.Max(0f, isOverride ? _boostOverrideDuration : boostDuration);
             _isPostBoost = false;
+
+            // Drift-release boost popup (separate style from boost pad/ramp).
+            if (isDriftBoost && enablePopupText && RacingPopups.IsReady)
+                RacingPopups.DriftBoost(GetPopupPosition());
 
             Debug.Log($"[CarController] Boost STARTED: drift={isDriftBoost}, impulse={impulseForce:F2}, sustain={sustain:F2}, duration={_boostTimer:F2}, maxMult={_activeBoostMaxMult:F2}");
 
