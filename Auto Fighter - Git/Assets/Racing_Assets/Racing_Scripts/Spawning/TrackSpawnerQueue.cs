@@ -26,6 +26,10 @@ public class TrackSpawnerQueue : MonoBehaviour
         [Min(1)] public int burstCount = 1;
         [Min(0f)] public float spacingInBurst = 0.2f;
         [Min(0f)] public float cooldownAfterUse = 0f;
+        [Tooltip("If false, this spawner keeps its normal autonomous Update spawning and is not registered with the queue.")]
+        public bool participateInQueue = true;
+        [Tooltip("If true, queue playback replaces this spawner's autonomous spawning. Ignored when Participate In Queue is off.")]
+        public bool takeoverAutonomousSpawning = true;
 
         [NonSerialized] public float nextEligibleTime;
     }
@@ -35,6 +39,7 @@ public class TrackSpawnerQueue : MonoBehaviour
 
     [Header("Playback")]
     [SerializeField] private bool enableQueue = true;
+    [Tooltip("Default for entries that do not override Takeover Autonomous Spawning.")]
     [SerializeField] private bool takeoverAutonomousSpawning = true;
     [SerializeField] private PlaybackMode playbackMode = PlaybackMode.Sequential;
     [SerializeField] private bool loop = true;
@@ -99,6 +104,9 @@ public class TrackSpawnerQueue : MonoBehaviour
         for (int i = 0; i < entries.Count; i++)
         {
             Entry entry = entries[i];
+            if (entry == null || !entry.participateInQueue)
+                continue;
+
             ITrackSpawnQueueSource source = ResolveSource(entry);
             if (source == null) continue;
 
@@ -106,7 +114,7 @@ public class TrackSpawnerQueue : MonoBehaviour
             _entryBySource[source] = entry;
             entry.nextEligibleTime = 0f;
 
-            if (takeoverAutonomousSpawning)
+            if (enableQueue && ShouldTakeoverEntry(entry))
                 source.SetQueueControlledAutonomous(true, this);
         }
 
@@ -128,7 +136,21 @@ public class TrackSpawnerQueue : MonoBehaviour
         }
 
         for (int i = 0; i < entries.Count; i++)
-            ResolveSource(entries[i])?.SetQueueControlledAutonomous(false, null);
+        {
+            Entry entry = entries[i];
+            if (entry == null || !entry.participateInQueue)
+                continue;
+
+            ResolveSource(entry)?.SetQueueControlledAutonomous(false, null);
+        }
+    }
+
+    private bool ShouldTakeoverEntry(Entry entry)
+    {
+        if (entry == null)
+            return takeoverAutonomousSpawning;
+
+        return entry.takeoverAutonomousSpawning && takeoverAutonomousSpawning;
     }
 
     private void OnDisable() => StopQueue();

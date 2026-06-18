@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -37,6 +38,10 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField, Range(4, 64)] private int previewPathSegments = 36;
     [Tooltip("Rebuild draped polyline every frame while moving (accurate on hills).")]
     [SerializeField] private bool previewUpdateEveryFrame = true;
+    [SerializeField, Min(0f)] private float pathPreviewFadeIn = 0.22f;
+    [SerializeField, Min(0f)] private float pathPreviewFadeOut = 0.28f;
+    [Tooltip("Hide the path line when this close to the target (XZ meters). Prevents a full-chord flash right before despawn.")]
+    [SerializeField, Min(0f)] private float pathPreviewHideBeforeEndDistance = 1.5f;
 
     [Header("Debug")]
     [SerializeField] private bool drawPathGizmos = true;
@@ -79,6 +84,7 @@ public class CrossTrackObstacle : MonoBehaviour
     // Flag to prevent multiple conversions
     private bool _convertedToPhysics;
     private bool _travelFxEnabled;
+    private Coroutine _despawnFadeCo;
     private ObstaclePathPreview _preview;
     private float _pathHeightOffset;
     private Vector3[] _previewScratch;
@@ -93,6 +99,10 @@ public class CrossTrackObstacle : MonoBehaviour
     [SerializeField] private float forcefieldImpactPairCooldown = 0.25f;
 
     private readonly Dictionary<int, float> _forcefieldImpactCooldownByOtherRb = new Dictionary<int, float>(16);
+    private readonly Dictionary<int, float> _overlapCooldownByRootId = new Dictionary<int, float>(16);
+
+    private Collider[] _childColliders;
+    private float _overlapTimer;
 
     [Header("Travel FX")]
     [Tooltip("All child lights that should only be on while this obstacle is actively traveling on its scripted path.")]
@@ -157,6 +167,15 @@ public class CrossTrackObstacle : MonoBehaviour
         _convertedToPhysics = false;
         _suppressPathPreview = false;
 
+        if (_despawnFadeCo != null)
+        {
+            StopCoroutine(_despawnFadeCo);
+            _despawnFadeCo = null;
+        }
+
+        SnapTravelFxOff();
+        _travelFxEnabled = false;
+
         ResolveTiltVisualRoot();
 
         Vector2 flatDir = targetXZ - startXZ;
@@ -197,31 +216,36 @@ public class CrossTrackObstacle : MonoBehaviour
         if (!previewUpdateEveryFrame) return;
         if (_preview == null || !_initialized || _convertedToPhysics) return;
         if (!_active || _rb == null || !_rb.isKinematic) return;
-        if (_suppressPathPreview) return;
+        if (_suppressPathPreview || IsNearPathEnd()) return;
+        if (!_travelFxEnabled && (_preview == null || !_preview.IsVisible)) return;
         RebuildPathPreview();
+    }
+
+    private bool IsNearPathEnd()
+    {
+        if (!_initialized) return false;
+        if (pathPreviewHideBeforeEndDistance <= 0f) return false;
+
+        Vector2 aXZ = new Vector2(transform.position.x, transform.position.z);
+        Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
+        return Vector2.Distance(aXZ, bXZ) <= pathPreviewHideBeforeEndDistance;
     }
 
     /// <summary>Preview matches motion: flat XZ + constant Y, or XZ lerp with Y from ground + clearance.</summary>
     private void RebuildPathPreview()
     {
         if (_preview == null || !_initialized) return;
+        if (IsNearPathEnd()) return;
 
         int segs = Mathf.Clamp(previewPathSegments, 4, 64);
         if (_previewScratch == null || _previewScratch.Length < segs)
             _previewScratch = new Vector3[segs];
 
-        bool fullSpan = Time.time < _spawnedAt + _initialDelay;
+        Vector2 aXZ = new Vector2(transform.position.x, transform.position.z);
+        Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
 
         if (keepPathFlatAndTrimOnElevation)
         {
-            Vector2 aXZ = fullSpan ? new Vector2(_startWS.x, _startWS.z) : new Vector2(transform.position.x, transform.position.z);
-            Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
-            if (Vector2.Distance(aXZ, bXZ) < 0.02f)
-            {
-                _preview.SetEndpoints(_startWS, _targetWS);
-                return;
-            }
-
             for (int i = 0; i < segs; i++)
             {
                 float t = segs <= 1 ? 0f : i / (float)(segs - 1);
@@ -231,21 +255,11 @@ public class CrossTrackObstacle : MonoBehaviour
         }
         else
         {
-            Vector2 aXZ = fullSpan ? new Vector2(_startWS.x, _startWS.z) : new Vector2(transform.position.x, transform.position.z);
-            Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
-            if (Vector2.Distance(aXZ, bXZ) < 0.02f)
-            {
-                _preview.SetEndpoints(_startWS, _targetWS);
-                return;
-            }
-
             for (int i = 0; i < segs; i++)
             {
                 float t = segs <= 1 ? 0f : i / (float)(segs - 1);
                 Vector2 xz = Vector2.Lerp(aXZ, bXZ, t);
-                Vector3 stab = fullSpan
-                    ? Vector3.Lerp(_startWS, _targetWS, t)
-                    : Vector3.Lerp(transform.position, _targetWS, t);
+                Vector3 stab = Vector3.Lerp(transform.position, _targetWS, t);
                 _previewScratch[i] = GroundedCenterAtXZ(xz, stab);
             }
         }
@@ -308,8 +322,10 @@ public class CrossTrackObstacle : MonoBehaviour
         _convertedToPhysics = false;
         _preview = GetComponent<ObstaclePathPreview>();
         CacheTravelLightsIfNeeded();
-        SetTravelFxEnabled(false, true);
+        SnapTravelFxOff();
         ResolveTiltVisualRoot();
+        CacheChildColliders();
+        _overlapTimer = 0f;
 
         if (surfaceGroundLayers.value == 0)
         {
@@ -319,18 +335,33 @@ public class CrossTrackObstacle : MonoBehaviour
 
     // -------------------------- MOVEMENT --------------------------
 
+    private void Update()
+    {
+        if (!enableOverlapDetection || !_initialized || _convertedToPhysics || !_active)
+            return;
+        if (Time.time < _spawnedAt + _initialDelay)
+            return;
+
+        _overlapTimer -= Time.deltaTime;
+        if (_overlapTimer > 0f)
+            return;
+
+        _overlapTimer = Mathf.Max(0.01f, overlapCheckInterval);
+        CheckForOverlapContacts();
+    }
+
     private void FixedUpdate()
     {
         if (!_initialized || _convertedToPhysics)
         {
-            SetTravelFxEnabled(false, true);
+            SnapTravelFxOff();
             return;
         }
 
         // Physics took over without our conversion flags (or desync): never show path line or scripted-drive a dynamic body.
         if (_rb == null || !_rb.isKinematic)
         {
-            SetTravelFxEnabled(false, true);
+            SnapTravelFxOff();
             if (_active)
             {
                 _convertedToPhysics = true;
@@ -341,7 +372,6 @@ public class CrossTrackObstacle : MonoBehaviour
 
         if (!_active)
         {
-            SetTravelFxEnabled(false, true);
             return;
         }
 
@@ -349,11 +379,10 @@ public class CrossTrackObstacle : MonoBehaviour
         {
             _prevPosition = transform.position;
             _lastVelocity = Vector3.zero;
-            SetTravelFxEnabled(false, true);
             return;
         }
 
-        SetTravelFxEnabled(!_suppressPathPreview);
+        SetTravelFxEnabled(!_suppressPathPreview && !IsNearPathEnd());
 
         Vector3 current = transform.position;
         float step = speed * Time.fixedDeltaTime;
@@ -483,12 +512,24 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void OnReachedEnd()
     {
+        if (_despawnFadeCo != null)
+            return;
+
         _active = false;
-        SetTravelFxEnabled(false, true);
+        SnapTravelFxOff();
+
+        _despawnFadeCo = StartCoroutine(CoDespawnAfterPathFade());
+    }
+
+    private IEnumerator CoDespawnAfterPathFade()
+    {
         if (destroyOnExit)
             Destroy(gameObject);
         else
             enabled = false;
+
+        _despawnFadeCo = null;
+        yield break;
     }
 
     // -------------------------- COLLISION LOGIC --------------------------
@@ -550,6 +591,14 @@ public class CrossTrackObstacle : MonoBehaviour
     [Tooltip("Force multiplier applied to the other dynamic body.")]
     [SerializeField, Range(0f, 1f)] private float mutualExplosionScale = 0.3f;
 
+    [Header("Overlap fallback (kinematic vs kinematic)")]
+    [Tooltip("PhysX often skips OnCollisionEnter when this cross and another scripted mover both use kinematic MovePosition. Overlap probe applies the same rules as collision.")]
+    [SerializeField] private bool enableOverlapDetection = true;
+    [Tooltip("How often (seconds) to run the overlap check. Lower = more responsive, higher = cheaper.")]
+    [SerializeField, Min(0.01f)] private float overlapCheckInterval = 0.05f;
+    [Tooltip("Per-obstacle cooldown after an overlap hit is processed (avoids spam while still touching).")]
+    [SerializeField, Min(0f)] private float overlapHitCooldown = 0.15f;
+
     [Header("Bump — obstacles when cross keeps path")]
     [Tooltip("If true, hitting props (not path-loss instigators) adds upward velocity while the cross stays scripted.")]
     [SerializeField] private bool enableNonPathLossObstacleBump = true;
@@ -581,6 +630,13 @@ public class CrossTrackObstacle : MonoBehaviour
 
         if (IsColliderOnActivePlayerCar(other))
             return;
+
+        var npc = other.GetComponentInParent<NPCTrafficCar>();
+        if (npc != null)
+        {
+            npc.ApplyScriptedCrossTrackOverlapHit(this, other, _lastVelocity.magnitude);
+            return;
+        }
 
         var shuttle = other.GetComponentInParent<ShuttleTrackObstacle>();
         if (shuttle != null && shuttle.IsActiveScriptedShuttle)
@@ -697,6 +753,95 @@ public class CrossTrackObstacle : MonoBehaviour
         return _rb != null ? _rb.velocity : Vector3.zero;
     }
 
+    private void CacheChildColliders()
+    {
+        _childColliders = GetComponentsInChildren<Collider>();
+    }
+
+    private bool IsOwnCollider(Collider col)
+    {
+        if (col == null) return true;
+        if (col.transform == transform || col.transform.IsChildOf(transform))
+            return true;
+
+        if (_childColliders == null || _childColliders.Length == 0)
+            return false;
+
+        for (int i = 0; i < _childColliders.Length; i++)
+        {
+            if (_childColliders[i] == col)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fallback when kinematic-vs-kinematic contacts are not reported (logs, bounce-back, NPC traffic, etc.).
+    /// </summary>
+    private void CheckForOverlapContacts()
+    {
+        if (_convertedToPhysics || !_active)
+            return;
+
+        if (_childColliders == null || _childColliders.Length == 0)
+            CacheChildColliders();
+        if (_childColliders == null || _childColliders.Length == 0)
+            return;
+
+        Bounds combined = new Bounds(_childColliders[0].bounds.center, _childColliders[0].bounds.size);
+        for (int i = 1; i < _childColliders.Length; i++)
+        {
+            Collider c = _childColliders[i];
+            if (c == null || c.isTrigger) continue;
+            combined.Encapsulate(c.bounds);
+        }
+
+        combined.Expand(0.01f);
+
+        Collider[] hits = Physics.OverlapBox(
+            combined.center,
+            combined.extents,
+            transform.rotation,
+            ~0,
+            QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            return;
+
+        float now = Time.time;
+
+        foreach (Collider hit in hits)
+        {
+            if (hit == null || hit.isTrigger || IsOwnCollider(hit))
+                continue;
+            if (!IsOnReactLayer(hit))
+                continue;
+
+            Transform root = hit.transform.root != null ? hit.transform.root : hit.transform;
+            int rootId = root.GetInstanceID();
+            if (_overlapCooldownByRootId.TryGetValue(rootId, out float until) && now < until)
+                continue;
+
+            if (TryResolveActivePlayerFromCollider(hit, out _))
+                continue;
+            if (IsColliderOnActivePlayerCar(hit))
+                continue;
+
+            Vector3 impactDir = transform.position - hit.bounds.center;
+            impactDir.y = 0f;
+            if (impactDir.sqrMagnitude < 1e-6f)
+                impactDir = _lastVelocity.sqrMagnitude > 1e-6f ? _lastVelocity.normalized : transform.forward;
+
+            bool wasConverted = _convertedToPhysics;
+            HandleImpactWithCollider(hit, null, impactDir);
+
+            if (_convertedToPhysics && !wasConverted)
+                return;
+
+            _overlapCooldownByRootId[rootId] = now + overlapHitCooldown;
+        }
+    }
+
     private bool IsOnReactLayer(Collider col)
     {
         if (col == null) return false;
@@ -768,7 +913,7 @@ public class CrossTrackObstacle : MonoBehaviour
 
         _active = false;           // stop scripted motion
 
-        SetTravelFxEnabled(false, true);
+        SetTravelFxEnabled(false);
 
         if (_rb == null) return;
 
@@ -798,7 +943,7 @@ public class CrossTrackObstacle : MonoBehaviour
         _convertedToPhysics = true;
 
         _active = false;
-        SetTravelFxEnabled(false, true);
+        SetTravelFxEnabled(false);
 
         if (_rb == null) return;
 
@@ -876,7 +1021,13 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void OnDisable()
     {
-        SetTravelFxEnabled(false, true);
+        if (_despawnFadeCo != null)
+        {
+            StopCoroutine(_despawnFadeCo);
+            _despawnFadeCo = null;
+        }
+
+        SnapTravelFxOff();
     }
 
     private void UpdateTravelFxState()
@@ -886,6 +1037,7 @@ public class CrossTrackObstacle : MonoBehaviour
             _active &&
             !_convertedToPhysics &&
             !_suppressPathPreview &&
+            !IsNearPathEnd() &&
             enabled &&
             _rb != null &&
             _rb.isKinematic &&
@@ -900,21 +1052,24 @@ public class CrossTrackObstacle : MonoBehaviour
         travelLights = GetComponentsInChildren<Light>(true);
     }
 
-    private void SetTravelFxEnabled(bool enabledNow, bool instant = false)
+    private void SetTravelFxEnabled(bool enabledNow)
     {
-        if (_travelFxEnabled == enabledNow && !instant) return;
+        if (_travelFxEnabled == enabledNow)
+            return;
+
         _travelFxEnabled = enabledNow;
 
         if (_preview != null)
         {
             if (enabledNow)
             {
-                _preview.enabled = true;
-                _preview.FadeIn(instant ? 0f : 0.08f);
+                RebuildPathPreview();
+                _preview.FadeIn(pathPreviewFadeIn);
             }
             else
             {
-                _preview.FadeOut(instant ? 0f : 0.08f);
+                float fadeOut = IsNearPathEnd() || !_active || _despawnFadeCo != null ? 0f : pathPreviewFadeOut;
+                _preview.FadeOut(fadeOut);
             }
         }
 
@@ -923,6 +1078,21 @@ public class CrossTrackObstacle : MonoBehaviour
         {
             if (travelLights[i] != null)
                 travelLights[i].enabled = enabledNow;
+        }
+    }
+
+    private void SnapTravelFxOff()
+    {
+        _travelFxEnabled = false;
+
+        if (_preview != null)
+            _preview.FadeOut(0f);
+
+        if (travelLights == null) return;
+        for (int i = 0; i < travelLights.Length; i++)
+        {
+            if (travelLights[i] != null)
+                travelLights[i].enabled = false;
         }
     }
 

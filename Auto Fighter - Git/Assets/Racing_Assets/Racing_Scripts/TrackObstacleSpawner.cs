@@ -41,6 +41,10 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Tooltip("If true, will continue spawning ahead while you drive. Turn OFF if you hate seeing pop-in.")]
     [SerializeField] private bool streamSpawnDuringRun = false;
 
+    [Tooltip("When the spawn queue controls this spawner, keep filling slots ahead of the player (baseline props). " +
+             "Without this, only the initial pre-spawn window is used and later spawns wait for the queue.")]
+    [SerializeField] private bool streamWhileQueueControlled = true;
+
     [Header("Obstacle Types")]
     [SerializeField] private List<ObstacleType> obstacleTypes = new List<ObstacleType>();
 
@@ -116,13 +120,20 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
         if (_queueState.IsControlled)
         {
-            DespawnBehindObstacles(GetPlayerDistance());
+            float playerDist = GetPlayerDistance();
+            DespawnBehindObstacles(playerDist);
+
             _updateTimer += Time.deltaTime;
             if (_updateTimer >= updateInterval)
             {
                 _updateTimer = 0f;
+
+                if (streamSpawnDuringRun || streamWhileQueueControlled)
+                    StreamObstacles();
+
                 _queueState.TrySubmit(this);
             }
+
             return;
         }
 

@@ -162,7 +162,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private float depositCoinsVolume = 1f;
 
     [Header("Run End Timing")]
-    [SerializeField, Tooltip("Extra delay after the car is fully stopped before showing the Run Complete screen.")]
+    [SerializeField, Tooltip("Delay after the run-end mash finishes before the final explosion and results screen.")]
     private float runEndSettleDelay = .9f;
 
     [SerializeField, Min(0f)]
@@ -190,7 +190,6 @@ public class GameManager_Racing : MonoBehaviour
     private bool _finalizePending;
     private bool _acceptRunEndContinueInput;
     private RunFlowState _flowState = RunFlowState.SkillTree;
-    private float _stopConditionBeganRealtime;
 
     private float runDistanceMeters = 0f;
     private Rigidbody _carRb;
@@ -408,30 +407,6 @@ public class GameManager_Racing : MonoBehaviour
                 if (!_finalizePending)
                 {
                     _finalizePending = true;
-
-                    if (!_deathStopBurstPlayed)
-                    {
-                        _deathStopBurstPlayed = true;
-
-                        // replay the explosion VFX on the stopped wreck
-                        carController?.PlayDeathVFXExtra();
-
-                        // screen shake + slowmo for the extra explosion
-                        if (enableCrashScreenShake && cameraFollow != null)
-                        {
-                            cameraFollow.StartShake(
-                                crashShakeDuration * deathStopShakeMult,
-                                crashShakeStrength * deathStopShakeMult,
-                                crashShakeVibrato,
-                                crashShakeRandomness
-                            );
-                        }
-
-                        if (enableCrashSlowMo)
-                            StartCrashSlowMo(deathStopSlowMoSeverity);
-                    }
-
-                    _stopConditionBeganRealtime = Time.realtimeSinceStartup;
 
                     if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
                     _finalizeRunCR = StartCoroutine(CoFinalizeRunAfterDelay());
@@ -921,12 +896,36 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CoFinalizeRunAfterDelay()
     {
-        float endTime = _stopConditionBeganRealtime + Mathf.Max(0f, runEndSettleDelay);
+        // Let FixedUpdate offer run-end mash before we wait for it to finish.
+        yield return null;
+        yield return new WaitForFixedUpdate();
 
-        // Wait in REALTIME so slowmo / Time.timeScale does not mess with the delay.
+        while (carController != null && carController.IsFlipMashActive)
+        {
+            if (_currencyAwarded || carInstance == null || _carRb == null)
+            {
+                _finalizePending = false;
+                _finalizeRunCR = null;
+                yield break;
+            }
+
+            float speed = _carRb.velocity.magnitude;
+            float forwardSpeed = Vector3.Dot(_carRb.velocity, carInstance.transform.forward);
+            bool stopped = Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+
+            if (!stopped)
+            {
+                _finalizePending = false;
+                _finalizeRunCR = null;
+                yield break;
+            }
+
+            yield return null;
+        }
+
+        float endTime = Time.realtimeSinceStartup + Mathf.Max(0f, runEndSettleDelay);
         while (Time.realtimeSinceStartup < endTime)
         {
-            // Abort if conditions changed
             if (_currencyAwarded || carController == null || carInstance == null || _carRb == null)
             {
                 _finalizePending = false;
@@ -934,7 +933,6 @@ public class GameManager_Racing : MonoBehaviour
                 yield break;
             }
 
-            // If we started moving again, abort
             float speed = _carRb.velocity.magnitude;
             float forwardSpeed = Vector3.Dot(_carRb.velocity, carInstance.transform.forward);
             bool stopped = Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
@@ -952,7 +950,29 @@ public class GameManager_Racing : MonoBehaviour
         _finalizePending = false;
         _finalizeRunCR = null;
 
+        PlayDeathStopBurst();
         FinalizeRun();
+    }
+
+    private void PlayDeathStopBurst()
+    {
+        if (_deathStopBurstPlayed) return;
+        _deathStopBurstPlayed = true;
+
+        carController?.PlayDeathVFXExtra();
+
+        if (enableCrashScreenShake && cameraFollow != null)
+        {
+            cameraFollow.StartShake(
+                crashShakeDuration * deathStopShakeMult,
+                crashShakeStrength * deathStopShakeMult,
+                crashShakeVibrato,
+                crashShakeRandomness
+            );
+        }
+
+        if (enableCrashSlowMo)
+            StartCrashSlowMo(deathStopSlowMoSeverity);
     }
 
     private void EnsureTrackCallbacksWired()

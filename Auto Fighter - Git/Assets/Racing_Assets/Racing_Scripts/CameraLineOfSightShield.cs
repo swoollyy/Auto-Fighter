@@ -22,10 +22,10 @@ public class CameraLineOfSightShield : MonoBehaviour
 
     [Header("Sweep")]
     [Tooltip("Cone base radius at the focus point (apex at camera; 0 at lens). Wider = more occluders caught.")]
-    [SerializeField, Min(0.01f)] private float shieldRadius = 0.35f;
+    [SerializeField, Min(0.01f)] private float shieldRadius = 0.65f;
 
     [Tooltip("Sphere cast radius used only to gather candidates (should be ≥ cone base radius).")]
-    [SerializeField, Min(0.01f)] private float sweepProbeRadius = 0.45f;
+    [SerializeField, Min(0.01f)] private float sweepProbeRadius = 0.75f;
 
     [Tooltip("Extra meters past the focus along the axis; past the focus the cone radius stays at shieldRadius (cylinder cap).")]
     [SerializeField, Min(0f)] private float castPastFocus = 0.5f;
@@ -38,7 +38,7 @@ public class CameraLineOfSightShield : MonoBehaviour
     [SerializeField] private bool useSampledLineOfSight = true;
 
     [Tooltip("Small cast radius per sample ray. Helps catch thin colliders.")]
-    [SerializeField, Min(0f)] private float losSampleCastRadius = 0.08f;
+    [SerializeField, Min(0f)] private float losSampleCastRadius = 0.16f;
 
     [Tooltip("Approximate half-width of the car silhouette used for LOS sample points.")]
     [SerializeField, Min(0f)] private float targetSampleHalfWidth = 0.9f;
@@ -48,6 +48,21 @@ public class CameraLineOfSightShield : MonoBehaviour
 
     [Tooltip("Include diagonal silhouette samples for more robust occlusion at corners.")]
     [SerializeField] private bool includeDiagonalSamples = true;
+
+    [Tooltip("Also sweep a thick capsule between camera and focus to catch props near the view corridor.")]
+    [SerializeField] private bool useVolumetricOverlap = true;
+
+    [Tooltip("When a collider is hit, fade every renderer on that object's root (e.g. tree leaves + trunk).")]
+    [SerializeField] private bool collectFromOccluderRoot = true;
+
+    [Tooltip("Test renderer bounds along the view cone so foliage without colliders still fades.")]
+    [SerializeField] private bool useRendererBoundsFallback = true;
+
+    [Tooltip("Include trigger colliders in physics queries (some foliage uses trigger volumes).")]
+    [SerializeField] private bool includeTriggerColliders = true;
+
+    [Tooltip("Extra ring samples along the camera→car axis (0 = silhouette only).")]
+    [SerializeField, Range(0, 4)] private int losAxisRingSamples = 2;
 
     [Header("Debug Gizmos")]
     [Tooltip("Automatically draw LOS sample gizmos in the Scene view.")]
@@ -63,10 +78,13 @@ public class CameraLineOfSightShield : MonoBehaviour
 
     [Header("Fade")]
     [Tooltip("Alpha multiplier on occluder materials when fully faded (0 = invisible, 1 = unchanged).")]
-    [SerializeField, Range(0f, 1f)] private float occludedAlphaMultiplier = 0.22f;
+    [SerializeField, Range(0f, 1f)] private float occludedAlphaMultiplier = 0.1f;
+
+    [Tooltip("Also dims RGB when occluded (0 = alpha only, 1 = strong ghosting).")]
+    [SerializeField, Range(0f, 1f)] private float occludedRgbDim = 0.55f;
 
     [Tooltip("How fast alpha moves toward occluded / full opacity (per second).")]
-    [SerializeField, Min(0.1f)] private float fadeSpeed = 6f;
+    [SerializeField, Min(0.1f)] private float fadeSpeed = 10f;
 
     [Header("Behaviour")]
     [SerializeField] private bool enableShield = true;
@@ -75,16 +93,18 @@ public class CameraLineOfSightShield : MonoBehaviour
     [SerializeField] private bool skipParticleRenderers = true;
 
     [Tooltip("Max hits processed per frame (internal buffer size).")]
-    [SerializeField, Min(8)] private int maxHits = 48;
+    [SerializeField, Min(8)] private int maxHits = 64;
 
     private Camera _camera;
     private CameraFollow _cameraFollow;
     private readonly List<Renderer> _scratchRenderers = new List<Renderer>(16);
     private readonly List<Renderer> _nullKeys = new List<Renderer>(4);
     private readonly List<FadeEntry> _teardownQueue = new List<FadeEntry>(16);
-    private readonly List<Vector3> _focusSamples = new List<Vector3>(9);
+    private readonly List<Vector3> _focusSamples = new List<Vector3>(24);
+    private readonly HashSet<Transform> _visitedOccluderRoots = new HashSet<Transform>();
 
     private RaycastHit[] _hits;
+    private Collider[] _overlapBuffer;
     private readonly Dictionary<Renderer, FadeEntry> _entries = new Dictionary<Renderer, FadeEntry>(32);
     private readonly HashSet<Renderer> _wantedHidden = new HashSet<Renderer>();
 
@@ -105,7 +125,9 @@ public class CameraLineOfSightShield : MonoBehaviour
     private void Awake()
     {
         _camera = GetComponent<Camera>();
-        _hits = new RaycastHit[Mathf.Clamp(maxHits, 8, 128)];
+        int bufferSize = Mathf.Clamp(maxHits, 8, 128);
+        _hits = new RaycastHit[bufferSize];
+        _overlapBuffer = new Collider[bufferSize];
         _cameraFollow = GetComponentInParent<CameraFollow>();
     }
 
@@ -143,13 +165,18 @@ public class CameraLineOfSightShield : MonoBehaviour
         }
 
         int mask = occluderLayers.value & ~excludeFromOccluders.value;
+        QueryTriggerInteraction triggerMode = includeTriggerColliders
+            ? QueryTriggerInteraction.Collide
+            : QueryTriggerInteraction.Ignore;
         _wantedHidden.Clear();
 
         if (useSampledLineOfSight)
-        {
-            CollectOccludersFromLineOfSightSamples(origin, focus, mask);
-        }
-        else
+            CollectOccludersFromLineOfSightSamples(origin, focus, dist, mask, triggerMode);
+
+        if (useVolumetricOverlap)
+            CollectOccludersFromVolumeOverlap(origin, focus, dist, mask, triggerMode);
+
+        if (!useSampledLineOfSight && !useVolumetricOverlap)
         {
             Vector3 dir = delta / dist;
             float castDistance = dist + castPastFocus;
@@ -161,40 +188,12 @@ public class CameraLineOfSightShield : MonoBehaviour
                 _hits,
                 castDistance,
                 mask,
-                QueryTriggerInteraction.Ignore);
+                triggerMode);
 
             if (count > 0)
             {
                 SortHitsByDistance(_hits, count);
-
-                Transform targetRoot = TargetRoot;
-                Transform cameraRoot = _camera.transform.root;
-
-                for (int i = 0; i < count; i++)
-                {
-                    var hit = _hits[i];
-                    if (hit.collider == null)
-                        continue;
-
-                    Transform t = hit.collider.transform;
-                    if (targetRoot != null && IsDescendantOf(t, targetRoot))
-                        break;
-
-                    if (IsDescendantOf(t, cameraRoot))
-                        continue;
-
-                    if (!IsHitInsideViewCone(hit.point, origin, focus, dist, shieldRadius, castPastFocus, coneRadialSlop))
-                        continue;
-
-                    CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
-                    for (int r = 0; r < _scratchRenderers.Count; r++)
-                    {
-                        Renderer ren = _scratchRenderers[r];
-                        if (ren != null)
-                            _wantedHidden.Add(ren);
-                    }
-                    _scratchRenderers.Clear();
-                }
+                ProcessPhysicsHits(_hits, count, origin, focus, dist);
             }
         }
 
@@ -339,7 +338,15 @@ public class CameraLineOfSightShield : MonoBehaviour
         if (e.IsSprite && e.Renderer is SpriteRenderer sr && e.BaseColors != null && e.BaseAlphas != null)
         {
             Color c = e.BaseColors[0];
-            c.a = Mathf.Clamp01(e.BaseAlphas[0] * e.CurrentMultiplier);
+            float m = Mathf.Clamp01(e.CurrentMultiplier);
+            c.a = Mathf.Clamp01(e.BaseAlphas[0] * m);
+            if (m < 0.999f && occludedRgbDim > 0f)
+            {
+                float rgbScale = Mathf.Lerp(m, 1f, 1f - occludedRgbDim);
+                c.r *= rgbScale;
+                c.g *= rgbScale;
+                c.b *= rgbScale;
+            }
             sr.color = c;
             return;
         }
@@ -349,16 +356,24 @@ public class CameraLineOfSightShield : MonoBehaviour
 
         for (int i = 0; i < e.Working.Length; i++)
         {
-            Material m = e.Working[i];
-            if (m == null || e.BaseColors == null || i >= e.BaseColors.Length)
+            Material mat = e.Working[i];
+            if (mat == null || e.BaseColors == null || i >= e.BaseColors.Length)
                 continue;
 
             Color c = e.BaseColors[i];
-            c.a = Mathf.Clamp01(e.BaseAlphas[i] * e.CurrentMultiplier);
-            if (m.HasProperty(BaseColorId))
-                m.SetColor(BaseColorId, c);
-            else if (m.HasProperty(ColorId))
-                m.SetColor(ColorId, c);
+            float mult = Mathf.Clamp01(e.CurrentMultiplier);
+            c.a = Mathf.Clamp01(e.BaseAlphas[i] * mult);
+            if (mult < 0.999f && occludedRgbDim > 0f)
+            {
+                float rgbScale = Mathf.Lerp(mult, 1f, 1f - occludedRgbDim);
+                c.r *= rgbScale;
+                c.g *= rgbScale;
+                c.b *= rgbScale;
+            }
+            if (mat.HasProperty(BaseColorId))
+                mat.SetColor(BaseColorId, c);
+            else if (mat.HasProperty(ColorId))
+                mat.SetColor(ColorId, c);
         }
     }
 
@@ -419,18 +434,187 @@ public class CameraLineOfSightShield : MonoBehaviour
         return false;
     }
 
-    private static void CollectRenderers(Collider c, List<Renderer> list, bool skipParticles)
+    private void CollectRenderersFromOccluderRoot(Transform hitTransform, List<Renderer> list)
     {
-        var rs = c.GetComponentsInChildren<Renderer>(true);
+        if (hitTransform == null) return;
+
+        Transform root = collectFromOccluderRoot ? hitTransform.root : hitTransform;
+        var rs = root.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < rs.Length; i++)
+            TryAddRenderer(rs[i], list, skipParticleRenderers);
+    }
+
+    private void TryAddRenderer(Renderer r, List<Renderer> list, bool skipParticles)
+    {
+        if (r == null || !r.enabled)
+            return;
+        if (skipParticles && r is ParticleSystemRenderer)
+            return;
+
+        Transform targetRoot = TargetRoot;
+        Transform cameraRoot = _camera != null ? _camera.transform.root : null;
+        if (targetRoot != null && IsDescendantOf(r.transform, targetRoot))
+            return;
+        if (cameraRoot != null && IsDescendantOf(r.transform, cameraRoot))
+            return;
+
+        list.Add(r);
+    }
+
+    private void AddWantedRenderersFromCollider(Collider col)
+    {
+        if (col == null) return;
+
+        _scratchRenderers.Clear();
+        CollectRenderersFromOccluderRoot(col.transform, _scratchRenderers);
+        for (int r = 0; r < _scratchRenderers.Count; r++)
         {
-            Renderer r = rs[i];
-            if (r == null)
-                continue;
-            if (skipParticles && r is ParticleSystemRenderer)
-                continue;
-            list.Add(r);
+            Renderer ren = _scratchRenderers[r];
+            if (ren != null)
+                _wantedHidden.Add(ren);
         }
+        _scratchRenderers.Clear();
+    }
+
+    private void ProcessPhysicsHits(RaycastHit[] hits, int count, Vector3 cameraPos, Vector3 focus, float focusDist)
+    {
+        Transform targetRoot = TargetRoot;
+        Transform cameraRoot = _camera.transform.root;
+
+        for (int i = 0; i < count; i++)
+        {
+            var hit = hits[i];
+            if (hit.collider == null)
+                continue;
+
+            Transform t = hit.collider.transform;
+            if (targetRoot != null && IsDescendantOf(t, targetRoot))
+                break;
+
+            if (IsDescendantOf(t, cameraRoot))
+                continue;
+
+            if (!IsHitInsideViewCone(hit.point, cameraPos, focus, focusDist, shieldRadius, castPastFocus, coneRadialSlop))
+                continue;
+
+            AddWantedRenderersFromCollider(hit.collider);
+        }
+    }
+
+    private void CollectOccludersFromVolumeOverlap(
+        Vector3 cameraPos,
+        Vector3 focus,
+        float focusDist,
+        int mask,
+        QueryTriggerInteraction triggerMode)
+    {
+        float radius = Mathf.Max(shieldRadius, sweepProbeRadius) + coneRadialSlop;
+        int count = Physics.OverlapCapsuleNonAlloc(
+            cameraPos,
+            focus,
+            radius,
+            _overlapBuffer,
+            mask,
+            triggerMode);
+
+        if (count <= 0)
+            return;
+
+        _visitedOccluderRoots.Clear();
+        Transform targetRoot = TargetRoot;
+        Transform cameraRoot = _camera.transform.root;
+
+        for (int i = 0; i < count; i++)
+        {
+            Collider col = _overlapBuffer[i];
+            if (col == null)
+                continue;
+
+            Transform t = col.transform;
+            if (targetRoot != null && IsDescendantOf(t, targetRoot))
+                continue;
+            if (IsDescendantOf(t, cameraRoot))
+                continue;
+
+            Transform root = collectFromOccluderRoot ? t.root : t;
+            if (!_visitedOccluderRoots.Add(root))
+                continue;
+
+            if (useRendererBoundsFallback)
+            {
+                _scratchRenderers.Clear();
+                CollectRenderersFromOccluderRoot(t, _scratchRenderers);
+                bool anyBoundsHit = false;
+                for (int r = 0; r < _scratchRenderers.Count; r++)
+                {
+                    Renderer ren = _scratchRenderers[r];
+                    if (ren != null && RendererBoundsOccludes(ren, cameraPos, focus, focusDist))
+                    {
+                        _wantedHidden.Add(ren);
+                        anyBoundsHit = true;
+                    }
+                }
+                _scratchRenderers.Clear();
+
+                if (!anyBoundsHit && col.bounds.size.sqrMagnitude > 0f)
+                {
+                    if (RendererBoundsOccludes(col, cameraPos, focus, focusDist))
+                        AddWantedRenderersFromCollider(col);
+                }
+            }
+            else
+            {
+                AddWantedRenderersFromCollider(col);
+            }
+        }
+    }
+
+    private bool RendererBoundsOccludes(Renderer ren, Vector3 cameraPos, Vector3 focus, float focusDist)
+    {
+        if (ren == null) return false;
+        return BoundsOccludesView(ren.bounds, cameraPos, focus, focusDist);
+    }
+
+    private bool RendererBoundsOccludes(Collider col, Vector3 cameraPos, Vector3 focus, float focusDist)
+    {
+        if (col == null) return false;
+        return BoundsOccludesView(col.bounds, cameraPos, focus, focusDist);
+    }
+
+    private bool BoundsOccludesView(Bounds bounds, Vector3 cameraPos, Vector3 focus, float focusDist)
+    {
+        if (focusDist < 0.001f)
+            return false;
+
+        Vector3 axis = (focus - cameraPos) / focusDist;
+        Ray ray = new Ray(cameraPos, axis);
+        if (bounds.IntersectRay(ray, out float enter) && enter <= focusDist + castPastFocus)
+        {
+            Vector3 hitPoint = ray.GetPoint(Mathf.Clamp(enter, 0f, focusDist + castPastFocus));
+            if (IsHitInsideViewCone(hitPoint, cameraPos, focus, focusDist, shieldRadius, castPastFocus, coneRadialSlop))
+                return true;
+        }
+
+        Vector3 c = bounds.center;
+        Vector3 e = bounds.extents;
+        for (int xi = -1; xi <= 1; xi += 2)
+        {
+            for (int yi = -1; yi <= 1; yi += 2)
+            {
+                for (int zi = -1; zi <= 1; zi += 2)
+                {
+                    Vector3 corner = c + new Vector3(e.x * xi, e.y * yi, e.z * zi);
+                    Vector3 fromCam = corner - cameraPos;
+                    float s = Vector3.Dot(fromCam, axis);
+                    if (s < 0f || s > focusDist + castPastFocus)
+                        continue;
+                    if (IsHitInsideViewCone(corner, cameraPos, focus, focusDist, shieldRadius, castPastFocus, coneRadialSlop))
+                        return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDescendantOf(Transform t, Transform ancestor)
@@ -538,13 +722,14 @@ public class CameraLineOfSightShield : MonoBehaviour
         }
     }
 
-    private void CollectOccludersFromLineOfSightSamples(Vector3 cameraPos, Vector3 focus, int mask)
+    private void CollectOccludersFromLineOfSightSamples(
+        Vector3 cameraPos,
+        Vector3 focus,
+        float focusDist,
+        int mask,
+        QueryTriggerInteraction triggerMode)
     {
         BuildFocusSamples(cameraPos, focus, _focusSamples);
-
-        Transform targetRoot = TargetRoot;
-        Transform cameraRoot = _camera.transform.root;
-        float sampleRadius = Mathf.Max(0f, losSampleCastRadius);
 
         for (int s = 0; s < _focusSamples.Count; s++)
         {
@@ -556,16 +741,16 @@ public class CameraLineOfSightShield : MonoBehaviour
 
             Vector3 dir = ray / distance;
             int count;
-            if (sampleRadius > 0f)
+            if (losSampleCastRadius > 0f)
             {
                 count = Physics.SphereCastNonAlloc(
                     cameraPos,
-                    sampleRadius,
+                    losSampleCastRadius,
                     dir,
                     _hits,
                     distance + castPastFocus,
                     mask,
-                    QueryTriggerInteraction.Ignore);
+                    triggerMode);
             }
             else
             {
@@ -575,36 +760,14 @@ public class CameraLineOfSightShield : MonoBehaviour
                     _hits,
                     distance + castPastFocus,
                     mask,
-                    QueryTriggerInteraction.Ignore);
+                    triggerMode);
             }
 
             if (count <= 0)
                 continue;
 
             SortHitsByDistance(_hits, count);
-
-            for (int i = 0; i < count; i++)
-            {
-                var hit = _hits[i];
-                if (hit.collider == null)
-                    continue;
-
-                Transform t = hit.collider.transform;
-                if (targetRoot != null && IsDescendantOf(t, targetRoot))
-                    break;
-
-                if (IsDescendantOf(t, cameraRoot))
-                    continue;
-
-                CollectRenderers(hit.collider, _scratchRenderers, skipParticleRenderers);
-                for (int r = 0; r < _scratchRenderers.Count; r++)
-                {
-                    Renderer ren = _scratchRenderers[r];
-                    if (ren != null)
-                        _wantedHidden.Add(ren);
-                }
-                _scratchRenderers.Clear();
-            }
+            ProcessPhysicsHits(_hits, count, cameraPos, focus, focusDist);
         }
     }
 
@@ -613,6 +776,7 @@ public class CameraLineOfSightShield : MonoBehaviour
         output.Clear();
 
         Vector3 toFocus = focus - cameraPos;
+        float focusDist = toFocus.magnitude;
         Vector3 fwd = toFocus.sqrMagnitude > 0.0001f ? toFocus.normalized : (_camera != null ? _camera.transform.forward : transform.forward);
         Vector3 right = Vector3.Cross(Vector3.up, fwd);
         if (right.sqrMagnitude < 0.0001f)
@@ -620,18 +784,39 @@ public class CameraLineOfSightShield : MonoBehaviour
         right.Normalize();
         Vector3 up = Vector3.Cross(fwd, right).normalized;
 
-        output.Add(focus);
-        output.Add(focus + right * targetSampleHalfWidth);
-        output.Add(focus - right * targetSampleHalfWidth);
-        output.Add(focus + up * targetSampleHalfHeight);
-        output.Add(focus - up * targetSampleHalfHeight);
-
-        if (includeDiagonalSamples)
+        void AddSilhouetteAt(Vector3 center)
         {
-            output.Add(focus + right * targetSampleHalfWidth + up * targetSampleHalfHeight);
-            output.Add(focus + right * targetSampleHalfWidth - up * targetSampleHalfHeight);
-            output.Add(focus - right * targetSampleHalfWidth + up * targetSampleHalfHeight);
-            output.Add(focus - right * targetSampleHalfWidth - up * targetSampleHalfHeight);
+            output.Add(center);
+            output.Add(center + right * targetSampleHalfWidth);
+            output.Add(center - right * targetSampleHalfWidth);
+            output.Add(center + up * targetSampleHalfHeight);
+            output.Add(center - up * targetSampleHalfHeight);
+
+            if (includeDiagonalSamples)
+            {
+                output.Add(center + right * targetSampleHalfWidth + up * targetSampleHalfHeight);
+                output.Add(center + right * targetSampleHalfWidth - up * targetSampleHalfHeight);
+                output.Add(center - right * targetSampleHalfWidth + up * targetSampleHalfHeight);
+                output.Add(center - right * targetSampleHalfWidth - up * targetSampleHalfHeight);
+            }
+        }
+
+        AddSilhouetteAt(focus);
+
+        int rings = Mathf.Clamp(losAxisRingSamples, 0, 4);
+        for (int ring = 1; ring <= rings; ring++)
+        {
+            float t = ring / (float)(rings + 1);
+            Vector3 ringCenter = cameraPos + fwd * (focusDist * t);
+            float ringScale = Mathf.Lerp(0.35f, 1f, t);
+            float halfW = targetSampleHalfWidth * ringScale;
+            float halfH = targetSampleHalfHeight * ringScale;
+
+            output.Add(ringCenter);
+            output.Add(ringCenter + right * halfW);
+            output.Add(ringCenter - right * halfW);
+            output.Add(ringCenter + up * halfH);
+            output.Add(ringCenter - up * halfH);
         }
     }
 }
@@ -644,6 +829,8 @@ internal static class UrpFadeMaterialUtility
     private static readonly int ZWrite = Shader.PropertyToID("_ZWrite");
     private static readonly int SrcBlend = Shader.PropertyToID("_SrcBlend");
     private static readonly int DstBlend = Shader.PropertyToID("_DstBlend");
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorId = Shader.PropertyToID("_Color");
 
     public static void TryEnableAlphaBlend(Material m)
     {
@@ -667,6 +854,18 @@ internal static class UrpFadeMaterialUtility
 
             m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.renderQueue = (int)RenderQueue.Transparent;
+            return;
+        }
+
+        if (m.HasProperty(BaseColorId) || m.HasProperty(ColorId))
+        {
+            m.SetOverrideTag("RenderType", "Transparent");
+            m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            if (m.HasProperty(ZWrite))
+                m.SetFloat(ZWrite, 0f);
             m.renderQueue = (int)RenderQueue.Transparent;
             return;
         }

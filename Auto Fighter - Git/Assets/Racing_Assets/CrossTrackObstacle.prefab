@@ -330,6 +330,11 @@ MonoBehaviour:
   explosionTorqueRange: {x: 13.25, y: 20}
   applyMutualExplosion: 1
   mutualExplosionScale: 0.3
+  enableNonPathLossObstacleBump: 1
+  nonPathLossUpVelocityChange: 3.5
+  nonPathLossBumpSpeedRef: 10
+  nonPathLossBumpSpeedScaleRange: {x: 0.45, y: 1.15}
+  nonPathLossWakeKinematicObstacles: 1
 --- !u!120 &4974092278974423632
 LineRenderer:
   serializedVersion: 2
@@ -457,7 +462,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
   m_Name: 

@@ -32,6 +32,7 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private float mashSeveritySumWeight = 1f;
 
     [Header("Crash Recovery Multipliers")]
+    [Tooltip("Legacy mid-run setting. Mash now only runs at run end (out of fuel/HP) before the results screen.")]
     [SerializeField] private bool enableCrashRecoveryAlways = true;
     [SerializeField] private float flippedClickMultiplier = 1.5f;
     [SerializeField] private float airborneClickMultiplier = 1.25f;

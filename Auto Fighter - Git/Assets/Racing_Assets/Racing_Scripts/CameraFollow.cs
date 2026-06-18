@@ -84,20 +84,22 @@ public class CameraFollow : MonoBehaviour
     [Header("Boost VFX")]
     [Tooltip("Optional GameObject (or ParticleSystem) parented to camera to play during boosts.")]
     [SerializeField] private GameObject boostVFXObject;
-    [SerializeField, Tooltip("How many FOV degrees to increase for a boost pulse (zoom out).")]
+    [SerializeField, Tooltip("Extra FOV degrees added on top of speed-based FOV while boost presentation is active (pads, ramps, manual boost).")]
     private float boostZoomOutDeltaFOV = 6f;
-    [SerializeField, Tooltip("Total duration for boost zoom out pulse (seconds) - used for legacy quick pulses.")]
-    private float boostZoomOutDuration = 0.28f;
 
-    // New: smoothing controls for boost FOV ramp in/out
-    [SerializeField, Tooltip("Seconds to smoothly ramp the FOV up when boost starts (use small values, e.g. 0.08-0.18).")]
+    [SerializeField, Tooltip("Seconds to blend the boost FOV offset in.")]
     private float boostFovRampIn = 0.12f;
-    [SerializeField, Tooltip("Seconds to smoothly restore FOV after boost ends. If zero, uses the car's postBoostSlowdownDuration.")]
+    [SerializeField, Tooltip("Seconds to blend the boost FOV offset out.")]
     private float boostFovRampOut = 0.35f;
+    [Tooltip("At high speed, reduce boost FOV offset so velocity-based zoom and boost presentation do not stack.")]
+    [SerializeField, Range(0f, 1f)] private float boostFovOffsetSpeedFalloff = 0.85f;
 
     private ParticleSystem _boostPS;
-    private Coroutine _boostZoomCR;
     private CarController _subscribedCar;
+
+    // Boost presentation: additive FOV offset blended into the same pipeline as speed FOV (no fighting coroutines).
+    private float _boostFovOffsetTarget;
+    private float _boostFovOffsetCurrent;
 
     // Z-rotation ("roll") mapping to accentuate turns/drift
     [Header("Turn-Driven Z-Rotation (Camera Roll)")]
@@ -131,9 +133,7 @@ public class CameraFollow : MonoBehaviour
     // internal roll state
     private float _currentZRoll = 0f;
     private Vector3 _prevTargetForwardFlat = Vector3.forward;
-    private bool _carIsBoosting;
-    private float _boostEndTime;
-    private float _boostPostDuration;
+    private bool _boostVfxPlaying;
     // Map peek cached values (prevents stacking)
     private float _mapPeekPressBaseline;
     private float _mapPeekPressTarget;
@@ -158,7 +158,10 @@ public class CameraFollow : MonoBehaviour
         if (boostVFXObject != null)
             _boostPS = boostVFXObject.GetComponent<ParticleSystem>();
 
-        _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (_boostPS != null)
+            _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        else if (boostVFXObject != null)
+            boostVFXObject.SetActive(false);
 
         _speedFovCurrent = defaultFOV;
 
@@ -181,23 +184,19 @@ public class CameraFollow : MonoBehaviour
 
     private void SubscribeToCarBoosts()
     {
-        // Unsubscribe previous
         if (_subscribedCar != null)
         {
-            try { _subscribedCar.OnBoostStarted -= HandleBoostStarted; } catch { }
-            try { _subscribedCar.OnBoostEnded -= HandleBoostEnded; } catch { }
+            try { _subscribedCar.OnCrash -= HandleCrashForceStopBoostVfx; } catch { }
             _subscribedCar = null;
         }
 
-        // Prefer explicit car reference, else try target
         if (car == null && target != null)
             car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();
 
         if (car != null)
         {
             _subscribedCar = car;
-            try { _subscribedCar.OnBoostStarted += HandleBoostStarted; } catch { }
-            try { _subscribedCar.OnBoostEnded += HandleBoostEnded; } catch { }
+            try { _subscribedCar.OnCrash += HandleCrashForceStopBoostVfx; } catch { }
         }
     }
 
@@ -205,119 +204,95 @@ public class CameraFollow : MonoBehaviour
     {
         if (_subscribedCar != null)
         {
-            try { _subscribedCar.OnBoostStarted -= HandleBoostStarted; } catch { }
-            try { _subscribedCar.OnBoostEnded -= HandleBoostEnded; } catch { }
+            try { _subscribedCar.OnCrash -= HandleCrashForceStopBoostVfx; } catch { }
             _subscribedCar = null;
         }
     }
 
-    private void HandleBoostStarted()
+    private void HandleCrashForceStopBoostVfx(float _)
     {
-        // Play VFX
-        if (boostVFXObject != null)
-        {
-            if (_boostPS != null)
-            {
-                _boostPS.Play(true);
-            }
-            else
-            {
-                boostVFXObject.SetActive(true);
-            }
-        }
-
-        Debug.Log($"[CameraFollow] Received OnBoostStarted. Starting FOV pulse + VFX. deltaFOV={boostZoomOutDeltaFOV:F2} dur={boostZoomOutDuration:F2}");
-
-        // mark boosting state
-        _carIsBoosting = true;
-
-        // restart coroutine (ensures latest boost lifecycle is used)
-        if (_boostZoomCR != null) StopCoroutine(_boostZoomCR);
-        _boostZoomCR = StartCoroutine(BoostZoomDuringBoostCoroutine(Mathf.Abs(boostZoomOutDeltaFOV)));
+        _boostFovOffsetTarget = 0f;
+        StopBoostVfxParticles();
     }
 
-    private void HandleBoostEnded()
+    private void SyncBoostPresentation(bool wantPresentation)
     {
-        // Stop VFX (graceful)
-        if (boostVFXObject != null)
+        _boostFovOffsetTarget = wantPresentation ? Mathf.Max(0f, boostZoomOutDeltaFOV) : 0f;
+
+        if (wantPresentation)
         {
-            if (_boostPS != null)
+            if (!_boostVfxPlaying)
             {
-                _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                _boostVfxPlaying = true;
+                if (boostVFXObject != null)
+                {
+                    if (_boostPS != null)
+                        _boostPS.Play(true);
+                    else
+                        boostVFXObject.SetActive(true);
+                }
             }
-            else
-            {
-                boostVFXObject.SetActive(false);
-            }
+            return;
         }
 
-        // mark boosting ended and record timestamp + post duration (read from CarController via reflection)
-        _carIsBoosting = false;
-        _boostEndTime = Time.time;
-        _boostPostDuration = GetPrivateFloat(_subscribedCar, "postBoostSlowdownDuration", 0.25f);
+        if (_boostVfxPlaying)
+            StopBoostVfxParticles();
     }
 
-    // NEW: zoom out pulse coroutine (unscaled realtime safe)
-    private IEnumerator BoostZoomDuringBoostCoroutine(float deltaFOV)
+    private void StopBoostVfxParticles()
     {
-        if (cam == null) yield break;
+        _boostVfxPlaying = false;
 
-        _suppressAutoFov = true;
+        if (boostVFXObject == null)
+            return;
 
-        // sample current FOV and compute target
-        float startFOV = cam.fieldOfView;
-        float targetOut = Mathf.Clamp(startFOV + deltaFOV, 1f, 179f);
-
-        // ramp in (smooth)
-        float rampIn = Mathf.Max(0.01f, boostFovRampIn);
-        float t0 = Time.realtimeSinceStartup;
-        float t1 = t0 + rampIn;
-        while (Time.realtimeSinceStartup < t1)
-        {
-            float u = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
-            float eased = Mathf.SmoothStep(0f, 1f, u);
-            cam.fieldOfView = Mathf.Lerp(startFOV, targetOut, eased);
-            yield return null;
-        }
-        cam.fieldOfView = targetOut;
-
-        // HOLD: wait while the car reports boosting
-        while (_carIsBoosting)
-            yield return null;
-
-        // Determine restore duration: prefer explicit ramp-out if >0, else use car's postBoostSlowdownDuration
-        float restoreDuration = boostFovRampOut > 0f ? boostFovRampOut : Mathf.Max(0.01f, _boostPostDuration);
-        float fromFOV = cam.fieldOfView;
-        float restoreStart = Time.realtimeSinceStartup;
-        float restoreEnd = restoreStart + restoreDuration;
-
-        // smooth restore back to the auto-FOV target (sample current auto target)
-        float autoTarget = _speedFovCurrent;
-        while (Time.realtimeSinceStartup < restoreEnd)
-        {
-            float u = Mathf.InverseLerp(restoreStart, restoreEnd, Time.realtimeSinceStartup);
-            float eased = Mathf.SmoothStep(0f, 1f, u);
-            cam.fieldOfView = Mathf.Lerp(fromFOV, _speedFovCurrent, eased);
-            yield return null;
-        }
-
-        _speedFovCurrent = cam.fieldOfView;
-        _suppressAutoFov = false;
-        _boostZoomCR = null;
+        if (_boostPS != null)
+            _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        else
+            boostVFXObject.SetActive(false);
     }
 
-    // Reflection helper to read private float fields from CarController (safe fallback)
-    private float GetPrivateFloat(object obj, string fieldName, float fallback = 0f)
+    private float ComputeSpeedFovTarget()
     {
-        if (obj == null) return fallback;
-        try
-        {
-            var fi = obj.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (fi != null && fi.FieldType == typeof(float))
-                return (float)fi.GetValue(obj);
-        }
-        catch { /* ignore reflection errors */ }
-        return fallback;
+        if (!useSpeedBasedFOV || car == null)
+            return defaultFOV;
+
+        float speed = car.CurrentSpeed;
+        float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
+        return Mathf.Lerp(fovAtMinSpeed, fovAtMaxSpeed, norm);
+    }
+
+    private void UpdateBoostFovOffset(float dt)
+    {
+        float rampSeconds = _boostFovOffsetTarget > _boostFovOffsetCurrent
+            ? Mathf.Max(0.01f, boostFovRampIn)
+            : Mathf.Max(0.01f, boostFovRampOut > 0f ? boostFovRampOut : 0.2f);
+
+        float t = 1f - Mathf.Exp(-dt / rampSeconds);
+        _boostFovOffsetCurrent = Mathf.Lerp(_boostFovOffsetCurrent, _boostFovOffsetTarget, t);
+    }
+
+    private void UpdateUnifiedAutoFov(float dt)
+    {
+        if (cam == null || _fovAnimating)
+            return;
+
+        if (_subscribedCar != null)
+            SyncBoostPresentation(_subscribedCar.IsBoostPresentationActive);
+
+        UpdateBoostFovOffset(dt);
+
+        float baseTarget = useSpeedBasedFOV ? ComputeSpeedFovTarget() : defaultFOV;
+
+        float speedNorm = useSpeedBasedFOV && car != null
+            ? Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, car.CurrentSpeed)
+            : 0f;
+        float boostScale = Mathf.Lerp(1f, 1f - boostFovOffsetSpeedFalloff, speedNorm);
+        float combinedTarget = baseTarget + _boostFovOffsetCurrent * boostScale;
+        _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, combinedTarget, speedFovSmooth * dt);
+
+        if (!_suppressAutoFov)
+            cam.fieldOfView = _speedFovCurrent;
     }
 
     private void LateUpdate()
@@ -432,20 +407,8 @@ public class CameraFollow : MonoBehaviour
         // Manual animation step
         UpdateFOV(Time.deltaTime);
 
-        // ★ Auto speed FOV (only when not manually animating) and not suppressed by ZoomPulse
-        if (useSpeedBasedFOV && !_fovAnimating && cam != null && car != null)
-        {
-            float speed = car.CurrentSpeed;
-            float norm = Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, speed);
-            float target = Mathf.Lerp(fovAtMinSpeed, fovAtMaxSpeed, norm);
-
-            // ALWAYS keep the baseline up to date
-            _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, target, speedFovSmooth * Time.deltaTime);
-
-            // Only APPLY it when we are not suppressed by peek/boost pulses
-            if (!_suppressAutoFov)
-                cam.fieldOfView = _speedFovCurrent;
-        }
+        if (cam != null && car != null)
+            UpdateUnifiedAutoFov(Time.deltaTime);
 
         // record previous forward for next frame yaw-rate estimate
         _prevTargetForwardFlat = targetForwardFlat;
@@ -644,14 +607,11 @@ public class CameraFollow : MonoBehaviour
         cam.fieldOfView = autoFovBefore;
         _speedFovCurrent = autoFovBefore;
         _suppressAutoFov = false;
-        _boostZoomCR = null;
     }
 
     private float GetBaselineFov()
     {
-        // If speed-FOV is on, baseline is the current speed-smoothed value.
-        // Otherwise baseline is the configured default.
-        return (useSpeedBasedFOV ? _speedFovCurrent : defaultFOV);
+        return useSpeedBasedFOV ? ComputeSpeedFovTarget() + _boostFovOffsetCurrent : defaultFOV;
     }
 
     private IEnumerator MapPeekReturnCoroutine(float fromFOV, float duration)

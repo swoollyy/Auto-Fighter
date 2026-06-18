@@ -22,6 +22,9 @@ public class ObstaclePathPreview : MonoBehaviour
     private Vector3[] _polylinePts = new Vector3[64];
     private int _polylineCount;
 
+    public float CurrentAlpha => _alpha;
+    public bool IsVisible => _alpha > 0.001f;
+
     private void Awake()
     {
         _lr = GetComponent<LineRenderer>();
@@ -32,6 +35,10 @@ public class ObstaclePathPreview : MonoBehaviour
         // IMPORTANT: line material must support transparency.
         if (_lr.material == null)
             _lr.material = new Material(Shader.Find("Sprites/Default"));
+
+        _alpha = 0f;
+        ApplyAlpha();
+        _lr.enabled = false;
     }
 
     public void SetEndpoints(Vector3 a, Vector3 b)
@@ -69,6 +76,10 @@ public class ObstaclePathPreview : MonoBehaviour
 
     public void FadeTo(float targetAlpha, float seconds = -1f)
     {
+        targetAlpha = Mathf.Clamp01(targetAlpha);
+        if (Mathf.Approximately(_alpha, targetAlpha) && _fadeCo == null)
+            return;
+
         if (_fadeCo != null)
         {
             StopCoroutine(_fadeCo);
@@ -93,16 +104,18 @@ public class ObstaclePathPreview : MonoBehaviour
 
     private IEnumerator FadeRoutine(float target, float seconds)
     {
-        if (_lr != null && target > 0.01f)
+        if (_lr != null && target > 0.001f)
             _lr.enabled = true;
 
         float start = _alpha;
-        float t = 0f;
+        float duration = Mathf.Max(0.0001f, seconds);
+        float elapsed = 0f;
 
-        while (t < 1f)
+        while (elapsed < duration)
         {
-            t += Time.deltaTime / Mathf.Max(0.0001f, seconds);
-            _alpha = Mathf.Lerp(start, target, Mathf.Clamp01(t));
+            elapsed += Time.deltaTime;
+            float u = Mathf.Clamp01(elapsed / duration);
+            _alpha = Mathf.Lerp(start, target, Mathf.SmoothStep(0f, 1f, u));
             ApplyAlpha();
             yield return null;
         }
@@ -111,6 +124,8 @@ public class ObstaclePathPreview : MonoBehaviour
         ApplyAlpha();
         if (_lr != null)
             _lr.enabled = target > 0.001f;
+
+        _fadeCo = null;
     }
 
     private void LateUpdate()
@@ -155,7 +170,9 @@ public class ObstaclePathPreview : MonoBehaviour
 
     private void OnEnable()
     {
-        if (_lr) _lr.enabled = true;
+        if (_lr == null) return;
+        ApplyAlpha();
+        _lr.enabled = _alpha > 0.001f;
     }
 
     private void ApplyAlpha()

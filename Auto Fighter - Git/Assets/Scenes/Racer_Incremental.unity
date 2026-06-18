@@ -4816,15 +4816,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
   focusWorldOffset: {x: 0, y: -0.15, z: 0}
-  shieldRadius: 0.25
-  sweepProbeRadius: 0.25
-  castPastFocus: 0
-  coneRadialSlop: 0.04
+  shieldRadius: 0.65
+  sweepProbeRadius: 0.75
+  castPastFocus: 0.25
+  coneRadialSlop: 0.06
   useSampledLineOfSight: 1
-  losSampleCastRadius: 0.08
-  targetSampleHalfWidth: 0.15
-  targetSampleHalfHeight: 0.15
+  losSampleCastRadius: 0.16
+  targetSampleHalfWidth: 0.85
+  targetSampleHalfHeight: 0.65
   includeDiagonalSamples: 1
+  useVolumetricOverlap: 1
+  collectFromOccluderRoot: 1
+  useRendererBoundsFallback: 1
+  includeTriggerColliders: 1
+  losAxisRingSamples: 2
   drawDebugGizmos: 1
   gizmosOnlyInPlayMode: 1
   occluderLayers:
@@ -4833,8 +4838,9 @@ MonoBehaviour:
   excludeFromOccluders:
     serializedVersion: 2
     m_Bits: 1
-  occludedAlphaMultiplier: 0.22
-  fadeSpeed: 6
+  occludedAlphaMultiplier: 0.1
+  occludedRgbDim: 0.55
+  fadeSpeed: 10
   enableShield: 1
   skipParticleRenderers: 1
   maxHits: 48

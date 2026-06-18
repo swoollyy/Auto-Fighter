@@ -1973,6 +1973,25 @@ public class NPCTrafficCar : MonoBehaviour
         TriggerCrash(impactDir, impactSpeed, logCollider, "RollingLogOverlap");
     }
 
+    /// <summary>
+    /// Scripted <see cref="CrossTrackObstacle"/> is kinematic on its path; NPC traffic is kinematic too.
+    /// PhysX may not report <see cref="OnCollisionEnter"/> between them — the cross overlap-probes and calls here.
+    /// </summary>
+    public void ApplyScriptedCrossTrackOverlapHit(CrossTrackObstacle cross, Collider crossCollider, float impactSpeed)
+    {
+        if (_crashed || cross == null || crossCollider == null) return;
+        if (!ShouldCrashWith(crossCollider)) return;
+
+        Vector3 contact = crossCollider.ClosestPoint(transform.position);
+        Vector3 impactDir = transform.position - contact;
+        impactDir.y = 0f;
+        if (impactDir.sqrMagnitude < 0.001f) impactDir = -transform.forward;
+        impactDir.Normalize();
+
+        float rel = Mathf.Max(impactSpeed, cross.GetWorldVelocity().magnitude, _lastVelocity.magnitude, 3f);
+        TriggerCrash(impactDir, rel, crossCollider, "CrossTrackOverlap");
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if (_crashed) return;

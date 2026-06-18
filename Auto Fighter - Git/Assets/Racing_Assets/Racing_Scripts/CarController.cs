@@ -647,6 +647,9 @@ public class CarController : MonoBehaviour
 
     // Runtime
     private bool _flipMashActive;
+    private bool _isRunEndMash;
+    private bool _runEndMashOffered;
+    [SerializeField, Min(1f)] private float runEndMashIdleTimeout = 15f;
     private int _flipMashClicks;
     private int _flipMashClicksNeeded;
     /// <summary>Mash UI stays hidden until this time after a secondary hit during mash (<see cref="AddMashDebtFromNewCrash"/>).</summary>
@@ -658,6 +661,7 @@ public class CarController : MonoBehaviour
     private float _mashSpeedSmoothed;
 
     public bool IsFlipMashActive => _flipMashActive;
+    public bool IsRunEndMashActive => _flipMashActive && _isRunEndMash;
     /// <summary>True when mash recovery is active and the crash-mash HUD/minigame accepts input (false briefly after another hit mid-mash).</summary>
     public bool IsFlipMashUiVisible => _flipMashActive && Time.time >= _flipMashUiShowAgainTime;
     public float FlipMashProgress => _flipMashClicksNeeded > 0 ? (float)_flipMashClicks / _flipMashClicksNeeded : 0f;
@@ -722,6 +726,11 @@ public class CarController : MonoBehaviour
 
     public event Action OnBoostStarted;
     public event Action OnBoostEnded;
+
+    /// <summary>True while boost speed presentation (camera lines, etc.) should be active.</summary>
+    public bool IsBoostPresentationActive => _boostPresentationActive;
+
+    private bool _boostPresentationActive;
 
     /// <summary>Raised when a non-lethal crash occurs; argument is severity 0..1.</summary>
     public event Action<float> OnCrash;
@@ -1584,6 +1593,9 @@ public class CarController : MonoBehaviour
         currentFuel = maxFuel;
         isOutOfFuel = false;
         isOutOfHP = false;
+        _runEndMashOffered = false;
+        _isRunEndMash = false;
+        _flipMashActive = false;
         currentFuelUseMultiplier = 1f;
 
         baseMaxFuel = maxFuel;
@@ -1714,7 +1726,6 @@ public class CarController : MonoBehaviour
         if (isOutOfHP)
         {
             ReleaseHandsOffDrivingPhysics(resetDragToDefaults: false);
-            // Single downward ray from the car picks terrain (grass vs road); applies drag / caps like alive driving.
             if (carCollider != null)
             {
                 ApplyHpDeathTerrainFromGlobalRay();
@@ -1725,21 +1736,14 @@ public class CarController : MonoBehaviour
             else
                 ResetIcePhysicsImmediate();
 
-            _flipMashActive = false;
-            _inCrash = false;
-            _isReorienting = false;
-            _crashTimer = 0f;
-            _groundedTime = 0f;
-            _isBoosting = false;
-            _isPostBoost = false;
-            _postBoostTimer = 0f;
-            _boostTimer = 0f;
-            _boostRequested = false;
-            ClearBoostOverride();
-            ClearAllSpeedBoosts();
-            _closeCallBoosting = false;
-            _currentBoostMaxSpeed = 0f;
-            _activeBoostMaxMult = 1f;
+            TryStartRunEndMashIfReady();
+            if (_flipMashActive)
+            {
+                UpdateFlipMashRecoveryFixedStep(Time.fixedDeltaTime);
+                return;
+            }
+
+            ClearEndOfRunDrivingState();
             return;
         }
 
@@ -1756,22 +1760,14 @@ public class CarController : MonoBehaviour
             else
                 ResetIcePhysicsImmediate();
 
-            _flipMashActive = false;
-            _inCrash = false;
-            _isReorienting = false;
-            _crashTimer = 0f;
-            _groundedTime = 0f;
-            _isBoosting = false;
-            _isPostBoost = false;
-            _postBoostTimer = 0f;
-            _boostTimer = 0f;
-            _boostRequested = false;
-            ClearBoostOverride();
-            ClearAllSpeedBoosts();
-            _closeCallBoosting = false;
-            _currentBoostMaxSpeed = 0f;
-            _activeBoostMaxMult = 1f;
+            TryStartRunEndMashIfReady();
+            if (_flipMashActive)
+            {
+                UpdateFlipMashRecoveryFixedStep(Time.fixedDeltaTime);
+                return;
+            }
 
+            ClearEndOfRunDrivingState();
             UpdateSteeringInputFixed();
             HandleSteering();
             CheckBoostFlash();
@@ -1794,126 +1790,7 @@ public class CarController : MonoBehaviour
 
         if (_flipMashActive)
         {
-            if (_closeCallInvincible && Time.time >= _closeCallInvincibilityEndTime)
-            {
-                _closeCallInvincible = false;
-                ScreenFlashManager.StopInvincibility(); // Stop the continuous pulse
-            }
-
-            // Sync legacy _closeCallBoosting flag with centralized system
-            if (_closeCallBoosting && !HasSpeedBoost(BOOST_ID_CLOSE_CALL))
-            {
-                _closeCallBoosting = false;
-            }
-
-
-            if (enableMashProgressGauge && _flipMashActive && IsFlipMashUiVisible)
-            {
-                float severity = _lastCrashSeverity; // 0 to 1
-
-                // === GAUGE DRAIN (severity + crash count) ===
-                float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
-                float crashBonus = _crashCount * gaugeDrainPerCrash;
-                float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
-                finalGaugeDrain *= _skillDrainMultiplier;
-                _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * Time.deltaTime);
-
-                if (mashDrainsHealth)
-                {
-                    float baseHealthDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, severity);
-                    float healthCrashBonus = _crashCount * mashHealthDrainPerCrash;
-                    float finalHealthDrain = Mathf.Min(baseHealthDrain + healthCrashBonus, mashHealthDrainCap);
-
-                    currentHP -= finalHealthDrain * Time.deltaTime;
-
-                    if (currentHP <= 0f)
-                    {
-                        currentHP = 0f;
-                        _flipMashActive = false;
-                        isOutOfHP = true;
-                    }
-                }
-
-                // FUEL DRAIN (separate - not else!)
-                if (mashDrainsFuel)
-                {
-                    float baseFuelDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, severity);
-                    float fuelCrashBonus = _crashCount * mashFuelDrainPerCrash;
-                    float finalFuelDrain = Mathf.Min(baseFuelDrain + fuelCrashBonus, mashFuelDrainCap);
-
-                    currentFuel -= finalFuelDrain * Time.deltaTime;
-
-                    if (currentFuel <= 0f)
-                    {
-                        currentFuel = 0f;
-                        _flipMashActive = false;
-                        bool firstEmpty = !isOutOfFuel;
-                        isOutOfFuel = true;
-                        if (firstEmpty)
-                            NotifyCrashFeedbackOnly(0.72f);
-                    }
-                }
-            }
-
-            // IMPORTANT: Keep sampling ground even during recovery (fixes ice sticking)
-            SampleGroundAndUpdateMultipliers();
-
-            // Apply boost surface during recovery
-            ApplyBoostSurfaceForce(true);
-
-            // Must run after sampling: friction/handling *current* values lerp toward raycast targets (otherwise ice sticks after leaving ice).
-            UpdateIcePhysicsTransitions();
-            ApplyCrashSurfaceResistanceFromCurrentGround();
-
-            // === PASSIVE AUTO-CLICKS (Skill-based) ===
-            if (effectivePassiveClickRate > 0f && IsFlipMashUiVisible)
-            {
-                _passiveClickTimer += Time.fixedDeltaTime;
-                var skillMgr = RacingSkillTreeManager.Instance;
-                bool passiveUnlocked = skillMgr != null && skillMgr.IsPassiveMashUnlocked;
-
-                if (passiveUnlocked && effectivePassiveClickRate > 0f)
-                {
-                    _passiveClickTimer += Time.fixedDeltaTime;
-                    float passiveInterval = 1f / effectivePassiveClickRate;
-
-                    while (_passiveClickTimer >= passiveInterval)
-                    {
-                        _passiveClickTimer -= passiveInterval;
-
-                        // Award passive clicks
-                        _flipMashClicks += effectivePassiveClickStrength;
-
-                        if (effectivePassiveClickStrength > 0)
-                            TrySpawnPopupRandomScreen(RacingPopupType.MashClickDamage, effectivePassiveClickStrength);
-
-                        // Give partial fuel for passive clicks
-                        float passiveFuelReward = effectiveFuelPerClick * 0.5f;
-                        if (passiveFuelReward > 0f && maxFuel > 0f)
-                        {
-                            float before = currentFuel;
-                            currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
-                            float actual = currentFuel - before;
-
-                            if (actual > 0.01f)
-                                TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
-                        }
-
-                        if (_flipMashClicks >= _flipMashClicksNeeded)
-                        {
-                            EndFlipMashRecoveryAndUpright();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Crash-origin state: keep post-crash fling caps enforced while mashing/recovering.
-            ApplyCrashVelocityCaps();
-
-            // Fuel burn while in recovery
-            ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
-
+            UpdateFlipMashRecoveryFixedStep(Time.fixedDeltaTime);
             return;
         }
 
@@ -2009,21 +1886,7 @@ public class CarController : MonoBehaviour
                     return;
                 }
 
-                // ---- 2) Crash recovery decision point (ONLY when HP>0 AND fuel>0) ----
-                if (enableFlipRecoveryMash && !IsDeadForMashRecovery)
-                {
-                    bool isFlipped = NeedsFlipRecovery();
-
-                    // Trigger recovery on any crash if enabled, or only when flipped
-                    if (enableCrashRecoveryAlways || isFlipped)
-                    {
-                        BeginCrashMashRecovery(isFlipped);
-                        _groundedTime = 0f;
-                        return; // IMPORTANT: do not start any auto flatten while mashing
-                    }
-                }
-
-                // ---- 3) Final "make it flat" guarantee ----
+                // ---- 2) Auto upright after crash (no mid-run mash) ----
                 if (NeedsUprightFlatten())
                 {
                     StartReorientToFlat();
@@ -2108,6 +1971,8 @@ public class CarController : MonoBehaviour
         // Reset per-frame requests (obstacles re-request every frame while active)
         _shakeAmp = 0f;
         _shakeFreq = 0f;
+
+        SyncBoostPresentationState();
     }
 
     private void StartReorientToFlat()
@@ -2405,7 +2270,6 @@ public class CarController : MonoBehaviour
             if (_boostTimer <= 0f)
             {
                 _isBoosting = false;
-                try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
 
                 _isPostBoost = postBoostSlowdownDuration > 0f;
                 _postBoostTimer = postBoostSlowdownDuration;
@@ -2508,8 +2372,6 @@ public class CarController : MonoBehaviour
                 regularBoostRampDownFraction,
                 isMultiplier: true
             );
-
-            try { OnBoostStarted?.Invoke(); } catch { /* swallow */ }
 
             // Per-type cooldown
             if (isDriftBoost)
@@ -3393,12 +3255,6 @@ public class CarController : MonoBehaviour
 
         if (_inCrash && !_flipMashActive)
             return;
-
-        if (_isBoosting)
-        {
-            _isBoosting = false;
-            _boostTimer = 0f;
-        }
 
         // Clear boost override
         ClearBoostOverride();
@@ -4893,7 +4749,6 @@ public class CarController : MonoBehaviour
 
     private void CancelAllBoostState(float lockoutSeconds)
     {
-        bool wasBoosting = _isBoosting;
         _boostRequested = false;
         ClearBoostOverride();
 
@@ -4918,11 +4773,38 @@ public class CarController : MonoBehaviour
 
         // Lock out all boosts for a bit (covers post-crash drift-release + space presses)
         _boostBlockedUntil = Mathf.Max(_boostBlockedUntil, Time.time + Mathf.Max(0f, lockoutSeconds));
+    }
 
-        if (wasBoosting)
+    private bool ComputeWantsBoostPresentation()
+    {
+        if (isOutOfHP || isOutOfFuel)
+            return false;
+
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && gm.RunEnded)
+            return false;
+
+        if (_inCrash || _flipMashActive)
+            return false;
+
+        return _isBoosting || HasAnySpeedBoost || _onBoostSurface;
+    }
+
+    private void SyncBoostPresentationState()
+    {
+        bool want = ComputeWantsBoostPresentation();
+        if (want == _boostPresentationActive)
+            return;
+
+        _boostPresentationActive = want;
+        try
         {
-            try { OnBoostEnded?.Invoke(); } catch { /* swallow */ }
+            if (want)
+                OnBoostStarted?.Invoke();
+            else
+                OnBoostEnded?.Invoke();
         }
+        catch { /* swallow listener errors */ }
     }
 
     private void ApplySkillEffects()
@@ -5312,8 +5194,8 @@ public class CarController : MonoBehaviour
         if (!IsFlipMashUiVisible) return;
         if (_lastRegisteredMashFrame == Time.frameCount) return; // prevent duplicate same-frame clicks from multiple input paths
 
-        // Can't recover if dead from fuel OR HP
-        if (IsDeadForMashRecovery)
+        // Can't mash to recover mid-run when out of fuel/HP — only the run-end mash uses that state.
+        if (IsDeadForMashRecovery && !_isRunEndMash)
         {
             _flipMashActive = false;
             return;
@@ -5631,6 +5513,18 @@ public class CarController : MonoBehaviour
 
     private void EndFlipMashRecoveryAndUpright()
     {
+        if (_isRunEndMash)
+        {
+            if (enableSprocketRewards)
+                AwardMashSprockets();
+
+            RacingQuestUnlockManager.Instance?.RecordCrashMashCompletion(1);
+
+            _flipMashActive = false;
+            _isRunEndMash = false;
+            return;
+        }
+
         if (IsDeadForMashRecovery) { _flipMashActive = false; return; }
 
         // Show summary popup for fuel gained this session
@@ -6252,7 +6146,7 @@ public class CarController : MonoBehaviour
         }
 
         // If we were mashing, add debt and apply damage but DON'T restart crash state
-        if (wasMashing && damageWindowOpen)
+        if (wasMashing && damageWindowOpen && !_isRunEndMash)
         {
             // Store new severity for drain calculations
             _lastCrashSeverity = Mathf.Max(_lastCrashSeverity, severity);
@@ -6600,7 +6494,7 @@ public class CarController : MonoBehaviour
         }
 
         bool wasMashingTrigger = _flipMashActive;
-        if (wasMashingTrigger && damageWindowOpen)
+        if (wasMashingTrigger && damageWindowOpen && !_isRunEndMash)
         {
             _lastCrashSeverity = Mathf.Max(_lastCrashSeverity, severity);
             _crashCount++;
@@ -6727,6 +6621,142 @@ public class CarController : MonoBehaviour
             steeringInput = Mathf.MoveTowards(steeringInput, targetSteer, smoothDelta);
     }
 
+    private bool IsStoppedForRunEndMash()
+    {
+        if (rb == null) return true;
+
+        float speed = rb.velocity.magnitude;
+        float forwardSpeed = Vector3.Dot(rb.velocity, transform.forward);
+        return Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+    }
+
+    private void TryStartRunEndMashIfReady()
+    {
+        if (_runEndMashOffered) return;
+        if (!IsStoppedForRunEndMash()) return;
+
+        _runEndMashOffered = true;
+
+        if (!enableFlipRecoveryMash) return;
+        if (!IsOutOfFuel && !IsOutOfHP) return;
+
+        BeginCrashMashRecovery(NeedsFlipRecovery(), runEndMash: true);
+    }
+
+    private void ClearEndOfRunDrivingState()
+    {
+        _inCrash = false;
+        CancelAllBoostState(0f);
+        _closeCallBoosting = false;
+        ForceStopCloseCallEffects();
+    }
+
+    private void UpdateFlipMashRecoveryFixedStep(float dt)
+    {
+        if (!_flipMashActive) return;
+
+        if (enableMashProgressGauge && IsFlipMashUiVisible)
+        {
+            float severity = _lastCrashSeverity;
+
+            float baseDrainRate = Mathf.Lerp(gaugeDrainAtMinSeverity, gaugeDrainAtMaxSeverity, severity);
+            float crashBonus = _crashCount * gaugeDrainPerCrash;
+            float finalGaugeDrain = Mathf.Min(baseDrainRate + crashBonus, gaugeDrainCap);
+            finalGaugeDrain *= _skillDrainMultiplier;
+            _mashGaugeValue = Mathf.Max(0f, _mashGaugeValue - finalGaugeDrain * dt);
+
+            if (!_isRunEndMash && mashDrainsHealth)
+            {
+                float baseHealthDrain = Mathf.Lerp(mashHealthDrainAtMinSeverity, mashHealthDrainAtMaxSeverity, severity);
+                float healthCrashBonus = _crashCount * mashHealthDrainPerCrash;
+                float finalHealthDrain = Mathf.Min(baseHealthDrain + healthCrashBonus, mashHealthDrainCap);
+
+                currentHP -= finalHealthDrain * dt;
+
+                if (currentHP <= 0f)
+                {
+                    currentHP = 0f;
+                    _flipMashActive = false;
+                    isOutOfHP = true;
+                }
+            }
+
+            if (!_isRunEndMash && mashDrainsFuel)
+            {
+                float baseFuelDrain = Mathf.Lerp(mashFuelDrainAtMinSeverity, mashFuelDrainAtMaxSeverity, severity);
+                float fuelCrashBonus = _crashCount * mashFuelDrainPerCrash;
+                float finalFuelDrain = Mathf.Min(baseFuelDrain + fuelCrashBonus, mashFuelDrainCap);
+
+                currentFuel -= finalFuelDrain * dt;
+
+                if (currentFuel <= 0f)
+                {
+                    currentFuel = 0f;
+                    _flipMashActive = false;
+                    bool firstEmpty = !isOutOfFuel;
+                    isOutOfFuel = true;
+                    if (firstEmpty)
+                        NotifyCrashFeedbackOnly(0.72f);
+                }
+            }
+        }
+
+        SampleGroundAndUpdateMultipliers();
+        ApplyBoostSurfaceForce(true);
+        UpdateIcePhysicsTransitions();
+        ApplyCrashSurfaceResistanceFromCurrentGround();
+
+        if (effectivePassiveClickRate > 0f && IsFlipMashUiVisible)
+        {
+            var skillMgr = RacingSkillTreeManager.Instance;
+            bool passiveUnlocked = skillMgr != null && skillMgr.IsPassiveMashUnlocked;
+
+            if (passiveUnlocked && effectivePassiveClickRate > 0f)
+            {
+                _passiveClickTimer += dt;
+                float passiveInterval = 1f / effectivePassiveClickRate;
+
+                while (_passiveClickTimer >= passiveInterval)
+                {
+                    _passiveClickTimer -= passiveInterval;
+
+                    _flipMashClicks += effectivePassiveClickStrength;
+                    _lastMashTime = Time.time;
+
+                    if (effectivePassiveClickStrength > 0)
+                        TrySpawnPopupRandomScreen(RacingPopupType.MashClickDamage, effectivePassiveClickStrength);
+
+                    float passiveFuelReward = effectiveFuelPerClick * 0.5f;
+                    if (passiveFuelReward > 0f && maxFuel > 0f)
+                    {
+                        float before = currentFuel;
+                        currentFuel = Mathf.Min(currentFuel + passiveFuelReward, maxFuel);
+                        float actual = currentFuel - before;
+
+                        if (actual > 0.01f)
+                            TrySpawnPopupRandomScreen(RacingPopupType.MashFuelReward, actual);
+                    }
+
+                    if (_flipMashClicks >= _flipMashClicksNeeded)
+                    {
+                        EndFlipMashRecoveryAndUpright();
+                        break;
+                    }
+                }
+            }
+        }
+
+        ApplyCrashVelocityCaps();
+
+        if (!_isRunEndMash)
+            ConsumeFuel(idleFuelUsePerSecond * dt);
+        else if (Time.time - _lastMashTime >= runEndMashIdleTimeout)
+        {
+            _flipMashActive = false;
+            _isRunEndMash = false;
+        }
+    }
+
     private void TryStartPostCrashRecovery()
     {
         if (IsDeadForMashRecovery) return;
@@ -6795,10 +6825,12 @@ public class CarController : MonoBehaviour
     }
 
 
-    private void BeginCrashMashRecovery(bool isFlipped)
+    private void BeginCrashMashRecovery(bool isFlipped, bool runEndMash = false)
     {
-        if (IsDeadForMashRecovery) return;
         if (!enableFlipRecoveryMash) return;
+        if (!runEndMash) return;
+
+        if (!IsOutOfFuel && !IsOutOfHP) return;
 
         ChooseMashFaceButton();
 
@@ -6812,6 +6844,7 @@ public class CarController : MonoBehaviour
         _totalSprocketsThisSession = 0;
 
         _flipMashActive = true;
+        _isRunEndMash = runEndMash;
         _isReorienting = false;
         _isFlippedDuringRecovery = isFlipped;
         // Calculate dynamic click count
