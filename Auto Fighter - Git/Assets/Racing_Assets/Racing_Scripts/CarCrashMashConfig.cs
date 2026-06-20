@@ -82,6 +82,8 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private LayerMask groundCheckLayers = (LayerMask)24576;
 
     [Header("Flip Recovery (Mash)")]
+    [Tooltip("Gate the crash mash minigame behind a skill-tree unlock (SkillType.CrashMashUnlock). While this is true and that skill is not unlocked (level 0), the mash minigame is disabled and crashes auto-recover as normal. Create/unlock the CrashMashUnlock skill asset to enable it; no code change needed.")]
+    [SerializeField] private bool requireCrashMashUnlock = true;
     [SerializeField] private bool enableFlipRecoveryMash = true;
     [SerializeField, Range(-1f, 1f)] private float flipDotThreshold = 0f;
     [SerializeField, Range(0f, 180f)] private float flipAngleThreshold = 80f;
@@ -211,6 +213,7 @@ public class CarCrashMashConfig : MonoBehaviour
     public float GroundedDurationRequired => groundedDurationRequired;
     public float GroundCheckDistance => groundCheckDistance;
     public LayerMask GroundCheckLayers => groundCheckLayers;
+    public bool RequireCrashMashUnlock => requireCrashMashUnlock;
     public bool EnableFlipRecoveryMash => enableFlipRecoveryMash;
     public float FlipDotThreshold => flipDotThreshold;
     public float FlipAngleThreshold => flipAngleThreshold;

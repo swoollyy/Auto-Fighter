@@ -135,6 +135,10 @@ public enum SkillType
     MashFuelPerClick_Add = 4630,        // Fuel reward per click (bonus)
     MashFuelPerClick_Mul = 4631,
 
+    // Unlocks the crash mash minigame itself (level > 0 enables it). Until a SkillDefinition
+    // asset with this type exists and is unlocked, the mash minigame stays disabled.
+    CrashMashUnlock = 4640,
+
     MaxHP_Add = 4700,
     MaxHP_Mul = 4701,
 

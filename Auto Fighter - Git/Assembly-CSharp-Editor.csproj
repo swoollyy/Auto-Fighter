@@ -61,6 +61,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\Editor\ProjectSummary.cs" />
+    <Compile Include="Assets\Scripts\Core\Editor\CoreVirtualCursorSettingsEditor.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">

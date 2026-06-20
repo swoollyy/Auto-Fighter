@@ -608,7 +608,7 @@ Transform:
   m_GameObject: {fileID: 4362480833433498972}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.293, y: -0.298, z: 0.347}
+  m_LocalPosition: {x: 0.293, y: -0.161, z: 0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -639,7 +639,7 @@ Transform:
   m_GameObject: {fileID: 4886677226180828311}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.293, y: -0.298, z: 0.347}
+  m_LocalPosition: {x: -0.293, y: -0.161, z: 0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -970,9 +970,10 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children:
+  - {fileID: 3014656809037068237}
   - {fileID: 7028588804215208312}
   - {fileID: 1590674174353744081}
   - {fileID: 5191996286270998777}
@@ -988,7 +989,6 @@ Transform:
   - {fileID: 3116900748683582674}
   - {fileID: 3435999841598023568}
   - {fileID: 9133986507031933044}
-  - {fileID: 3014656809037068237}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &5809011667624789452
@@ -1123,8 +1123,8 @@ MonoBehaviour:
   rightExhaust: {fileID: 2043357965881844392}
   minSpeedForSmoke: -0.15
   maxSpeedForFullBoost: 20
-  minStartSpeed: 1
-  maxStartSpeed: 5
+  minStartSpeed: 3
+  maxStartSpeed: 15
   minEmissionRate: 5
   maxEmissionRate: 50
 --- !u!114 &4623540821356840089
@@ -1683,7 +1683,7 @@ MonoBehaviour:
   samplesX: 6
   samplesZ: 6
   raycastHeightOffset: 0.5
-  raycastExtraDistance: -0.72
+  raycastExtraDistance: 0.6
   debugSurfaceRays: 1
   surfaceSampleExtent: 1.13
   useTippedOverWorldDownSampler: 1
@@ -1735,6 +1735,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f0b8a721845265428754a028a1f8248, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  requireCrashMashUnlock: 1
   drainScalePerClickPower: 0.5
   drainScalePerPassiveStrength: 0
   maxSkillDrainMultiplier: 2
@@ -1958,7 +1959,7 @@ Transform:
   m_GameObject: {fileID: 6041800278618126018}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.293, y: -0.298, z: -0.347}
+  m_LocalPosition: {x: -0.293, y: -0.161, z: -0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2107,7 +2108,7 @@ Transform:
   m_GameObject: {fileID: 7790923619103713089}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.293, y: -0.298, z: -0.347}
+  m_LocalPosition: {x: 0.293, y: -0.161, z: -0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2385,9 +2386,25 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7624176337786834354}
     m_Modifications:
+    - target: {fileID: 2836846416455216327, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3910449800811708456, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 4205900438205399517, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 4779356280512544105, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
       propertyPath: m_Name
       value: car
+      objectReference: {fileID: 0}
+    - target: {fileID: 4779356280512544105, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 5267100070327298003, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
       propertyPath: m_LocalScale.x
@@ -2440,6 +2457,14 @@ PrefabInstance:
     - target: {fileID: 5267100070327298003, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5915091027444744406, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6585827259694207066, guid: 5c96ea7e6c7da9e4cab9399bae69fa42, type: 3}
+      propertyPath: m_Layer
+      value: 2
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

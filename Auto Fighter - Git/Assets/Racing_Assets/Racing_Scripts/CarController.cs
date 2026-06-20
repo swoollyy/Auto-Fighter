@@ -513,6 +513,10 @@ public class CarController : MonoBehaviour
     [Header("Boost (from CarBoostConfig)")]
     private bool requireBoostUnlock;
     private bool boostUnlocked;
+
+    // Crash mash minigame unlock (gated behind SkillType.CrashMashUnlock; see CarCrashMashConfig.RequireCrashMashUnlock).
+    private bool requireCrashMashUnlock;
+    private bool crashMashUnlocked;
     private float boostFlashSpeedThreshold;
     private float boostFlashCooldown;
     private bool _wasOnBoost;
@@ -1408,6 +1412,7 @@ public class CarController : MonoBehaviour
             groundedDurationRequired = _crashMashConfig.GroundedDurationRequired;
             groundCheckDistance = _crashMashConfig.GroundCheckDistance;
             groundCheckLayers = _crashMashConfig.GroundCheckLayers;
+            requireCrashMashUnlock = _crashMashConfig.RequireCrashMashUnlock;
             enableFlipRecoveryMash = _crashMashConfig.EnableFlipRecoveryMash;
             flipDotThreshold = _crashMashConfig.FlipDotThreshold;
             flipAngleThreshold = _crashMashConfig.FlipAngleThreshold;
@@ -1468,6 +1473,7 @@ public class CarController : MonoBehaviour
             perColliderCrashCooldown = 0.5f; surfaceMaxSpeedLerpRate = 2.78f; closeCallAfterCrashBlockTime = 1f;
             mashDifficultyPerClickPowerStep = 1.4f;
             mashUiHideSecondsOnExtraHit = 0.45f;
+            requireCrashMashUnlock = true; // Default to skill-gated (mash disabled) when no config is present.
             _crashSeverityConfig = null;
             _crashFuelDamageScale = 1f;
         }
@@ -1632,6 +1638,8 @@ public class CarController : MonoBehaviour
 
         driftUnlocked = !requireDriftUnlock;
 
+        crashMashUnlocked = !requireCrashMashUnlock;
+
         currentHP = Mathf.Max(1f, maxHP);
 
         groundCheckLayers = groundLayers;
@@ -1657,6 +1665,7 @@ public class CarController : MonoBehaviour
         WireManagerEvents();
         UpdateDriftUnlock();
         UpdateBoostUnlock();
+        UpdateCrashMashUnlock();
         RefreshSkillEffects();
         ApplySkillEffects();
     }
@@ -2821,6 +2830,7 @@ public class CarController : MonoBehaviour
         ApplySkillEffects();
         UpdateDriftUnlock();
         UpdateBoostUnlock();
+        UpdateCrashMashUnlock();
     }
 
     private void HandleSkillsReset()
@@ -2831,6 +2841,7 @@ public class CarController : MonoBehaviour
         ApplySkillEffects();
         UpdateDriftUnlock();
         UpdateBoostUnlock();
+        UpdateCrashMashUnlock();
     }
 
     private void HandleInput()
@@ -5840,6 +5851,17 @@ public class CarController : MonoBehaviour
         boostUnlocked = (mgr != null && mgr.GetLevel(SkillType.BoostUnlock) > 0);
     }
 
+    private void UpdateCrashMashUnlock()
+    {
+        if (!requireCrashMashUnlock)
+        {
+            crashMashUnlocked = true;
+            return;
+        }
+        var mgr = RacingSkillTreeManager.Instance;
+        crashMashUnlocked = (mgr != null && mgr.GetLevel(SkillType.CrashMashUnlock) > 0);
+    }
+
     private void UpdateDriftUnlock()
     {
         var mgr = RacingSkillTreeManager.Instance;
@@ -6136,6 +6158,13 @@ public class CarController : MonoBehaviour
             return;
 
         if (((1 << collision.gameObject.layer) & crashLayers) == 0)
+            return;
+
+        // See OnTriggerEnter: only the aggressive beast crashes the car (handled by
+        // TrackCreature.CausePlayerCrash). Non-aggressive creatures (bugs/critters) must not run the
+        // car crash pipeline, otherwise splatting one wrongly shows the crash popup.
+        var hitCreatureCollision = collision.collider.GetComponentInParent<TrackCreature>();
+        if (hitCreatureCollision != null && hitCreatureCollision.BehaviorType != CreatureBehaviorType.Aggressive)
             return;
 
         if (hitNpcTraffic)
@@ -6488,6 +6517,14 @@ public class CarController : MonoBehaviour
         if (immunity != null && immunity.IsImmune) return;
 
         if (((1 << other.gameObject.layer) & crashLayers) == 0)
+            return;
+
+        // Creatures manage their own player-contact outcome: the aggressive beast crashes the
+        // car via TrackCreature.CausePlayerCrash, while bugs/critters are simply splatted (run-over
+        // popup + coins). Only the beast should produce a crash popup, so skip the car crash
+        // pipeline for any non-aggressive creature to avoid the wrong "crash" popup on a splat.
+        var hitCreatureTrigger = other.GetComponentInParent<TrackCreature>();
+        if (hitCreatureTrigger != null && hitCreatureTrigger.BehaviorType != CreatureBehaviorType.Aggressive)
             return;
 
         bool hitNpcTrafficTrigger = other.GetComponentInParent<NPCTrafficCar>() != null;
@@ -6917,6 +6954,10 @@ public class CarController : MonoBehaviour
     private void BeginCrashMashRecovery(bool isFlipped, bool runEndMash = false)
     {
         if (!enableFlipRecoveryMash) return;
+        // Skill-tree gate: the crash mash minigame stays disabled until SkillType.CrashMashUnlock is
+        // unlocked (or requireCrashMashUnlock is turned off). When gated off, run-end simply skips the
+        // mash and finalizes normally, and mid-run crashes still auto-recover.
+        if (!crashMashUnlocked) return;
         if (!runEndMash) return;
 
         if (!IsOutOfFuel && !IsOutOfHP) return;

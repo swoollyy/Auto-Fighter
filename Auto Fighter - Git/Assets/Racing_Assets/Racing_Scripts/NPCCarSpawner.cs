@@ -424,6 +424,18 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
     {
         _toRemove.Clear();
 
+        if (playerTransform == null)
+            return;
+
+        Vector3 playerPos = playerTransform.position;
+        Vector3 playerForward = playerTransform.forward;
+        playerForward.y = 0f;
+        if (playerForward.sqrMagnitude < 0.0001f)
+            playerForward = Vector3.forward;
+        playerForward.Normalize();
+
+        float despawnSqr = despawnBehindDistance * despawnBehindDistance;
+
         foreach (var kvp in _carsBySlot)
         {
             if (kvp.Value == null)
@@ -432,15 +444,20 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
                 continue;
             }
 
-            // Use live arc position so cars that caught up / drive alongside the player are not culled by stale spawn-slot distance.
-            float carDistAlong = kvp.Key * carSpacing;
-            var npc = kvp.Value.GetComponent<NPCTrafficCar>();
-            if (npc != null && npc.TryGetDistanceAlongTrack(out float dAlong))
-                carDistAlong = dAlong;
+            // Robust world-space "behind" test. The previous arc-length-along-spline comparison
+            // could mis-project on curved / self-approaching track sections (and wrap near a loop),
+            // wrongly flagging a car that was actually in front of the player and making visible
+            // cars vanish. A car is now only culled when it is genuinely behind the player's travel
+            // direction, beyond the despawn distance, AND not currently on screen. Crashed cars are
+            // despawned separately by NPCTrafficCar's own crash timer and are unaffected by this.
+            Vector3 toCar = kvp.Value.transform.position - playerPos;
+            toCar.y = 0f;
 
-            bool behind = carDistAlong < playerDist - despawnBehindDistance;
+            bool behind = Vector3.Dot(toCar, playerForward) < 0f;
+            bool farEnough = toCar.sqrMagnitude > despawnSqr;
+            bool offScreen = !IsPositionInCameraView(kvp.Value.transform.position);
 
-            if (behind)
+            if (behind && farEnough && offScreen)
                 _toRemove.Add(kvp.Key);
         }
 

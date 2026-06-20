@@ -4723,8 +4723,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
-  offset: {x: 0, y: 2.85, z: -4.24}
-  cameraPitch: 18.7
+  offset: {x: 0, y: 1.94, z: -4.05}
+  cameraPitch: 13.1
   cam: {fileID: 661794728}
   defaultFOV: 45
   overrideDefaultFOVFromCamera: 1
@@ -4738,8 +4738,8 @@ MonoBehaviour:
   car: {fileID: 0}
   fovSpeedMin: 0
   fovSpeedMax: 7
-  fovAtMinSpeed: 45
-  fovAtMaxSpeed: 115
+  fovAtMinSpeed: 31.4
+  fovAtMaxSpeed: 75
   speedFovSmooth: 3.25
   positionFollowSpeed: 3.67
   rotationFollowSpeed: 7.5
