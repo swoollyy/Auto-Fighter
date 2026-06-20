@@ -1992,6 +1992,25 @@ public class NPCTrafficCar : MonoBehaviour
         TriggerCrash(impactDir, rel, crossCollider, "CrossTrackOverlap");
     }
 
+    /// <summary>
+    /// Scripted <see cref="ShuttleTrackObstacle"/> is kinematic while on-path; NPC traffic is kinematic too.
+    /// PhysX can skip <see cref="OnCollisionEnter"/> between scripted kinematic movers, so shuttle callbacks use this path.
+    /// </summary>
+    public void ApplyScriptedShuttleTrackOverlapHit(ShuttleTrackObstacle shuttle, Collider shuttleCollider, float impactSpeed)
+    {
+        if (_crashed || shuttle == null || shuttleCollider == null) return;
+        if (!ShouldCrashWith(shuttleCollider)) return;
+
+        Vector3 contact = shuttleCollider.ClosestPoint(transform.position);
+        Vector3 impactDir = transform.position - contact;
+        impactDir.y = 0f;
+        if (impactDir.sqrMagnitude < 0.001f) impactDir = -transform.forward;
+        impactDir.Normalize();
+
+        float rel = Mathf.Max(impactSpeed, shuttle.GetWorldVelocity().magnitude, _lastVelocity.magnitude, 3f);
+        TriggerCrash(impactDir, rel, shuttleCollider, "ShuttleTrackOverlap");
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if (_crashed) return;

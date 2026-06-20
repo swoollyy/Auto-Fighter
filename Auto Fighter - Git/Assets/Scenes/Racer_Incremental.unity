@@ -6156,7 +6156,7 @@ MonoBehaviour:
     extraLateralPadding: 0
   - id: Tree
     prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
-    baseWeight: 1
+    baseWeight: 2
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
@@ -7162,7 +7162,7 @@ MonoBehaviour:
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
   spawnHeightOffset: 0.2
-  baseCoinsPerMeter: 0.2
+  baseCoinsPerMeter: 0.1
   coinFriendBaseRange: 30
   coinFriendBaseCooldown: 3
   coinFriendBaseValueBonus: 0
@@ -7372,14 +7372,14 @@ MonoBehaviour:
   takeoverAutonomousSpawning: 1
   playbackMode: 0
   loop: 1
-  startDelay: 4
-  intervalSeconds: 9
-  intervalJitter: {x: 1, y: 4}
+  startDelay: 3
+  intervalSeconds: 5
+  intervalJitter: {x: 1, y: 3}
   scaleJitterByProgress: 1
-  intervalJitterAtFullProgress: {x: 3, y: 6.5}
+  intervalJitterAtFullProgress: {x: 2, y: 4}
   failedSpawnRetryDelay: 0.35
   waveStaggerSeconds: 0.15
-  minNormalizedProgress: 0.075
+  minNormalizedProgress: 0
   trackGenerator: {fileID: 796779767}
   logQueueEvents: 1
 --- !u!1 &828558039

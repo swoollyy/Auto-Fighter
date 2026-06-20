@@ -874,6 +874,16 @@ public class ShuttleTrackObstacle : MonoBehaviour
             return;
         }
 
+        var npc = collision.collider.GetComponentInParent<NPCTrafficCar>();
+        if (npc != null)
+        {
+            float rel = collision.relativeVelocity.sqrMagnitude > 1e-6f
+                ? collision.relativeVelocity.magnitude
+                : _lastVelocity.magnitude;
+            npc.ApplyScriptedShuttleTrackOverlapHit(this, collision.collider, rel);
+            return;
+        }
+
         var cross = collision.collider.GetComponentInParent<CrossTrackObstacle>();
         if (cross != null && cross.IsOnScriptedPath)
         {
@@ -967,6 +977,13 @@ public class ShuttleTrackObstacle : MonoBehaviour
         {
             _pendingCollisionFrames = 0;
             _pendingCollider = null;
+            return;
+        }
+
+        var npc = other.GetComponentInParent<NPCTrafficCar>();
+        if (npc != null)
+        {
+            npc.ApplyScriptedShuttleTrackOverlapHit(this, other, _lastVelocity.magnitude);
             return;
         }
 
@@ -1093,6 +1110,13 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
             if (IsPlayerCarCollider(hit))
                 continue;
+
+            var npc = hit.GetComponentInParent<NPCTrafficCar>();
+            if (npc != null)
+            {
+                npc.ApplyScriptedShuttleTrackOverlapHit(this, hit, _lastVelocity.magnitude);
+                continue;
+            }
 
             var crossOv = hit.GetComponentInParent<CrossTrackObstacle>();
             if (crossOv != null && crossOv.IsOnScriptedPath)
