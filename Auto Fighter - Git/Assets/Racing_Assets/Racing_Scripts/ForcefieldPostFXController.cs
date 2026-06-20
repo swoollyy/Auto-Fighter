@@ -54,7 +54,40 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     private float _baseBloom = 1.3f;
     private bool _cachedBaseBloom;
 
-    private Coroutine _fxCR;
+    // Active stacking bursts. Each runs its own independent timeline; contributions are summed each frame.
+    private sealed class FxBurst
+    {
+        public float chroma;
+        public float lens;
+        public float lensScale;
+        public float centerX;
+        public float centerY;
+        public float bloomPeak;
+        public float fadeIn;
+        public float hold;
+        public float fadeOut;
+        public float elapsed;
+
+        public float Total => fadeIn + hold + fadeOut;
+
+        public float Envelope(AnimationCurve easeInCurve, AnimationCurve easeOutCurve)
+        {
+            if (elapsed < fadeIn)
+            {
+                float k = fadeIn > 0f ? Mathf.Clamp01(elapsed / fadeIn) : 1f;
+                return easeInCurve != null ? Mathf.Clamp01(easeInCurve.Evaluate(k)) : k;
+            }
+
+            if (elapsed < fadeIn + hold)
+                return 1f;
+
+            float t = fadeOut > 0f ? Mathf.Clamp01((elapsed - fadeIn - hold) / fadeOut) : 1f;
+            return easeOutCurve != null ? Mathf.Clamp01(easeOutCurve.Evaluate(t)) : (1f - t);
+        }
+    }
+
+    private readonly System.Collections.Generic.List<FxBurst> _bursts = new System.Collections.Generic.List<FxBurst>(8);
+    private float _wobbleClock;
 
     void Awake()
     {
@@ -67,29 +100,123 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
     void OnDisable()
     {
+        _bursts.Clear();
         if (resetOnDisable) SnapToBase();
-        if (_fxCR != null)
-        {
-            StopCoroutine(_fxCR);
-            _fxCR = null;
-        }
     }
 
     public void PlayBurst()
     {
         if (!EnsureSettings()) return;
-        if (_fxCR != null) StopCoroutine(_fxCR);
-        _fxCR = StartCoroutine(BurstRoutine());
+        _bursts.Add(new FxBurst
+        {
+            chroma = Mathf.Clamp01(chromaticIntensity),
+            lens = Mathf.Clamp(lensIntensity, -100f, 100f),
+            lensScale = lensScale,
+            centerX = lensCenterX,
+            centerY = lensCenterY,
+            bloomPeak = bloomIntensity,
+            fadeIn = Mathf.Max(0f, fadeIn),
+            hold = Mathf.Max(0f, hold),
+            fadeOut = Mathf.Max(0.01f, fadeOut),
+            elapsed = 0f
+        });
     }
 
-    // NEW: public API to play a custom burst with overrides (unscaled time safe).
+    // Public API to play a custom burst with overrides. Bursts STACK additively (no interrupt). Unscaled-time safe.
     public void PlayBurstCustom(float chromaIntensity, float lensIntensityOverride, float holdSeconds, float fadeInSeconds = -1f, float fadeOutSeconds = -1f)
     {
         if (!EnsureSettings()) return;
-        if (_fxCR != null) StopCoroutine(_fxCR);
-        float fi = fadeInSeconds > 0f ? fadeInSeconds : fadeIn;
-        float fo = fadeOutSeconds > 0f ? fadeOutSeconds : fadeOut;
-        _fxCR = StartCoroutine(BurstRoutineCustom(chromaIntensity, lensIntensityOverride, holdSeconds, fi, fo));
+        _bursts.Add(new FxBurst
+        {
+            chroma = Mathf.Clamp01(chromaIntensity),
+            lens = Mathf.Clamp(lensIntensityOverride, -100f, 100f),
+            lensScale = lensScale,
+            centerX = lensCenterX,
+            centerY = lensCenterY,
+            bloomPeak = bloomIntensity,
+            fadeIn = fadeInSeconds > 0f ? fadeInSeconds : Mathf.Max(0.01f, fadeIn),
+            hold = Mathf.Max(0f, holdSeconds),
+            fadeOut = fadeOutSeconds > 0f ? fadeOutSeconds : Mathf.Max(0.01f, fadeOut),
+            elapsed = 0f
+        });
+    }
+
+    private void LateUpdate()
+    {
+        if (_bursts.Count == 0)
+            return;
+
+        if (!EnsureSettings())
+        {
+            _bursts.Clear();
+            return;
+        }
+
+        float dt = Time.unscaledDeltaTime;
+
+        float bloomAdd = 0f;
+        float chromaSum = 0f;
+        float lensSum = 0f;
+
+        // Weighted accumulation for lens center/scale (weighted by each burst's contribution).
+        float weight = 0f;
+        float cxW = 0f, cyW = 0f, scaleW = 0f;
+
+        for (int i = _bursts.Count - 1; i >= 0; i--)
+        {
+            FxBurst b = _bursts[i];
+            b.elapsed += dt;
+
+            if (b.elapsed >= b.Total)
+            {
+                _bursts.RemoveAt(i);
+                continue;
+            }
+
+            float e = b.Envelope(easeIn, easeOut);
+
+            // Bloom is additive over the cached base (a single burst reproduces the old lerp base->peak).
+            bloomAdd += (b.bloomPeak - _baseBloom) * e;
+            chromaSum += b.chroma * e;
+            lensSum += b.lens * e;
+
+            float w = e * (Mathf.Abs(b.lens) + 0.0001f);
+            weight += w;
+            cxW += b.centerX * w;
+            cyW += b.centerY * w;
+            scaleW += b.lensScale * w;
+        }
+
+        SetBloom(_baseBloom + bloomAdd);
+        SetCA(chromaSum);
+
+        if (weight > 1e-5f)
+        {
+            float cx = cxW / weight;
+            float cy = cyW / weight;
+            float scale = scaleW / weight;
+
+            if (wobbleCenter && wobbleAmplitude > 0f && wobbleFrequency > 0f)
+            {
+                _wobbleClock += dt;
+                float wob = Mathf.Sin(_wobbleClock * Mathf.PI * 2f * wobbleFrequency) * wobbleAmplitude;
+                cx = Mathf.Clamp(cx + wob, -1f, 1f);
+                cy = Mathf.Clamp(cy - wob, -1f, 1f);
+            }
+
+            SetLD(lensSum, scale, cx, cy);
+        }
+        else
+        {
+            SetLD(lensSum, 1f, 0f, 0f);
+        }
+
+        // All bursts finished this frame -> clean reset to base.
+        if (_bursts.Count == 0)
+        {
+            _wobbleClock = 0f;
+            SnapToBase();
+        }
     }
 
     public void SetChromaticIntensity(float v) => chromaticIntensity = Mathf.Clamp01(v);
@@ -99,160 +226,6 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         lensScale = Mathf.Clamp(scale, 0.01f, 1f);
         lensCenterX = Mathf.Clamp(centerX, -1f, 1f);
         lensCenterY = Mathf.Clamp(centerY, -1f, 1f);
-    }
-
-    private IEnumerator BurstRoutine()
-    {
-        // Start from base
-        SetCA(0f);
-        SetLD(0f, 1f, 0f, 0f);
-        SetBloom(_baseBloom);
-
-        // Fade in
-        float t = 0f;
-        while (t < fadeIn)
-        {
-            t += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(t / fadeIn);
-            float e = easeIn != null ? Mathf.Clamp01(easeIn.Evaluate(k)) : k;
-
-            SetCA(Mathf.Lerp(0f, chromaticIntensity, e));
-            SetLD(Mathf.Lerp(0f, lensIntensity, e),
-                  Mathf.Lerp(1f, lensScale, e),
-                  Mathf.Lerp(0f, lensCenterX, e),
-                  Mathf.Lerp(0f, lensCenterY, e));
-            SetBloom(Mathf.Lerp(_baseBloom, bloomIntensity, e));
-            yield return null;
-        }
-
-        // Hold (optional wobble)
-        float wobbleT = 0f;
-        float endHold = Time.unscaledTime + hold;
-        while (Time.unscaledTime < endHold)
-        {
-            if (wobbleCenter && wobbleAmplitude > 0f && wobbleFrequency > 0f)
-            {
-                wobbleT += Time.unscaledDeltaTime;
-                float wob = Mathf.Sin(wobbleT * Mathf.PI * 2f * wobbleFrequency) * wobbleAmplitude;
-                SetCA(chromaticIntensity);
-                SetLD(lensIntensity, lensScale,
-                      Mathf.Clamp(lensCenterX + wob, -1f, 1f),
-                      Mathf.Clamp(lensCenterY - wob, -1f, 1f));
-                SetBloom(bloomIntensity);
-            }
-            else
-            {
-                SetCA(chromaticIntensity);
-                SetLD(lensIntensity, lensScale, lensCenterX, lensCenterY);
-                SetBloom(bloomIntensity);
-            }
-            yield return null;
-        }
-
-        // Fade out
-        t = 0f;
-        while (t < fadeOut)
-        {
-            t += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(t / fadeOut);
-            float e = easeOut != null ? Mathf.Clamp01(easeOut.Evaluate(k)) : (1f - k);
-
-            SetCA(Mathf.Lerp(chromaticIntensity, 0f, k));
-            SetLD(Mathf.Lerp(lensIntensity, 0f, k),
-                  Mathf.Lerp(lensScale, 1f, k),
-                  Mathf.Lerp(lensCenterX, 0f, k),
-                  Mathf.Lerp(lensCenterY, 0f, k));
-            SetBloom(Mathf.Lerp(bloomIntensity, _baseBloom, k));
-            yield return null;
-        }
-
-        // Back to base
-        SnapToBase();
-        _fxCR = null;
-    }
-
-    // Custom burst coroutine using explicit passed values
-    // Custom burst coroutine using explicit passed values
-    private IEnumerator BurstRoutineCustom(float chroma, float lensInt, float holdSeconds, float fadeInSeconds, float fadeOutSeconds)
-    {
-        // local copies
-        float localChroma = Mathf.Clamp01(chroma);
-        float localLens = Mathf.Clamp(lensInt, -100f, 100f);
-        float localLensScale = Mathf.Clamp(lensScale, 0.01f, 1f);
-        float localCenterX = lensCenterX;
-        float localCenterY = lensCenterY;
-        float localBloom = bloomIntensity;
-        float fi = Mathf.Max(0.01f, fadeInSeconds);
-        float fo = Mathf.Max(0.01f, fadeOutSeconds);
-        AnimationCurve easeInLocal = easeIn;
-        AnimationCurve easeOutLocal = easeOut;
-        bool wobble = wobbleCenter;
-        float wobAmp = wobbleAmplitude;
-        float wobFreq = wobbleFrequency;
-
-        // start
-        SetCA(0f);
-        SetLD(0f, 1f, 0f, 0f);
-        SetBloom(_baseBloom);
-
-        // fade in
-        float t = 0f;
-        while (t < fi)
-        {
-            t += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(t / fi);
-            float e = easeInLocal != null ? Mathf.Clamp01(easeInLocal.Evaluate(k)) : k;
-            SetCA(Mathf.Lerp(0f, localChroma, e));
-            SetLD(Mathf.Lerp(0f, localLens, e),
-                  Mathf.Lerp(1f, localLensScale, e),
-                  Mathf.Lerp(0f, localCenterX, e),
-                  Mathf.Lerp(0f, localCenterY, e));
-            SetBloom(Mathf.Lerp(_baseBloom, localBloom, e));
-            yield return null;
-        }
-
-        // hold
-        float wobT = 0f;
-        float endHold = Time.unscaledTime + Mathf.Max(0f, holdSeconds);
-        while (Time.unscaledTime < endHold)
-        {
-            if (wobble && wobAmp > 0f && wobFreq > 0f)
-            {
-                wobT += Time.unscaledDeltaTime;
-                float wob = Mathf.Sin(wobT * Mathf.PI * 2f * wobFreq) * wobAmp;
-                SetCA(localChroma);
-                SetLD(localLens, localLensScale,
-                    Mathf.Clamp(localCenterX + wob, -1f, 1f),
-                    Mathf.Clamp(localCenterY - wob, -1f, 1f));
-                SetBloom(localBloom);  // Use localBloom, not bloomIntensity
-            }
-            else
-            {
-                SetCA(localChroma);
-                SetLD(localLens, localLensScale, localCenterX, localCenterY);
-                SetBloom(localBloom);
-            }
-            yield return null;
-        }
-
-        // fade out - FIXED: Now includes SetBloom interpolation
-        t = 0f;
-        while (t < fo)
-        {
-            t += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(t / fo);
-            float e = easeOutLocal != null ? Mathf.Clamp01(easeOutLocal.Evaluate(k)) : (1f - k);
-            SetCA(Mathf.Lerp(localChroma, 0f, k));
-            SetLD(Mathf.Lerp(localLens, 0f, k),
-                  Mathf.Lerp(localLensScale, 1f, k),
-                  Mathf.Lerp(localCenterX, 0f, k),
-                  Mathf.Lerp(localCenterY, 0f, k));
-            SetBloom(Mathf.Lerp(localBloom, _baseBloom, k));  // <-- THE FIX
-            yield return null;
-        }
-
-        SnapToBase();
-        _fxCR = null;
     }
 
     private void SnapToBase()

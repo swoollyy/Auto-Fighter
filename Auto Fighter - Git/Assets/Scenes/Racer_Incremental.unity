@@ -4746,6 +4746,7 @@ MonoBehaviour:
   rotationLag: 1.23
   driftRotationLagMultiplier: 0.1
   boostVFXObject: {fileID: 115066103}
+  boostVfxLingerSeconds: 1
   boostZoomOutDeltaFOV: 6.57
   boostFovRampIn: 0.12
   boostFovRampOut: 1.88
@@ -4815,15 +4816,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
-  focusWorldOffset: {x: 0, y: 0, z: 0}
-  shieldRadius: 0.35
+  focusWorldOffset: {x: 0, y: 0.18, z: 0}
+  shieldRadius: 0.12
   sweepProbeRadius: 0.4
   castPastFocus: 0.25
   coneRadialSlop: 0.06
   useSampledLineOfSight: 1
   losSampleCastRadius: 0.16
-  targetSampleHalfWidth: 0.85
-  targetSampleHalfHeight: 0.65
+  targetSampleHalfWidth: 0.23
+  targetSampleHalfHeight: 0.41
   includeDiagonalSamples: 1
   useVolumetricOverlap: 1
   collectFromOccluderRoot: 0

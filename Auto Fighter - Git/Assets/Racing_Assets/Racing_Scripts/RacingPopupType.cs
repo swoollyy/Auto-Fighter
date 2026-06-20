@@ -48,4 +48,8 @@ public enum RacingPopupType
 
     // Mash recovery: per manual click strength (create RacingPopupStyleSO + register on RacingPopupSystem).
     MashClickDamage,
+
+    // Ice path: shown when the car drives onto ice and is being affected by ice handling.
+    // IMPORTANT: keep this LAST so existing serialized popup-type indices don't shift.
+    IcePath,
 }

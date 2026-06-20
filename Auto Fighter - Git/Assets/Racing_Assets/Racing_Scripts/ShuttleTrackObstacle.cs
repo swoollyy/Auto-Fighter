@@ -53,6 +53,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Header("Track Binding (optional)")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
 
+    [Tooltip("On spawn, align the shuttle's rotation to the track tangent so its body matches the drawn travel line (removes the slight off-angle look). Keeps the spawned facing direction and forces it upright.")]
+    [SerializeField] private bool alignRotationToTrack = true;
+
     [Header("Path Length Randomization")]
     [Tooltip("If true, each shuttle picks a random fraction of the full lane width for its travel path on spawn.")]
     [SerializeField] private bool randomizePathLength = true;
@@ -260,6 +263,11 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private void Start()
     {
         _originWS = transform.position;
+
+        // Align body to the track frame BEFORE measuring self half-width / edges so everything
+        // (and the drawn travel line) shares the same orientation.
+        if (alignRotationToTrack)
+            AlignRotationToTrack();
 
         _halfRoad = DetermineHalfRoadWidth();
         _selfHalf = DetermineSelfHalfWidth();
@@ -1123,9 +1131,15 @@ public class ShuttleTrackObstacle : MonoBehaviour
         }
     }
 
-    private void ComputeEdgeWorldPositions(out Vector3 leftWS, out Vector3 rightWS)
+    /// <summary>
+    /// Resolves the track tangent (forward) and lateral (cross-track) directions at the shuttle's origin.
+    /// Falls back to the transform's own axes when no track generator/path is available.
+    /// Both the travel-line endpoints and the body rotation use this so they always agree.
+    /// </summary>
+    private bool ResolveTrackFrame(out Vector3 forward, out Vector3 lateral)
     {
-        Vector3 lateral = transform.right;
+        forward = transform.forward; forward.y = 0f;
+        lateral = transform.right;
 
         if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
         {
@@ -1146,10 +1160,45 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
             Vector3 aa = trackGenerator.PathPoints[bestIndex];
             Vector3 bb = trackGenerator.PathPoints[Mathf.Min(bestIndex + 1, trackGenerator.PathPoints.Count - 1)];
-            Vector3 forward = (bb - aa).normalized;
-            if (forward.sqrMagnitude > 1e-6f)
+            Vector3 f = bb - aa; f.y = 0f;
+            if (f.sqrMagnitude > 1e-6f)
+            {
+                forward = f.normalized;
                 lateral = Vector3.Cross(Vector3.up, forward).normalized;
+                return true;
+            }
         }
+
+        if (forward.sqrMagnitude < 1e-6f) forward = transform.forward;
+        if (lateral.sqrMagnitude < 1e-6f) lateral = transform.right;
+        return false;
+    }
+
+    /// <summary>
+    /// Snaps the shuttle's orientation to the track frame so its body lines up with the drawn travel line.
+    /// Preserves which way it was facing (down-track vs up-track) and forces it upright.
+    /// </summary>
+    private void AlignRotationToTrack()
+    {
+        if (!ResolveTrackFrame(out Vector3 trackForward, out _))
+            return;
+
+        trackForward.y = 0f;
+        if (trackForward.sqrMagnitude < 1e-6f)
+            return;
+        trackForward.Normalize();
+
+        // Keep the spawned facing hemisphere so we only correct the slight off-angle (never flip 180°).
+        Vector3 currentForward = transform.forward; currentForward.y = 0f;
+        if (currentForward.sqrMagnitude > 1e-6f && Vector3.Dot(trackForward, currentForward) < 0f)
+            trackForward = -trackForward;
+
+        transform.rotation = Quaternion.LookRotation(trackForward, Vector3.up);
+    }
+
+    private void ComputeEdgeWorldPositions(out Vector3 leftWS, out Vector3 rightWS)
+    {
+        ResolveTrackFrame(out _, out Vector3 lateral);
 
         if (lateral.sqrMagnitude < 1e-6f)
             lateral = transform.right;

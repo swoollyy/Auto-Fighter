@@ -459,6 +459,7 @@ public class CarController : MonoBehaviour
     [Header("Steering Direction (from CarSteeringConfig)")]
     private bool invertSteeringWhenReversing;
     private float reverseSteerMultiplier;
+    private float reverseSteerEngageForwardSpeed;
 
     [Header("Health (from CarHealthConfig)")]
     private float maxHP;
@@ -864,6 +865,18 @@ public class CarController : MonoBehaviour
     private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
     private float _nextBoostPadPopupTime;            // re-trigger guard for boost-pad popup
     private const float BOOST_PAD_POPUP_COOLDOWN = 0.5f;
+
+    private bool _wasAffectedByIce;                  // for ice-path popup edge detection
+    private float _nextIcePathPopupTime;             // re-trigger guard for ice-path popup
+    private const float ICE_PATH_POPUP_COOLDOWN = 0.5f;
+
+    [Header("Boost Pad Screen Bloom (boost pads / ramps only)")]
+    [Tooltip("When entering a boost pad/ramp, pulse the screen bloom (same post-FX system used for close-call misses). Does NOT apply to drift boost.")]
+    [SerializeField] private bool boostPadBloomBurst = true;
+    [SerializeField, Min(0f)] private float boostPadBloomHold = 0.22f;
+    [SerializeField, Min(0.01f)] private float boostPadBloomFadeIn = 0.06f;
+    [SerializeField, Min(0.01f)] private float boostPadBloomFadeOut = 0.4f;
+    private ForcefieldPostFXController _boostPadPostFX;
     private float _currentBoostAccel;
     private float _currentBoostMaxSpeed;
     private bool _currentBoostDuringCrash;
@@ -1082,6 +1095,7 @@ public class CarController : MonoBehaviour
             iceSteerFlipPenalty = _steeringConfig.IceSteerFlipPenalty;
             invertSteeringWhenReversing = _steeringConfig.InvertSteeringWhenReversing;
             reverseSteerMultiplier = _steeringConfig.ReverseSteerMultiplier;
+            reverseSteerEngageForwardSpeed = _steeringConfig.ReverseSteerEngageForwardSpeed;
             baseSteeringDamp = _steeringConfig.BaseSteeringDamp;
             enableSteerTraction = _steeringConfig.EnableSteerTraction;
             steerTractionReorientRate = _steeringConfig.SteerTractionReorientRate;
@@ -1100,7 +1114,7 @@ public class CarController : MonoBehaviour
             steeringInputSmooth = 9f; steeringReturnSmooth = 0f; useAutoAlignToVelocity = false; autoAlignStrength = 3f;
             enableIceSteerRamp = true; iceSteerRampUpRate = 10f; iceSteerRampDownRate = 1.83f;
             iceSteerMinFactor = 0.755f; iceSteerFlipPenalty = 0.35f;
-            invertSteeringWhenReversing = true; reverseSteerMultiplier = 1f;
+            invertSteeringWhenReversing = true; reverseSteerMultiplier = 1f; reverseSteerEngageForwardSpeed = 1.5f;
             baseSteeringDamp = 8f; enableSteerTraction = true; steerTractionReorientRate = 5.59f;
             steerRollingAccel = 2.25f; minSpeedForSteerTraction = 0.1f; lateralFrictionWhileSteering = 2.46f;
             steerTractionBlendIn = 8.21f; steerTractionBlendOut = 7.1f; steerRollingAccelCoastMultiplier = 0.441f;
@@ -1922,6 +1936,7 @@ public class CarController : MonoBehaviour
         if (!outOfFuel) HandleBoost();    // block boost when fuel is 0
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
+        HandleIcePathPopup();             // ice path popup when ice handling kicks in
         ApplyRampAlignment(Time.fixedDeltaTime);
         SmoothDrivingGroundNormal();
         ApplyRoadGrassTransitionLift();
@@ -1999,15 +2014,55 @@ public class CarController : MonoBehaviour
     /// </summary>
     private void HandleBoostSurfacePopup()
     {
-        if (_onBoostSurface && !_wasOnBoostSurface
-            && enablePopupText && RacingPopups.IsReady
-            && Time.time >= _nextBoostPadPopupTime)
+        bool enteredBoostSurface = _onBoostSurface && !_wasOnBoostSurface;
+
+        if (enteredBoostSurface && Time.time >= _nextBoostPadPopupTime)
         {
-            RacingPopups.BoostPad(GetPopupPosition());
+            if (enablePopupText && RacingPopups.IsReady)
+                RacingPopups.BoostPad(GetPopupPosition());
+
+            // Screen bloom pulse for boost pads/ramps ONLY (drift boost does not call this).
+            TriggerBoostPadBloom();
+
             _nextBoostPadPopupTime = Time.time + BOOST_PAD_POPUP_COOLDOWN;
         }
 
         _wasOnBoostSurface = _onBoostSurface;
+    }
+
+    /// <summary>
+    /// Spawns the ice-path popup once when the car drives onto ice and the ice handling actually starts
+    /// affecting grip (rising edge), guarded by a short cooldown.
+    /// </summary>
+    private void HandleIcePathPopup()
+    {
+        // "Affected by ice handling" = on an ice surface whose handling has reduced grip below normal.
+        bool affectedByIce = _onIceSurface && _currentIceHandling < 0.99f;
+
+        if (affectedByIce && !_wasAffectedByIce && Time.time >= _nextIcePathPopupTime)
+        {
+            if (enablePopupText && RacingPopups.IsReady)
+                RacingPopups.IcePath(GetPopupPosition());
+
+            _nextIcePathPopupTime = Time.time + ICE_PATH_POPUP_COOLDOWN;
+        }
+
+        _wasAffectedByIce = affectedByIce;
+    }
+
+    /// <summary>
+    /// Pulses screen bloom using the same post-FX controller as close-call misses, but bloom-only
+    /// (no chromatic/lens distortion). Boost-pad/ramp specific - not used for drift boost.
+    /// </summary>
+    private void TriggerBoostPadBloom()
+    {
+        if (!boostPadBloomBurst) return;
+
+        if (_boostPadPostFX == null)
+            _boostPadPostFX = FindObjectOfType<ForcefieldPostFXController>();
+
+        if (_boostPadPostFX != null)
+            _boostPadPostFX.PlayBurstCustom(0f, 0f, boostPadBloomHold, boostPadBloomFadeIn, boostPadBloomFadeOut);
     }
 
     private void ApplyBoostSurfaceForce(bool duringCrashOrRecovery)
@@ -3459,10 +3514,19 @@ public class CarController : MonoBehaviour
         bool driftPhysicsActive = isDrifting || _driftGlideActive;
 
         float steerDirection = 1f;
-        if (invertSteeringWhenReversing && forwardSpeed < -0.1f)
+        if (invertSteeringWhenReversing)
         {
-            steerDirection = -1f;
-            steerSpeed *= reverseSteerMultiplier;
+            // While the player is actively commanding reverse (brake/reverse held, no throttle), engage reverse
+            // steering as the car slows below the engage speed - don't wait for velocity to fully cross zero.
+            // This removes the "turning the forward way for a couple seconds" lag when switching to reverse.
+            bool reverseCommanded = !IsOutOfFuel && GetBrakeKeyOrTrigger() && !GetAccelerateKeyOrTrigger();
+            float engageBelow = reverseCommanded ? reverseSteerEngageForwardSpeed : -0.1f;
+
+            if (forwardSpeed < engageBelow)
+            {
+                steerDirection = -1f;
+                steerSpeed *= reverseSteerMultiplier;
+            }
         }
 
         float topSpeedForSteering = speedForSteerCurve > 0f ? speedForSteerCurve : Mathf.Max(1f, effectiveMaxSpeed);

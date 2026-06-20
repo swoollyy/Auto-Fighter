@@ -1075,6 +1075,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   maxTotalVelocityMagnitude: 10
   runEndMashIdleTimeout: 15
+  boostPadBloomBurst: 1
+  boostPadBloomHold: 0.22
+  boostPadBloomFadeIn: 0.06
+  boostPadBloomFadeOut: 0.4
 --- !u!54 &3673658427361466669
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1436,7 +1440,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseAcceleration: 5.6
-  baseMaxSpeed: 5
+  baseMaxSpeed: 4
   baseBrakingForce: 0.009
   baseDrag: 0.13
   coastLowDecelPerSecond: 0.39
@@ -1487,6 +1491,7 @@ MonoBehaviour:
   iceSteerFlipPenalty: 0.35
   invertSteeringWhenReversing: 1
   reverseSteerMultiplier: 1
+  reverseSteerEngageForwardSpeed: 1.5
   baseSteeringDamp: 10
   enableSteerTraction: 1
   steerTractionReorientRate: 4.51
@@ -1617,9 +1622,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 0
-  fuelUsePerSecondBraking: 0
-  idleFuelUsePerSecond: 0
+  fuelUsePerSecondAtFullThrottle: 4
+  fuelUsePerSecondBraking: 4
+  idleFuelUsePerSecond: 1
   idleSpeedThreshold: 0.5
 --- !u!114 &5175522973251198462
 MonoBehaviour:

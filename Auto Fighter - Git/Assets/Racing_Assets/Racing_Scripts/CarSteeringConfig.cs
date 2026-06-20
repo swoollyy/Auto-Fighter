@@ -33,6 +33,8 @@ public class CarSteeringConfig : MonoBehaviour
     [Header("Steering Direction")]
     [SerializeField] private bool invertSteeringWhenReversing = true;
     [SerializeField] private float reverseSteerMultiplier = 1f;
+    [Tooltip("While the player is holding reverse/brake, steering flips to reverse mode once forward speed drops below this (m/s) - instead of waiting for the car to fully start moving backward. Makes the forward->reverse turn switch seamless. Set 0 for the old behavior (flip only once actually moving backward).")]
+    [SerializeField, Min(0f)] private float reverseSteerEngageForwardSpeed = 1.5f;
 
     [Header("Steer Rolling Traction")]
     [SerializeField] private float baseSteeringDamp = 8f;
@@ -63,6 +65,7 @@ public class CarSteeringConfig : MonoBehaviour
     public float IceSteerFlipPenalty => iceSteerFlipPenalty;
     public bool InvertSteeringWhenReversing => invertSteeringWhenReversing;
     public float ReverseSteerMultiplier => reverseSteerMultiplier;
+    public float ReverseSteerEngageForwardSpeed => reverseSteerEngageForwardSpeed;
     public float BaseSteeringDamp => baseSteeringDamp;
     public bool EnableSteerTraction => enableSteerTraction;
     public float SteerTractionReorientRate => steerTractionReorientRate;

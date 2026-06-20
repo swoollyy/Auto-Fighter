@@ -155,6 +155,10 @@ public static class RacingPopups
     public static void BoostPad(Vector3 position)
         => Spawn(RacingPopupType.BoostPad, 0f, position);
 
+    /// <summary>Ice path popup, shown when the car starts being affected by ice handling. Uses the IcePath style asset.</summary>
+    public static void IcePath(Vector3 position)
+        => Spawn(RacingPopupType.IcePath, 0f, position);
+
     public static void Generic(string text, Vector3 position)
         => Spawn(RacingPopupType.Generic, text, position);
 

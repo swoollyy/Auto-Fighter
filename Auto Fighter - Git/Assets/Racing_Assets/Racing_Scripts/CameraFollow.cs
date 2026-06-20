@@ -84,6 +84,8 @@ public class CameraFollow : MonoBehaviour
     [Header("Boost VFX")]
     [Tooltip("Optional GameObject (or ParticleSystem) parented to camera to play during boosts.")]
     [SerializeField] private GameObject boostVFXObject;
+    [SerializeField, Tooltip("After a boost ends, keep the boost VFX lines emitting for this long before stopping, so they trail off instead of cutting out instantly. Existing particles also finish their own lifetime on top of this.")]
+    private float boostVfxLingerSeconds = 0.35f;
     [SerializeField, Tooltip("Extra FOV degrees added on top of speed-based FOV while boost presentation is active (pads, ramps, manual boost).")]
     private float boostZoomOutDeltaFOV = 6f;
 
@@ -134,6 +136,7 @@ public class CameraFollow : MonoBehaviour
     private float _currentZRoll = 0f;
     private Vector3 _prevTargetForwardFlat = Vector3.forward;
     private bool _boostVfxPlaying;
+    private float _boostVfxLingerTimer;
     // Map peek cached values (prevents stacking)
     private float _mapPeekPressBaseline;
     private float _mapPeekPressTarget;
@@ -215,12 +218,14 @@ public class CameraFollow : MonoBehaviour
         StopBoostVfxParticles();
     }
 
-    private void SyncBoostPresentation(bool wantPresentation)
+    private void SyncBoostPresentation(bool wantPresentation, float dt)
     {
         _boostFovOffsetTarget = wantPresentation ? Mathf.Max(0f, boostZoomOutDeltaFOV) : 0f;
 
         if (wantPresentation)
         {
+            _boostVfxLingerTimer = Mathf.Max(0f, boostVfxLingerSeconds);
+
             if (!_boostVfxPlaying)
             {
                 _boostVfxPlaying = true;
@@ -235,21 +240,39 @@ public class CameraFollow : MonoBehaviour
             return;
         }
 
-        if (_boostVfxPlaying)
-            StopBoostVfxParticles();
+        if (!_boostVfxPlaying)
+            return;
+
+        // Boost just ended: keep emitting through the linger window so the lines trail off instead of cutting out.
+        if (_boostVfxLingerTimer > 0f)
+        {
+            _boostVfxLingerTimer -= dt;
+            return;
+        }
+
+        StopBoostVfxParticles(hardClear: false);
     }
 
-    private void StopBoostVfxParticles()
+    private void StopBoostVfxParticles(bool hardClear = true)
     {
         _boostVfxPlaying = false;
+        _boostVfxLingerTimer = 0f;
 
         if (boostVFXObject == null)
             return;
 
         if (_boostPS != null)
-            _boostPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        {
+            // Soft stop: stop spawning new particles but let already-spawned lines live out their lifetime
+            // (graceful trail-off). Hard clear wipes them instantly (used on crash).
+            _boostPS.Stop(true, hardClear
+                ? ParticleSystemStopBehavior.StopEmittingAndClear
+                : ParticleSystemStopBehavior.StopEmitting);
+        }
         else
+        {
             boostVFXObject.SetActive(false);
+        }
     }
 
     private float ComputeSpeedFovTarget()
@@ -278,7 +301,7 @@ public class CameraFollow : MonoBehaviour
             return;
 
         if (_subscribedCar != null)
-            SyncBoostPresentation(_subscribedCar.IsBoostPresentationActive);
+            SyncBoostPresentation(_subscribedCar.IsBoostPresentationActive, dt);
 
         UpdateBoostFovOffset(dt);
 
