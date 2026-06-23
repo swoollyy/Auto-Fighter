@@ -717,6 +717,67 @@ public class RacingSkillTreeManager : MonoBehaviour
         SyncQuestUnlockReveals();
     }
 
+    // ------------------------------------------------------------------------
+    // Progress snapshot (used by DayTrialManager for per-trial reset)
+    // Captures/restores skill levels + currency + sprockets. Quest unlocks are
+    // deliberately untouched so they persist across a trial failure.
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Capture the current purchasable progression (all skill levels + currency + sprockets).
+    /// Uses raw stored levels (ignores the skillsEnabled master toggle).
+    /// </summary>
+    public SkillProgressSnapshot CaptureProgressSnapshot()
+    {
+        var snap = new SkillProgressSnapshot
+        {
+            currency = playerCurrency,
+            sprockets = playerSprockets
+        };
+
+        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
+        {
+            int lvl = _state.GetLevel(t);
+            if (lvl > 0)
+            {
+                snap.skillTypes.Add((int)t);
+                snap.skillLevels.Add(lvl);
+            }
+        }
+        return snap;
+    }
+
+    /// <summary>
+    /// Restore a previously captured snapshot, overwriting all skill levels + currency + sprockets.
+    /// Quest unlocks are NOT modified. Fires level/currency/reset events so dependent systems
+    /// (e.g. CarController skill gates, UI) refresh.
+    /// </summary>
+    public void RestoreProgressSnapshot(SkillProgressSnapshot snap)
+    {
+        if (snap == null) return;
+
+        // Wipe all stored levels (in-memory + persisted keys), then apply the snapshot's levels.
+        _state.ClearPersistent();
+
+        int count = Mathf.Min(snap.skillTypes.Count, snap.skillLevels.Count);
+        for (int i = 0; i < count; i++)
+            _state.SetLevel((SkillType)snap.skillTypes[i], snap.skillLevels[i]);
+
+        _state.Save();
+
+        playerCurrency = Mathf.Max(0, snap.currency);
+        SaveCurrency();
+        playerSprockets = Mathf.Max(0, snap.sprockets);
+        SaveSprockets();
+
+        OnCurrencyChanged?.Invoke(playerCurrency);
+        OnSprocketsChanged?.Invoke(playerSprockets);
+        foreach (SkillType t in Enum.GetValues(typeof(SkillType)))
+            OnLevelChanged?.Invoke(t, GetLevel(t));
+
+        OnSkillsReset?.Invoke();
+    }
+
     public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;
     public bool HasEverEarnedSprockets => _hasEverEarnedSprockets;
     public float GetAccelerationMultiplier() => GetDisplayMultiplier(SkillType.Acceleration);

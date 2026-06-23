@@ -192,6 +192,8 @@ public class GameManager_Racing : MonoBehaviour
     private RunFlowState _flowState = RunFlowState.SkillTree;
 
     private float runDistanceMeters = 0f;
+    // Furthest normalized road progress (0-1) reached during the current run; fed to DayTrialManager at run end.
+    private float _maxRunNormalizedProgress = 0f;
     private Rigidbody _carRb;
     private int _startingCurrency = 0;
     private bool _currencyAwarded = false;
@@ -340,6 +342,9 @@ public class GameManager_Racing : MonoBehaviour
             if (distanceSystem != null)
             {
                 runDistanceMeters = distanceSystem.DistanceAlongTrack; // live forward progress
+                // Track the furthest progress reached this run (the car can be knocked back, so keep the max).
+                if (distanceSystem.Normalized > _maxRunNormalizedProgress)
+                    _maxRunNormalizedProgress = distanceSystem.Normalized;
             }
             else
             {
@@ -561,6 +566,12 @@ public class GameManager_Racing : MonoBehaviour
             $"ObstacleCoins={_obstacleCoinsThisRun}, " +
             $"TotalThisRun={totalCoinsThisRun}, " +
             $"FinalTotalCurrency={finalTotalCurrency}. Press R to restart.");
+
+        // Day / Trial progression: this completed run counts as one day. Pass/advance, tick a day,
+        // or (on the last allowed day without reaching the target) fail and revert to the trial baseline.
+        // Done last so any baseline restore (which reverts coins/sprockets/skills) happens after rewards
+        // are tallied for this run.
+        DayTrialManager.Instance?.NotifyRunCompleted(_maxRunNormalizedProgress);
     }
 
 
@@ -1194,6 +1205,7 @@ public class GameManager_Racing : MonoBehaviour
         iceScreenFlashDriver?.SetCarController(carController);
 
         runDistanceMeters = 0f;
+        _maxRunNormalizedProgress = 0f;
         _carRb = carInstance.GetComponent<Rigidbody>();
         _currencyAwarded = false;
         runEnded = false;

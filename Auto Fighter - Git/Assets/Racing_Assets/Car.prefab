@@ -1440,8 +1440,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8b5b3e22a58bf94a83288c2181a771f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 5.6
-  baseMaxSpeed: 4
+  baseAcceleration: 6
+  baseMaxSpeed: 4.5
   baseBrakingForce: 0.009
   baseDrag: 0.13
   coastLowDecelPerSecond: 0.39
@@ -1735,7 +1735,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f0b8a721845265428754a028a1f8248, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  requireCrashMashUnlock: 1
   drainScalePerClickPower: 0.5
   drainScalePerPassiveStrength: 0
   maxSkillDrainMultiplier: 2
@@ -1791,6 +1790,7 @@ MonoBehaviour:
   groundCheckLayers:
     serializedVersion: 2
     m_Bits: 24576
+  requireCrashMashUnlock: 1
   enableFlipRecoveryMash: 1
   flipDotThreshold: 0
   flipAngleThreshold: 80

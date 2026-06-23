@@ -18,6 +18,18 @@ public class SkillTreeState
         return true;
     }
 
+    /// <summary>
+    /// Directly set a skill's level (used by snapshot restore). Level &lt;= 0 clears the entry.
+    /// Call <see cref="Save"/> afterwards to persist.
+    /// </summary>
+    public void SetLevel(SkillType type, int level)
+    {
+        if (level <= 0)
+            _levels.Remove(type);
+        else
+            _levels[type] = level;
+    }
+
     // Simple persistence (expand later to JSON / save file)
     public void Save()
     {
