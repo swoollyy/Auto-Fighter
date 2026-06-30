@@ -1,0 +1,599 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0fdff97ac19ea2e4383fdecdacc7dfaa, type: 3}
+  m_Name: Track1
+  m_EditorClassIdentifier: 
+  trialName: Track1
+  designerNotes: 
+  dayLimit: 5
+  targetProgress: 1
+  track:
+    overrideTrack: 1
+    segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
+    segmentCount: 200
+    autoDetectSegmentLength: 1
+    segmentLength: 8
+    minTurnAngle: 30
+    startMaxTurnAngle: 45
+    endMaxTurnAngle: 125
+    difficultyCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.25
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 2
+        outSlope: 2
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    startTurnChance: 0.59
+    endTurnChance: 0.908
+    turnFrequencyCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.3
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 2
+        outSlope: 2
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    maxWiggleAngle: 11.58
+    wiggleOverDistance: 0.885
+    useAvoidance: 1
+    avoidanceRadius: 2.92
+    avoidanceStrength: 0.828
+    avoidanceFalloff: 1
+    constrainToGlobalDirection: 1
+    globalAlignmentStrength: 0.085
+    maxHeadingDeviation: 113.66
+    useRandomSeed: 1
+    fixedSeed: 12345
+    generateRoadMesh: 1
+    roadWidth: 6.5
+    roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
+    uvTiling: 0.1
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    preventSelfIntersections: 1
+    yawSearchSamples: 72
+    collisionPadding: 1
+    trackRadiusMultiplier: 1.6
+    recentIgnoreCount: 2
+  obstacles:
+    overrideObstacles: 1
+    preSpawnOnInitialize: 1
+    streamSpawnDuringRun: 1
+    streamWhileQueueControlled: 1
+    obstacleTypes:
+    - id: Boulder
+      prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
+      baseWeight: 1
+      startAtNormalizedDist: 0.05
+      fullWeightNormalizedDist: 0.35
+      stopAtNormalizedDist: 0.5
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    - id: Rock
+      prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
+      baseWeight: 3
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.002
+      stopAtNormalizedDist: 0.8
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    - id: Barrier
+      prefab: {fileID: 3874382558013832276, guid: b3d9c63f4edc44242a107ccad0185dd0, type: 3}
+      baseWeight: 0.9
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.085
+      stopAtNormalizedDist: 0.6
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    - id: Tree
+      prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
+      baseWeight: 2
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.1
+      stopAtNormalizedDist: 0.3
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    - id: Shuttle Track Obstacle
+      prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
+      baseWeight: 1
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.1
+      stopAtNormalizedDist: 0.3
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    - id: Boost Ramp
+      prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
+      baseWeight: 0.5
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.1
+      stopAtNormalizedDist: 0.3
+      extraHeightOffset: -0.5
+      extraLateralPadding: 0
+    - id: Boost Pad
+      prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
+      baseWeight: 0.8
+      startAtNormalizedDist: 0.001
+      fullWeightNormalizedDist: 0.1
+      stopAtNormalizedDist: 0.5
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    obstacleSpacing: 4.6
+    maxActiveObstacles: 200
+    minSpawnDistanceAhead: 80
+    maxSpawnDistanceAhead: 150
+    initialPreSpawnDistance: 80
+    despawnBehindDistance: 20
+    distanceJitter: 4.1
+    spawnChancePerSlot: 0.9
+    globalSpawnChanceByDistance:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    lateralFraction: 0.969
+    edgeInnerMargin: 0.5
+    stabilizeRigidbodiesOnSpawn: 1
+    spawnKinematicDuration: 2
+    disableGravityWhileKinematic: 1
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 16384
+    raycastStartHeight: 12.42
+    raycastDownDistance: 20
+    obstacleHeightOffset: 0.5
+    updateInterval: 0.1
+    verboseDebug: 1
+  creatures:
+    overrideCreatures: 1
+    npcTrafficLayerMask:
+      serializedVersion: 2
+      m_Bits: 524288
+    creatureObstacleAvoidanceLayers:
+      serializedVersion: 2
+      m_Bits: 6035457
+    preSpawnOnInitialize: 1
+    streamSpawnDuringRun: 1
+    creatureTypes:
+    - id: Bug
+      prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
+      behaviorType: 0
+      baseWeight: 1.1
+      startAtNormalizedDist: 0.01
+      fullWeightNormalizedDist: 0.2
+      stopAtNormalizedDist: 1
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+      coinReward: 1
+      idleUseWalkPauseRhythm: 1
+      idleWalkSegmentMinSec: 0.9
+      idleWalkSegmentMaxSec: 3.2
+      idlePauseMinSec: 0.25
+      idlePauseMaxSec: 1.71
+      passiveWanderSpeed: 1.5
+      passiveDirectionChangeInterval: 2
+      passiveFleeFromScared: 1
+      passiveScaredDetectRadius: 3.5
+      passiveScaredLoseDistance: 16
+      passiveFleeBaseSpeed: 3
+      passiveFleeMaxSpeed: 7
+      passiveFleeBuildupRate: 3
+      passiveFleeMaxOffRoadDistance: 10
+      passiveUseBugIdleMovement: 1
+      passiveIdleBugMoveSpeed: 1.15
+      passiveIdleBugDirectionChangeInterval: 4
+      passiveIdleBugLateralRadius: 8
+      passiveIdleBugForwardRadius: 8
+      scaredDetectionRadius: 0
+      scaredBaseFleeSpeed: 0
+      scaredMaxFleeSpeed: 0
+      scaredSpeedBuildupRate: 0
+      scaredMaxOffRoadDistance: 0
+      scaredIdleUseBugMovement: 0
+      scaredIdleBugMoveSpeed: 0
+      scaredIdleBugDirectionChangeInterval: 0.05
+      scaredIdleBugLateralRadius: 0
+      scaredIdleBugForwardRadius: 0
+      scaredFleeFromAggressive: 0
+      scaredAggressiveDetectRadius: 0
+      scaredAggressiveLoseFearDistance: 0
+      scaredAggressiveFleeSpeedMultiplier: 0
+      scaredFleeFromNpcTraffic: 1
+      scaredNpcTrafficDetectRadius: 8
+      scaredHuntPassiveCreatures: 0
+      scaredHuntPassiveRadius: 12
+      scaredPassiveHuntLoseDistance: 20
+      scaredBugHuntSpeed: 5
+      scaredBugHuntSpeedMultiplier: 1.15
+      aggressiveIdleUseBugMovement: 0
+      aggressiveIdleBugMoveSpeed: 0
+      aggressiveIdleBugDirectionChangeInterval: 0.05
+      aggressiveIdleBugLateralRadius: 0
+      aggressiveIdleBugForwardRadius: 0
+      aggressiveHuntScaredCreatures: 0
+      aggressiveHuntRadius: 0
+      aggressiveHuntSpeedMultiplier: 0
+      aggressiveHuntNpcTraffic: 0
+      aggressiveNpcTrafficDetectRadius: 30
+      aggressiveDetectionRadius: 0
+      aggressiveChargeSpeed: 0
+      aggressiveMaxOffTrackDistance: 0
+      aggressiveCrushMassThreshold: 80
+      useBullRush: 0
+      bullRushChargeUpDuration: 0.8
+      bullRushSpeedMultiplier: 1.5
+      bullRushDuration: 1.5
+      bullRushMaxSteerRate: 15
+      bullRushOvershootDistance: 8
+      bullRushCooldown: 1
+      bullRushObstaclePushEnabled: 1
+      bullRushObstaclePushVelocityChange: 7
+      bullRushObstaclePushSpeedScale: 0.22
+      bullRushObstaclePushMaxVelocityChange: 28
+      bullRushObstacleMaxPushMass: 900
+      bullRushShowTelegraph: 0
+      bullRushLineWidth: 0.2
+      bullRushLineLength: 25
+      bullRushLineYOffset: 0.1
+      bullRushLineColorCharging: {r: 1, g: 0.3, b: 0, a: 0.7}
+      bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+      bullRushLineFadeOutTime: 0.2
+      impactCrashSeverity: 0.5
+      impactKnockbackForce: 12
+      impactLift: 3
+      impactTorque: 6
+      bullRushImpactMultiplier: 1.5
+      despawnAfterHit: 1
+      despawnDelay: 0.3
+    - id: Critter
+      prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
+      behaviorType: 1
+      baseWeight: 0.5
+      startAtNormalizedDist: 0.035
+      fullWeightNormalizedDist: 0.3
+      stopAtNormalizedDist: 1
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+      coinReward: 4
+      idleUseWalkPauseRhythm: 1
+      idleWalkSegmentMinSec: 0.9
+      idleWalkSegmentMaxSec: 3.2
+      idlePauseMinSec: 0.25
+      idlePauseMaxSec: 1.75
+      passiveWanderSpeed: 0
+      passiveDirectionChangeInterval: 0
+      passiveFleeFromScared: 0
+      passiveScaredDetectRadius: 14
+      passiveScaredLoseDistance: 28
+      passiveFleeBaseSpeed: 3.5
+      passiveFleeMaxSpeed: 10
+      passiveFleeBuildupRate: 3
+      passiveFleeMaxOffRoadDistance: 3
+      passiveUseBugIdleMovement: 1
+      passiveIdleBugMoveSpeed: 1.76
+      passiveIdleBugDirectionChangeInterval: 6
+      passiveIdleBugLateralRadius: 2.2
+      passiveIdleBugForwardRadius: 1.3
+      scaredDetectionRadius: 2.4
+      scaredBaseFleeSpeed: 2
+      scaredMaxFleeSpeed: 5.02
+      scaredSpeedBuildupRate: 1.5
+      scaredMaxOffRoadDistance: 14.12
+      scaredIdleUseBugMovement: 1
+      scaredIdleBugMoveSpeed: 1.77
+      scaredIdleBugDirectionChangeInterval: 5
+      scaredIdleBugLateralRadius: 10
+      scaredIdleBugForwardRadius: 10
+      scaredFleeFromAggressive: 1
+      scaredAggressiveDetectRadius: 3.1
+      scaredAggressiveLoseFearDistance: 7.95
+      scaredAggressiveFleeSpeedMultiplier: 1.46
+      scaredFleeFromNpcTraffic: 1
+      scaredNpcTrafficDetectRadius: 2.1
+      scaredHuntPassiveCreatures: 1
+      scaredHuntPassiveRadius: 5.1
+      scaredPassiveHuntLoseDistance: 13.6
+      scaredBugHuntSpeed: 8
+      scaredBugHuntSpeedMultiplier: 1
+      aggressiveIdleUseBugMovement: 0
+      aggressiveIdleBugMoveSpeed: 0
+      aggressiveIdleBugDirectionChangeInterval: 0.05
+      aggressiveIdleBugLateralRadius: 0
+      aggressiveIdleBugForwardRadius: 0
+      aggressiveHuntScaredCreatures: 0
+      aggressiveHuntRadius: 0
+      aggressiveHuntSpeedMultiplier: 0
+      aggressiveHuntNpcTraffic: 0
+      aggressiveNpcTrafficDetectRadius: 30
+      aggressiveDetectionRadius: 0
+      aggressiveChargeSpeed: 0
+      aggressiveMaxOffTrackDistance: 0
+      aggressiveCrushMassThreshold: 80
+      useBullRush: 0
+      bullRushChargeUpDuration: 0.8
+      bullRushSpeedMultiplier: 1.5
+      bullRushDuration: 1.5
+      bullRushMaxSteerRate: 15
+      bullRushOvershootDistance: 8
+      bullRushCooldown: 1
+      bullRushObstaclePushEnabled: 1
+      bullRushObstaclePushVelocityChange: 7
+      bullRushObstaclePushSpeedScale: 0.22
+      bullRushObstaclePushMaxVelocityChange: 28
+      bullRushObstacleMaxPushMass: 900
+      bullRushShowTelegraph: 0
+      bullRushLineWidth: 0.2
+      bullRushLineLength: 25
+      bullRushLineYOffset: 0.1
+      bullRushLineColorCharging: {r: 1, g: 0.3, b: 0, a: 0.7}
+      bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+      bullRushLineFadeOutTime: 0.2
+      impactCrashSeverity: 0.5
+      impactKnockbackForce: 12
+      impactLift: 3
+      impactTorque: 6
+      bullRushImpactMultiplier: 1.5
+      despawnAfterHit: 1
+      despawnDelay: 0.3
+    - id: Beast
+      prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
+      behaviorType: 2
+      baseWeight: 1
+      startAtNormalizedDist: 0.086
+      fullWeightNormalizedDist: 0.6
+      stopAtNormalizedDist: 1
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+      coinReward: 0
+      idleUseWalkPauseRhythm: 1
+      idleWalkSegmentMinSec: 0.9
+      idleWalkSegmentMaxSec: 3.2
+      idlePauseMinSec: 0.25
+      idlePauseMaxSec: 1.75
+      passiveWanderSpeed: 0
+      passiveDirectionChangeInterval: 0
+      passiveFleeFromScared: 0
+      passiveScaredDetectRadius: 14
+      passiveScaredLoseDistance: 28
+      passiveFleeBaseSpeed: 3.5
+      passiveFleeMaxSpeed: 10
+      passiveFleeBuildupRate: 3
+      passiveFleeMaxOffRoadDistance: 3
+      passiveUseBugIdleMovement: 0
+      passiveIdleBugMoveSpeed: 1.15
+      passiveIdleBugDirectionChangeInterval: 1.05
+      passiveIdleBugLateralRadius: 2.2
+      passiveIdleBugForwardRadius: 1.3
+      scaredDetectionRadius: 0
+      scaredBaseFleeSpeed: 0
+      scaredMaxFleeSpeed: 0
+      scaredSpeedBuildupRate: 0
+      scaredMaxOffRoadDistance: 0
+      scaredIdleUseBugMovement: 0
+      scaredIdleBugMoveSpeed: 1.25
+      scaredIdleBugDirectionChangeInterval: 1
+      scaredIdleBugLateralRadius: 2
+      scaredIdleBugForwardRadius: 1.25
+      scaredFleeFromAggressive: 0
+      scaredAggressiveDetectRadius: 18
+      scaredAggressiveLoseFearDistance: 30
+      scaredAggressiveFleeSpeedMultiplier: 1.25
+      scaredFleeFromNpcTraffic: 0
+      scaredNpcTrafficDetectRadius: 20
+      scaredHuntPassiveCreatures: 0
+      scaredHuntPassiveRadius: 12
+      scaredPassiveHuntLoseDistance: 20
+      scaredBugHuntSpeed: 5
+      scaredBugHuntSpeedMultiplier: 1.15
+      aggressiveIdleUseBugMovement: 1
+      aggressiveIdleBugMoveSpeed: 2.1
+      aggressiveIdleBugDirectionChangeInterval: 6
+      aggressiveIdleBugLateralRadius: 12
+      aggressiveIdleBugForwardRadius: 12
+      aggressiveHuntScaredCreatures: 1
+      aggressiveHuntRadius: 7.43
+      aggressiveHuntSpeedMultiplier: 2
+      aggressiveHuntNpcTraffic: 1
+      aggressiveNpcTrafficDetectRadius: 6
+      aggressiveDetectionRadius: 6
+      aggressiveChargeSpeed: 4.43
+      aggressiveMaxOffTrackDistance: 50
+      aggressiveCrushMassThreshold: 24.54
+      useBullRush: 1
+      bullRushChargeUpDuration: 0.91
+      bullRushSpeedMultiplier: 1.98
+      bullRushDuration: 5.84
+      bullRushMaxSteerRate: 0.8
+      bullRushOvershootDistance: 21.1
+      bullRushCooldown: 5
+      bullRushObstaclePushEnabled: 1
+      bullRushObstaclePushVelocityChange: 7
+      bullRushObstaclePushSpeedScale: 0.22
+      bullRushObstaclePushMaxVelocityChange: 28
+      bullRushObstacleMaxPushMass: 900
+      bullRushShowTelegraph: 1
+      bullRushLineWidth: 0.15
+      bullRushLineLength: 25
+      bullRushLineYOffset: 0.1
+      bullRushLineColorCharging: {r: 1, g: 0.8386418, b: 0, a: 0.7}
+      bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+      bullRushLineFadeOutTime: 0.2
+      impactCrashSeverity: 0.65
+      impactKnockbackForce: 12
+      impactLift: 3
+      impactTorque: 6
+      bullRushImpactMultiplier: 1.14
+      despawnAfterHit: 0
+      despawnDelay: 0.7
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    creatureSpacing: 15
+    maxActiveCreatures: 30
+    minSpawnDistanceAhead: 5
+    maxSpawnDistanceAhead: 70
+    initialPreSpawnDistance: 70
+    despawnBehindDistance: 20
+    distanceJitter: 6
+    spawnChancePerSlot: 0.5
+    spawnChanceByDistance:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.3
+        inSlope: 0
+        outSlope: 0.7
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0.7
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    lateralFraction: 0.9
+    edgeInnerMargin: 0.1
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 24576
+    raycastStartHeight: 6
+    raycastDownDistance: 20
+    creatureHeightOffset: 0.1
+    updateInterval: 0.4
+    verboseDebug: 0
+  npcTraffic:
+    overrideNpcTraffic: 1
+    preSpawnOnInitialize: 1
+    streamSpawnDuringRun: 1
+    carTypes:
+    - id: NPCCar
+      prefab: {fileID: 8123480379425158355, guid: f237c6ce6f175d64e90b970c9c2969b9, type: 3}
+      weight: 1
+      startAtNormalizedDist: 0.007
+      fullWeightNormalizedDist: 0.05
+      stopAtNormalizedDist: 1
+    - id: NPCCar BIG
+      prefab: {fileID: 8123480379425158355, guid: b03125cf9943bc348b2d519ae25f10e2, type: 3}
+      weight: 0.75
+      startAtNormalizedDist: 0.03
+      fullWeightNormalizedDist: 0.1
+      stopAtNormalizedDist: 1
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    carSpacing: 10
+    maxActiveCars: 12
+    minSpawnDistanceAhead: 10
+    maxSpawnDistanceAhead: 30.3
+    allowSpawnBehind: 1
+    minSpawnDistanceBehind: 5
+    maxSpawnDistanceBehind: 20
+    viewportMargin: -0.13
+    initialPreSpawnDistance: 17.76
+    despawnBehindDistance: 60
+    despawnCrashedAfter: 10
+    distanceJitter: 5.14
+    spawnChancePerSlot: 0.963
+    spawnChanceByDistance:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.85
+        inSlope: 0.14999998
+        outSlope: 0.14999998
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0.14999998
+        outSlope: 0.14999998
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    lateralFraction: 0.817
+    edgeMargin: 0.89
+    preferLanes: 1
+    oncomingLaneChance: 0.15
+    avoidImmediateObstacleHits: 1
+    spawnLookaheadDistance: 10
+    spawnLookaheadStep: 1
+    spawnProbeRadius: 0.5
+    spawnBlockerLayers:
+      serializedVersion: 2
+      m_Bits: 788481
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 24576
+    raycastStartHeight: 6
+    raycastDownDistance: 20
+    carHeightOffset: 0.25
+    updateInterval: 1.09
+    verboseDebug: 0

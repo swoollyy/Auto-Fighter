@@ -579,6 +579,8 @@ public class GameManager_Racing : MonoBehaviour
     {
         EnsureTrackCallbacksWired();
         uiManager?.ShowLoading("Generating track...", 0.05f);
+        // Apply the active trial's track settings before generation so BuildTrack reads them.
+        DayTrialManager.Instance?.ApplyCurrentTrialToTrack(trackGenerator);
         yield return trackGenerator.GenerateTrackCo();
 
         if (!trackGenerator.LastGenerateSucceeded)
@@ -1155,6 +1157,8 @@ public class GameManager_Racing : MonoBehaviour
         _deathStopBurstPlayed = false;
         yield return null;
 
+        // Apply the active trial's spawner settings before each spawner initializes for this run.
+        DayTrialManager.Instance?.ApplyCurrentTrialToSpawners(trackObstacleSpawner, creatureSpawner, npcCarSpawner);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);

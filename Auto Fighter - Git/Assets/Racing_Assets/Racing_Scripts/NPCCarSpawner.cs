@@ -118,6 +118,104 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's NpcTrafficSettings
+    // into these fields (call BEFORE InitializeForRun). CaptureConfig snapshots the
+    // current values into a settings object (used by the editor baker).
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.NpcTrafficSettings s)
+    {
+        if (s == null || !s.overrideNpcTraffic) return;
+
+        preSpawnOnInitialize = s.preSpawnOnInitialize;
+        streamSpawnDuringRun = s.streamSpawnDuringRun;
+
+        carTypes = s.carTypes != null ? new List<NPCCarType>(s.carTypes) : new List<NPCCarType>();
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        carSpacing = s.carSpacing;
+        maxActiveCars = s.maxActiveCars;
+        minSpawnDistanceAhead = s.minSpawnDistanceAhead;
+        maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
+
+        allowSpawnBehind = s.allowSpawnBehind;
+        minSpawnDistanceBehind = s.minSpawnDistanceBehind;
+        maxSpawnDistanceBehind = s.maxSpawnDistanceBehind;
+
+        viewportMargin = s.viewportMargin;
+
+        initialPreSpawnDistance = s.initialPreSpawnDistance;
+        despawnBehindDistance = s.despawnBehindDistance;
+        despawnCrashedAfter = s.despawnCrashedAfter;
+
+        distanceJitter = s.distanceJitter;
+        spawnChancePerSlot = s.spawnChancePerSlot;
+        spawnChanceByDistance = s.spawnChanceByDistance;
+
+        lateralFraction = s.lateralFraction;
+        edgeMargin = s.edgeMargin;
+        preferLanes = s.preferLanes;
+        oncomingLaneChance = s.oncomingLaneChance;
+
+        avoidImmediateObstacleHits = s.avoidImmediateObstacleHits;
+        spawnLookaheadDistance = s.spawnLookaheadDistance;
+        spawnLookaheadStep = s.spawnLookaheadStep;
+        spawnProbeRadius = s.spawnProbeRadius;
+        spawnBlockerLayers = s.spawnBlockerLayers;
+
+        roadLayer = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        carHeightOffset = s.carHeightOffset;
+
+        updateInterval = s.updateInterval;
+        verboseDebug = s.verboseDebug;
+    }
+
+    public TrialConfig.NpcTrafficSettings CaptureConfig()
+    {
+        return new TrialConfig.NpcTrafficSettings
+        {
+            overrideNpcTraffic = true,
+            preSpawnOnInitialize = preSpawnOnInitialize,
+            streamSpawnDuringRun = streamSpawnDuringRun,
+            carTypes = carTypes != null ? new List<NPCCarType>(carTypes) : new List<NPCCarType>(),
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            carSpacing = carSpacing,
+            maxActiveCars = maxActiveCars,
+            minSpawnDistanceAhead = minSpawnDistanceAhead,
+            maxSpawnDistanceAhead = maxSpawnDistanceAhead,
+            allowSpawnBehind = allowSpawnBehind,
+            minSpawnDistanceBehind = minSpawnDistanceBehind,
+            maxSpawnDistanceBehind = maxSpawnDistanceBehind,
+            viewportMargin = viewportMargin,
+            initialPreSpawnDistance = initialPreSpawnDistance,
+            despawnBehindDistance = despawnBehindDistance,
+            despawnCrashedAfter = despawnCrashedAfter,
+            distanceJitter = distanceJitter,
+            spawnChancePerSlot = spawnChancePerSlot,
+            spawnChanceByDistance = spawnChanceByDistance,
+            lateralFraction = lateralFraction,
+            edgeMargin = edgeMargin,
+            preferLanes = preferLanes,
+            oncomingLaneChance = oncomingLaneChance,
+            avoidImmediateObstacleHits = avoidImmediateObstacleHits,
+            spawnLookaheadDistance = spawnLookaheadDistance,
+            spawnLookaheadStep = spawnLookaheadStep,
+            spawnProbeRadius = spawnProbeRadius,
+            spawnBlockerLayers = spawnBlockerLayers,
+            roadLayer = roadLayer,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            carHeightOffset = carHeightOffset,
+            updateInterval = updateInterval,
+            verboseDebug = verboseDebug,
+        };
+    }
+
     // -------- Internals --------
 
     private readonly List<Vector3> _path = new();

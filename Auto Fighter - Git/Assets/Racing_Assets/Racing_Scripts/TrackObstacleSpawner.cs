@@ -100,6 +100,85 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's ObstacleSettings
+    // into these fields (call BEFORE InitializeForRun). CaptureConfig snapshots the
+    // current values into a settings object (used by the editor baker).
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.ObstacleSettings s)
+    {
+        if (s == null || !s.overrideObstacles) return;
+
+        preSpawnOnInitialize = s.preSpawnOnInitialize;
+        streamSpawnDuringRun = s.streamSpawnDuringRun;
+        streamWhileQueueControlled = s.streamWhileQueueControlled;
+
+        obstacleTypes = s.obstacleTypes != null ? new List<ObstacleType>(s.obstacleTypes) : new List<ObstacleType>();
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        obstacleSpacing = s.obstacleSpacing;
+        maxActiveObstacles = s.maxActiveObstacles;
+        minSpawnDistanceAhead = s.minSpawnDistanceAhead;
+        maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
+
+        initialPreSpawnDistance = s.initialPreSpawnDistance;
+        despawnBehindDistance = s.despawnBehindDistance;
+
+        distanceJitter = s.distanceJitter;
+        spawnChancePerSlot = s.spawnChancePerSlot;
+        globalSpawnChanceByDistance = s.globalSpawnChanceByDistance;
+        lateralFraction = s.lateralFraction;
+        edgeInnerMargin = s.edgeInnerMargin;
+
+        stabilizeRigidbodiesOnSpawn = s.stabilizeRigidbodiesOnSpawn;
+        spawnKinematicDuration = s.spawnKinematicDuration;
+        disableGravityWhileKinematic = s.disableGravityWhileKinematic;
+
+        roadLayer = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        obstacleHeightOffset = s.obstacleHeightOffset;
+
+        updateInterval = s.updateInterval;
+        verboseDebug = s.verboseDebug;
+    }
+
+    public TrialConfig.ObstacleSettings CaptureConfig()
+    {
+        return new TrialConfig.ObstacleSettings
+        {
+            overrideObstacles = true,
+            preSpawnOnInitialize = preSpawnOnInitialize,
+            streamSpawnDuringRun = streamSpawnDuringRun,
+            streamWhileQueueControlled = streamWhileQueueControlled,
+            obstacleTypes = obstacleTypes != null ? new List<ObstacleType>(obstacleTypes) : new List<ObstacleType>(),
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            obstacleSpacing = obstacleSpacing,
+            maxActiveObstacles = maxActiveObstacles,
+            minSpawnDistanceAhead = minSpawnDistanceAhead,
+            maxSpawnDistanceAhead = maxSpawnDistanceAhead,
+            initialPreSpawnDistance = initialPreSpawnDistance,
+            despawnBehindDistance = despawnBehindDistance,
+            distanceJitter = distanceJitter,
+            spawnChancePerSlot = spawnChancePerSlot,
+            globalSpawnChanceByDistance = globalSpawnChanceByDistance,
+            lateralFraction = lateralFraction,
+            edgeInnerMargin = edgeInnerMargin,
+            stabilizeRigidbodiesOnSpawn = stabilizeRigidbodiesOnSpawn,
+            spawnKinematicDuration = spawnKinematicDuration,
+            disableGravityWhileKinematic = disableGravityWhileKinematic,
+            roadLayer = roadLayer,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            obstacleHeightOffset = obstacleHeightOffset,
+            updateInterval = updateInterval,
+            verboseDebug = verboseDebug,
+        };
+    }
+
 
     private List<Vector3> _path = new();
     private float[] _cumLengths;
