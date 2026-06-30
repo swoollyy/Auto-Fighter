@@ -85,6 +85,82 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's CreatureSettings
+    // into these fields (call BEFORE InitializeForRun). CaptureConfig snapshots the
+    // current values into a settings object (used by the editor baker).
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.CreatureSettings s)
+    {
+        if (s == null || !s.overrideCreatures) return;
+
+        npcTrafficLayerMask = s.npcTrafficLayerMask;
+        creatureObstacleAvoidanceLayers = s.creatureObstacleAvoidanceLayers;
+
+        preSpawnOnInitialize = s.preSpawnOnInitialize;
+        streamSpawnDuringRun = s.streamSpawnDuringRun;
+
+        creatureTypes = s.creatureTypes != null ? new List<CreatureTypeConfig>(s.creatureTypes) : new List<CreatureTypeConfig>();
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        creatureSpacing = s.creatureSpacing;
+        maxActiveCreatures = s.maxActiveCreatures;
+        minSpawnDistanceAhead = s.minSpawnDistanceAhead;
+        maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
+
+        initialPreSpawnDistance = s.initialPreSpawnDistance;
+        despawnBehindDistance = s.despawnBehindDistance;
+
+        distanceJitter = s.distanceJitter;
+        spawnChancePerSlot = s.spawnChancePerSlot;
+        spawnChanceByDistance = s.spawnChanceByDistance;
+
+        lateralFraction = s.lateralFraction;
+        edgeInnerMargin = s.edgeInnerMargin;
+
+        roadLayer = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        creatureHeightOffset = s.creatureHeightOffset;
+
+        updateInterval = s.updateInterval;
+        verboseDebug = s.verboseDebug;
+    }
+
+    public TrialConfig.CreatureSettings CaptureConfig()
+    {
+        return new TrialConfig.CreatureSettings
+        {
+            overrideCreatures = true,
+            npcTrafficLayerMask = npcTrafficLayerMask,
+            creatureObstacleAvoidanceLayers = creatureObstacleAvoidanceLayers,
+            preSpawnOnInitialize = preSpawnOnInitialize,
+            streamSpawnDuringRun = streamSpawnDuringRun,
+            creatureTypes = creatureTypes != null ? new List<CreatureTypeConfig>(creatureTypes) : new List<CreatureTypeConfig>(),
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            creatureSpacing = creatureSpacing,
+            maxActiveCreatures = maxActiveCreatures,
+            minSpawnDistanceAhead = minSpawnDistanceAhead,
+            maxSpawnDistanceAhead = maxSpawnDistanceAhead,
+            initialPreSpawnDistance = initialPreSpawnDistance,
+            despawnBehindDistance = despawnBehindDistance,
+            distanceJitter = distanceJitter,
+            spawnChancePerSlot = spawnChancePerSlot,
+            spawnChanceByDistance = spawnChanceByDistance,
+            lateralFraction = lateralFraction,
+            edgeInnerMargin = edgeInnerMargin,
+            roadLayer = roadLayer,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            creatureHeightOffset = creatureHeightOffset,
+            updateInterval = updateInterval,
+            verboseDebug = verboseDebug,
+        };
+    }
+
     // -------- Internals --------
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;

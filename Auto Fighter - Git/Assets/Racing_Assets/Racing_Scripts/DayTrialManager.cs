@@ -24,21 +24,10 @@ public class DayTrialManager : MonoBehaviour
 {
     public static DayTrialManager Instance { get; private set; }
 
-    [Serializable]
-    public class TrialDefinition
-    {
-        [Tooltip("Optional label shown in the inspector / logs (e.g. 'Trial 1 - The Outskirts').")]
-        public string label;
-
-        [Tooltip("How many days (runs) the player gets to reach the target progress before this trial fails.")]
-        [Min(1)] public int dayLimit = 5;
-
-        [Tooltip("Road progress (0 = start, 1 = end of track) the player must reach on any single run within the day limit to advance.")]
-        [Range(0f, 1f)] public float targetProgress = 0.5f;
-    }
-
-    [Header("Trials (played in order, top to bottom)")]
-    [SerializeField] private List<TrialDefinition> trials = new();
+    [Header("Trials (TrialConfig assets, played in order top to bottom)")]
+    [Tooltip("Drag your TrialConfig assets here in order. Each carries its own goal (dayLimit/targetProgress) " +
+             "plus the full track + obstacle + creature + NPC setup that gets applied when that trial is active.")]
+    [SerializeField] private List<TrialConfig> trials = new();
 
     [Header("Persistence")]
     [Tooltip("When true, day/trial/baseline load from the save file across sessions. Keep this FALSE while testing with the TEMP ClearAllData() in RacingSkillTreeManager.Awake; turn both on together for real persistence.")]
@@ -72,10 +61,33 @@ public class DayTrialManager : MonoBehaviour
 
     // ---- Public accessors ----
     public int TrialCount => trials.Count;
-    public TrialDefinition CurrentTrial =>
+
+    /// <summary>The active trial's config (track + spawner setup + goal), or null if none/out of range.</summary>
+    public TrialConfig CurrentConfig =>
         (CurrentTrialIndex >= 0 && CurrentTrialIndex < trials.Count) ? trials[CurrentTrialIndex] : null;
-    public float CurrentTargetProgress => CurrentTrial != null ? CurrentTrial.targetProgress : 1f;
-    public int CurrentDayLimit => CurrentTrial != null ? CurrentTrial.dayLimit : 0;
+
+    public float CurrentTargetProgress => CurrentConfig != null ? CurrentConfig.targetProgress : 1f;
+    public int CurrentDayLimit => CurrentConfig != null ? CurrentConfig.dayLimit : 0;
+
+    // ---- Run-start hooks (called by GameManager_Racing) ----
+
+    /// <summary>Push the active trial's track settings into the generator. Call BEFORE GenerateTrackCo().</summary>
+    public void ApplyCurrentTrialToTrack(ProceduralTrackGenerator generator)
+    {
+        if (generator == null) return;
+        var cfg = CurrentConfig;
+        if (cfg != null) generator.ApplyConfig(cfg.track);
+    }
+
+    /// <summary>Push the active trial's spawner settings into the spawners. Call BEFORE their InitializeForRun().</summary>
+    public void ApplyCurrentTrialToSpawners(TrackObstacleSpawner obstacle, TrackCreatureSpawner creature, NPCTrafficCarSpawner npc)
+    {
+        var cfg = CurrentConfig;
+        if (cfg == null) return;
+        if (obstacle != null) obstacle.ApplyConfig(cfg.obstacles);
+        if (creature != null) creature.ApplyConfig(cfg.creatures);
+        if (npc != null) npc.ApplyConfig(cfg.npcTraffic);
+    }
 
     private void Awake()
     {
@@ -105,18 +117,18 @@ public class DayTrialManager : MonoBehaviour
         if (AllTrialsCompleted)
             return; // Endless mode (added later) takes over past the final trial.
 
-        var trial = CurrentTrial;
+        var trial = CurrentConfig;
         if (trial == null)
         {
             if (verboseLogging)
-                Debug.LogWarning("[DayTrial] No trial configured; run ignored. Add entries to the Trials list.");
+                Debug.LogWarning("[DayTrial] No trial configured; run ignored. Add TrialConfig assets to the Trials list.");
             return;
         }
 
         bool reachedTarget = normalizedProgressReached >= trial.targetProgress;
 
         if (verboseLogging)
-            Debug.Log($"[DayTrial] Run done. Trial {CurrentTrialIndex} ('{trial.label}') day {CurrentDay}/{trial.dayLimit}. " +
+            Debug.Log($"[DayTrial] Run done. Trial {CurrentTrialIndex} ('{trial.trialName}') day {CurrentDay}/{trial.dayLimit}. " +
                       $"Reached {normalizedProgressReached:P0} vs target {trial.targetProgress:P0} -> {(reachedTarget ? "PASS" : "no")}.");
 
         if (reachedTarget)
@@ -154,7 +166,7 @@ public class DayTrialManager : MonoBehaviour
         CaptureBaseline(); // snapshot the (kept) progression entering the new trial
         SaveState();
 
-        if (verboseLogging) Debug.Log($"[DayTrial] Advanced to trial {CurrentTrialIndex} ('{CurrentTrial?.label}').");
+        if (verboseLogging) Debug.Log($"[DayTrial] Advanced to trial {CurrentTrialIndex} ('{CurrentConfig?.trialName}').");
         OnTrialAdvanced?.Invoke(CurrentTrialIndex);
         OnStateChanged?.Invoke();
     }

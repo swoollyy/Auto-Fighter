@@ -141,6 +141,103 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     public bool LastGenerateSucceeded { get; private set; }
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's TrackSettings
+    // into these fields (call BEFORE GenerateTrackCo so BuildTrack reads them).
+    // CaptureConfig does the reverse, used by the editor baker to snapshot the
+    // current scene setup into a TrialConfig asset.
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.TrackSettings s)
+    {
+        if (s == null || !s.overrideTrack) return;
+
+        // Object refs: null means "keep whatever the generator already has".
+        if (s.segmentPrefab != null) segmentPrefab = s.segmentPrefab;
+        if (s.roadMaterial != null) roadMaterial = s.roadMaterial;
+
+        segmentCount = s.segmentCount;
+        autoDetectSegmentLength = s.autoDetectSegmentLength;
+        segmentLength = s.segmentLength;
+
+        minTurnAngle = s.minTurnAngle;
+        startMaxTurnAngle = s.startMaxTurnAngle;
+        endMaxTurnAngle = s.endMaxTurnAngle;
+        difficultyCurve = s.difficultyCurve;
+
+        startTurnChance = s.startTurnChance;
+        endTurnChance = s.endTurnChance;
+        turnFrequencyCurve = s.turnFrequencyCurve;
+
+        maxWiggleAngle = s.maxWiggleAngle;
+        wiggleOverDistance = s.wiggleOverDistance;
+
+        useAvoidance = s.useAvoidance;
+        avoidanceRadius = s.avoidanceRadius;
+        avoidanceStrength = s.avoidanceStrength;
+        avoidanceFalloff = s.avoidanceFalloff;
+
+        constrainToGlobalDirection = s.constrainToGlobalDirection;
+        globalAlignmentStrength = s.globalAlignmentStrength;
+        maxHeadingDeviation = s.maxHeadingDeviation;
+
+        useRandomSeed = s.useRandomSeed;
+        fixedSeed = s.fixedSeed;
+
+        generateRoadMesh = s.generateRoadMesh;
+        roadWidth = s.roadWidth;
+        uvTiling = s.uvTiling;
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        preventSelfIntersections = s.preventSelfIntersections;
+        yawSearchSamples = s.yawSearchSamples;
+        collisionPadding = s.collisionPadding;
+        trackRadiusMultiplier = s.trackRadiusMultiplier;
+        recentIgnoreCount = s.recentIgnoreCount;
+    }
+
+    public TrialConfig.TrackSettings CaptureConfig()
+    {
+        return new TrialConfig.TrackSettings
+        {
+            overrideTrack = true,
+            segmentPrefab = segmentPrefab,
+            segmentCount = segmentCount,
+            autoDetectSegmentLength = autoDetectSegmentLength,
+            segmentLength = segmentLength,
+            minTurnAngle = minTurnAngle,
+            startMaxTurnAngle = startMaxTurnAngle,
+            endMaxTurnAngle = endMaxTurnAngle,
+            difficultyCurve = difficultyCurve,
+            startTurnChance = startTurnChance,
+            endTurnChance = endTurnChance,
+            turnFrequencyCurve = turnFrequencyCurve,
+            maxWiggleAngle = maxWiggleAngle,
+            wiggleOverDistance = wiggleOverDistance,
+            useAvoidance = useAvoidance,
+            avoidanceRadius = avoidanceRadius,
+            avoidanceStrength = avoidanceStrength,
+            avoidanceFalloff = avoidanceFalloff,
+            constrainToGlobalDirection = constrainToGlobalDirection,
+            globalAlignmentStrength = globalAlignmentStrength,
+            maxHeadingDeviation = maxHeadingDeviation,
+            useRandomSeed = useRandomSeed,
+            fixedSeed = fixedSeed,
+            generateRoadMesh = generateRoadMesh,
+            roadWidth = roadWidth,
+            roadMaterial = roadMaterial,
+            uvTiling = uvTiling,
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            preventSelfIntersections = preventSelfIntersections,
+            yawSearchSamples = yawSearchSamples,
+            collisionPadding = collisionPadding,
+            trackRadiusMultiplier = trackRadiusMultiplier,
+            recentIgnoreCount = recentIgnoreCount,
+        };
+    }
+
     /// <summary>Centerline used for the road mesh (smoothed when enabled).</summary>
     public void FillRoadMeshCenterPath(List<Vector3> dst)
     {

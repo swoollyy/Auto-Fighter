@@ -864,6 +864,10 @@ public class CarController : MonoBehaviour
     private float _reorientElapsed;
     private Quaternion _reorientStartRot;
     private Quaternion _reorientTargetRot;
+    private float _postCrashRecoveryUntil;
+    private const float PostCrashRecoverySeconds = 0.55f;
+
+    private bool IsPostCrashRecoveryDriving => Time.time < _postCrashRecoveryUntil;
 
     private bool _onBoostSurface;
     private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
@@ -1692,8 +1696,6 @@ public class CarController : MonoBehaviour
             }
         }
 
-        UpdateCrashReorientation();
-
         HandleInput();
 
         if (GetBoostDown() && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil && !isOutOfFuel && !isOutOfHP)
@@ -1919,7 +1921,7 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    rb.angularVelocity = Vector3.zero;
+                    FinishCrashDrivingRecovery();
                 }
 
                 _groundedTime = 0f;
@@ -1929,6 +1931,8 @@ public class CarController : MonoBehaviour
 
         var gm = gmEarly;
 
+        UpdateCrashReorientation(dt);
+
         bool outOfFuel = IsOutOfFuel;
         UpdateLandingSpeedPreservation();
         SampleGroundAndUpdateMultipliers();
@@ -1936,6 +1940,7 @@ public class CarController : MonoBehaviour
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateSteeringInputFixed();
+        SmoothDrivingGroundNormal();
         HandleSteering();
         HandleMovement();                 // coasting + existing decel logic still works
 
@@ -1947,9 +1952,9 @@ public class CarController : MonoBehaviour
         UpdateIcePhysicsTransitions();
         HandleIcePathPopup();             // ice path popup when ice handling kicks in
         ApplyRampAlignment(Time.fixedDeltaTime);
-        SmoothDrivingGroundNormal();
         ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
+        DampPostCrashLateralVelocity();
 
         CheckBoostFlash();
 
@@ -2008,13 +2013,133 @@ public class CarController : MonoBehaviour
         _isReorienting = true;
         _reorientElapsed = 0f;
 
-        rb.angularVelocity = Vector3.zero;
+        RestoreDrivingRotationLock();
 
         _reorientStartRot = transform.rotation;
+        Vector3 groundUp = SampleGroundUpForReorient();
+        _reorientTargetRot = ComputeFlatRotationPreservingHorizontalForward(_reorientStartRot, groundUp);
+    }
 
-        // Keep yaw, remove pitch/roll
-        Vector3 e = transform.eulerAngles;
-        _reorientTargetRot = Quaternion.Euler(0f, e.y, 0f);
+    /// <summary>
+    /// Re-locks rotation for normal driving (scripted yaw/tilt). Crash tumbling sets <see cref="Rigidbody.freezeRotation"/> false.
+    /// </summary>
+    private void RestoreDrivingRotationLock()
+    {
+        if (rb == null) return;
+        if (isOutOfFuel || isOutOfHP) return;
+
+        rb.angularVelocity = Vector3.zero;
+        rb.rotation = transform.rotation;
+        rb.freezeRotation = true;
+    }
+
+    /// <summary>
+    /// Called when the player regains control after a crash (upright or after reorient). Clears skid and
+    /// pauses systems that can yaw the car or fight the nose-forward drive vector briefly.
+    /// </summary>
+    private void FinishCrashDrivingRecovery()
+    {
+        if (rb == null) return;
+
+        RestoreDrivingRotationLock();
+
+        Vector3 groundUp = SampleGroundUpForReorient();
+        _groundNormalMeasured = groundUp;
+        _lastStableGroundNormal = groundUp;
+
+        AlignPlanarVelocityToCarForward(groundUp);
+
+        _postCrashRecoveryUntil = Time.time + PostCrashRecoverySeconds;
+    }
+
+    private Vector3 SampleGroundUpForReorient()
+    {
+        if (carCollider == null) return Vector3.up;
+        Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
+        if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+            return hit.normal.normalized;
+        if (_lastStableGroundNormal.sqrMagnitude > 1e-6f)
+            return _lastStableGroundNormal.normalized;
+        return Vector3.up;
+    }
+
+    /// <summary>
+    /// Upright rotation that keeps the car's horizontal facing (not euler Y, which drifts when rolled/pitched).
+    /// </summary>
+    private static Quaternion ComputeFlatRotationPreservingHorizontalForward(Quaternion current, Vector3 up)
+    {
+        up = up.sqrMagnitude > 1e-6f ? up.normalized : Vector3.up;
+
+        Vector3 fwd = current * Vector3.forward;
+        Vector3 onPlane = Vector3.ProjectOnPlane(fwd, up);
+        if (onPlane.sqrMagnitude < 1e-6f)
+        {
+            Vector3 right = current * Vector3.right;
+            onPlane = Vector3.ProjectOnPlane(right, up);
+        }
+
+        if (onPlane.sqrMagnitude < 1e-6f)
+            return Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.forward, up).normalized, up);
+
+        return Quaternion.LookRotation(onPlane.normalized, up);
+    }
+
+    private void CompleteCrashReorientation()
+    {
+        Vector3 groundUp = SampleGroundUpForReorient();
+        _reorientTargetRot = ComputeFlatRotationPreservingHorizontalForward(_reorientTargetRot, groundUp);
+        transform.rotation = _reorientTargetRot;
+
+        if (rb != null)
+            rb.rotation = _reorientTargetRot;
+
+        _isReorienting = false;
+        FinishCrashDrivingRecovery();
+    }
+
+    /// <summary>
+    /// Removes sideways crash slide so throttle pushes along the car nose, not into a diagonal skid.
+    /// </summary>
+    private void AlignPlanarVelocityToCarForward(Vector3 up)
+    {
+        if (rb == null) return;
+
+        up = up.sqrMagnitude > 1e-6f ? up.normalized : Vector3.up;
+
+        Vector3 driveFwd = Vector3.ProjectOnPlane(transform.forward, up);
+        if (driveFwd.sqrMagnitude < 1e-6f) return;
+        driveFwd.Normalize();
+
+        Vector3 v = rb.velocity;
+        Vector3 vTan = Vector3.ProjectOnPlane(v, up);
+        float vn = Vector3.Dot(v, up);
+
+        float fwdSpeed = Vector3.Dot(vTan, driveFwd);
+        Vector3 lateral = vTan - driveFwd * fwdSpeed;
+        if (lateral.sqrMagnitude < 1e-6f) return;
+
+        rb.velocity = driveFwd * fwdSpeed + vn * up;
+    }
+
+    /// <summary>While recovering from a crash, bleed off sideways slide each frame so wheel friction cannot reintroduce a twitch.</summary>
+    private void DampPostCrashLateralVelocity()
+    {
+        if (!IsPostCrashRecoveryDriving || rb == null) return;
+
+        Vector3 up = _lastStableGroundNormal.sqrMagnitude > 1e-6f ? _lastStableGroundNormal.normalized : Vector3.up;
+        Vector3 driveFwd = Vector3.ProjectOnPlane(transform.forward, up);
+        if (driveFwd.sqrMagnitude < 1e-6f) return;
+        driveFwd.Normalize();
+
+        Vector3 v = rb.velocity;
+        Vector3 vTan = Vector3.ProjectOnPlane(v, up);
+        float fwdSpeed = Vector3.Dot(vTan, driveFwd);
+        Vector3 lateral = vTan - driveFwd * fwdSpeed;
+        if (lateral.sqrMagnitude < 1e-6f) return;
+
+        float vn = Vector3.Dot(v, up);
+        float keep = Mathf.Exp(-14f * Time.fixedDeltaTime);
+        rb.velocity = driveFwd * fwdSpeed + lateral * keep + vn * up;
     }
 
     /// <summary>
@@ -2166,7 +2291,7 @@ public class CarController : MonoBehaviour
         bool onIceOrTransitioning = _onIceSurface || _currentIceHandling < 0.99f;
 
         // Skip arcade ice slide during crash / mash tumble so surface type still updates (friction above) without fighting recovery motion.
-        if (onIceOrTransitioning && !_inCrash && !_flipMashActive && !_isReorienting && rb != null)
+        if (onIceOrTransitioning && !_inCrash && !_flipMashActive && !_isReorienting && !IsPostCrashRecoveryDriving && rb != null)
         {
             float speed = rb.velocity.magnitude;
 
@@ -3607,6 +3732,7 @@ public class CarController : MonoBehaviour
         }
 
         if (useAutoAlignToVelocity &&
+            !IsPostCrashRecoveryDriving &&
             Mathf.Abs(steeringInput) < 0.001f &&
             rb.velocity.sqrMagnitude > 0.1f)
         {
@@ -3646,12 +3772,26 @@ public class CarController : MonoBehaviour
             steeringInput = 0f; // if steeringInput is your cached axis
         }
 
+        if (_isReorienting)
+        {
+            forwardKey = false;
+            reverseKey = false;
+        }
+
         // Grounded check early so we can use it anywhere in this method.
         bool groundedNow = CheckIfGrounded();
         RefreshGroundNormalForDriving(groundedNow);
 
         // Throttle/brake along surface tangent when grounded (no need to wait for pitch alignment on steep terrain).
         Vector3 forward = GetDriveForwardAlongSurface(transform.forward, _lastStableGroundNormal, groundedNow);
+
+        // After crash recovery, thrust along the car nose (not a stale blended ground normal).
+        if (IsPostCrashRecoveryDriving && groundedNow)
+        {
+            Vector3 noseFwd = Vector3.ProjectOnPlane(transform.forward, _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal : Vector3.up);
+            if (noseFwd.sqrMagnitude > 1e-6f)
+                forward = noseFwd.normalized;
+        }
 
         float speed = rb.velocity.magnitude;
         float forwardSpeed = Vector3.Dot(rb.velocity, forward);
@@ -3830,7 +3970,8 @@ public class CarController : MonoBehaviour
         // Uphill assist: ramps up/down smoothly so steep ramps don't feel underpowered or jerky.
         float assistTarget = 0f;
         Vector3 assistDir = forward;
-        bool throttleForAssist = forwardKey && !reverseKey && !isOutOfFuel && maxFuel > 0f && groundedNow;
+        bool throttleForAssist = forwardKey && !reverseKey && !isOutOfFuel && maxFuel > 0f && groundedNow
+            && !IsPostCrashRecoveryDriving;
         if (throttleForAssist && TryGetSlopeDriveAssist(out Vector3 surfFwd, out float extraA))
         {
             assistDir = surfFwd;
@@ -3941,7 +4082,6 @@ public class CarController : MonoBehaviour
                 }
             }
         }
-        // Non-drift speed cap: ApplyGroundAwareSpeedCapClamp (end of FixedUpdate, after boost pads & ramp sampling).
     }
 
 
@@ -4464,6 +4604,7 @@ public class CarController : MonoBehaviour
         if (!enableRampAlignment) return;
         if (rb == null) return;
         if (_inCrash || _isReorienting) return;     // don't fight crash/recovery
+        if (IsPostCrashRecoveryDriving) return;
         if (IsCrashInvulnerable) return;
         if (IsDeadForMashRecovery || _flipMashActive)
             return;
@@ -5671,13 +5812,7 @@ public class CarController : MonoBehaviour
         // Only do upright reorientation if we were actually flipped
         if (_isFlippedDuringRecovery)
         {
-            _isReorienting = true;
-            _reorientElapsed = 0f;
-            _reorientStartRot = transform.rotation;
-
-            Vector3 euler = transform.eulerAngles;
-            _reorientTargetRot = Quaternion.Euler(0f, euler.y, 0f);
-
+            StartReorientToFlat();
             if (rb != null)
                 rb.position += Vector3.up * flipUprightLift;
         }
@@ -6651,7 +6786,7 @@ public class CarController : MonoBehaviour
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
     }
 
-    private void UpdateCrashReorientation()
+    private void UpdateCrashReorientation(float dt)
     {
         var gm = GameManager_Racing.Instance;
 
@@ -6660,7 +6795,6 @@ public class CarController : MonoBehaviour
         // Never fight flip-mash mode.
         if (_flipMashActive) return;
 
-
         if (IsDeadForMashRecovery || (gm != null && gm.RunEnded))
         {
             _isReorienting = false;
@@ -6668,29 +6802,17 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        _reorientElapsed += Time.deltaTime;
+        _reorientElapsed += dt;
         float t = Mathf.Clamp01(_reorientElapsed / reorientDuration);
 
-        // Smoothly slerp while reorienting
-        transform.rotation = Quaternion.Slerp(_reorientStartRot, _reorientTargetRot, t);
+        Quaternion newRot = Quaternion.Slerp(_reorientStartRot, _reorientTargetRot, t);
+        if (rb != null)
+            rb.MoveRotation(newRot);
+        else
+            transform.rotation = newRot;
 
         if (t >= 1f)
-        {
-            // Ensure exact, no residual tilt on X/Z — snap final rotation to zero X/Z
-            Vector3 finalEuler = transform.eulerAngles;
-            transform.rotation = Quaternion.Euler(0f, finalEuler.y, 0f);
-
-            // Also enforce on Rigidbody to avoid physics re-introducing tilt
-            if (rb != null)
-            {
-                rb.angularVelocity = Vector3.zero;
-                rb.rotation = transform.rotation;
-                rb.drag = _baseDrag;
-                rb.angularDrag = _baseAngularDrag;
-            }
-
-            _isReorienting = false;
-        }
+            CompleteCrashReorientation();
     }
 
     // Helper: spawn impact VFX at world position with optional orientation (normal)
