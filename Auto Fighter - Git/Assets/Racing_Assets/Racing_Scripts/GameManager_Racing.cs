@@ -149,6 +149,9 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Range(0f, 10f)] private float closeCallZoomDeltaFOV = 2f; // how many degrees to zoom in
     [SerializeField, Range(0.05f, 1f)] private float closeCallZoomDuration = 0.25f;
 
+    // Cached post-FX controller used to replay the close-call-style burst for other events (e.g. ice path).
+    private ForcefieldPostFXController _closeCallStylePostFX;
+
     [Header("Close-Call Audio")]
     [SerializeField, Tooltip("One-shot SFX played when a close-call (near miss) occurs.")]
     private AudioClip closeCallClip;
@@ -794,14 +797,8 @@ public class GameManager_Racing : MonoBehaviour
             RacingPopups.CloseCall(closestDistance, popupPos);
         }
 
-        // Play a small PPS burst (chromatic + lens) centered on event
-        var postFX = FindObjectOfType<ForcefieldPostFXController>();
-        if (postFX != null)
-        {
-            float chroma = closeCallChromatic;
-            float lens = closeCallLens;
-            postFX.PlayBurstCustom(chroma, lens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
-        }
+        // Play a small PPS burst (chromatic + lens + bloom glow) centered on event
+        PlayCloseCallStyleFXBurst();
 
         // Play close-call SFX
         if (closeCallClip != null)
@@ -822,6 +819,20 @@ public class GameManager_Racing : MonoBehaviour
         {
             cameraFollow.ZoomPulse(closeCallZoomDeltaFOV, closeCallZoomDuration);
         }
+    }
+
+    /// <summary>
+    /// Plays the close-call screen "flair": the same chromatic + lens + bloom glow post-FX burst
+    /// used when a close call happens. Reused by other events (e.g. entering an ice path) that want
+    /// to flash the screen exactly like a close call. Uses the shared close-call FX tuning values.
+    /// </summary>
+    public void PlayCloseCallStyleFXBurst()
+    {
+        if (_closeCallStylePostFX == null)
+            _closeCallStylePostFX = FindObjectOfType<ForcefieldPostFXController>();
+
+        if (_closeCallStylePostFX != null)
+            _closeCallStylePostFX.PlayBurstCustom(closeCallChromatic, closeCallLens, closeCallSlowMoHold * 0.9f, 0.04f, 0.15f);
     }
 
     private IEnumerator CloseCallSlowMoRoutine()

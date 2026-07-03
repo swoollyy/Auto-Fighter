@@ -1526,12 +1526,12 @@ MonoBehaviour:
   landingBoostFalloff: 1.5
   enableBadLandingCrash: 1
   badLandingMinAirborneSeconds: 0.2
-  badLandingUpAlignDotMin: 0.45
-  badLandingForwardNormalDotMax: 0.45
+  badLandingUpAlignDotMin: 0.332
+  badLandingForwardNormalDotMax: 0.989
   badLandingCrashSeverity: 0.1
-  badLandingSpeedRetain: 0.32
+  badLandingSpeedRetain: 0.41
   badLandingVerticalSpeedRetain: 0.08
-  badLandingTumbleTorque: 5.5
+  badLandingTumbleTorque: 5.64
   badLandingAngularSpeedRetain: 0.82
   badLandingMaxAngularSpeed: 10
 --- !u!114 &632556853857277878

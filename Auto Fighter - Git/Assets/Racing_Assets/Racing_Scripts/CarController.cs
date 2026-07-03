@@ -2334,6 +2334,9 @@ public class CarController : MonoBehaviour
             if (enablePopupText && RacingPopups.IsReady)
                 RacingPopups.IcePath(GetPopupPosition());
 
+            // Flash the screen like a close call: reuse the same chromatic + lens + bloom glow burst.
+            GameManager_Racing.Instance?.PlayCloseCallStyleFXBurst();
+
             _nextIcePathPopupTime = Time.time + ICE_PATH_POPUP_COOLDOWN;
         }
 

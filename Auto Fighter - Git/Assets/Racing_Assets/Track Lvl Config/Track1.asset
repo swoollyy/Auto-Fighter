@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   trialName: Track1
   designerNotes: 
-  dayLimit: 5
+  dayLimit: 30
   targetProgress: 1
   track:
     overrideTrack: 1

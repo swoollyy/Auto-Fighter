@@ -66,6 +66,9 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Tooltip("Maximum fraction of the full usable lane width used for this shuttle's travel path.")]
     [SerializeField, Range(0.1f, 1f)] private float maxPathFraction = 1f;
 
+    [Tooltip("Minimum straight-line travel span (XZ meters) after trimming/randomization. If there's less room than this, the shuttle stays put instead of telegraphing without ever moving.")]
+    [SerializeField, Min(0f)] private float minTravelSpan = 0.75f;
+
     [Header("Flat Path Constraint")]
     [Tooltip("Keep shuttle path strictly flat in world Y and trim endpoint span when edge terrain starts rising/falling.")]
     [SerializeField] private bool keepPathFlatAndTrimOnElevation = true;
@@ -222,6 +225,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private bool _initialized;
     private float _pathTravelY;
     private bool _targetIsRight;
+    private bool _hasValidTravelPath = true;
 
     // NEW: collision tracking for delayed conversion
     private int _pendingCollisionFrames = 0;
@@ -333,8 +337,22 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _pathTravelY = startWS.y - _bottomOffset + safeMargin;
         ApplyPathTravelYToEndpoints();
 
-        _targetIsRight = !startOnLeft;
+        // Must match the actual first target: targetWS = startOnLeft ? _rightWS : _leftWS,
+        // so heading-right is true exactly when we start on the left. (Previously inverted,
+        // which made the first OnReachedPathEnd flip the target back onto the endpoint we
+        // just reached — causing a telegraph/wait with no movement, then an instant repeat.)
+        _targetIsRight = startOnLeft;
         _targetWS = EndpointWithTravelY(targetWS);
+
+        // Guard against degenerate paths: when elevation trimming and/or path-length
+        // randomization collapse both endpoints toward the origin, the travel span can
+        // shrink to ~0 (or below the preview "near end" distance). Without this guard the
+        // shuttle just re-runs the reach → wait → telegraph loop forever without moving.
+        float travelSpanXZ = Vector2.Distance(
+            new Vector2(_leftWS.x, _leftWS.z),
+            new Vector2(_rightWS.x, _rightWS.z));
+        float minSpan = Mathf.Max(minTravelSpan, pathPreviewHideBeforeEndDistance + 0.05f);
+        _hasValidTravelPath = travelSpanXZ >= minSpan;
 
         transform.position = EndpointWithTravelY(startWS);
         if (_rb != null)
@@ -369,7 +387,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _initialized = true;
 
         CaptureScaleBobBase();
-        SetTravelFxEnabled(true);
+        SetTravelFxEnabled(_hasValidTravelPath);
     }
 
     private void OnEnable()
@@ -379,6 +397,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _fxKilled = false;
         _waiting = false;
         _initialized = false;
+        _hasValidTravelPath = true;
         _pendingCollisionFrames = 0;
         _pendingCollider = null;
 
@@ -402,7 +421,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
             return;
 
         KillPathFxIfDynamic();
-        bool isTravelingNow = _initialized && !_waiting && !_convertedToPhysics && enabled && _rb != null && _rb.isKinematic
+        bool isTravelingNow = _initialized && _hasValidTravelPath && !_waiting && !_convertedToPhysics && enabled && _rb != null && _rb.isKinematic
             && !IsNearPathEnd();
         SetTravelFxEnabled(isTravelingNow);
 
@@ -460,7 +479,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
             }
         }
 
-        if (!_initialized || _waiting)
+        if (!_initialized || _waiting || !_hasValidTravelPath)
             return;
 
         Vector3 current = transform.position;
@@ -512,6 +531,19 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         _targetIsRight = !_targetIsRight;
         _targetWS = _targetIsRight ? EndpointWithTravelY(_rightWS) : EndpointWithTravelY(_leftWS);
+
+        // Safety: if the next target sits on top of where we just stopped, there is nothing to
+        // travel to. Stop here instead of starting a wait/telegraph that would resolve to an
+        // instant re-reach (the "lights up but never moves" loop).
+        float nextTargetDistXZ = Vector2.Distance(
+            new Vector2(snapped.x, snapped.z),
+            new Vector2(_targetWS.x, _targetWS.z));
+        if (nextTargetDistXZ <= 0.0001f)
+        {
+            _hasValidTravelPath = false;
+            SetTravelFxEnabled(false, true);
+            return;
+        }
 
         if (useRandomSpeed)
         {
