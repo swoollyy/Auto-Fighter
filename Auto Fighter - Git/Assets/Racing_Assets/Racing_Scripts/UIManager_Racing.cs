@@ -191,9 +191,9 @@ public class UIManager_Racing : MonoBehaviour
         if (fuelText != null)
         {
             if (showFuelAsPercent)
-                fuelText.text = $"Fuel - {car.FuelPercent * 100}%";
+                fuelText.text = $"Fuel - {FormatPercent01(car.FuelPercent)}%";
             else
-                fuelText.text = $"Fuel - {Mathf.Round(car.CurrentFuel * 10f) * .1f} / {car.MaxFuel}";
+                fuelText.text = $"Fuel - {FormatResourceValue(car.CurrentFuel)} / {FormatResourceValue(car.MaxFuel)}";
         }
 
         // HP bar
@@ -204,9 +204,9 @@ public class UIManager_Racing : MonoBehaviour
         if (hpText != null)
         {
             if (showHPAsPercent)
-                hpText.text = $"Health - {car.HPPercent * 100}%";
+                hpText.text = $"Health - {FormatPercent01(car.HPPercent)}%";
             else
-                hpText.text = $"Health - {Mathf.Round(car.CurrentHP * 10f) * .1f} / {car.MaxHP}";
+                hpText.text = $"Health - {FormatResourceValue(car.CurrentHP)} / {FormatResourceValue(car.MaxHP)}";
         }
 
         if (speedometerText != null)
@@ -320,6 +320,17 @@ public class UIManager_Racing : MonoBehaviour
         HideRunCoins();
         HideRunSprockets();
         SetSection(UISection.RunEnd);
+    }
+
+    private static string FormatPercent01(float fraction01)
+    {
+        float pct = Mathf.Clamp(fraction01 * 100f, 0f, 100f);
+        return pct.ToString("0.##");
+    }
+
+    private static string FormatResourceValue(float value)
+    {
+        return Mathf.Max(0f, value).ToString("0.##");
     }
 
     public void UpdateRunCoins(int coinsThisRun)

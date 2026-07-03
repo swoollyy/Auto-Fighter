@@ -521,21 +521,24 @@ public class GameManager_Racing : MonoBehaviour
         int distanceCoins = Mathf.RoundToInt(distanceInt * coinsPerMeter);
         _distanceCoinsThisRun = distanceCoins;
 
-        // 2) Award distance coins into the *global* currency pool
-        int finalTotalCurrency = 0;
-        if (mgr != null)
-        {
-            mgr.AddCurrency(distanceCoins);
-            finalTotalCurrency = mgr.Currency;
-        }
-
-        // 3) Full breakdown
+        // 2) Deposit all run earnings into the wallet at once (pickups/obstacles were tracked, not deposited mid-run).
         int totalCoinsThisRun =
             _distanceCoinsThisRun +
             _pickupCoinsThisRun +
             _obstacleCoinsThisRun;
 
-        // 4) Show breakdown + wallet total (matches skill tree) and run-only sprockets
+        int finalTotalCurrency = _startingCurrency;
+        if (mgr != null && totalCoinsThisRun > 0)
+        {
+            mgr.AddCurrency(totalCoinsThisRun);
+            finalTotalCurrency = mgr.Currency;
+        }
+        else if (mgr != null)
+        {
+            finalTotalCurrency = mgr.Currency;
+        }
+
+        // 3) Show breakdown + wallet total (matches skill tree) and run-only sprockets
         uiManager?.ShowRunComplete(
             distanceInt,
             _distanceCoinsThisRun,
@@ -673,8 +676,7 @@ public class GameManager_Racing : MonoBehaviour
             StartCrashSlowMo(sev);
         }
 
-        // Currency penalties (percentage-based) — only while the run is still open.
-        // After FinalizeRun, the car may still collide; do not change wallet or run totals.
+        // Currency penalties — only deduct from this run's collected coins, never the pre-run wallet.
         if (enableCurrencyLossOnCrash && !_currencyAwarded)
         {
             int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
@@ -685,10 +687,6 @@ public class GameManager_Racing : MonoBehaviour
                 int loss = Mathf.Clamp(Mathf.Max(requested, minLoss), 0, runCoins);
 
                 int removed = DeductRunCoins(loss);
-
-                // Counters and wallet must stay in sync — pickups/obstacles already added via AddCurrency.
-                if (removed > 0)
-                    RacingSkillTreeManager.Instance?.RemoveCurrency(removed);
 
                 if (removed > 0 && RacingPopups.IsReady && carController != null)
                 {
@@ -768,15 +766,8 @@ public class GameManager_Racing : MonoBehaviour
             int coins = mgr.GetCloseCallCoins();
             if (coins > 0)
             {
-                // Award coins
-                mgr.AddCurrency(coins);
-                _pickupCoinsThisRun += coins; // Track for run summary
+                RegisterCoinPickup(coins);
 
-                // Update live UI
-                int totalCoins = _distanceCoinsThisRun + _pickupCoinsThisRun + _obstacleCoinsThisRun;
-                uiManager?.UpdateRunCoins(totalCoins);
-
-                // Spawn coin popup
                 if (RacingPopups.IsReady)
                 {
                     Vector3 popupPos = pos + Vector3.up * 2f;
@@ -1158,7 +1149,8 @@ public class GameManager_Racing : MonoBehaviour
         yield return null;
 
         // Apply the active trial's spawner settings before each spawner initializes for this run.
-        DayTrialManager.Instance?.ApplyCurrentTrialToSpawners(trackObstacleSpawner, creatureSpawner, npcCarSpawner);
+        DayTrialManager.Instance?.ApplyCurrentTrialToSpawners(
+            trackObstacleSpawner, creatureSpawner, npcCarSpawner, trackCoinSpawner);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);

@@ -193,19 +193,10 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
     private void RebuildSplineCache()
     {
         _path.Clear();
-        if (!trackGenerator || trackGenerator.PathPoints == null) return;
-        _path.AddRange(trackGenerator.PathPoints);
-        if (_path.Count < 2) return;
-
-        _cumDistances = new float[_path.Count];
-        _cumDistances[0] = 0f;
-        float accum = 0f;
-        for (int i = 1; i < _path.Count; i++)
-        {
-            accum += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumDistances[i] = accum;
-        }
-        _trackTotalLength = accum;
+        _cumDistances = null;
+        _trackTotalLength = 0f;
+        if (!trackGenerator) return;
+        TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumDistances, out _trackTotalLength);
     }
 
     private bool TrySpawnPredictive()

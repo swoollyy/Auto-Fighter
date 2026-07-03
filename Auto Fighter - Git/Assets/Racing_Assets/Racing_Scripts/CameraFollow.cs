@@ -55,7 +55,23 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("When drifting, multiply rotation lag by this (camera lags more). Falls off with drift charge like drift turn.")]
     [SerializeField, Min(0.01f)] private float driftRotationLagMultiplier = 1.5f;
 
+    [Header("Air Trick Camera Lock")]
+    [Tooltip("While tricking in the air: keep camera upright with a fixed heading, but still follow the car's position.")]
+    [SerializeField] private bool enableTrickCameraFreeze = true;
+    [Tooltip("How fast the camera blends into the frozen trick pose.")]
+    [SerializeField, Min(0.5f)] private float trickCameraBlendInSpeed = 12f;
+    [Tooltip("How fast the camera blends back to normal follow after releasing tricks (lower = softer).")]
+    [SerializeField, Min(0.5f)] private float trickCameraBlendOutSpeed = 3.5f;
+    [Tooltip("Rotation follow multiplier while easing out of trick lock (lower = less snap).")]
+    [SerializeField, Range(0.05f, 1f)] private float trickReleaseRotationFollowScale = 0.28f;
+    [Tooltip("How quickly camera heading catches the car after trick release, scaled by blend-out progress.")]
+    [SerializeField, Min(0.5f)] private float trickReleaseForwardCatchup = 5f;
+
     private Vector3 smoothedForward = Vector3.zero;
+    private float _trickCameraBlend;
+    private Vector3 _trickLockForward = Vector3.forward;
+    private Quaternion _trickLockRotation;
+    private bool _wasInAirTrickMode;
 
     // Screen shake state
     private float shakeTimer = 0f;
@@ -322,7 +338,6 @@ public class CameraFollow : MonoBehaviour
     {
         if (target == null) return;
 
-        // Build yaw-only forward
         Vector3 targetForwardFlat = target.forward;
         targetForwardFlat.y = 0f;
         if (targetForwardFlat.sqrMagnitude < 0.0001f)
@@ -332,117 +347,202 @@ public class CameraFollow : MonoBehaviour
         if (smoothedForward == Vector3.zero)
             smoothedForward = targetForwardFlat;
 
+        bool inAirTrickMode = enableTrickCameraFreeze && car != null && car.IsInAirTrickMode;
+        if (inAirTrickMode && !_wasInAirTrickMode)
+            CaptureTrickCameraLock();
+        if (!inAirTrickMode && _wasInAirTrickMode)
+        {
+            smoothedForward = _trickLockForward;
+            _prevTargetForwardFlat = _trickLockForward;
+            _currentZRoll = 0f;
+        }
+
+        _wasInAirTrickMode = inAirTrickMode;
+
+        float blendTarget = inAirTrickMode ? 1f : 0f;
+        float blendSpeed = inAirTrickMode ? trickCameraBlendInSpeed : trickCameraBlendOutSpeed;
+        _trickCameraBlend = Mathf.Lerp(
+            _trickCameraBlend,
+            blendTarget,
+            1f - Mathf.Exp(-blendSpeed * Time.deltaTime));
+
+        bool fullyLocked = inAirTrickMode && _trickCameraBlend >= 0.995f;
+        float blendT = Mathf.SmoothStep(0f, 1f, _trickCameraBlend);
+
+        Vector3 basePos;
+        Quaternion baseRot;
+        if (fullyLocked)
+        {
+            smoothedForward = _trickLockForward;
+            basePos = ComputeTrickPositionFollow();
+            baseRot = _trickLockRotation;
+        }
+        else
+        {
+            ComputeNormalFollow(targetForwardFlat, _trickCameraBlend, inAirTrickMode, out Vector3 normalPos, out Quaternion normalRot);
+            if (_trickCameraBlend > 0.001f)
+            {
+                Vector3 trickPos = ComputeTrickPositionFollow();
+                basePos = Vector3.Lerp(normalPos, trickPos, blendT);
+                baseRot = Quaternion.Slerp(normalRot, _trickLockRotation, blendT);
+            }
+            else
+            {
+                basePos = normalPos;
+                baseRot = normalRot;
+            }
+        }
+
+        Vector3 shakeOffset = ComputeShakeOffset(baseRot);
+
+        transform.position = basePos + shakeOffset;
+        transform.rotation = baseRot;
+
+        UpdateFOV(Time.deltaTime);
+
+        if (cam != null && car != null)
+            UpdateUnifiedAutoFov(Time.deltaTime);
+
+        if (!fullyLocked)
+            _prevTargetForwardFlat = targetForwardFlat;
+
+        HandleMapPeekInput();
+    }
+
+    private void CaptureTrickCameraLock()
+    {
+        Vector3 forward = smoothedForward;
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            forward = target.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.0001f)
+                forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        _trickLockForward = forward;
+
+        Vector3 e = Quaternion.LookRotation(forward, Vector3.up).eulerAngles;
+        e.x = cameraPitch;
+        e.z = 0f;
+        _trickLockRotation = Quaternion.Euler(e);
+    }
+
+    private Vector3 ComputeTrickPositionFollow()
+    {
+        Quaternion lockYaw = Quaternion.LookRotation(_trickLockForward, Vector3.up);
+        Vector3 desiredPos = target.position + lockYaw * offset;
+        return Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
+    }
+
+    private void ComputeNormalFollow(
+        Vector3 targetForwardFlat,
+        float trickBlend,
+        bool inAirTrickMode,
+        out Vector3 basePos,
+        out Quaternion baseRot)
+    {
         float effectiveRotationLag = rotationLag;
         if (car != null && driftRotationLagMultiplier > 1f)
         {
             float charge = car.DriftCharge;
             effectiveRotationLag = rotationLag / Mathf.Lerp(1f, driftRotationLagMultiplier, charge);
         }
-        smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, effectiveRotationLag * Time.deltaTime);
+
+        if (inAirTrickMode && trickBlend > 0.5f)
+            smoothedForward = _trickLockForward;
+        else if (trickBlend > 0.001f)
+        {
+            float catchup = trickReleaseForwardCatchup * (1f - trickBlend) * Time.deltaTime;
+            if (catchup > 0.0001f)
+                smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, catchup);
+        }
+        else
+            smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, effectiveRotationLag * Time.deltaTime);
+
         Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
 
-        // Position follow
         Vector3 desiredPos = target.position + yawOnly * offset;
-        Vector3 basePos = Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
+        float posFollow = positionFollowSpeed;
+        if (trickBlend > 0.001f)
+            posFollow = Mathf.Lerp(positionFollowSpeed, positionFollowSpeed * trickReleaseRotationFollowScale, trickBlend);
+        basePos = Vector3.Lerp(transform.position, desiredPos, posFollow * Time.deltaTime);
 
-        // Rotation with fixed pitch
         Vector3 e = yawOnly.eulerAngles;
         e.x = cameraPitch;
 
-        // Compute Z roll based on recent turn sharpness + lateral velocity (drift)
         float rollAngle = 0f;
         if (enableZRoll)
         {
-            // Yaw-rate estimate (deg/sec) by comparing previous flat forward to current
             float signedYawDelta = Vector3.SignedAngle(_prevTargetForwardFlat, targetForwardFlat, Vector3.up);
             float yawRateDegPerSec = signedYawDelta / Mathf.Max(1e-6f, Time.deltaTime);
-
-            // normalize yawRate
             float yawNorm = Mathf.Clamp(yawRateDegPerSec / zRollYawRateDivisor, -1f, 1f);
 
-            // lateral velocity factor from Rigidbody (if available) to amplify when drifting
             float lateralFactor = 0f;
-            if (target != null)
+            var rb = target.GetComponent<Rigidbody>();
+            if (rb != null)
             {
-                var rb = target.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    // use target.right (vehicle local lateral) to sample lateral component
-                    float lateralVel = Vector3.Dot(rb.velocity, target.right);
-                    lateralFactor = Mathf.Clamp01(Mathf.Abs(lateralVel) / lateralVelocityNormalization);
-                }
+                float lateralVel = Vector3.Dot(rb.velocity, target.right);
+                lateralFactor = Mathf.Clamp01(Mathf.Abs(lateralVel) / lateralVelocityNormalization);
             }
 
-            // combine into roll target (signed)
             float sign = invertZRoll ? -1f : 1f;
-            float baseRoll = yawNorm * zRollScale * 180f * sign; // yawNorm * (zRollScale * 180) -> degrees
+            float baseRoll = yawNorm * zRollScale * 180f * sign;
             float driftAmp = 1f + (driftInfluence * lateralFactor);
             float rollTarget = Mathf.Clamp(baseRoll * driftAmp, -maxRollDegrees, maxRollDegrees);
-
-            // smooth
             _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmoothing * Time.deltaTime));
-            rollAngle = _currentZRoll;
+            rollAngle = _currentZRoll * (1f - trickBlend);
         }
 
-        // apply roll (Z) into Euler before creating quaternion
         e.z = rollAngle;
-
         Quaternion desiredRot = Quaternion.Euler(e);
-        Quaternion baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotationFollowSpeed * Time.deltaTime);
+        float rotFollow = rotationFollowSpeed;
+        if (trickBlend > 0.001f)
+            rotFollow = Mathf.Lerp(rotationFollowSpeed, rotationFollowSpeed * trickReleaseRotationFollowScale, trickBlend);
+        baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotFollow * Time.deltaTime);
+    }
 
-        // Shake
-        Vector3 shakeOffset = Vector3.zero;
-        if (shakeTimer > 0f && shakeDuration > 0f && shakeStrength > 0f)
-        {
-            shakeTimer -= Time.deltaTime;
-            float remaining = Mathf.Max(0f, shakeTimer);
-            float elapsed = Mathf.Clamp(shakeDuration - remaining, 0f, shakeDuration);
-            float t = shakeDuration > 0f ? (elapsed / shakeDuration) : 1f;
-            float amplitude = 1f - t;
-            amplitude *= amplitude;
-
-            float frequency = Mathf.Max(1, shakeVibrato);
-            float angle = (elapsed + shakeSeed) * frequency * Mathf.PI * 2f;
-            Vector2 osc = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-
-            if (shakeRandomness > 0f)
-            {
-                float r1 = Mathf.PerlinNoise(shakeSeed, elapsed * 10f) * 2f - 1f;
-                float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsed * 10f) * 2f - 1f;
-                osc += new Vector2(r1, r2) * (shakeRandomness / 180f);
-            }
-
-            if (osc.sqrMagnitude > 0.0001f)
-                osc.Normalize();
-
-            Vector3 right = baseRot * Vector3.right;
-            Vector3 up = baseRot * Vector3.up;
-            shakeOffset = (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
-        }
-        else
+    private Vector3 ComputeShakeOffset(Quaternion baseRot)
+    {
+        if (shakeTimer <= 0f || shakeDuration <= 0f || shakeStrength <= 0f)
         {
             shakeTimer = 0f;
+            return Vector3.zero;
         }
 
-        transform.position = basePos + shakeOffset;
-        transform.rotation = baseRot;
+        shakeTimer -= Time.deltaTime;
+        float remaining = Mathf.Max(0f, shakeTimer);
+        float elapsed = Mathf.Clamp(shakeDuration - remaining, 0f, shakeDuration);
+        float t = shakeDuration > 0f ? (elapsed / shakeDuration) : 1f;
+        float amplitude = 1f - t;
+        amplitude *= amplitude;
 
-        // Manual animation step
-        UpdateFOV(Time.deltaTime);
+        float frequency = Mathf.Max(1, shakeVibrato);
+        float angle = (elapsed + shakeSeed) * frequency * Mathf.PI * 2f;
+        Vector2 osc = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
 
-        if (cam != null && car != null)
-            UpdateUnifiedAutoFov(Time.deltaTime);
+        if (shakeRandomness > 0f)
+        {
+            float r1 = Mathf.PerlinNoise(shakeSeed, elapsed * 10f) * 2f - 1f;
+            float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsed * 10f) * 2f - 1f;
+            osc += new Vector2(r1, r2) * (shakeRandomness / 180f);
+        }
 
-        // record previous forward for next frame yaw-rate estimate
-        _prevTargetForwardFlat = targetForwardFlat;
+        if (osc.sqrMagnitude > 0.0001f)
+            osc.Normalize();
 
-        HandleMapPeekInput();
+        Vector3 right = baseRot * Vector3.right;
+        Vector3 up = baseRot * Vector3.up;
+        return (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
     }
 
     public void SetTarget(Transform t)
     {
         target = t;
         smoothedForward = Vector3.zero;
+        _trickCameraBlend = 0f;
+        _wasInAirTrickMode = false;
         if (car == null && t != null)
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
 

@@ -19,10 +19,10 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 200
+    segmentCount: 100
     autoDetectSegmentLength: 1
-    segmentLength: 8
-    minTurnAngle: 30
+    segmentLength: 5
+    minTurnAngle: 10
     startMaxTurnAngle: 45
     endMaxTurnAngle: 125
     difficultyCurve:
@@ -30,33 +30,33 @@ MonoBehaviour:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.25
-        inSlope: 0
-        outSlope: 0
+        value: 0.04
+        inSlope: 0.14439885
+        outSlope: 0.14439885
         tangentMode: 0
         weightedMode: 0
         inWeight: 0
-        outWeight: 0
+        outWeight: 0.3365059
       - serializedVersion: 3
         time: 1
-        value: 1
-        inSlope: 2
-        outSlope: 2
+        value: 0.4
+        inSlope: 1.1064818
+        outSlope: 1.1064818
         tangentMode: 0
         weightedMode: 0
-        inWeight: 0
+        inWeight: 0.08098912
         outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    startTurnChance: 0.59
+    startTurnChance: 0.28
     endTurnChance: 0.908
     turnFrequencyCurve:
       serializedVersion: 2
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.3
+        value: 0.2
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -75,8 +75,8 @@ MonoBehaviour:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    maxWiggleAngle: 11.58
-    wiggleOverDistance: 0.885
+    maxWiggleAngle: 7
+    wiggleOverDistance: 0.542
     useAvoidance: 1
     avoidanceRadius: 2.92
     avoidanceStrength: 0.828
@@ -87,9 +87,9 @@ MonoBehaviour:
     useRandomSeed: 1
     fixedSeed: 12345
     generateRoadMesh: 1
-    roadWidth: 6.5
+    roadWidth: 5.5
     roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
-    uvTiling: 0.1
+    uvTiling: 0.08
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     preventSelfIntersections: 1
@@ -105,7 +105,7 @@ MonoBehaviour:
     obstacleTypes:
     - id: Boulder
       prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
-      baseWeight: 1
+      baseWeight: 2
       startAtNormalizedDist: 0.05
       fullWeightNormalizedDist: 0.35
       stopAtNormalizedDist: 0.5
@@ -121,7 +121,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Barrier
       prefab: {fileID: 3874382558013832276, guid: b3d9c63f4edc44242a107ccad0185dd0, type: 3}
-      baseWeight: 0.9
+      baseWeight: 1.3
       startAtNormalizedDist: 0.001
       fullWeightNormalizedDist: 0.085
       stopAtNormalizedDist: 0.6
@@ -137,7 +137,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Shuttle Track Obstacle
       prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
-      baseWeight: 1
+      baseWeight: 2
       startAtNormalizedDist: 0.001
       fullWeightNormalizedDist: 0.1
       stopAtNormalizedDist: 0.3
@@ -145,7 +145,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Boost Ramp
       prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
-      baseWeight: 0.5
+      baseWeight: 1
       startAtNormalizedDist: 0.001
       fullWeightNormalizedDist: 0.1
       stopAtNormalizedDist: 0.3
@@ -161,13 +161,13 @@ MonoBehaviour:
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacing: 4.6
+    obstacleSpacing: 6
     maxActiveObstacles: 200
     minSpawnDistanceAhead: 80
     maxSpawnDistanceAhead: 150
     initialPreSpawnDistance: 80
     despawnBehindDistance: 20
-    distanceJitter: 4.1
+    distanceJitter: 2.4
     spawnChancePerSlot: 0.9
     globalSpawnChanceByDistance:
       serializedVersion: 2
@@ -597,3 +597,256 @@ MonoBehaviour:
     carHeightOffset: 0.25
     updateInterval: 1.09
     verboseDebug: 0
+  coins:
+    overrideCoins: 1
+    coinTypeWeights:
+    - coinType: 0
+      enabled: 1
+      globalScale: 1.12
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0.015
+          value: 0.9
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 1
+          value: 0.1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    - coinType: 1
+      enabled: 1
+      globalScale: 0.95
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0.015
+          value: 0.35
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 0.5
+          value: 0.9
+          inSlope: 0.82987446
+          outSlope: 0.82987446
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0.33333334
+          outWeight: 0.33333334
+        - serializedVersion: 3
+          time: 1
+          value: 0.75
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    - coinType: 2
+      enabled: 1
+      globalScale: 0.8
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0.015
+          value: 0.1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 1
+          value: 0.9
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    - coinType: 3
+      enabled: 0
+      globalScale: 0.4
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 1
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    - coinType: 4
+      enabled: 0
+      globalScale: 0.15
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 1
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    - coinType: 5
+      enabled: 0
+      globalScale: 0.05
+      distanceCurve:
+        serializedVersion: 2
+        m_Curve:
+        - serializedVersion: 3
+          time: 0
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        - serializedVersion: 3
+          time: 1
+          value: 1
+          inSlope: 0
+          outSlope: 0
+          tangentMode: 0
+          weightedMode: 0
+          inWeight: 0
+          outWeight: 0
+        m_PreInfinity: 2
+        m_PostInfinity: 2
+        m_RotationOrder: 4
+    coinSpacing: 6.3
+    maxActiveCoins: 80
+    minSpawnDistanceAhead: 70
+    maxSpawnDistanceAhead: 150
+    despawnBehindDistance: 25
+    initialPreSpawnDistance: 70
+    baseSpawnChance: 0.375
+    spawnChanceDistanceCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1.5
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    lateTrackSpawnBonusCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.8
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1.15
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    applySkillSpawnRate: 1
+    coinHeightOffset: 0.5
+    lateralFractionOfHalfWidth: 0.812
+    edgeInnerMargin: 0.06
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 16384
+    raycastStartHeight: 5
+    raycastDownDistance: 15
+    alignToSurfaceNormal: 1
+    distanceJitter: 0.4
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    updateInterval: 0.2
+    verboseDebug: 1

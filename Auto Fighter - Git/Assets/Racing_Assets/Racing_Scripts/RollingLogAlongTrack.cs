@@ -11,6 +11,7 @@ public class RollingLogAlongTrack : MonoBehaviour
 {
     [Header("Track")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
+    [Tooltip("Ignored at runtime — follows ProceduralTrackGenerator's road mesh centerline.")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
@@ -95,6 +96,8 @@ public class RollingLogAlongTrack : MonoBehaviour
     private float _s;
     private float _signedSpeed;
     private float _lateral;
+    /// <summary>Lane position as a fraction of clamped half road width (-1 = inner left, +1 = inner right). Preserved through turns.</summary>
+    private float _lateralFraction;
     private float _rollAngleDeg;
     private float _pivotToBottom;
     private Quaternion _prefabRootRotation = Quaternion.identity;
@@ -107,6 +110,7 @@ public class RollingLogAlongTrack : MonoBehaviour
     private Collider _ramProbeCollider;
     private readonly Dictionary<int, float> _overlapRamUntilByRootId = new();
     private readonly Dictionary<int, float> _overlapNpcHitUntilByRootId = new();
+    private ProceduralTrackGenerator _subscribedTrackGenerator;
 
     public bool IsScriptedAlongPath => _ready && !_freedToPhysics;
     public float CurrentScriptedSpeed => Mathf.Abs(_signedSpeed);
@@ -162,15 +166,15 @@ public class RollingLogAlongTrack : MonoBehaviour
         float lateralOffsetWorldRoad)
     {
         _player = player;
-        _s = startDistanceAlongTrack;
         _signedSpeed = signedSpeedAlongTrack;
-        _lateral = lateralOffsetWorldRoad;
         _rollAngleDeg = Random.Range(0f, 360f);
         _prefabRootRotation = transform.localRotation;
         _freedToPhysics = false;
 
         if (!trackGenerator)
             trackGenerator = FindObjectOfType<ProceduralTrackGenerator>();
+
+        SubscribeTrackRegenerated();
 
         _rb = GetComponent<Rigidbody>();
         _rb.isKinematic = true;
@@ -189,8 +193,16 @@ public class RollingLogAlongTrack : MonoBehaviour
             return;
         }
 
+        Vector3 spawnWorld = _rb.position;
+        if (TrackPathSampling.ProjectWorldPosition(_path, _cumLengths, _totalLength, spawnWorld, out float projectedS, out _))
+            _s = projectedS;
+        else
+            _s = startDistanceAlongTrack;
+
         _s = Mathf.Clamp(_s, 0f, _totalLength);
+        _lateral = lateralOffsetWorldRoad;
         ApplyLateralClampFromRoadWidth();
+        CacheLateralFraction();
         EstimatePivotToBottom();
         SnapToPath();
         _cachedWorldVel = ComputeScriptedWorldVelocity();
@@ -248,6 +260,41 @@ public class RollingLogAlongTrack : MonoBehaviour
         _ready = false;
         _overlapRamUntilByRootId.Clear();
         _overlapNpcHitUntilByRootId.Clear();
+        UnsubscribeTrackRegenerated();
+    }
+
+    private void SubscribeTrackRegenerated()
+    {
+        UnsubscribeTrackRegenerated();
+        if (trackGenerator == null) return;
+        trackGenerator.OnTrackGeneratedSuccessfully += HandleTrackRegenerated;
+        _subscribedTrackGenerator = trackGenerator;
+    }
+
+    private void UnsubscribeTrackRegenerated()
+    {
+        if (_subscribedTrackGenerator != null)
+        {
+            _subscribedTrackGenerator.OnTrackGeneratedSuccessfully -= HandleTrackRegenerated;
+            _subscribedTrackGenerator = null;
+        }
+    }
+
+    private void HandleTrackRegenerated(ProceduralTrackGenerator gen)
+    {
+        if (!_ready || _freedToPhysics || _rb == null) return;
+
+        RebuildPath();
+        if (_path.Count < 2 || _totalLength <= 0.01f)
+            return;
+
+        if (TrackPathSampling.ProjectWorldPosition(_path, _cumLengths, _totalLength, _rb.position, out float s, out _))
+            _s = Mathf.Clamp(s, 0f, _totalLength);
+
+        ApplyLateralClampFromRoadWidth();
+        SnapToPath();
+        _cachedWorldVel = ComputeScriptedWorldVelocity();
+        _lastScriptedPos = _rb.position;
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -584,22 +631,12 @@ public class RollingLogAlongTrack : MonoBehaviour
         }
 
         _s = nextS;
-        SampleAlongPath(_s, out Vector3 center, out Vector3 pathFwd);
-        Vector3 flatFwd = pathFwd;
-        flatFwd.y = 0f;
-        if (flatFwd.sqrMagnitude < 1e-6f)
-            flatFwd = Vector3.forward;
-        flatFwd.Normalize();
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, _s, out Vector3 center, out Vector3 flatFwd);
 
         _cachedWorldVel = flatFwd * _signedSpeed;
 
         Vector3 right = Vector3.Cross(Vector3.up, flatFwd).normalized;
-        float latUse = _lateral;
-        if (trackGenerator != null && lateralClampFraction > 0f)
-        {
-            float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
-            latUse = Mathf.Clamp(latUse, -half, half);
-        }
+        float latUse = GetLateralMeters();
 
         Vector3 targetXZ = center + right * latUse;
 
@@ -643,20 +680,10 @@ public class RollingLogAlongTrack : MonoBehaviour
         if (_path.Count < 2 || _totalLength <= 0.01f)
             return false;
 
-        SampleAlongPath(distAlongTrack, out Vector3 center, out Vector3 pathFwd);
-        Vector3 flatFwd = pathFwd;
-        flatFwd.y = 0f;
-        if (flatFwd.sqrMagnitude < 1e-6f)
-            flatFwd = Vector3.forward;
-        flatFwd.Normalize();
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, distAlongTrack, out Vector3 center, out Vector3 flatFwd);
 
         Vector3 right = Vector3.Cross(Vector3.up, flatFwd).normalized;
-        float latUse = _lateral;
-        if (trackGenerator != null && lateralClampFraction > 0f)
-        {
-            float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
-            latUse = Mathf.Clamp(latUse, -half, half);
-        }
+        float latUse = GetLateralMeters();
 
         Vector3 targetXZ = center + right * latUse;
         Vector3 origin = targetXZ + Vector3.up * raycastStartHeight;
@@ -671,13 +698,29 @@ public class RollingLogAlongTrack : MonoBehaviour
     {
         if (_path.Count < 2 || _totalLength <= 0.01f)
             return Vector3.zero;
-        SampleAlongPath(_s, out _, out Vector3 pathFwd);
-        Vector3 flatFwd = pathFwd;
-        flatFwd.y = 0f;
-        if (flatFwd.sqrMagnitude < 1e-6f)
-            return Vector3.zero;
-        flatFwd.Normalize();
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, _s, out _, out Vector3 flatFwd);
         return flatFwd * _signedSpeed;
+    }
+
+    private float GetLateralMeters()
+    {
+        if (trackGenerator == null || lateralClampFraction <= 0f)
+            return _lateral;
+
+        float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
+        return Mathf.Clamp(_lateralFraction, -1f, 1f) * half;
+    }
+
+    private void CacheLateralFraction()
+    {
+        if (trackGenerator == null || lateralClampFraction <= 0f)
+        {
+            _lateralFraction = 0f;
+            return;
+        }
+
+        float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
+        _lateralFraction = half > 1e-4f ? Mathf.Clamp(_lateral / half, -1f, 1f) : 0f;
     }
 
     private void ApplyLateralClampFromRoadWidth()
@@ -685,6 +728,7 @@ public class RollingLogAlongTrack : MonoBehaviour
         if (trackGenerator == null || lateralClampFraction <= 0f) return;
         float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
         _lateral = Mathf.Clamp(_lateral, -half, half);
+        CacheLateralFraction();
     }
 
     private void EstimatePivotToBottom()
@@ -709,20 +753,10 @@ public class RollingLogAlongTrack : MonoBehaviour
 
     private void SnapToPath()
     {
-        SampleAlongPath(_s, out Vector3 center, out Vector3 pathFwd);
-        Vector3 flatFwd = pathFwd;
-        flatFwd.y = 0f;
-        if (flatFwd.sqrMagnitude < 1e-6f)
-            flatFwd = Vector3.forward;
-        flatFwd.Normalize();
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, _s, out Vector3 center, out Vector3 flatFwd);
 
         Vector3 right = Vector3.Cross(Vector3.up, flatFwd).normalized;
-        float latUse = _lateral;
-        if (trackGenerator != null && lateralClampFraction > 0f)
-        {
-            float half = trackGenerator.RoadWidth * 0.5f * lateralClampFraction;
-            latUse = Mathf.Clamp(latUse, -half, half);
-        }
+        float latUse = GetLateralMeters();
 
         Vector3 targetXZ = center + right * latUse;
 
@@ -746,69 +780,11 @@ public class RollingLogAlongTrack : MonoBehaviour
 
         if (trackGenerator == null) return;
 
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
+        TrackPathSampling.BuildCenterlinePath(trackGenerator, _path);
+        if (_path.Count < 2) return;
 
         int n = _path.Count;
         _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-        _totalLength = len;
-    }
-
-    private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
-    {
-        dist = Mathf.Clamp(dist, 0f, _totalLength);
-        int idx = 0;
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= dist)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segLen = _cumLengths[idx + 1] - _cumLengths[idx];
-        float t = segLen > 1e-4f ? (dist - _cumLengths[idx]) / segLen : 0f;
-        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
-        fwd = (_path[idx + 1] - _path[idx]).normalized;
-    }
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        outList.Add(raw[0]);
-        for (int i = 0; i < raw.Count - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, raw.Count - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        return 0.5f * (
-            2f * p1 +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * (t * t) +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * (t * t * t)
-        );
+        TrackPathSampling.BuildCumulativeLengths(_path, _cumLengths, out _totalLength);
     }
 }

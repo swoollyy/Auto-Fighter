@@ -53,7 +53,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [Header("Track Binding (optional)")]
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
 
-    [Tooltip("On spawn, align the shuttle's rotation to the track tangent so its body matches the drawn travel line (removes the slight off-angle look). Keeps the spawned facing direction and forces it upright.")]
+    [Tooltip("On spawn, snap upright to the track tangent before measuring width (path frame only; travel yaw follows movement direction).")]
     [SerializeField] private bool alignRotationToTrack = true;
 
     [Header("Path Length Randomization")]
@@ -73,6 +73,17 @@ public class ShuttleTrackObstacle : MonoBehaviour
     [SerializeField, Min(0f)] private float maxAllowedPathElevationDelta = 0.15f;
     [Tooltip("Iterations used when trimming each endpoint inward for flat travel.")]
     [SerializeField, Range(1, 24)] private int endpointTrimIterations = 10;
+
+    [Header("Path Preview Line")]
+    [SerializeField, Range(4, 64)] private int previewPathSegments = 24;
+    [Tooltip("Rebuild active-segment polyline every frame while moving.")]
+    [SerializeField] private bool previewUpdateEveryFrame = true;
+    [Tooltip("Hide the path line when this close to the target (XZ meters).")]
+    [SerializeField, Min(0f)] private float pathPreviewHideBeforeEndDistance = 0.35f;
+    [Tooltip("Small world-up nudge for the preview line (obstacle center height is already baked into path points).")]
+    [SerializeField, Min(0f)] private float pathPreviewYOffset = 0.05f;
+    [Tooltip("How fast yaw blends toward the current travel heading.")]
+    [SerializeField, Min(0f)] private float travelAlignRotationSpeed = 16f;
 
     [Header("Screen Shake")]
     [SerializeField] private bool enableScreenShake = true;
@@ -207,6 +218,10 @@ public class ShuttleTrackObstacle : MonoBehaviour
     private float _baseLightIntensity = 3.5f;
     private float _spawnGraceUntil = 0f;
     private ObstaclePathPreview _preview;
+    private Vector3[] _previewScratch;
+    private bool _initialized;
+    private float _pathTravelY;
+    private bool _targetIsRight;
 
     // NEW: collision tracking for delayed conversion
     private int _pendingCollisionFrames = 0;
@@ -307,18 +322,39 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (keepPathFlatAndTrimOnElevation)
             TrimPathEndpointsForFlatTravel(_originWS);
 
-        if (_preview) _preview.SetEndpoints(_leftWS, _rightWS);
+        ApplyRandomizedPathLength();
 
         Vector3 startWS = startOnLeft ? _leftWS : _rightWS;
         Vector3 targetWS = startOnLeft ? _rightWS : _leftWS;
 
-        startWS = SpawnUtils.ProjectOntoSurface(startWS, out Vector3 startNormal, upOffsetForCast, 25f, roadMask);
-        _targetWS = SpawnUtils.ProjectOntoSurface(targetWS, out Vector3 targetNormal, upOffsetForCast, 25f, roadMask);
+        startWS = SpawnUtils.ProjectOntoSurface(startWS, out _, upOffsetForCast, 25f, roadMask);
+        targetWS = SpawnUtils.ProjectOntoSurface(targetWS, out _, upOffsetForCast, 25f, roadMask);
 
-        float startDesiredY = startWS.y - _bottomOffset + safeMargin;
+        _pathTravelY = startWS.y - _bottomOffset + safeMargin;
+        ApplyPathTravelYToEndpoints();
 
-        transform.position = new Vector3(startWS.x, startDesiredY, startWS.z);
-        _targetWS = new Vector3(_targetWS.x, startDesiredY, _targetWS.z);
+        _targetIsRight = !startOnLeft;
+        _targetWS = EndpointWithTravelY(targetWS);
+
+        transform.position = EndpointWithTravelY(startWS);
+        if (_rb != null)
+            _rb.position = transform.position;
+
+        Vector2 travelDir = new Vector2(_targetWS.x - transform.position.x, _targetWS.z - transform.position.z);
+        if (travelDir.sqrMagnitude > 1e-6f)
+        {
+            travelDir.Normalize();
+            Quaternion travelYaw = Quaternion.LookRotation(new Vector3(travelDir.x, 0f, travelDir.y), Vector3.up);
+            transform.rotation = travelYaw;
+            if (_rb != null)
+                _rb.rotation = travelYaw;
+        }
+
+        if (_preview)
+        {
+            _preview.SetYOffset(pathPreviewYOffset);
+            RebuildPathPreview();
+        }
 
         if (useRandomSpeed)
         {
@@ -330,6 +366,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _prevPosition = transform.position;
         _lastVelocity = Vector3.zero;
         _spawnGraceUntil = Time.time + 0.1f;
+        _initialized = true;
 
         CaptureScaleBobBase();
         SetTravelFxEnabled(true);
@@ -341,6 +378,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         _convertedToPhysics = false;
         _fxKilled = false;
         _waiting = false;
+        _initialized = false;
         _pendingCollisionFrames = 0;
         _pendingCollider = null;
 
@@ -364,7 +402,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
             return;
 
         KillPathFxIfDynamic();
-        bool isTravelingNow = !_waiting && !_convertedToPhysics && enabled && _rb != null && _rb.isKinematic;
+        bool isTravelingNow = _initialized && !_waiting && !_convertedToPhysics && enabled && _rb != null && _rb.isKinematic
+            && !IsNearPathEnd();
         SetTravelFxEnabled(isTravelingNow);
 
         if (enableOverlapDetection)
@@ -384,63 +423,19 @@ public class ShuttleTrackObstacle : MonoBehaviour
                 CarController.RequestWorldShake(transform.position, waitShakeIntensity, waitShakeFrequency,
                     shakeMaxDistance, shakeFullIntensityDistance);
             }
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (!_initialized || _convertedToPhysics || _waiting || !_travelFxEnabled)
             return;
-        }
+        if (!previewUpdateEveryFrame || _preview == null)
+            return;
+        if (IsNearPathEnd())
+            return;
 
-        float step = Mathf.Max(0.01f, speed) * Time.deltaTime;
-
-        Vector2 curXZ = new Vector2(transform.position.x, transform.position.z);
-        Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
-        Vector2 nextXZ = Vector2.MoveTowards(curXZ, targetXZ, step);
-
-        if (enableScreenShake)
-        {
-            CarController.RequestWorldShake(transform.position, moveShakeIntensity, moveShakeFrequency,
-                shakeMaxDistance, shakeFullIntensityDistance);
-        }
-
-        // Keep travel Y flat across the lane; do not follow terrain elevation while moving.
-        float newY = transform.position.y;
-
-        Vector3 newPos = new Vector3(nextXZ.x, newY, nextXZ.y);
-
-        _lastVelocity = (newPos - _prevPosition) / Mathf.Max(Time.deltaTime, 1e-6f);
-        _prevPosition = newPos;
-
-        transform.position = newPos;
-
-        if ((new Vector2(transform.position.x, transform.position.z) - targetXZ).sqrMagnitude <= 0.0001f)
-        {
-            _targetWS = (_targetWS == _leftWS) ? _rightWS : _leftWS;
-
-            if (useRandomSpeed)
-            {
-                float sMin = Mathf.Min(speedRange.x, speedRange.y);
-                float sMax = Mathf.Max(speedRange.x, speedRange.y);
-                speed = Random.Range(sMin, sMax);
-            }
-
-            float pauseTime = waitAtEndSeconds;
-
-            if (useRandomWaitAtEnd)
-            {
-                float wMin = Mathf.Min(waitAtEndRange.x, waitAtEndRange.y);
-                float wMax = Mathf.Max(waitAtEndRange.x, waitAtEndRange.y);
-                pauseTime = Random.Range(wMin, wMax);
-            }
-
-            if (pauseTime > 0f)
-            {
-                if (enableScreenShake)
-                {
-                    CarController.RequestWorldShake(transform.position, snapShakeIntensity, snapShakeFrequency,
-                        shakeMaxDistance, shakeFullIntensityDistance);
-                }
-
-                _didSnapShakeThisWait = true;
-                StartCoroutine(WaitThenResume(pauseTime));
-            }
-        }
+        RebuildPathPreview();
     }
 
     private void FixedUpdate()
@@ -448,7 +443,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
         if (_convertedToPhysics) return;
         KillPathFxIfDynamic();
 
-        // NEW: Process pending collision delay
+        // Process pending collision delay
         if (_pendingCollisionFrames > 0)
         {
             _pendingCollisionFrames--;
@@ -463,6 +458,90 @@ public class ShuttleTrackObstacle : MonoBehaviour
                     && !IsPlayerCarCollider(pending))
                     ConvertToPhysicsOnHit();
             }
+        }
+
+        if (!_initialized || _waiting)
+            return;
+
+        Vector3 current = transform.position;
+        float step = Mathf.Max(0.01f, speed) * Time.fixedDeltaTime;
+
+        Vector2 curXZ = new Vector2(current.x, current.z);
+        Vector2 targetXZ = new Vector2(_targetWS.x, _targetWS.z);
+        Vector2 toTargetXZ = targetXZ - curXZ;
+        float dist = toTargetXZ.magnitude;
+
+        if (dist <= 0.0001f)
+        {
+            OnReachedPathEnd();
+            return;
+        }
+
+        if (enableScreenShake)
+        {
+            CarController.RequestWorldShake(current, moveShakeIntensity, moveShakeFrequency,
+                shakeMaxDistance, shakeFullIntensityDistance);
+        }
+
+        Vector2 dirXZ = toTargetXZ / dist;
+        float horizStep = Mathf.Min(step, dist);
+        Vector2 nextXZ = curXZ + dirXZ * horizStep;
+        Vector3 nextPos = new Vector3(nextXZ.x, _pathTravelY, nextXZ.y);
+
+        _lastVelocity = (nextPos - _prevPosition) / Mathf.Max(Time.fixedDeltaTime, 1e-6f);
+        _prevPosition = nextPos;
+
+        Quaternion yawTarget = Quaternion.LookRotation(new Vector3(dirXZ.x, 0f, dirXZ.y), Vector3.up);
+        float rotT = travelAlignRotationSpeed > 0f
+            ? 1f - Mathf.Exp(-travelAlignRotationSpeed * Time.fixedDeltaTime)
+            : 1f;
+        Quaternion nextRot = Quaternion.Slerp(_rb.rotation, yawTarget, rotT);
+
+        _rb.MovePosition(nextPos);
+        _rb.MoveRotation(nextRot);
+        transform.SetPositionAndRotation(nextPos, nextRot);
+    }
+
+    private void OnReachedPathEnd()
+    {
+        Vector3 snapped = new Vector3(_targetWS.x, _pathTravelY, _targetWS.z);
+        _rb.MovePosition(snapped);
+        transform.position = snapped;
+        _prevPosition = snapped;
+        _lastVelocity = Vector3.zero;
+
+        _targetIsRight = !_targetIsRight;
+        _targetWS = _targetIsRight ? EndpointWithTravelY(_rightWS) : EndpointWithTravelY(_leftWS);
+
+        if (useRandomSpeed)
+        {
+            float sMin = Mathf.Min(speedRange.x, speedRange.y);
+            float sMax = Mathf.Max(speedRange.x, speedRange.y);
+            speed = Random.Range(sMin, sMax);
+        }
+
+        float pauseTime = waitAtEndSeconds;
+        if (useRandomWaitAtEnd)
+        {
+            float wMin = Mathf.Min(waitAtEndRange.x, waitAtEndRange.y);
+            float wMax = Mathf.Max(waitAtEndRange.x, waitAtEndRange.y);
+            pauseTime = Random.Range(wMin, wMax);
+        }
+
+        if (pauseTime > 0f)
+        {
+            if (enableScreenShake)
+            {
+                CarController.RequestWorldShake(transform.position, snapShakeIntensity, snapShakeFrequency,
+                    shakeMaxDistance, shakeFullIntensityDistance);
+            }
+
+            _didSnapShakeThisWait = true;
+            StartCoroutine(WaitThenResume(pauseTime));
+        }
+        else if (_preview != null && previewUpdateEveryFrame)
+        {
+            RebuildPathPreview();
         }
     }
 
@@ -500,6 +579,8 @@ public class ShuttleTrackObstacle : MonoBehaviour
 
         _waiting = false;
         SetTravelFxEnabled(true);
+        if (_preview != null && previewUpdateEveryFrame)
+            RebuildPathPreview();
     }
 
     private float DetermineHalfRoadWidth()
@@ -775,6 +856,7 @@ public class ShuttleTrackObstacle : MonoBehaviour
             if (enabledNow)
             {
                 _preview.enabled = true;
+                RebuildPathPreview();
                 _preview.FadeIn(instant ? 0f : 0.08f);
             }
             else
@@ -1220,6 +1302,66 @@ public class ShuttleTrackObstacle : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(trackForward, Vector3.up);
     }
 
+    private Vector3 EndpointWithTravelY(Vector3 endpoint) =>
+        new Vector3(endpoint.x, _pathTravelY, endpoint.z);
+
+    private void ApplyPathTravelYToEndpoints()
+    {
+        _leftWS = EndpointWithTravelY(_leftWS);
+        _rightWS = EndpointWithTravelY(_rightWS);
+    }
+
+    private void ApplyRandomizedPathLength()
+    {
+        if (!randomizePathLength)
+            return;
+
+        float minF = Mathf.Min(minPathFraction, maxPathFraction);
+        float maxF = Mathf.Max(minPathFraction, maxPathFraction);
+        float frac = Random.Range(minF, maxF);
+        if (frac >= 0.999f)
+            return;
+
+        Vector3 center = _originWS;
+        _leftWS = Vector3.Lerp(center, _leftWS, frac);
+        _rightWS = Vector3.Lerp(center, _rightWS, frac);
+    }
+
+    private bool IsNearPathEnd()
+    {
+        if (!_initialized || pathPreviewHideBeforeEndDistance <= 0f)
+            return false;
+
+        Vector2 aXZ = new Vector2(transform.position.x, transform.position.z);
+        Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
+        return Vector2.Distance(aXZ, bXZ) <= pathPreviewHideBeforeEndDistance;
+    }
+
+    /// <summary>Active travel segment preview — same flat XZ lerp + constant Y as scripted motion.</summary>
+    private void RebuildPathPreview()
+    {
+        if (_preview == null || !_initialized || _convertedToPhysics || _waiting)
+            return;
+        if (IsNearPathEnd())
+            return;
+
+        int segs = Mathf.Clamp(previewPathSegments, 4, 64);
+        if (_previewScratch == null || _previewScratch.Length < segs)
+            _previewScratch = new Vector3[Mathf.NextPowerOfTwo(segs)];
+
+        Vector2 aXZ = new Vector2(transform.position.x, transform.position.z);
+        Vector2 bXZ = new Vector2(_targetWS.x, _targetWS.z);
+
+        for (int i = 0; i < segs; i++)
+        {
+            float t = segs <= 1 ? 0f : i / (float)(segs - 1);
+            Vector2 xz = Vector2.Lerp(aXZ, bXZ, t);
+            _previewScratch[i] = new Vector3(xz.x, _pathTravelY, xz.y);
+        }
+
+        _preview.SetPolylineWorld(_previewScratch, segs);
+    }
+
     private void ComputeEdgeWorldPositions(out Vector3 leftWS, out Vector3 rightWS)
     {
         ResolveTrackFrame(out _, out Vector3 lateral);
@@ -1347,12 +1489,12 @@ public class ShuttleTrackObstacle : MonoBehaviour
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        if (Application.isPlaying)
+        if (Application.isPlaying && _initialized)
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(_leftWS + Vector3.up * 0.05f, 0.12f);
             Gizmos.DrawWireSphere(_rightWS + Vector3.up * 0.05f, 0.12f);
-            Gizmos.DrawLine(_leftWS + Vector3.up * 0.05f, _rightWS + Vector3.up * 0.05f);
+            Gizmos.DrawLine(transform.position + Vector3.up * 0.05f, _targetWS + Vector3.up * 0.05f);
         }
         else
         {

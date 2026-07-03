@@ -95,6 +95,79 @@ public class TrackCoinSpawner : MonoBehaviour
     private float _updateTimer;
     private int _lastClosestSegmentIndex = 0;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's CoinSettings into these fields
+    // (call BEFORE InitializeForRun). CaptureConfig snapshots the current values (editor baker).
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.CoinSettings s)
+    {
+        if (s == null || !s.overrideCoins) return;
+
+        coinTypeWeights = s.coinTypeWeights != null
+            ? new List<CoinTypeWeight>(s.coinTypeWeights)
+            : new List<CoinTypeWeight>();
+
+        coinSpacing = s.coinSpacing;
+        maxActiveCoins = s.maxActiveCoins;
+        minSpawnDistanceAhead = s.minSpawnDistanceAhead;
+        maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
+        despawnBehindDistance = s.despawnBehindDistance;
+        initialPreSpawnDistance = s.initialPreSpawnDistance;
+
+        baseSpawnChance = s.baseSpawnChance;
+        spawnChanceDistanceCurve = s.spawnChanceDistanceCurve;
+        lateTrackSpawnBonusCurve = s.lateTrackSpawnBonusCurve;
+        applySkillSpawnRate = s.applySkillSpawnRate;
+
+        coinHeightOffset = s.coinHeightOffset;
+        lateralFractionOfHalfWidth = s.lateralFractionOfHalfWidth;
+        edgeInnerMargin = s.edgeInnerMargin;
+
+        roadLayerMask = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        alignToSurfaceNormal = s.alignToSurfaceNormal;
+
+        distanceJitter = s.distanceJitter;
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+        updateInterval = s.updateInterval;
+        verboseDebug = s.verboseDebug;
+    }
+
+    public TrialConfig.CoinSettings CaptureConfig()
+    {
+        return new TrialConfig.CoinSettings
+        {
+            overrideCoins = true,
+            coinTypeWeights = coinTypeWeights != null
+                ? new List<CoinTypeWeight>(coinTypeWeights)
+                : new List<CoinTypeWeight>(),
+            coinSpacing = coinSpacing,
+            maxActiveCoins = maxActiveCoins,
+            minSpawnDistanceAhead = minSpawnDistanceAhead,
+            maxSpawnDistanceAhead = maxSpawnDistanceAhead,
+            despawnBehindDistance = despawnBehindDistance,
+            initialPreSpawnDistance = initialPreSpawnDistance,
+            baseSpawnChance = baseSpawnChance,
+            spawnChanceDistanceCurve = spawnChanceDistanceCurve,
+            lateTrackSpawnBonusCurve = lateTrackSpawnBonusCurve,
+            applySkillSpawnRate = applySkillSpawnRate,
+            coinHeightOffset = coinHeightOffset,
+            lateralFractionOfHalfWidth = lateralFractionOfHalfWidth,
+            edgeInnerMargin = edgeInnerMargin,
+            roadLayer = roadLayerMask,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            alignToSurfaceNormal = alignToSurfaceNormal,
+            distanceJitter = distanceJitter,
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            updateInterval = updateInterval,
+            verboseDebug = verboseDebug,
+        };
+    }
+
     public void InitializeForRun(ProceduralTrackGenerator generator, Transform player)
     {
         trackGenerator = generator;
@@ -125,26 +198,8 @@ public class TrackCoinSpawner : MonoBehaviour
         _totalLength = 0f;
         _lastClosestSegmentIndex = 0;
 
-        var src = trackGenerator?.PathPoints;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, Mathf.Max(1, smoothingSubdivisionsPerSegment), _path);
-        else
-            _path.AddRange(src);
-
-        if (_path.Count < 2) return;
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        _cumLengths[0] = 0f;
-        float length = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            length += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = length;
-        }
-        _totalLength = length;
+        if (trackGenerator == null) return;
+        TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumLengths, out _totalLength);
     }
 
     private void SetupSlots()
@@ -401,58 +456,8 @@ public class TrackCoinSpawner : MonoBehaviour
     {
         pos = Vector3.zero;
         forward = Vector3.forward;
-
         if (_path.Count < 2 || _cumLengths == null) return;
-        targetDistance = Mathf.Clamp(targetDistance, 0f, _totalLength);
-
-        int idx = 0;
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= targetDistance)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segStart = _cumLengths[idx];
-        float segLen = _cumLengths[idx + 1] - segStart;
-        float t = segLen > 0f ? (targetDistance - segStart) / segLen : 0f;
-
-        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
-        forward = (_path[idx + 1] - _path[idx]).normalized;
-    }
-
-    private void GenerateSmoothedPath(IReadOnlyList<Vector3> srcPoints, int subdiv, List<Vector3> output)
-    {
-        if (srcPoints == null || srcPoints.Count < 2) return;
-
-        output.Add(srcPoints[0]);
-        for (int i = 0; i < srcPoints.Count - 1; i++)
-        {
-            Vector3 p0 = srcPoints[Mathf.Max(0, i - 1)];
-            Vector3 p1 = srcPoints[i];
-            Vector3 p2 = srcPoints[i + 1];
-            Vector3 p3 = srcPoints[Mathf.Min(srcPoints.Count - 1, i + 2)];
-
-            for (int s = 1; s <= subdiv; s++)
-            {
-                float t = s / (float)subdiv;
-                output.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        float t2 = t * t;
-        float t3 = t2 * t;
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, targetDistance, out pos, out forward);
     }
 
 #if UNITY_EDITOR

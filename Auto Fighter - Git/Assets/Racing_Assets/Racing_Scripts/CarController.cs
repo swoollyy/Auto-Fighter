@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using Debug = UnityEngine.Debug;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -14,6 +15,7 @@ using Debug = UnityEngine.Debug;
 [RequireComponent(typeof(CarHealthConfig))]
 [RequireComponent(typeof(CarGroundConfig))]
 [RequireComponent(typeof(CarRampConfig))]
+[RequireComponent(typeof(CarAirTrickConfig))]
 [RequireComponent(typeof(CarCrashMashConfig))]
 [RequireComponent(typeof(CarVFXAudioConfig))]
 public class CarController : MonoBehaviour
@@ -28,6 +30,7 @@ public class CarController : MonoBehaviour
     private CarHealthConfig _healthConfig;
     private CarGroundConfig _groundConfig;
     private CarRampConfig _rampConfig;
+    private CarAirTrickConfig _airTrickConfig;
     private CarCrashMashConfig _crashMashConfig;
     private CarVFXAudioConfig _vfxAudioConfig;
 
@@ -57,6 +60,19 @@ public class CarController : MonoBehaviour
     private float landingBoostStrength;
     private float landingBoostDuration;
     private float landingBoostFalloff;
+
+    [Header("Bad Landing Crash (from CarLandingConfig)")]
+    private bool enableBadLandingCrash;
+    private float badLandingMinAirborneSeconds;
+    private float badLandingUpAlignDotMin;
+    private float badLandingForwardNormalDotMax;
+    private float badLandingCrashSeverity;
+    private float badLandingSpeedRetain;
+    private float badLandingVerticalSpeedRetain;
+    private float badLandingTumbleTorque;
+    private float badLandingAngularSpeedRetain;
+    private float badLandingMaxAngularSpeed;
+    private float _airborneContinuousTime;
 
     [Header("Mash Gauge Skill Scaling")]
     private float drainScalePerClickPower;
@@ -201,6 +217,29 @@ public class CarController : MonoBehaviour
         var reader = RacingInputReader.Instance;
         if (reader != null) return reader.FireHeld;
         return Input.GetKey(KeyCode.Mouse0) || Input.GetButton("Fire1");
+    }
+
+    private bool GetAirTricksHeld()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.AirTricksHeld;
+        return Input.GetKey(KeyCode.Q)
+            || (Gamepad.current != null && Gamepad.current.leftShoulder.isPressed);
+    }
+
+    private float GetSteerVerticalRaw()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.SteerVertical;
+        if (Gamepad.current != null)
+        {
+            float v = Gamepad.current.leftStick.y.ReadValue();
+            return Mathf.Abs(v) < 0.12f ? 0f : Mathf.Clamp(v, -1f, 1f);
+        }
+        float kb = 0f;
+        if (Input.GetKey(KeyCode.W)) kb += 1f;
+        if (Input.GetKey(KeyCode.S)) kb -= 1f;
+        return Mathf.Clamp(kb, -1f, 1f);
     }
 
     private static readonly string[] PS_FACE_SYMBOLS = { "✕", "◯", "□", "△" };
@@ -415,6 +454,8 @@ public class CarController : MonoBehaviour
     private float fuelUsePerSecondBraking;
     private float idleFuelUsePerSecond;
     private float idleSpeedThreshold;
+    private bool enableLowHpExtraFuelDrain = true;
+    private float extraFuelDrainPercentAtZeroHp = 100f;
 
     [Header("Crash / Hit (from CarCrashMashConfig)")]
     private LayerMask crashLayers;
@@ -477,6 +518,7 @@ public class CarController : MonoBehaviour
     private bool useSmoothMalfunction;
     private float minimumAccelerationFloor;
     private float minimumMaxSpeedFloor;
+    private bool guaranteeMinimumThrottleAcceleration = true;
     private float _lowHpMalfunctionChanceBiasExponent = 0.42f;
     /// <summary>From <see cref="CarHealthConfig"/>: multiplies (severity × max HP/fuel) crash loss.</summary>
     private float crashDamageSeverityScale = 1f;
@@ -551,6 +593,34 @@ public class CarController : MonoBehaviour
     private float groundNormalCheckDistance;
     private float landingPredictDistance;
     private float landingAlignStartDistance;
+
+    [Header("Airborne Tricks (from CarAirTrickConfig)")]
+    private bool enableAirTricks;
+    private float airYawRate;
+    private float airYawInputDeadzone;
+    private float trickPitchRate;
+    private float trickYawSpinRate;
+    private float trickRollRate;
+    private float trickInputDeadzone;
+    private float trickInputSmoothRate;
+    private float trickInputReleaseRate;
+    private float trickRotationAccel;
+    private float trickRotationDecel;
+    private bool suppressRampAlignmentInTrickMode;
+    private bool enableAirUprightRecovery;
+    private float airUprightRecoverSpeed;
+    private float airUprightNearGroundBoost;
+    private float airUprightMinAlignDot;
+
+    private float _smoothedTrickPitch;
+    private float _smoothedTrickHoriz;
+    private float _trickPitchAngularVel;
+    private float _trickYawAngularVel;
+    private float _trickRollAngularVel;
+    private bool _trickBarrelModeActive;
+    private float _airUprightRecoverBlend;
+    private bool _wasAirTricksHeldLastFrame;
+
     private GameObject deathVFX;
     private float deathVFXLifetime;
     private AudioClip deathExplodeClip;
@@ -751,6 +821,18 @@ public class CarController : MonoBehaviour
     private float baseDriftBoostCooldown;
 
     private float _rawSteer;
+    private float _rawSteerVertical;
+    private bool _airTricksHeld;
+
+    private bool _trickSessionThisJump;
+    private Vector3 _airborneLandingUpSnapshot = Vector3.up;
+    private Vector3 _airborneLandingForwardSnapshot = Vector3.forward;
+
+    public bool IsAirTricksHeld => _airTricksHeld;
+    public bool IsAirborneForTricks => _airborneForTricks;
+    public bool IsInAirTrickMode => _airborneForTricks && enableAirTricks && _airTricksHeld;
+
+    private bool _airborneForTricks;
 
     // Drift-held boost runtime (per-direction)
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
@@ -1139,12 +1221,32 @@ public class CarController : MonoBehaviour
             landingBoostStrength = _landingConfig.LandingBoostStrength;
             landingBoostDuration = _landingConfig.LandingBoostDuration;
             landingBoostFalloff = _landingConfig.LandingBoostFalloff;
+            enableBadLandingCrash = _landingConfig.EnableBadLandingCrash;
+            badLandingMinAirborneSeconds = _landingConfig.BadLandingMinAirborneSeconds;
+            badLandingUpAlignDotMin = _landingConfig.BadLandingUpAlignDotMin;
+            badLandingForwardNormalDotMax = _landingConfig.BadLandingForwardNormalDotMax;
+            badLandingCrashSeverity = _landingConfig.BadLandingCrashSeverity;
+            badLandingSpeedRetain = _landingConfig.BadLandingSpeedRetain;
+            badLandingVerticalSpeedRetain = _landingConfig.BadLandingVerticalSpeedRetain;
+            badLandingTumbleTorque = _landingConfig.BadLandingTumbleTorque;
+            badLandingAngularSpeedRetain = _landingConfig.BadLandingAngularSpeedRetain;
+            badLandingMaxAngularSpeed = _landingConfig.BadLandingMaxAngularSpeed;
         }
         else
         {
             skipSpeedClampWhileAirborne = true; enableLandingCarrySpeed = true;
             landingExcessBleedPerSecond = 7.17f; landingNoClampGraceSeconds = 0.08f;
             enableLandingBoost = true; landingBoostStrength = 1f; landingBoostDuration = 1.2f; landingBoostFalloff = 1.5f;
+            enableBadLandingCrash = true;
+            badLandingMinAirborneSeconds = 0.2f;
+            badLandingUpAlignDotMin = 0.88f;
+            badLandingForwardNormalDotMax = 0.72f;
+            badLandingCrashSeverity = 0.42f;
+            badLandingSpeedRetain = 0.32f;
+            badLandingVerticalSpeedRetain = 0.08f;
+            badLandingTumbleTorque = 5.5f;
+            badLandingAngularSpeedRetain = 0.82f;
+            badLandingMaxAngularSpeed = 10f;
         }
 
         if (_driftConfig != null)
@@ -1249,11 +1351,15 @@ public class CarController : MonoBehaviour
             fuelUsePerSecondBraking = _fuelConfig.FuelUsePerSecondBraking;
             idleFuelUsePerSecond = _fuelConfig.IdleFuelUsePerSecond;
             idleSpeedThreshold = _fuelConfig.IdleSpeedThreshold;
+            enableLowHpExtraFuelDrain = _fuelConfig.EnableLowHpExtraFuelDrain;
+            extraFuelDrainPercentAtZeroHp = _fuelConfig.ExtraFuelDrainPercentAtZeroHp;
         }
         else
         {
             maxFuel = 100f; fuelUsePerSecondAtFullThrottle = 0f; fuelUsePerSecondBraking = 0f;
             idleFuelUsePerSecond = 0f; idleSpeedThreshold = 0.5f;
+            enableLowHpExtraFuelDrain = true;
+            extraFuelDrainPercentAtZeroHp = 100f;
         }
 
         if (_healthConfig != null)
@@ -1271,6 +1377,7 @@ public class CarController : MonoBehaviour
             useSmoothMalfunction = _healthConfig.UseSmoothMalfunction;
             minimumAccelerationFloor = _healthConfig.MinimumAccelerationFloor;
             minimumMaxSpeedFloor = _healthConfig.MinimumMaxSpeedFloor;
+            guaranteeMinimumThrottleAcceleration = _healthConfig.GuaranteeMinimumThrottleAcceleration;
             _lowHpMalfunctionChanceBiasExponent = _healthConfig.LowHpMalfunctionChanceBiasExponent;
             crashDamageCooldown = _healthConfig.CrashDamageCooldown;
             crashImpactVFX = _healthConfig.CrashImpactVFX;
@@ -1291,6 +1398,7 @@ public class CarController : MonoBehaviour
             performanceAtZeroHP = 0.28f; degradeStartHPFraction = 0.65f; enableDamageMalfunction = true;
             maxMalfunctionChancePerSecond = 1.15f; _lowHpMalfunctionChanceBiasExponent = 0.42f;
             minimumAccelerationFloor = 2.5f; minimumMaxSpeedFloor = 5f;
+            guaranteeMinimumThrottleAcceleration = true;
             crashDamageCooldown = 0.35f; smokeStartHPFraction = 0.5f; smokeMinRate = 5f; smokeMaxRate = 30f;
             smokeMinSize = 0.5f; smokeMaxSize = 1.6f; invertSmokeColorLerp = false;
         }
@@ -1362,6 +1470,45 @@ public class CarController : MonoBehaviour
             enableRampAlignment = true; groundAlignSpeed = 10f; airAlignSpeed = 6f;
             groundNormalCastRadius = 0.35f; groundNormalCheckDistance = 1.23f;
             landingPredictDistance = 2.75f; landingAlignStartDistance = 1.97f;
+        }
+
+        if (_airTrickConfig != null)
+        {
+            enableAirTricks = _airTrickConfig.EnableAirTricks;
+            airYawRate = _airTrickConfig.AirYawRate;
+            airYawInputDeadzone = _airTrickConfig.AirYawInputDeadzone;
+            trickPitchRate = _airTrickConfig.TrickPitchRate;
+            trickYawSpinRate = _airTrickConfig.TrickYawSpinRate;
+            trickRollRate = _airTrickConfig.TrickRollRate;
+            trickInputDeadzone = _airTrickConfig.TrickInputDeadzone;
+            trickInputSmoothRate = _airTrickConfig.TrickInputSmoothRate;
+            trickInputReleaseRate = _airTrickConfig.TrickInputReleaseRate;
+            trickRotationAccel = _airTrickConfig.TrickRotationAccel;
+            trickRotationDecel = _airTrickConfig.TrickRotationDecel;
+            suppressRampAlignmentInTrickMode = _airTrickConfig.SuppressRampAlignmentInTrickMode;
+            enableAirUprightRecovery = _airTrickConfig.EnableAirUprightRecovery;
+            airUprightRecoverSpeed = _airTrickConfig.AirUprightRecoverSpeed;
+            airUprightNearGroundBoost = _airTrickConfig.AirUprightNearGroundBoost;
+            airUprightMinAlignDot = _airTrickConfig.AirUprightMinAlignDot;
+        }
+        else
+        {
+            enableAirTricks = true;
+            airYawRate = 110f;
+            airYawInputDeadzone = 0.12f;
+            trickPitchRate = 195f;
+            trickYawSpinRate = 220f;
+            trickRollRate = 220f;
+            trickInputDeadzone = 0.15f;
+            trickInputSmoothRate = 11f;
+            trickInputReleaseRate = 15f;
+            trickRotationAccel = 340f;
+            trickRotationDecel = 240f;
+            suppressRampAlignmentInTrickMode = true;
+            enableAirUprightRecovery = true;
+            airUprightRecoverSpeed = 2.75f;
+            airUprightNearGroundBoost = 16f;
+            airUprightMinAlignDot = 0.992f;
         }
 
         if (_crashMashConfig != null)
@@ -1538,6 +1685,7 @@ public class CarController : MonoBehaviour
         _healthConfig = GetComponent<CarHealthConfig>();
         _groundConfig = GetComponent<CarGroundConfig>();
         _rampConfig = GetComponent<CarRampConfig>();
+        _airTrickConfig = GetComponent<CarAirTrickConfig>();
         _crashMashConfig = GetComponent<CarCrashMashConfig>();
         _vfxAudioConfig = GetComponent<CarVFXAudioConfig>();
         _forcefield = GetComponent<CarForcefield>();
@@ -1797,7 +1945,9 @@ public class CarController : MonoBehaviour
 
             ClearEndOfRunDrivingState();
             UpdateSteeringInputFixed();
+            _airborneForTricks = CanUseAirborneControls();
             HandleSteering();
+            HandleAirborneTricks(Time.fixedDeltaTime);
             CheckBoostFlash();
             return;
         }
@@ -1935,13 +2085,19 @@ public class CarController : MonoBehaviour
 
         bool outOfFuel = IsOutOfFuel;
         UpdateLandingSpeedPreservation();
+        if (_inCrash)
+            return;
+
         SampleGroundAndUpdateMultipliers();
         HandleBoostSurfacePopup();        // boost pad / ramp popup on entry
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateSteeringInputFixed();
         SmoothDrivingGroundNormal();
+        _airborneForTricks = CanUseAirborneControls();
         HandleSteering();
+        HandleAirborneTricks(Time.fixedDeltaTime);
+        UpdateAirTrickReleaseState(Time.fixedDeltaTime);
         HandleMovement();                 // coasting + existing decel logic still works
 
         // Update centralized speed boost system (handles ramp-down for all boosts)
@@ -1951,7 +2107,7 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         HandleIcePathPopup();             // ice path popup when ice handling kicks in
-        ApplyRampAlignment(Time.fixedDeltaTime);
+        ApplyDrivingOrientation(Time.fixedDeltaTime);
         ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
         DampPostCrashLateralVelocity();
@@ -3023,6 +3179,8 @@ public class CarController : MonoBehaviour
         if (isOutOfFuel)
         {
             _rawSteer = GetSteerRaw();
+            _rawSteerVertical = GetSteerVerticalRaw();
+            _airTricksHeld = GetAirTricksHeld();
             driftCharge = 0f;
             isDrifting = false;
             driftButtonHeld = false;
@@ -3040,6 +3198,8 @@ public class CarController : MonoBehaviour
             _malfunctionCooldownRemain -= Time.deltaTime;
 
         _rawSteer = GetSteerRaw();
+        _rawSteerVertical = GetSteerVerticalRaw();
+        _airTricksHeld = GetAirTricksHeld();
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
@@ -3282,7 +3442,6 @@ public class CarController : MonoBehaviour
 
         _lastRawSteerValue = rawHorizontal;
 
-        bool suppressInputs = false;
         _currentMalfunctionMultiplier = 1f; // Reset each frame
 
         if (enableDamageMalfunction && _statsInitialized)
@@ -3308,26 +3467,15 @@ public class CarController : MonoBehaviour
 
             bool isMalfunctioning = _malfunctionTimer > 0f;
 
-            if (useSmoothMalfunction)
-            {
-                // IMPROVED: Instead of blocking throttle entirely, reduce effectiveness
-                // This prevents the car from becoming completely immobile
-                if (isMalfunctioning)
-                {
-                    _currentMalfunctionMultiplier = malfunctionThrottleMultiplier;
-                }
-                // Don't set suppressInputs - we handle throttle reduction in ApplyAcceleration instead
-            }
-            else
-            {
-                // Legacy behavior: complete suppression during malfunction
-                suppressInputs = isMalfunctioning;
-            }
+            if (isMalfunctioning)
+                _currentMalfunctionMultiplier = malfunctionThrottleMultiplier;
+
+            // Never zero throttle from malfunction — only reduce via multiplier (clamped in GetThrottleAcceleration).
         }
 
-        // ADJUSTMENT: never fully suppress steering; only throttle/brake during malfunction (legacy mode only)
-        _suppressThrottleBrakeThisFrame = suppressInputs;
-        _suppressSteeringThisFrame = false; // keep steering responsive even during malfunction
+        // Malfunction must not block steering or throttle input.
+        _suppressThrottleBrakeThisFrame = false;
+        _suppressSteeringThisFrame = false;
 
         _inputsSuppressedThisFrame = _suppressThrottleBrakeThisFrame;
     }
@@ -3458,7 +3606,10 @@ public class CarController : MonoBehaviour
         float torqueMagnitude,
         float severity,
         Vector3 contactPointWS,
-        bool applyDamage)
+        bool applyDamage,
+        bool softLandingCrash = false,
+        Vector3 softLandingCarUp = default,
+        Vector3 softLandingGroundNormal = default)
     {
         if (rb == null)
             return;
@@ -3505,11 +3656,22 @@ public class CarController : MonoBehaviour
         // Clamp severity once and reuse
         float sev01 = Mathf.Clamp01(severity);
 
-        // Flatten & normalize incoming hit direction
-        hitDirection.y = 0f;
-        if (hitDirection.sqrMagnitude < 0.0001f)
-            hitDirection = -transform.forward;
-        hitDirection.Normalize();
+        if (!softLandingCrash)
+        {
+            // Flatten & normalize incoming hit direction
+            hitDirection.y = 0f;
+            if (hitDirection.sqrMagnitude < 0.0001f)
+                hitDirection = -transform.forward;
+            hitDirection.Normalize();
+        }
+        else if (hitDirection.sqrMagnitude > 0.0001f)
+        {
+            hitDirection.Normalize();
+        }
+        else
+        {
+            hitDirection = Vector3.up;
+        }
 
         _inCrash = true;
         _crashTimer = crashDuration;
@@ -3522,7 +3684,7 @@ public class CarController : MonoBehaviour
         try { OnCrash?.Invoke(sev01); } catch { /* ignore listener errors */ }
 
         // Snapshot situational flags BEFORE we force grounded false.
-        _wasAirborneDuringCrash = !_isGrounded;
+        _wasAirborneDuringCrash = softLandingCrash || !_isGrounded;
         bool flippedAtImpact = NeedsFlipRecovery();
 
         float severityContribution = _lastCrashSeverity;
@@ -3535,76 +3697,146 @@ public class CarController : MonoBehaviour
         _groundedTime = 0f;
         _isGrounded = false;
 
-        rb.freezeRotation = false;
         rb.drag = _baseDrag * crashDragMultiplier;
         rb.angularDrag = crashAngularDrag;
 
-        // Current velocity
-        Vector3 v = rb.velocity;
-        Vector3 flatVel = new Vector3(v.x, 0f, v.z);
-
-        // We'll decide the impulse direction here
-        Vector3 impulseDir = hitDirection;
-
-        if (flatVel.sqrMagnitude > 0.01f)
+        if (softLandingCrash)
         {
-            // Reflect current velocity around a "surface normal" (hitDirection)
-            Vector3 normal = hitDirection;
-            Vector3 reflected = Vector3.Reflect(flatVel, normal);
+            // Bad landing: physics tumble and speed bleed — no frozen rotation, no launch impulse.
+            rb.freezeRotation = false;
 
-            float deflectAmount = Mathf.Lerp(0.3f, 0.8f, sev01);
-            Vector3 newFlatVel = Vector3.Lerp(flatVel, reflected, deflectAmount);
+            Vector3 groundN = softLandingGroundNormal.sqrMagnitude > 1e-8f
+                ? softLandingGroundNormal.normalized
+                : (hitDirection.sqrMagnitude > 1e-8f ? hitDirection.normalized : Vector3.up);
+            Vector3 carUp = softLandingCarUp.sqrMagnitude > 1e-8f
+                ? softLandingCarUp.normalized
+                : transform.up;
 
-            float slowMul = Mathf.Lerp(0.9f, 0.6f, sev01);
-            newFlatVel *= slowMul;
+            float upAlign = Mathf.Clamp01(Vector3.Dot(carUp, groundN));
+            float misalign = 1f - upAlign;
+            float impactSpeed = rb.velocity.magnitude;
 
-            rb.velocity = new Vector3(newFlatVel.x, v.y, newFlatVel.z);
+            Vector3 vSoft = rb.velocity;
+            Vector3 slide = Vector3.ProjectOnPlane(vSoft, groundN);
+            slide *= badLandingSpeedRetain;
 
-            // MAIN IDEA: base impulse opposite previous motion
-            impulseDir = -flatVel.normalized;
+            float intoGround = Vector3.Dot(vSoft, groundN);
+            float settledNormal = intoGround <= 0f
+                ? intoGround * badLandingVerticalSpeedRetain
+                : -intoGround * badLandingVerticalSpeedRetain * 0.35f;
+            rb.velocity = slide + groundN * settledNormal;
+
+            Vector3 angVel = rb.angularVelocity * Mathf.Lerp(badLandingAngularSpeedRetain, 1f, misalign);
+
+            Vector3 correctionAxis = Vector3.Cross(carUp, groundN);
+            if (correctionAxis.sqrMagnitude > 1e-8f)
+            {
+                correctionAxis.Normalize();
+                float tumble = badLandingTumbleTorque * misalign * Mathf.Lerp(1f, 2.2f, sev01);
+                tumble *= Mathf.Clamp(impactSpeed * 0.12f, 0.75f, 4f);
+                angVel += correctionAxis * tumble;
+            }
+
+            Vector3 fwd = transform.forward;
+            float noseIntoGround = Mathf.Abs(Vector3.Dot(fwd, groundN));
+            if (noseIntoGround > badLandingForwardNormalDotMax * 0.5f)
+            {
+                Vector3 fwdOnPlane = Vector3.ProjectOnPlane(fwd, groundN);
+                if (fwdOnPlane.sqrMagnitude > 1e-8f)
+                {
+                    Vector3 pitchAxis = Vector3.Cross(fwdOnPlane.normalized, groundN);
+                    if (pitchAxis.sqrMagnitude > 1e-8f)
+                    {
+                        float sign = Mathf.Sign(Vector3.Dot(fwd, groundN));
+                        angVel += pitchAxis.normalized * (noseIntoGround * impactSpeed * 0.06f * sign);
+                    }
+                }
+            }
+
+            float maxAng = badLandingMaxAngularSpeed;
+            if (angVel.sqrMagnitude > maxAng * maxAng)
+                angVel = angVel.normalized * maxAng;
+            rb.angularVelocity = angVel;
+
+            rb.angularDrag = Mathf.Max(crashAngularDrag, _baseAngularDrag * 2.5f);
+            ApplyCrashVelocityCaps();
+
+            _landingBoostTimeLeft = 0f;
+            _landingBoostTargetMagnitude = 0f;
+            _landingExcessSpeed = 0f;
+            _takeoffHorizSpeed = 0f;
         }
         else
         {
-            // If we were basically stopped, just kick along the hit direction
-            rb.velocity = hitDirection * impulseMagnitude * 0.5f;
-            impulseDir = hitDirection;
+            rb.freezeRotation = false;
+
+            // Current velocity
+            Vector3 v = rb.velocity;
+            Vector3 flatVel = new Vector3(v.x, 0f, v.z);
+
+            // We'll decide the impulse direction here
+            Vector3 impulseDir = hitDirection;
+
+            if (flatVel.sqrMagnitude > 0.01f)
+            {
+                // Reflect current velocity around a "surface normal" (hitDirection)
+                Vector3 normal = hitDirection;
+                Vector3 reflected = Vector3.Reflect(flatVel, normal);
+
+                float deflectAmount = Mathf.Lerp(0.3f, 0.8f, sev01);
+                Vector3 newFlatVel = Vector3.Lerp(flatVel, reflected, deflectAmount);
+
+                float slowMul = Mathf.Lerp(0.9f, 0.6f, sev01);
+                newFlatVel *= slowMul;
+
+                rb.velocity = new Vector3(newFlatVel.x, v.y, newFlatVel.z);
+
+                // MAIN IDEA: base impulse opposite previous motion
+                impulseDir = -flatVel.normalized;
+            }
+            else
+            {
+                // If we were basically stopped, just kick along the hit direction
+                rb.velocity = hitDirection * impulseMagnitude * 0.5f;
+                impulseDir = hitDirection;
+            }
+
+            // ─────────────────────────────────────────────
+            // NEW: add a vertical "bump" so we don't get glued to static stuff
+            // ─────────────────────────────────────────────
+            // Stronger bump at higher severity; tweak 0.15f / 0.45f to taste.
+            float verticalBoost = Mathf.Lerp(0.15f, 0.45f, sev01);
+
+            Vector3 bumpDir = impulseDir;
+            bumpDir.y += verticalBoost;
+            bumpDir.Normalize();
+
+            // Apply the crash impulse with vertical pop
+            rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
+
+            // Cap crash launch velocity.
+            ApplyCrashVelocityCaps();
+
+            // --- Torque (spin) stays as you had it ---
+
+            Vector3 toObstacleWorld = -hitDirection;
+            Vector3 toObstacleLocal = transform.InverseTransformDirection(toObstacleWorld);
+
+            float sideSign = Mathf.Sign(toObstacleLocal.x);
+            if (Mathf.Abs(sideSign) < 0.001f)
+                sideSign = Mathf.Sign(Vector3.Dot(toObstacleWorld, transform.right));
+
+            Vector3 yawTorque = Vector3.up * torqueMagnitude * crashYawTorqueMultiplier * sideSign;
+            Vector3 rollAxis = transform.forward;
+            Vector3 rollTorque = rollAxis * torqueMagnitude * crashRollTorqueMultiplier * sideSign;
+
+            Vector3 contactOffset = contactPointWS - transform.position;
+            Vector3 pitchAxis = transform.right;
+            float pitchSign = Mathf.Sign(Vector3.Dot(Vector3.Cross(contactOffset, hitDirection), pitchAxis));
+            Vector3 pitchTorque = pitchAxis * torqueMagnitude * crashPitchTorqueMultiplier * pitchSign;
+
+            rb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
         }
-
-        // ─────────────────────────────────────────────
-        // NEW: add a vertical "bump" so we don't get glued to static stuff
-        // ─────────────────────────────────────────────
-        // Stronger bump at higher severity; tweak 0.15f / 0.45f to taste.
-        float verticalBoost = Mathf.Lerp(0.15f, 0.45f, sev01);
-
-        Vector3 bumpDir = impulseDir;
-        bumpDir.y += verticalBoost;
-        bumpDir.Normalize();
-
-        // Apply the crash impulse with vertical pop
-        rb.AddForce(bumpDir * impulseMagnitude, ForceMode.VelocityChange);
-
-        // Cap crash launch velocity.
-        ApplyCrashVelocityCaps();
-
-        // --- Torque (spin) stays as you had it ---
-
-        Vector3 toObstacleWorld = -hitDirection;
-        Vector3 toObstacleLocal = transform.InverseTransformDirection(toObstacleWorld);
-
-        float sideSign = Mathf.Sign(toObstacleLocal.x);
-        if (Mathf.Abs(sideSign) < 0.001f)
-            sideSign = Mathf.Sign(Vector3.Dot(toObstacleWorld, transform.right));
-
-        Vector3 yawTorque = Vector3.up * torqueMagnitude * crashYawTorqueMultiplier * sideSign;
-        Vector3 rollAxis = transform.forward;
-        Vector3 rollTorque = rollAxis * torqueMagnitude * crashRollTorqueMultiplier * sideSign;
-
-        Vector3 contactOffset = contactPointWS - transform.position;
-        Vector3 pitchAxis = transform.right;
-        float pitchSign = Mathf.Sign(Vector3.Dot(Vector3.Cross(contactOffset, hitDirection), pitchAxis));
-        Vector3 pitchTorque = pitchAxis * torqueMagnitude * crashPitchTorqueMultiplier * pitchSign;
-
-        rb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
 
         // Damage / fuel handling
         float sev01ForDamage = sev01;
@@ -3635,6 +3867,143 @@ public class CarController : MonoBehaviour
         }
 
 
+    }
+
+    private bool CanUseAirborneControls()
+    {
+        if (!enableAirTricks || rb == null) return false;
+        if (_inCrash || _isReorienting || _flipMashActive || IsPostCrashRecoveryDriving) return false;
+        if (IsCrashInvulnerable || IsDeadForMashRecovery) return false;
+        return !CheckIfGrounded();
+    }
+
+    private void ResetAirTrickRotationState()
+    {
+        _smoothedTrickPitch = 0f;
+        _smoothedTrickHoriz = 0f;
+        _trickPitchAngularVel = 0f;
+        _trickYawAngularVel = 0f;
+        _trickRollAngularVel = 0f;
+        _trickBarrelModeActive = false;
+    }
+
+    private float SmoothTrickAxis(float current, float target, float dt)
+    {
+        float rate = Mathf.Abs(target) > Mathf.Abs(current) ? trickInputSmoothRate : trickInputReleaseRate;
+        return Mathf.MoveTowards(current, target, rate * dt);
+    }
+
+    private float MoveTrickAngularVel(float current, float target, float dt, float decelMultiplier = 1f)
+    {
+        if (Mathf.Approximately(current, target))
+            return target;
+
+        float rate = Mathf.Abs(target) > 0.01f
+            ? trickRotationAccel
+            : trickRotationDecel * decelMultiplier;
+        return Mathf.MoveTowards(current, target, rate * dt);
+    }
+
+    private static float ApplyAxisDeadzone(float value, float deadzone)
+    {
+        float abs = Mathf.Abs(value);
+        if (abs < deadzone) return 0f;
+        return Mathf.Sign(value) * Mathf.InverseLerp(deadzone, 1f, abs);
+    }
+
+    /// <summary>
+    /// Trick stick X/Y deadzones. Pitch comes only from stick Y / keyboard W-S — never from throttle or brake triggers.
+    /// </summary>
+    private void ResolveTrickStickInput(out float horiz, out float pitch)
+    {
+        horiz = ApplyAxisDeadzone(_rawSteer, trickInputDeadzone);
+        pitch = ApplyAxisDeadzone(_rawSteerVertical, trickInputDeadzone);
+    }
+
+    /// <summary>
+    /// Airborne trick rotation (bumper held). Input and spin rates are smoothed; spin bleeds faster when bumper is released.
+    /// </summary>
+    private void HandleAirborneTricks(float dt)
+    {
+        if (!_airborneForTricks || !enableAirTricks || rb == null) return;
+
+        bool trickInputActive = _airTricksHeld;
+        float decelMul = trickInputActive ? 1f : 1.65f;
+        float pitchTarget = 0f;
+        float horizTarget = 0f;
+        bool barrelMode = false;
+
+        if (trickInputActive)
+        {
+            barrelMode = GetBrakeKeyOrTrigger();
+            ResolveTrickStickInput(out float horiz, out float pitch);
+            horizTarget = horiz;
+            pitchTarget = pitch;
+        }
+
+        _smoothedTrickPitch = SmoothTrickAxis(_smoothedTrickPitch, pitchTarget, dt);
+        _smoothedTrickHoriz = SmoothTrickAxis(_smoothedTrickHoriz, horizTarget, dt);
+        _trickBarrelModeActive = trickInputActive && barrelMode;
+
+        float targetPitchVel = _smoothedTrickPitch * trickPitchRate;
+        float targetYawVel = (!_trickBarrelModeActive && trickInputActive) ? _smoothedTrickHoriz * trickYawSpinRate : 0f;
+        float targetRollVel = _trickBarrelModeActive ? _smoothedTrickHoriz * trickRollRate : 0f;
+
+        _trickPitchAngularVel = MoveTrickAngularVel(_trickPitchAngularVel, targetPitchVel, dt, decelMul);
+        _trickYawAngularVel = MoveTrickAngularVel(_trickYawAngularVel, targetYawVel, dt, decelMul);
+        _trickRollAngularVel = MoveTrickAngularVel(_trickRollAngularVel, targetRollVel, dt, decelMul);
+
+        if (Mathf.Abs(_trickPitchAngularVel) < 0.01f
+            && Mathf.Abs(_trickYawAngularVel) < 0.01f
+            && Mathf.Abs(_trickRollAngularVel) < 0.01f)
+            return;
+
+        ApplyScriptedAirRotationLocal(
+            _trickPitchAngularVel * dt,
+            _trickYawAngularVel * dt,
+            _trickRollAngularVel * dt);
+    }
+
+    /// <summary>
+    /// Scripted airborne rotation only — pins world position so collider re-solve cannot pop the car upward.
+    /// </summary>
+    private void ApplyScriptedAirRotation(Quaternion worldRotation)
+    {
+        if (rb == null) return;
+
+        Vector3 worldPos = rb.position;
+        rb.MoveRotation(worldRotation);
+        rb.MovePosition(worldPos);
+        transform.SetPositionAndRotation(worldPos, worldRotation);
+        rb.angularVelocity = Vector3.zero;
+    }
+
+    private void ApplyScriptedAirRotationLocal(float pitchDeg, float yawDeg, float rollDeg)
+    {
+        if (rb == null) return;
+        ApplyScriptedAirRotation(rb.rotation * Quaternion.Euler(pitchDeg, yawDeg, rollDeg));
+    }
+
+    private void UpdateAirTrickReleaseState(float dt)
+    {
+        if (!_airborneForTricks || rb == null)
+        {
+            _airUprightRecoverBlend = 0f;
+            _wasAirTricksHeldLastFrame = _airTricksHeld;
+            return;
+        }
+
+        float uprightTarget = _airTricksHeld ? 0f : 1f;
+        _airUprightRecoverBlend = Mathf.MoveTowards(_airUprightRecoverBlend, uprightTarget, 7.5f * dt);
+
+        if (_wasAirTricksHeldLastFrame && !_airTricksHeld)
+        {
+            Vector3 v = rb.velocity;
+            if (v.y > 0.05f)
+                rb.velocity = new Vector3(v.x, 0f, v.z);
+        }
+
+        _wasAirTricksHeldLastFrame = _airTricksHeld;
     }
 
     private void HandleSteering()
@@ -3669,6 +4038,20 @@ public class CarController : MonoBehaviour
         float t = Mathf.Clamp01(speed / topSpeedForSteering);
         float speedSteerMul = Mathf.Lerp(lowSpeedSteerMultiplier, highSpeedSteerMultiplier, t);
         float driftSteerMul = isDrifting ? Mathf.Lerp(1f, maxDriftSteerMultiplier, driftCharge) : 1f;
+
+        if (_airborneForTricks && enableAirTricks)
+        {
+            if (_airTricksHeld)
+                return;
+
+            if (Mathf.Abs(steeringInput) > airYawInputDeadzone)
+            {
+                float yawAmount = steeringInput * airYawRate * Time.fixedDeltaTime;
+                ApplyScriptedAirRotationLocal(0f, yawAmount, 0f);
+            }
+
+            return;
+        }
 
         if (Mathf.Abs(steeringInput) > 0.001f)
         {
@@ -3782,6 +4165,12 @@ public class CarController : MonoBehaviour
         bool groundedNow = CheckIfGrounded();
         RefreshGroundNormalForDriving(groundedNow);
 
+        if (_airborneForTricks && enableAirTricks && _airTricksHeld)
+        {
+            forwardKey = false;
+            reverseKey = false;
+        }
+
         // Throttle/brake along surface tangent when grounded (no need to wait for pitch alignment on steep terrain).
         Vector3 forward = GetDriveForwardAlongSurface(transform.forward, _lastStableGroundNormal, groundedNow);
 
@@ -3823,34 +4212,16 @@ public class CarController : MonoBehaviour
             {
                 if (accelerating)
                 {
-                    // IMPROVED: Apply malfunction multiplier for smooth throttle reduction instead of complete cutoff
-                    float malfunctionAdjustedAccel = effectiveAcceleration * _currentMalfunctionMultiplier;
-                    // Ensure we always have some minimum acceleration during malfunction to prevent immobility
-                    if (useSmoothMalfunction && _currentMalfunctionMultiplier < 1f)
-                    {
-                        float hpFrac = HPPercent;
-                        float mFloorScale = hpFrac < degradeStartHPFraction ? 0.18f : 0.45f;
-                        malfunctionAdjustedAccel = Mathf.Max(malfunctionAdjustedAccel, minimumAccelerationFloor * mFloorScale);
-                    }
-                    rb.AddForce(forward * malfunctionAdjustedAccel, ForceMode.Acceleration);
+                    rb.AddForce(forward * GetThrottleAcceleration(), ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
                 else if (brakingOrReverse)
                 {
                     float dt = Time.fixedDeltaTime;
 
-                    // In air: only reduce speed magnitude (don't apply reverse – that would flip velocity backward).
                     if (!groundedNow)
                     {
-                        Vector3 v = rb.velocity;
-                        float mag = v.magnitude;
-                        if (mag > 0.01f)
-                        {
-                            float decel = maxBrakeDecelPerSecond > 0f ? maxBrakeDecelPerSecond : 12f;
-                            float newMag = Mathf.Max(0f, mag - decel * dt);
-                            rb.velocity = v.normalized * newMag;
-                        }
-                        ConsumeFuel(fuelUsePerSecondBraking * Time.fixedDeltaTime);
+                        // No mid-air braking — left trigger is used for barrel rolls with left bumper.
                     }
                     else
                     {
@@ -3932,15 +4303,8 @@ public class CarController : MonoBehaviour
                 if (accelerating)
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
-                    // IMPROVED: Apply malfunction multiplier during drift too
-                    float malfunctionAdjustedAccel = effectiveAcceleration * _currentMalfunctionMultiplier;
-                    if (useSmoothMalfunction && _currentMalfunctionMultiplier < 1f)
-                    {
-                        float hpFrac = HPPercent;
-                        float mFloorScale = hpFrac < degradeStartHPFraction ? 0.18f : 0.45f;
-                        malfunctionAdjustedAccel = Mathf.Max(malfunctionAdjustedAccel, minimumAccelerationFloor * mFloorScale);
-                    }
-                    rb.AddForce(forward * malfunctionAdjustedAccel * accelMul, ForceMode.Acceleration);
+                    float throttleAccel = GetThrottleAcceleration() * accelMul;
+                    rb.AddForce(forward * throttleAccel, ForceMode.Acceleration);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                     consumedFuelThisFrame = true;
                 }
@@ -4098,6 +4462,7 @@ public class CarController : MonoBehaviour
         if (!_flipMashActive)
         {
             amount *= Mathf.Max(0f, currentFuelUseMultiplier);
+            amount *= GetLowHpFuelDrainMultiplier();
         }
 
 
@@ -4129,6 +4494,19 @@ public class CarController : MonoBehaviour
         {
             currentFuel = Mathf.Min(currentFuel, maxFuel);
         }
+    }
+
+    /// <summary>
+    /// 1 at 100% HP; scales up to 1 + (extraFuelDrainPercentAtZeroHp / 100) at 0% HP.
+    /// </summary>
+    private float GetLowHpFuelDrainMultiplier()
+    {
+        if (!enableLowHpExtraFuelDrain || maxHP <= 0f || extraFuelDrainPercentAtZeroHp <= 0f)
+            return 1f;
+
+        float missingHpFraction = 1f - Mathf.Clamp01(HPPercent);
+        float extraFraction = extraFuelDrainPercentAtZeroHp / 100f;
+        return 1f + extraFraction * missingHpFraction;
     }
 
     private float surfaceTurnMultiplier = 1f; // runtime surface multiplier for steering (fixes lost multiplier when skills apply)
@@ -4578,6 +4956,77 @@ public class CarController : MonoBehaviour
         return accelExtra > 1e-4f;
     }
 
+    private Vector3 GetGroundCastOrigin()
+    {
+        return carCollider != null
+            ? carCollider.bounds.center + Vector3.up * 0.25f
+            : transform.position + Vector3.up * 0.25f;
+    }
+
+    private Vector3 ResolveGroundUp(Vector3 castOrigin, float rayDistance, out float groundDistance)
+    {
+        groundDistance = float.PositiveInfinity;
+        if (TryGetGroundNormal(castOrigin, rayDistance, out RaycastHit hit))
+        {
+            groundDistance = hit.distance;
+            _groundNormalMeasured = hit.normal;
+            return hit.normal;
+        }
+
+        return _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal : Vector3.up;
+    }
+
+    private bool BlocksDrivingOrientation()
+    {
+        return rb == null
+            || _inCrash
+            || _isReorienting
+            || _flipMashActive
+            || IsPostCrashRecoveryDriving
+            || IsCrashInvulnerable
+            || IsDeadForMashRecovery;
+    }
+
+    private bool BlocksAirOrientation()
+    {
+        return BlocksDrivingOrientation() || _airTricksHeld;
+    }
+
+    /// <summary>
+    /// Ground ramp align + passive air upright recovery when not tricking.
+    /// </summary>
+    private void ApplyDrivingOrientation(float dt)
+    {
+        if (BlocksAirOrientation()) return;
+
+        Vector3 castOrigin = GetGroundCastOrigin();
+        bool groundedNow = CheckIfGrounded();
+
+        if (groundedNow)
+        {
+            if (!enableRampAlignment) return;
+
+            Vector3 groundUp = ResolveGroundUp(castOrigin, groundNormalCheckDistance, out _);
+            AlignToUpVectorPreserveYaw(groundUp, groundAlignSpeed, dt);
+            return;
+        }
+
+        if (!enableAirUprightRecovery || !_airborneForTricks) return;
+
+        Vector3 landingUp = ResolveGroundUp(castOrigin, landingPredictDistance, out float groundDist);
+        if (Vector3.Dot(transform.up, landingUp) >= airUprightMinAlignDot) return;
+
+        float proximity = float.IsPositiveInfinity(groundDist)
+            ? 0f
+            : 1f - Mathf.Clamp01(groundDist / Mathf.Max(0.01f, landingPredictDistance));
+        float alignSpeed = (airUprightRecoverSpeed + airUprightNearGroundBoost * proximity * proximity)
+            * _airUprightRecoverBlend;
+
+        if (alignSpeed <= 0.001f) return;
+
+        AlignToUpVectorPreserveYaw(landingUp, alignSpeed, dt);
+    }
+
     private void AlignToUpVectorPreserveYaw(Vector3 targetUp, float alignSpeed, float dt)
     {
         targetUp = targetUp.sqrMagnitude > 0.0001f ? targetUp.normalized : Vector3.up;
@@ -4594,72 +5043,16 @@ public class CarController : MonoBehaviour
             return;
 
         Quaternion targetRot = Quaternion.LookRotation(projectedForward.normalized, targetUp);
+        float blend = Mathf.Clamp01(alignSpeed * dt);
+        bool airborneNow = _airborneForTricks && !CheckIfGrounded();
 
-        // Smooth align
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Mathf.Clamp01(alignSpeed * dt));
-    }
-
-    private void ApplyRampAlignment(float dt)
-    {
-        if (!enableRampAlignment) return;
-        if (rb == null) return;
-        if (_inCrash || _isReorienting) return;     // don't fight crash/recovery
-        if (IsPostCrashRecoveryDriving) return;
-        if (IsCrashInvulnerable) return;
-        if (IsDeadForMashRecovery || _flipMashActive)
-            return;
-
-        // We will align to either:
-        // - current ground normal (if grounded)
-        // - predicted landing normal (if airborne and close enough)
-        Vector3 targetUp = Vector3.up;
-
-        // Use your existing grounded concept if you want:
-        // _isGrounded is set during crash only in your code,
-        // so here we do a lightweight check.
-        bool groundedNow = CheckIfGrounded();
-
-        // origin slightly above car, so casts don't start inside ramps
-        Vector3 castOrigin = carCollider != null ? carCollider.bounds.center + Vector3.up * 0.25f : transform.position + Vector3.up * 0.25f;
-
-        if (groundedNow)
+        if (airborneNow && rb != null)
         {
-            if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
-            {
-                targetUp = hit.normal;
-                _groundNormalMeasured = hit.normal;
-            }
-            else
-            {
-                targetUp = _lastStableGroundNormal.sqrMagnitude > 1e-8f ? _lastStableGroundNormal : Vector3.up;
-            }
-
-            // Align faster while grounded
-            AlignToUpVectorPreserveYaw(targetUp, groundAlignSpeed, dt);
+            ApplyScriptedAirRotation(Quaternion.Slerp(rb.rotation, targetRot, blend));
             return;
         }
 
-        // --- Airborne: prevent “weird rotation” after leaving a ramp ---
-        // If we’re falling and close enough to something below, start blending toward that landing normal.
-        bool falling = rb.velocity.y <= 0.25f;
-
-        if (falling && TryGetGroundNormal(castOrigin, landingPredictDistance, out RaycastHit landHit))
-        {
-            float dist = landHit.distance;
-
-            // Only start aligning when approaching the surface (so we don't snap mid-air)
-            if (dist <= landingAlignStartDistance)
-            {
-                targetUp = landHit.normal;
-                AlignToUpVectorPreserveYaw(targetUp, airAlignSpeed, dt);
-                return;
-            }
-        }
-
-        // Otherwise: keep the last stable ramp normal influence VERY lightly (or do nothing).
-        // Doing nothing is safest for "no gameplay changes".
-        // If you want slight stabilization, uncomment:
-        // AlignToUpVectorPreserveYaw(_lastStableGroundNormal, airAlignSpeed * 0.25f, dt);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, blend);
     }
 
     private void EvaluateSurface(
@@ -5865,11 +6258,90 @@ public class CarController : MonoBehaviour
         effectiveAcceleration *= perfMul;
         effectiveMaxSpeed *= perfMul;
         effectiveMaxSpeed = Mathf.Max(effectiveMaxSpeed, minimumMaxSpeedFloor);
-        effectiveAcceleration = Mathf.Max(effectiveAcceleration, minimumAccelerationFloor * 0.35f);
+
+        float accelFloor = guaranteeMinimumThrottleAcceleration
+            ? minimumAccelerationFloor
+            : minimumAccelerationFloor * 0.35f;
+        effectiveAcceleration = Mathf.Max(effectiveAcceleration, accelFloor);
 
         // Slightly dull steering when hurt (optional subtlety on top of accel loss)
         float steerMul = Mathf.Lerp(0.82f, 1f, perfMul);
         effectiveTurnSpeed *= steerMul;
+    }
+
+    /// <summary>
+    /// Forward throttle acceleration after malfunction scaling. When guaranteed, never below <see cref="minimumAccelerationFloor"/>.
+    /// </summary>
+    private float GetThrottleAcceleration()
+    {
+        float accel = effectiveAcceleration * _currentMalfunctionMultiplier;
+        if (guaranteeMinimumThrottleAcceleration)
+            accel = Mathf.Max(accel, minimumAccelerationFloor);
+        else if (useSmoothMalfunction && _currentMalfunctionMultiplier < 1f)
+            accel = Mathf.Max(accel, minimumAccelerationFloor * 0.35f);
+        return accel;
+    }
+
+    private bool TrySampleLandingGroundNormal(out Vector3 groundNormal)
+    {
+        groundNormal = Vector3.up;
+        Vector3 castOrigin = carCollider != null
+            ? carCollider.bounds.center + Vector3.up * 0.25f
+            : transform.position + Vector3.up * 0.25f;
+
+        if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+        {
+            groundNormal = hit.normal;
+            return true;
+        }
+
+        if (_lastStableGroundNormal.sqrMagnitude > 1e-8f)
+            groundNormal = _lastStableGroundNormal;
+
+        return false;
+    }
+
+    private bool IsOrientationAcceptableForLanding(Vector3 groundNormal, Vector3 carUp, Vector3 carForward)
+    {
+        groundNormal = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
+        carUp = carUp.sqrMagnitude > 1e-8f ? carUp.normalized : Vector3.up;
+        carForward = carForward.sqrMagnitude > 1e-8f ? carForward.normalized : transform.forward;
+
+        float upAlign = Vector3.Dot(carUp, groundNormal);
+        if (upAlign < badLandingUpAlignDotMin)
+            return false;
+
+        float fwdAlign = Mathf.Abs(Vector3.Dot(carForward, groundNormal));
+        if (fwdAlign > badLandingForwardNormalDotMax)
+            return false;
+
+        return true;
+    }
+
+    private bool ShouldCrashForBadLanding(Vector3 groundNormal, float airTimeAtLanding, Vector3 carUp, Vector3 carForward)
+    {
+        if (!enableBadLandingCrash || rb == null) return false;
+        if (_inCrash || _flipMashActive || IsPostCrashRecoveryDriving) return false;
+        if (airTimeAtLanding < badLandingMinAirborneSeconds) return false;
+        return !IsOrientationAcceptableForLanding(groundNormal, carUp, carForward);
+    }
+
+    private void TriggerBadLandingCrash(Vector3 groundNormal, Vector3 carUp)
+    {
+        if (rb == null) return;
+
+        groundNormal = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
+        carUp = carUp.sqrMagnitude > 1e-8f ? carUp.normalized : transform.up;
+
+        float upAlign = Mathf.Clamp01(Vector3.Dot(carUp, groundNormal));
+        float sev01 = Mathf.Clamp01(Mathf.Lerp(badLandingCrashSeverity, 1f, 1f - upAlign));
+
+        float crashDuration = Mathf.Lerp(minCrashDuration, maxCrashDuration, sev01);
+        Vector3 contact = carCollider != null ? carCollider.bounds.center : transform.position;
+
+        bool damageWindowOpen = Time.time >= _nextCrashAllowedTime;
+        TriggerCrash(groundNormal, crashDuration, 0f, 0f, sev01, contact, damageWindowOpen,
+            softLandingCrash: true, softLandingCarUp: carUp, softLandingGroundNormal: groundNormal);
     }
 
     /// <summary>
@@ -5883,9 +6355,22 @@ public class CarController : MonoBehaviour
         bool groundedNow = CheckIfGrounded();
         float dt = Time.fixedDeltaTime;
 
+        if (!groundedNow)
+        {
+            _airborneContinuousTime += dt;
+            _airborneLandingUpSnapshot = transform.up;
+            _airborneLandingForwardSnapshot = transform.forward;
+            if (_airTricksHeld)
+                _trickSessionThisJump = true;
+        }
+
         // Store takeoff speed and direction when we leave the ground (e.g. off a ramp)
         if (_wasGroundedLastFrame && !groundedNow)
         {
+            _trickSessionThisJump = false;
+            ResetAirTrickRotationState();
+            _airUprightRecoverBlend = 0f;
+            _wasAirTricksHeldLastFrame = false;
             Vector3 v = rb.velocity;
             Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
             _takeoffHorizSpeed = horiz.magnitude;
@@ -5896,45 +6381,64 @@ public class CarController : MonoBehaviour
         if (!_wasGroundedLastFrame && groundedNow)
         {
             _lastLandedTime = Time.time;
+            float airTimeAtLanding = _airborneContinuousTime;
+            _airborneContinuousTime = 0f;
 
-            if (enableLandingBoost && _takeoffHorizSpeed > 0.1f)
+            TrySampleLandingGroundNormal(out Vector3 landingNormal);
+            bool badLanding = ShouldCrashForBadLanding(
+                landingNormal,
+                airTimeAtLanding,
+                _airborneLandingUpSnapshot,
+                _airborneLandingForwardSnapshot);
+
+            _trickSessionThisJump = false;
+            ResetAirTrickRotationState();
+
+            if (badLanding)
             {
-                _landingBoostTimeLeft = landingBoostDuration;
-                _landingBoostDuration = landingBoostDuration;
-                _landingBoostTargetMagnitude = _takeoffHorizSpeed * landingBoostStrength;
-
-                // Immediate velocity injection: landing often kills velocity, so restore horizontal speed so the car keeps going fast
-                float targetSpeed = _takeoffHorizSpeed * landingBoostStrength;
-                Vector3 currentHoriz = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
-                float currentSpeed = currentHoriz.magnitude;
-                if (currentSpeed < targetSpeed - 0.1f)
-                {
-                    // Forward-only boost: never add left/right push. Preserve existing lateral, only raise forward component.
-                    Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
-                    if (flatForward.sqrMagnitude < 0.001f) flatForward = _takeoffHorizDir;
-                    flatForward.Normalize();
-
-                    float currentForwardSpeed = Vector3.Dot(currentHoriz, flatForward);
-                    float newForwardSpeed = Mathf.Max(currentForwardSpeed, targetSpeed);
-                    Vector3 lateral = currentHoriz - flatForward * currentForwardSpeed;
-                    Vector3 newHoriz = flatForward * newForwardSpeed + lateral;
-                    rb.velocity = new Vector3(newHoriz.x, rb.velocity.y, newHoriz.z);
-                }
+                TriggerBadLandingCrash(landingNormal, _airborneLandingUpSnapshot);
             }
-
-            if (enableLandingCarrySpeed)
+            else
             {
-                Vector3 v = rb.velocity;
-                float horizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
-
-                // Calculate excess speed above current cap
-                float capNoCarry = GetCurrentSpeedCap_NoLandingCarry();
-                float excess = horizSpeed - capNoCarry;
-
-                if (excess > 0f)
+                if (enableLandingBoost && _takeoffHorizSpeed > 0.1f)
                 {
-                    // Keep the higher of current excess or new excess (in case of consecutive jumps)
-                    _landingExcessSpeed = Mathf.Max(_landingExcessSpeed, excess);
+                    _landingBoostTimeLeft = landingBoostDuration;
+                    _landingBoostDuration = landingBoostDuration;
+                    _landingBoostTargetMagnitude = _takeoffHorizSpeed * landingBoostStrength;
+
+                    // Immediate velocity injection: landing often kills velocity, so restore horizontal speed so the car keeps going fast
+                    float targetSpeed = _takeoffHorizSpeed * landingBoostStrength;
+                    Vector3 currentHoriz = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+                    float currentSpeed = currentHoriz.magnitude;
+                    if (currentSpeed < targetSpeed - 0.1f)
+                    {
+                        // Forward-only boost: never add left/right push. Preserve existing lateral, only raise forward component.
+                        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+                        if (flatForward.sqrMagnitude < 0.001f) flatForward = _takeoffHorizDir;
+                        flatForward.Normalize();
+
+                        float currentForwardSpeed = Vector3.Dot(currentHoriz, flatForward);
+                        float newForwardSpeed = Mathf.Max(currentForwardSpeed, targetSpeed);
+                        Vector3 lateral = currentHoriz - flatForward * currentForwardSpeed;
+                        Vector3 newHoriz = flatForward * newForwardSpeed + lateral;
+                        rb.velocity = new Vector3(newHoriz.x, rb.velocity.y, newHoriz.z);
+                    }
+                }
+
+                if (enableLandingCarrySpeed)
+                {
+                    Vector3 v = rb.velocity;
+                    float horizSpeed = Vector3.ProjectOnPlane(v, Vector3.up).magnitude;
+
+                    // Calculate excess speed above current cap
+                    float capNoCarry = GetCurrentSpeedCap_NoLandingCarry();
+                    float excess = horizSpeed - capNoCarry;
+
+                    if (excess > 0f)
+                    {
+                        // Keep the higher of current excess or new excess (in case of consecutive jumps)
+                        _landingExcessSpeed = Mathf.Max(_landingExcessSpeed, excess);
+                    }
                 }
             }
         }
@@ -5958,7 +6462,8 @@ public class CarController : MonoBehaviour
 
         // Update grounded state for next frame (CRITICAL - this was missing in normal flow!)
         _wasGroundedLastFrame = groundedNow;
-        _isGrounded = groundedNow;
+        if (!_inCrash)
+            _isGrounded = groundedNow;
     }
 
     private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)

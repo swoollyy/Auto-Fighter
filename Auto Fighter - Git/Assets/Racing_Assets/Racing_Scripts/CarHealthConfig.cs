@@ -27,6 +27,10 @@ public class CarHealthConfig : MonoBehaviour
     [SerializeField] private float minimumAccelerationFloor = 2.5f;
     [SerializeField] private float minimumMaxSpeedFloor = 5f;
 
+    [Header("Low HP Driving Guarantee")]
+    [Tooltip("While holding throttle, acceleration never drops below Minimum Acceleration Floor — even during malfunction bursts, on grass, or at 0 HP.")]
+    [SerializeField] private bool guaranteeMinimumThrottleAcceleration = true;
+
     [Header("Crash Penalties")]
     [Tooltip("Crash HP/fuel loss = severity × max pool × this scale. Severity is 0–1 from the crash system (e.g. 0.98 → 98% of max HP lost, capped by current HP). 0 = no HP/fuel damage from crashes.")]
     [SerializeField, Min(0f)] private float crashDamageSeverityScale = 1f;
@@ -61,6 +65,7 @@ public class CarHealthConfig : MonoBehaviour
     public bool UseSmoothMalfunction => useSmoothMalfunction;
     public float MinimumAccelerationFloor => minimumAccelerationFloor;
     public float MinimumMaxSpeedFloor => minimumMaxSpeedFloor;
+    public bool GuaranteeMinimumThrottleAcceleration => guaranteeMinimumThrottleAcceleration;
     public float CrashDamageCooldown => crashDamageCooldown;
     public GameObject CrashImpactVFX => crashImpactVFX;
     public float CrashImpactVFXLifetime => crashImpactVFXLifetime;

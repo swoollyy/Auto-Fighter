@@ -229,55 +229,9 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
         _totalLength = 0f;
         _lastClosestIdx = 0;
 
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2)
-        {
+        if (trackGenerator == null) return;
+        if (!TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumLengths, out _totalLength))
             Debug.LogError("[IcePathSpawner] Track path has < 2 points. Cannot spawn ice paths.");
-            return;
-        }
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-        _totalLength = len;
-    }
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        outList.Add(raw[0]);
-        for (int i = 0; i < raw.Count - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, raw.Count - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        return 0.5f * (
-            (2 * p1) +
-            (-p0 + p2) * t +
-            (2 * p0 - 5 * p1 + 4 * p2 - p3) * (t * t) +
-            (-p0 + 3 * p1 - 3 * p2 + p3) * (t * t * t)
-        );
     }
 
     private void SetupSlots()

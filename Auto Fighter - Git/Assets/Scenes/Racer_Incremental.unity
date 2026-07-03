@@ -4745,6 +4745,11 @@ MonoBehaviour:
   rotationFollowSpeed: 7.5
   rotationLag: 1.23
   driftRotationLagMultiplier: 0.1
+  enableTrickCameraFreeze: 1
+  trickCameraBlendInSpeed: 12
+  trickCameraBlendOutSpeed: 3.5
+  trickReleaseRotationFollowScale: 0.28
+  trickReleaseForwardCatchup: 5
   boostVFXObject: {fileID: 115066103}
   boostVfxLingerSeconds: 1
   boostZoomOutDeltaFOV: 6.57
@@ -5141,6 +5146,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 859e79d01e7720044a21dc44eb1b9490, type: 2}
   - {fileID: 11400000, guid: 6b20b536e1ab7c444bef6d17ea2d8b53, type: 2}
   - {fileID: 11400000, guid: 74aa01dab42ceac488ef5d49df30ab0a, type: 2}
+  - {fileID: 11400000, guid: 008e4c643b0ef434cb1fe670d6006f8a, type: 2}
   randomScreenMaxAttempts: 8
   randomScreenMinSeparation: 8.25
   randomScreenMemorySeconds: 0.35
@@ -5725,6 +5731,7 @@ MonoBehaviour:
   roadWidth: 6.5
   roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
   uvTiling: 0.1
+  meshFromSegmentJunctions: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   preventSelfIntersections: 1
@@ -7162,7 +7169,7 @@ MonoBehaviour:
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
   spawnHeightOffset: 0.2
-  baseCoinsPerMeter: 0.1
+  baseCoinsPerMeter: 0.05
   coinFriendBaseRange: 30
   coinFriendBaseCooldown: 3
   coinFriendBaseValueBonus: 0
@@ -17587,9 +17594,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   trials:
-  - label: 
-    dayLimit: 0
-    targetProgress: 0
+  - {fileID: 11400000, guid: 47f072c68d939524d8cb69541acd8110, type: 2}
   persistAcrossSessions: 0
   verboseLogging: 1
 --- !u!1 &1986545842

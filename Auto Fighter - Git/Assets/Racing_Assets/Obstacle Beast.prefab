@@ -212,13 +212,16 @@ MonoBehaviour:
   avoidanceIdlePathNudgeSpeed: 5
   avoidanceSideBias: 0
   avoidanceResponse: 3
+  wanderStuckWindowSeconds: 1
+  wanderProgressRatioThreshold: 0.4
+  wanderPathClearFraction: 0.6
   aggressivePlayerPriorityRadius: 8
   creatureSenseLayers:
     serializedVersion: 2
     m_Bits: 2097152
   crushLayers:
     serializedVersion: 2
-    m_Bits: 10881025
+    m_Bits: 11405313
   minCrushSpeed: 1
   allowTagCrushWithoutRigidbody: 1
   obstacleTags:

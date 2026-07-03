@@ -8,6 +8,8 @@ public class CrossTrackObstacle : MonoBehaviour
 {
     [Header("Motion")]
     [SerializeField] private float speed = 6f;
+    [Tooltip("Multiply cross speed by this on each hit while still on the scripted path (1.5 = +50%). Stacks per hit.")]
+    [SerializeField, Min(1f)] private float hitSpeedMultiplier = 1.5f;
     [Tooltip("Destroy this GameObject after it crosses. If false, just disable this script.")]
     [SerializeField] private bool destroyOnExit = true;
 
@@ -625,6 +627,7 @@ public class CrossTrackObstacle : MonoBehaviour
                           $"playerRb={(playerRb != null ? playerRb.mass.ToString("F2") : "(no rb)")} cross keeps path");
             }
 
+            TryBoostSpeedOnHit();
             return;
         }
 
@@ -635,6 +638,7 @@ public class CrossTrackObstacle : MonoBehaviour
         if (npc != null)
         {
             npc.ApplyScriptedCrossTrackOverlapHit(this, other, _lastVelocity.magnitude);
+            TryBoostSpeedOnHit();
             return;
         }
 
@@ -660,6 +664,7 @@ public class CrossTrackObstacle : MonoBehaviour
             }
 
             shuttle.ApplyCrossTrackRamFromCross(this, collision);
+            TryBoostSpeedOnHit();
             return;
         }
 
@@ -682,6 +687,7 @@ public class CrossTrackObstacle : MonoBehaviour
                     nonPathLossWakeKinematicObstacles);
             }
 
+            TryBoostSpeedOnHit();
             return;
         }
 
@@ -704,6 +710,8 @@ public class CrossTrackObstacle : MonoBehaviour
                 crossClashPairCooldown,
                 enableCrossClashCrashPopup);
         }
+
+        TryBoostSpeedOnHit();
 
         float relSpeed = _lastVelocity.magnitude;
         if (otherRb != null && otherRb.velocity.sqrMagnitude > 0.01f)
@@ -751,6 +759,16 @@ public class CrossTrackObstacle : MonoBehaviour
 
         // After conversion, use real rigidbody velocity
         return _rb != null ? _rb.velocity : Vector3.zero;
+    }
+
+    private void TryBoostSpeedOnHit()
+    {
+        if (_convertedToPhysics || !_active || hitSpeedMultiplier <= 1f)
+            return;
+
+        speed = Mathf.Max(0.5f, speed * hitSpeedMultiplier);
+        if (_lastVelocity.sqrMagnitude > 1e-6f)
+            _lastVelocity *= hitSpeedMultiplier;
     }
 
     private void CacheChildColliders()
@@ -1234,6 +1252,7 @@ public class CrossTrackObstacle : MonoBehaviour
         }
         d.Normalize();
 
+        TryBoostSpeedOnHit();
         ConvertToPhysicsWithExplosion(-d, explosionForceBase * 0.95f, Mathf.Max(relativeSpeed, 4f));
 
         if (enableCrossClashCrashPopup && RacingPopups.IsReady)

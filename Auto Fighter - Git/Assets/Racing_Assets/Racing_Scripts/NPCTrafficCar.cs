@@ -1567,10 +1567,7 @@ public class NPCTrafficCar : MonoBehaviour
             return false;
         }
 
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2) return false;
-
-        RebuildPath(src);
+        RebuildPathFromGenerator();
         if (_path.Count < 2 || _totalLength < 1f) return false;
 
         if (randomizeSpeed)
@@ -1749,27 +1746,13 @@ public class NPCTrafficCar : MonoBehaviour
         return _col != null ? _col.bounds.center : transform.position + Vector3.up * rayHeight;
     }
 
-    private void RebuildPath(List<Vector3> src)
+    private void RebuildPathFromGenerator()
     {
         _path.Clear();
         _cumLengths = null;
         _totalLength = 0f;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-        _totalLength = len;
+        if (trackGenerator == null) return;
+        TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumLengths, out _totalLength);
     }
 
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 forward)
@@ -1777,27 +1760,7 @@ public class NPCTrafficCar : MonoBehaviour
         pos = Vector3.zero;
         forward = Vector3.forward;
         if (_path.Count < 2 || _cumLengths == null) return;
-
-        dist = Mathf.Clamp(dist, 0f, _totalLength);
-        int idx = 0;
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= dist)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segStart = _cumLengths[idx];
-        float segEnd = _cumLengths[Mathf.Min(idx + 1, _cumLengths.Length - 1)];
-        float segLen = Mathf.Max(0.0001f, segEnd - segStart);
-        float t = (dist - segStart) / segLen;
-        Vector3 a = _path[idx];
-        Vector3 b = _path[Mathf.Min(idx + 1, _path.Count - 1)];
-        pos = Vector3.Lerp(a, b, t);
-        forward = (b - a).normalized;
-        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, dist, out pos, out forward);
     }
 
     private float GetDistanceAlongPath(Vector3 worldPos)

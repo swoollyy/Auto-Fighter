@@ -87,25 +87,7 @@ public class TrackDistanceMeter : MonoBehaviour
         _cumLengths = null;
 
         if (trackGenerator == null) return;
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, Mathf.Max(1, smoothingSubdivisionsPerSegment), _path);
-        else
-            _path.AddRange(src);
-
-        if (_path.Count < 2) return;
-
-        _cumLengths = new float[_path.Count];
-        _cumLengths[0] = 0f;
-        float length = 0f;
-        for (int i = 1; i < _path.Count; i++)
-        {
-            length += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = length;
-        }
-        _totalLength = length;
+        TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumLengths, out _totalLength);
     }
 
     void LateUpdate()
@@ -177,42 +159,5 @@ public class TrackDistanceMeter : MonoBehaviour
         float baseDist = _cumLengths != null && bestIdx < _cumLengths.Length ? _cumLengths[bestIdx] : 0f;
         float segLen = Vector3.Distance(_path[bestIdx], _path[bestIdx + 1]);
         return Mathf.Clamp(baseDist + segLen * bestT, 0f, _totalLength);
-    }
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        int n = raw.Count;
-        if (n < 2)
-        {
-            outList.AddRange(raw);
-            return;
-        }
-
-        outList.Add(raw[0]);
-        for (int i = 0; i < n - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, n - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        float t2 = t * t;
-        float t3 = t2 * t;
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
     }
 }
