@@ -273,6 +273,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected Transform vehicleChaseTransform;
     protected float vehicleChaseDistance = float.MaxValue;
 
+    /// <summary>Resolved charge target this frame (player, critter, or NPC traffic).</summary>
+    private Transform _currentChargeTarget;
+
+    private float _lastNpcTrafficHitTime = -999f;
+    private const float NpcTrafficHitCooldown = 0.35f;
+
     protected bool isBullRushCharging = false;      // True during wind-up phase
     protected bool isBullRushActive = false;        // True during the actual rush
     protected float bullRushChargeTimer = 0f;       // Timer for charge-up phase
@@ -334,7 +340,30 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         LayerMask m = movementAvoidanceLayers;
         if (behaviorType != CreatureBehaviorType.Aggressive)
             m.value |= rollingLogAvoidanceLayers.value;
+
+        // While charging an NPC car, do not steer/clamp away from the traffic layer — otherwise the beast never reaches contact.
+        if (IsActivelyChargingNpcTraffic())
+            m.value &= ~_npcTrafficLayers.value;
+
         return m;
+    }
+
+    private bool IsActivelyChargingNpcTraffic()
+    {
+        if (behaviorType != CreatureBehaviorType.Aggressive || currentState != CreatureState.Charging)
+            return false;
+        if (config == null || !config.aggressiveHuntNpcTraffic || _npcTrafficLayers.value == 0)
+            return false;
+        if (_currentChargeTarget == null)
+            return false;
+        return _currentChargeTarget.GetComponentInParent<NPCTrafficCar>() != null;
+    }
+
+    private bool IsNpcTrafficCollider(Collider col)
+    {
+        if (col == null || _npcTrafficLayers.value == 0)
+            return false;
+        return (_npcTrafficLayers.value & (1 << col.gameObject.layer)) != 0;
     }
     #endregion
 
@@ -576,6 +605,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 otherCreature.killSource = CreatureKillSource.Other;
                 otherCreature.Die();
                 chaseTargetTransform = null;
+                return;
+            }
+        }
+
+        // Aggressive beast → NPC traffic (component-based; does not require Creatures on NPCTrafficCar.crashLayers).
+        if (behaviorType == CreatureBehaviorType.Aggressive &&
+            config != null && config.aggressiveHuntNpcTraffic &&
+            IsNpcTrafficCollider(other))
+        {
+            var npcTraffic = other.GetComponentInParent<NPCTrafficCar>();
+            if (npcTraffic != null && !npcTraffic.HasCrashed)
+            {
+                OnHitByNpcTraffic(other, npcTraffic);
                 return;
             }
         }
@@ -1265,6 +1307,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return;
 
         ResolveAggressiveChargeTarget(out Transform target, out bool huntingCreature);
+        _currentChargeTarget = target;
 
         if (target == null)
         {
@@ -1278,6 +1321,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
         {
             chaseTargetTransform = null;
+            _currentChargeTarget = null;
             EndBullRush();
             SetState(CreatureState.Idle);
             currentSpeed = 0f;
@@ -1681,7 +1725,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // No ApplyAvoidanceToMoveDir during bull rush (committed line); other states use normal avoidance steering.
         bool skipAvoidanceSteer = isBullRushActive || isBullRushCharging;
 
-        if (enableMovementAvoidance && movementAvoidanceLayers.value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidanceSteer)
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidanceSteer)
         {
             moveDir = ApplyAvoidanceToMoveDir(moveDir, step, flatForward, right);
         }
@@ -2726,6 +2770,44 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
 
     /// <summary>
+    /// Aggressive beast slams an NPC traffic car. Uses component detection so only beasts crash NPCs,
+    /// not bugs/critters (no need to put Creatures on <see cref="NPCTrafficCar"/> crash layers).
+    /// </summary>
+    protected virtual void OnHitByNpcTraffic(Collider npcCollider, NPCTrafficCar npcTraffic)
+    {
+        if (isDead || npcTraffic == null || npcTraffic.HasCrashed) return;
+        if (Time.time - _lastNpcTrafficHitTime < NpcTrafficHitCooldown) return;
+
+        bool isChargeHit = currentState == CreatureState.Charging || isBullRushActive;
+        if (!isChargeHit && currentSpeed < minCrushSpeed)
+            return;
+
+        _lastNpcTrafficHitTime = Time.time;
+        CauseNpcTrafficCrash(npcCollider, npcTraffic);
+
+        HideBullRushTelegraph();
+        EndBullRush();
+        vehicleChaseTransform = null;
+        _currentChargeTarget = null;
+        SetState(CreatureState.Idle);
+    }
+
+    protected virtual void CauseNpcTrafficCrash(Collider npcCollider, NPCTrafficCar npcTraffic)
+    {
+        if (npcTraffic == null || npcTraffic.HasCrashed) return;
+
+        bool isBullRushHit = isBullRushActive && config != null && config.useBullRush;
+        float impactSpeed = isBullRushHit
+            ? config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier
+            : config != null
+                ? config.aggressiveChargeSpeed * Mathf.Max(1f, config.aggressiveHuntSpeedMultiplier)
+                : 10f;
+        impactSpeed = Mathf.Max(impactSpeed, 8f);
+
+        npcTraffic.ForceCrashFromForcefield(transform.position, impactSpeed, npcCollider != null ? npcCollider : hitCollider);
+    }
+
+    /// <summary>
     /// Causes the player to crash with knockback.
     /// Impact is amplified if this occurs during a bull rush.
     /// </summary>
@@ -2929,10 +3011,6 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             var gm = GameManager_Racing.Instance;
             if (gm != null)
                 gm.RegisterObstacleReward(rewardAmount);
-
-            var skillMgr = RacingSkillTreeManager.Instance;
-            if (skillMgr != null)
-                skillMgr.AddCurrency(rewardAmount);
 
             if (RacingPopups.IsReady)
             {

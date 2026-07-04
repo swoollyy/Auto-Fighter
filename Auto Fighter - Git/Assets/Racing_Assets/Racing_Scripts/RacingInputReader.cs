@@ -40,9 +40,13 @@ public class RacingInputReader : MonoBehaviour
     private InputAction _zoomInAction;
     private InputAction _zoomOutAction;
     private InputAction _fovPeekAction;
+    private InputAction _airTricksAction;
+    private InputAction _steerVerticalAction;
 
     private bool _usingRuntimeAsset;
     private float _steerCache;
+    private float _steerVerticalCache;
+    private bool _airTricksHeldCache;
     private float _accelerateCache;
     private float _brakeCache;
     private bool _boostDownCache;
@@ -58,6 +62,10 @@ public class RacingInputReader : MonoBehaviour
     private bool _fovPeekCache;
 
     public float Steer => _steerCache;
+    /// <summary>Left stick Y (or keyboard W/S axis) for airborne pitch tricks.</summary>
+    public float SteerVertical => _steerVerticalCache;
+    /// <summary>Left bumper — hold while airborne to perform flips and spins.</summary>
+    public bool AirTricksHeld => _airTricksHeldCache;
     public float Accelerate => _accelerateCache;
     public float Brake => _brakeCache;
     public bool BoostDown => _boostDownCache;
@@ -127,6 +135,8 @@ public class RacingInputReader : MonoBehaviour
         _mashWestAction = _racingMap.FindAction("MashWest");
         _fireAction = _racingMap.FindAction("Fire");
         _fovPeekAction = _racingMap.FindAction("FovPeek");
+        _airTricksAction = _racingMap.FindAction("AirTricks");
+        _steerVerticalAction = _racingMap.FindAction("SteerVertical");
     }
 
     private void CacheSkillTreeActions()
@@ -182,6 +192,14 @@ public class RacingInputReader : MonoBehaviour
 
         var fovPeek = _racingMap.AddAction("FovPeek", InputActionType.Button);
         fovPeek.AddBinding("<Keyboard>/tab");
+
+        var airTricks = _racingMap.AddAction("AirTricks", InputActionType.Button);
+        airTricks.AddBinding("<Gamepad>/leftShoulder");
+        airTricks.AddBinding("<Keyboard>/q");
+
+        var steerVertical = _racingMap.AddAction("SteerVertical", InputActionType.Value);
+        steerVertical.AddCompositeBinding("1DAxis").With("Negative", "<Keyboard>/s").With("Positive", "<Keyboard>/w");
+        steerVertical.AddBinding("<Gamepad>/leftStick/y", processors: "AxisDeadzone(min=0.12,max=1)");
 
         _skillTreeMap = actionAsset.AddActionMap("SkillTreeUI");
         var pan = _skillTreeMap.AddAction("Pan", InputActionType.Value);
@@ -251,6 +269,8 @@ public class RacingInputReader : MonoBehaviour
         if (_racingMap != null && _racingMap.enabled)
         {
             _steerCache = ReadSteer();
+            _steerVerticalCache = ReadSteerVertical();
+            _airTricksHeldCache = ReadAirTricksHeld();
             _accelerateCache = ReadAccelerate();
             _brakeCache = ReadBrake();
             _boostDownCache = _boostAction != null && _boostAction.triggered;
@@ -284,7 +304,8 @@ public class RacingInputReader : MonoBehaviour
 
     private void ZeroRacingCaches()
     {
-        _steerCache = _accelerateCache = _brakeCache = 0f;
+        _steerCache = _steerVerticalCache = _accelerateCache = _brakeCache = 0f;
+        _airTricksHeldCache = false;
         _boostDownCache = false;
         _driftHeldCache = false;
         _restartDownCache = false;
@@ -302,6 +323,41 @@ public class RacingInputReader : MonoBehaviour
         float v = _steerAction.ReadValue<float>();
         if (Mathf.Abs(v) < steerDeadzone) return 0f;
         return Mathf.Clamp(v, -1f, 1f);
+    }
+
+    private float ReadSteerVertical()
+    {
+        if (_steerVerticalAction != null)
+        {
+            float v = _steerVerticalAction.ReadValue<float>();
+            if (Mathf.Abs(v) < steerDeadzone) return 0f;
+            return Mathf.Clamp(v, -1f, 1f);
+        }
+
+        if (Gamepad.current != null)
+        {
+            float v = Gamepad.current.leftStick.y.ReadValue();
+            if (Mathf.Abs(v) < steerDeadzone) return 0f;
+            return Mathf.Clamp(v, -1f, 1f);
+        }
+
+        float kb = 0f;
+        if (Keyboard.current != null)
+        {
+            if (Keyboard.current.wKey.isPressed) kb += 1f;
+            if (Keyboard.current.sKey.isPressed) kb -= 1f;
+        }
+        return Mathf.Clamp(kb, -1f, 1f);
+    }
+
+    private bool ReadAirTricksHeld()
+    {
+        if (_airTricksAction != null)
+            return _airTricksAction.IsPressed();
+
+        if (Keyboard.current != null && Keyboard.current.qKey.isPressed)
+            return true;
+        return Gamepad.current != null && Gamepad.current.leftShoulder.isPressed;
     }
 
     private float ReadAccelerate()

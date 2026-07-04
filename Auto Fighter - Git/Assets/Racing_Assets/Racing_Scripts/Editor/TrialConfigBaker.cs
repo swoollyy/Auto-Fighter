@@ -20,13 +20,14 @@ public static class TrialConfigBaker
         var obstacle = Object.FindObjectOfType<TrackObstacleSpawner>(true);
         var creature = Object.FindObjectOfType<TrackCreatureSpawner>(true);
         var npc = Object.FindObjectOfType<NPCTrafficCarSpawner>(true);
+        var coins = Object.FindObjectOfType<TrackCoinSpawner>(true);
 
-        if (gen == null && obstacle == null && creature == null && npc == null)
+        if (gen == null && obstacle == null && creature == null && npc == null && coins == null)
         {
             EditorUtility.DisplayDialog(
                 "Bake Trial Config",
                 "Couldn't find any of ProceduralTrackGenerator / TrackObstacleSpawner / TrackCreatureSpawner / " +
-                "NPCTrafficCarSpawner in the open scene. Open your gameplay scene (Racer_Incremental.unity) first.",
+                "NPCTrafficCarSpawner / TrackCoinSpawner in the open scene. Open your gameplay scene (Racer_Incremental.unity) first.",
                 "OK");
             return;
         }
@@ -45,6 +46,7 @@ public static class TrialConfigBaker
         if (obstacle != null) cfg.obstacles = obstacle.CaptureConfig();
         if (creature != null) cfg.creatures = creature.CaptureConfig();
         if (npc != null) cfg.npcTraffic = npc.CaptureConfig();
+        if (coins != null) cfg.coins = coins.CaptureConfig();
 
         AssetDatabase.CreateAsset(cfg, path);
         AssetDatabase.SaveAssets();
@@ -54,7 +56,8 @@ public static class TrialConfigBaker
         EditorGUIUtility.PingObject(cfg);
 
         Debug.Log($"[TrialConfigBaker] Baked '{cfg.trialName}' at {path}. " +
-                  $"Captured: track={gen != null}, obstacles={obstacle != null}, creatures={creature != null}, npc={npc != null}. " +
+                  $"Captured: track={gen != null}, obstacles={obstacle != null}, creatures={creature != null}, " +
+                  $"npc={npc != null}, coins={coins != null}. " +
                   "All override toggles are ON, so this config now fully drives those systems.");
     }
 }

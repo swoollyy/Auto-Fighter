@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// One asset = one trial. The config is the DRIVING source for the track generator and all three
-/// spawners: when a section's "override" toggle is ON, every field below is pushed into the live
-/// component at run start (config wins). When OFF, that component keeps its own scene values.
+/// One asset = one trial. The config is the DRIVING source for the track generator and all spawners:
+/// when a section's "override" toggle is ON, every field below is pushed into the live component at
+/// run start (config wins). When OFF, that component keeps its own scene values.
 ///
 /// Excluded on purpose: scene-object references (trackGenerator/playerTransform/parents/mainCamera) —
 /// a ScriptableObject asset can't hold scene refs; those stay wired on the components. Project-asset
@@ -30,6 +30,7 @@ public class TrialConfig : ScriptableObject
     public ObstacleSettings obstacles = new();
     public CreatureSettings creatures = new();
     public NpcTrafficSettings npcTraffic = new();
+    public CoinSettings coins = new();
 
     // =====================================================================
     // TRACK — mirrors ProceduralTrackGenerator
@@ -282,6 +283,68 @@ public class TrialConfig : ScriptableObject
 
         [Header("Timing")]
         public float updateInterval = 0.4f;
+
+        [Header("Debug")]
+        public bool verboseDebug = false;
+    }
+
+    // =====================================================================
+    // COINS — mirrors TrackCoinSpawner
+    // =====================================================================
+    [System.Serializable]
+    public class CoinSettings
+    {
+        [Tooltip("Uncheck to use the scene TrackCoinSpawner's own values for this trial.")]
+        public bool overrideCoins = true;
+
+        [Header("Coin Type Weights")]
+        [Tooltip("Which coin types can spawn and their distance-based weight multipliers.")]
+        public List<TrackCoinSpawner.CoinTypeWeight> coinTypeWeights = new List<TrackCoinSpawner.CoinTypeWeight>()
+        {
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, globalScale = 1.12f },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Silver, enabled = true, globalScale = 0.95f },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Gold, enabled = true, globalScale = 0.8f },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, globalScale = 0.4f },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, globalScale = 0.15f },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, globalScale = 0.05f }
+        };
+
+        [Header("Spawn Layout")]
+        [Min(0.1f)] public float coinSpacing = 6f;
+        public int maxActiveCoins = 120;
+        public float minSpawnDistanceAhead = 40f;
+        public float maxSpawnDistanceAhead = 140f;
+        public float despawnBehindDistance = 25f;
+        public float initialPreSpawnDistance = 80f;
+
+        [Header("Spawn Probability")]
+        [Range(0f, 1f)] public float baseSpawnChance = 0.85f;
+        public AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
+        public AnimationCurve lateTrackSpawnBonusCurve = new AnimationCurve(
+            new Keyframe(0f, 1f),
+            new Keyframe(0.8f, 1f),
+            new Keyframe(1f, 1.15f)
+        );
+
+        [Header("Skill Integration")]
+        public bool applySkillSpawnRate = true;
+
+        [Header("Placement")]
+        public float coinHeightOffset = 0.5f;
+        [Range(0f, 1f)] public float lateralFractionOfHalfWidth = 0.7f;
+        public float edgeInnerMargin = 0.25f;
+
+        [Header("Raycast")]
+        public LayerMask roadLayer;
+        public float raycastStartHeight = 5f;
+        public float raycastDownDistance = 15f;
+        public bool alignToSurfaceNormal = true;
+
+        [Header("Jitter & Update")]
+        public float distanceJitter = 1.5f;
+        public bool useSmoothing = true;
+        [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
+        public float updateInterval = 0.2f;
 
         [Header("Debug")]
         public bool verboseDebug = false;

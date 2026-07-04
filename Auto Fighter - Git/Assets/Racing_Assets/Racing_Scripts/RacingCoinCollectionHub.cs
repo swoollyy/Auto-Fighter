@@ -77,10 +77,6 @@ public class RacingCoinCollectionHub : MonoBehaviour
                 gm.RegisterCoinPickup(amount);
         }
 
-        var skillMgr = RacingSkillTreeManager.Instance;
-        if (skillMgr != null)
-            skillMgr.AddCurrency(amount);
-
         RacingQuestUnlockManager.Instance?.RecordCoinsCollected(amount);
 
         CoinDataSO mappedCoinData = null;

@@ -291,6 +291,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   speed: 6
+  hitSpeedMultiplier: 1.2
   destroyOnExit: 1
   keepPathFlatAndTrimOnElevation: 0
   maxAllowedPathElevationDelta: 0.15
@@ -306,6 +307,9 @@ MonoBehaviour:
     m_Bits: 24576
   previewPathSegments: 36
   previewUpdateEveryFrame: 1
+  pathPreviewFadeIn: 0.22
+  pathPreviewFadeOut: 0.28
+  pathPreviewHideBeforeEndDistance: 1.5
   drawPathGizmos: 1
   debugPathLoss: 0
   enableScreenShake: 1
@@ -330,6 +334,9 @@ MonoBehaviour:
   explosionTorqueRange: {x: 13.25, y: 20}
   applyMutualExplosion: 1
   mutualExplosionScale: 0.3
+  enableOverlapDetection: 1
+  overlapCheckInterval: 0.05
+  overlapHitCooldown: 0.15
   enableNonPathLossObstacleBump: 1
   nonPathLossUpVelocityChange: 3.5
   nonPathLossBumpSpeedRef: 10

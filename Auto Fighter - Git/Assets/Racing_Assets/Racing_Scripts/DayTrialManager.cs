@@ -26,7 +26,7 @@ public class DayTrialManager : MonoBehaviour
 
     [Header("Trials (TrialConfig assets, played in order top to bottom)")]
     [Tooltip("Drag your TrialConfig assets here in order. Each carries its own goal (dayLimit/targetProgress) " +
-             "plus the full track + obstacle + creature + NPC setup that gets applied when that trial is active.")]
+             "plus the full track + obstacle + creature + NPC + coin setup that gets applied when that trial is active.")]
     [SerializeField] private List<TrialConfig> trials = new();
 
     [Header("Persistence")]
@@ -80,13 +80,18 @@ public class DayTrialManager : MonoBehaviour
     }
 
     /// <summary>Push the active trial's spawner settings into the spawners. Call BEFORE their InitializeForRun().</summary>
-    public void ApplyCurrentTrialToSpawners(TrackObstacleSpawner obstacle, TrackCreatureSpawner creature, NPCTrafficCarSpawner npc)
+    public void ApplyCurrentTrialToSpawners(
+        TrackObstacleSpawner obstacle,
+        TrackCreatureSpawner creature,
+        NPCTrafficCarSpawner npc,
+        TrackCoinSpawner coins = null)
     {
         var cfg = CurrentConfig;
         if (cfg == null) return;
         if (obstacle != null) obstacle.ApplyConfig(cfg.obstacles);
         if (creature != null) creature.ApplyConfig(cfg.creatures);
         if (npc != null) npc.ApplyConfig(cfg.npcTraffic);
+        if (coins != null) coins.ApplyConfig(cfg.coins);
     }
 
     private void Awake()

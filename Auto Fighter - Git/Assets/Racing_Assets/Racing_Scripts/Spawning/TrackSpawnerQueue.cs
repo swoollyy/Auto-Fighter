@@ -403,11 +403,15 @@ public class TrackSpawnerQueue : MonoBehaviour
         progress = 0f;
 
         float total = 0f;
-        if (trackGenerator != null && trackGenerator.PathPoints != null && trackGenerator.PathPoints.Count >= 2)
+        if (trackGenerator != null)
         {
-            var pts = trackGenerator.PathPoints;
-            for (int i = 1; i < pts.Count; i++)
-                total += Vector3.Distance(pts[i - 1], pts[i]);
+            var pts = new List<Vector3>();
+            TrackPathSampling.BuildCenterlinePath(trackGenerator, pts);
+            if (pts.Count >= 2)
+            {
+                float[] cum = new float[pts.Count];
+                TrackPathSampling.BuildCumulativeLengths(pts, cum, out total);
+            }
         }
 
         if (total <= 0.01f)

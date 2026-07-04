@@ -113,6 +113,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [SerializeField] private float roadWidth = 4f;
     [SerializeField] private Material roadMaterial;
     [SerializeField] private float uvTiling = 0.1f;
+    [Tooltip("Use segment junction points (where turns happen) for the visual road mesh instead of segment centers. Keeps lane markings aligned at segment joins.")]
+    [SerializeField] private bool meshFromSegmentJunctions = true;
 
     [Header("Path Smoothing (Visual Only)")]
     [SerializeField] private bool useSmoothing = false;
@@ -238,15 +240,20 @@ public class ProceduralTrackGenerator : MonoBehaviour
         };
     }
 
-    /// <summary>Centerline used for the road mesh (smoothed when enabled).</summary>
+    /// <summary>Centerline used for the road mesh (junction points + optional smoothing).</summary>
     public void FillRoadMeshCenterPath(List<Vector3> dst)
     {
         dst.Clear();
-        if (_pathPoints == null || _pathPoints.Count < 2) return;
-        if (useSmoothing)
-            dst.AddRange(GenerateSmoothedPath(_pathPoints, smoothingSubdivisionsPerSegment));
-        else
-            dst.AddRange(_pathPoints);
+        List<Vector3> rawPath = SelectMeshSourcePath();
+        if (rawPath == null || rawPath.Count < 2) return;
+
+        List<Vector3> path = useSmoothing
+            ? GenerateSmoothedPath(rawPath, smoothingSubdivisionsPerSegment)
+            : new List<Vector3>(rawPath);
+
+        // Match BuildRoadMeshFromPath so scripted movers raycast/snapped to the same centerline as the collider mesh.
+        path = DedupePathPoints(path);
+        dst.AddRange(path);
     }
 
     // Fired when a full, valid track (no abort) is finished generating (after retries).
@@ -261,6 +268,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private readonly List<Transform> _spawnedSegments = new List<Transform>();
     private readonly List<Vector3> _pathPoints = new List<Vector3>();
+    /// <summary>Segment start/end corners used for the road mesh (turns occur at these points).</summary>
+    private readonly List<Vector3> _junctionPathPoints = new List<Vector3>();
     private readonly List<Segment2D> _segments2D = new List<Segment2D>();
 
     private Vector3 _currentEndPosition;
@@ -422,6 +431,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
         }
 
         _pathPoints.Clear();
+        _junctionPathPoints.Clear();
         _spawnedSegments.Clear();
         _segments2D.Clear();
         _abortedGeneration = false;
@@ -493,7 +503,17 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         seg.layer = LayerMask.NameToLayer("Road");
 
+        foreach (var rend in seg.GetComponentsInChildren<Renderer>(true))
+        {
+            if (rend != null)
+                rend.enabled = false;
+        }
+
         _pathPoints.Add(centerPos);
+
+        if (_junctionPathPoints.Count == 0)
+            _junctionPathPoints.Add(segmentStart);
+        _junctionPathPoints.Add(segmentEnd);
 
         Vector2 a2d = new Vector2(segmentStart.x, segmentStart.z);
         Vector2 b2d = new Vector2(segmentEnd.x, segmentEnd.z);
@@ -847,6 +867,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
                     _meshCollider.sharedMesh = null;
 
                 _pathPoints.Clear();
+                _junctionPathPoints.Clear();
                 _segments2D.Clear();
             };
             return;
@@ -864,6 +885,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
             _meshCollider.sharedMesh = null;
 
         _pathPoints.Clear();
+        _junctionPathPoints.Clear();
         _segments2D.Clear();
     }
 
@@ -889,17 +911,20 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private void BuildRoadMeshFromPath()
     {
-        if (_pathPoints.Count < 2) return;
+        List<Vector3> rawPath = SelectMeshSourcePath();
+        if (rawPath == null || rawPath.Count < 2) return;
 
         List<Vector3> path = useSmoothing
-            ? GenerateSmoothedPath(_pathPoints, smoothingSubdivisionsPerSegment)
-            : _pathPoints;
+            ? GenerateSmoothedPath(rawPath, smoothingSubdivisionsPerSegment)
+            : new List<Vector3>(rawPath);
+
+        path = DedupePathPoints(path);
 
         if (path.Count < 2) return;
 
         int count = path.Count;
 
-        // Compute cumulative distance so we can normalize 0..1 over entire track
+        // Cumulative arc length along the centerline (shared V for both road edges).
         float[] cumulative = new float[count];
         float totalLength = 0f;
         cumulative[0] = 0f;
@@ -910,44 +935,37 @@ public class ProceduralTrackGenerator : MonoBehaviour
         }
 
         Vector3[] verts = new Vector3[count * 2];
-        Vector3[] normals = new Vector3[count * 2];
         Vector2[] uvs = new Vector2[count * 2];
         Vector2[] uv2s = new Vector2[count * 2];
+        Vector4[] tangents = new Vector4[count * 2];
         int[] tris = new int[(count - 1) * 6];
 
         float halfWidth = roadWidth * 0.5f;
-        float length = 0f;
 
         for (int i = 0; i < count; i++)
         {
             Vector3 pos = path[i];
-            Vector3 forward =
-                (i == count - 1) ? (pos - path[i - 1]).normalized :
-                                   (path[i + 1] - pos).normalized;
-
+            Vector3 forward = TrackPathSampling.ComputeMiteredForward(path, i);
             Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
-            Vector3 leftPos = pos - right * halfWidth;
-            Vector3 rightPos = pos + right * halfWidth;
+            if (right.sqrMagnitude < 1e-8f)
+                right = Vector3.right;
 
             int L = i * 2;
             int R = i * 2 + 1;
 
-            verts[L] = leftPos;
-            verts[R] = rightPos;
+            verts[L] = pos - right * halfWidth;
+            verts[R] = pos + right * halfWidth;
 
+            float v = cumulative[i] * uvTiling;
+            uvs[L] = new Vector2(0f, v);
+            uvs[R] = new Vector2(1f, v);
 
-            if (i > 0)
-                length += Vector3.Distance(path[i], path[i - 1]);
-
-            // UV0: regular tiling along the road
-            float v = length * uvTiling;
-            uvs[L] = new Vector2(0, v);
-            uvs[R] = new Vector2(1, v);
-
-            // UV2: 0..1 over ENTIRE track length (this is what skids use)
             float t = (totalLength > 0f) ? (cumulative[i] / totalLength) : 0f;
-            uv2s[L] = new Vector2(0, t);
-            uv2s[R] = new Vector2(1, t);
+            uv2s[L] = new Vector2(0f, t);
+            uv2s[R] = new Vector2(1f, t);
+
+            tangents[L] = new Vector4(right.x, right.y, right.z, 1f);
+            tangents[R] = tangents[L];
         }
 
         int ti = 0;
@@ -973,15 +991,47 @@ public class ProceduralTrackGenerator : MonoBehaviour
             vertices = verts,
             uv = uvs,
             uv2 = uv2s,
+            tangents = tangents,
             triangles = tris
         };
+        if (verts.Length > 65000)
+            m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
         m.RecalculateNormals();
-        m.RecalculateTangents();
         m.RecalculateBounds();
 
         _meshFilter.sharedMesh = m;
         if (_meshCollider != null)
             _meshCollider.sharedMesh = m;
+    }
+
+    private List<Vector3> SelectMeshSourcePath()
+    {
+        if (meshFromSegmentJunctions && _junctionPathPoints.Count >= 2)
+            return _junctionPathPoints;
+        return _pathPoints;
+    }
+
+    /// <summary>Average incoming/outgoing tangents so cross-sections miter at corners (prevents lane-marking shear).</summary>
+    private static Vector3 ComputeMiteredForward(IReadOnlyList<Vector3> path, int i) =>
+        TrackPathSampling.ComputeMiteredForward(path, i);
+
+    private static List<Vector3> DedupePathPoints(List<Vector3> path, float minDist = 0.02f)
+    {
+        if (path == null || path.Count < 2) return path;
+
+        float minSqr = minDist * minDist;
+        var result = new List<Vector3>(path.Count) { path[0] };
+        for (int i = 1; i < path.Count; i++)
+        {
+            if ((path[i] - result[result.Count - 1]).sqrMagnitude > minSqr)
+                result.Add(path[i]);
+        }
+
+        if (result.Count < 2)
+            result.Add(path[path.Count - 1]);
+
+        return result;
     }
 
     // ================================================================
@@ -1029,9 +1079,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
     // ================================================================
     public void GetStartPoint(out Vector3 pos, out Vector3 forward)
     {
-        List<Vector3> pts = useSmoothing
-            ? GenerateSmoothedPath(_pathPoints, smoothingSubdivisionsPerSegment)
-            : _pathPoints;
+        var pts = new List<Vector3>();
+        FillRoadMeshCenterPath(pts);
 
         if (pts.Count < 2)
         {
@@ -1041,7 +1090,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
         }
 
         pos = pts[0];
-        forward = (pts[1] - pts[0]).normalized;
+        forward = TrackPathSampling.ComputeMiteredForward(pts, 0);
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 1e-6f)
+            forward = (pts[1] - pts[0]).normalized;
+        forward.Normalize();
     }
 
     // ================================================================

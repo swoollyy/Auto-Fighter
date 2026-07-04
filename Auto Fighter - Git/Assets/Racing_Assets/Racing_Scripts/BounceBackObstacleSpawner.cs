@@ -225,25 +225,10 @@ public class BounceBackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         _totalLength = 0f;
         _lastClosestIdx = 0;
 
-        if (trackGenerator == null || trackGenerator.PathPoints == null || trackGenerator.PathPoints.Count < 2)
+        if (trackGenerator == null) return;
+        if (!TrackPathSampling.RebuildPathFromRoadCenterline(trackGenerator, _path, ref _cumLengths, out _totalLength))
             return;
 
-        var src = trackGenerator.PathPoints;
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
-
-        int n = _path.Count;
-        _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-
-        _totalLength = len;
         _maxSlotIndex = Mathf.FloorToInt(_totalLength / Mathf.Max(0.01f, obstacleSpacing));
     }
 

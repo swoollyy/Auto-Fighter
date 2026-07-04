@@ -21,6 +21,25 @@ public class CarLandingConfig : MonoBehaviour
     [Tooltip("Falloff curve: 1 = linear decay, >1 = drops off faster at end, <1 = longer tail.")]
     [SerializeField, Min(0.1f)] private float landingBoostFalloff = 1.5f;
 
+    [Header("Bad Landing Crash")]
+    [Tooltip("Crash (with damage) when landing tilted — on side, roof, nose, or tail instead of flat on wheels.")]
+    [SerializeField] private bool enableBadLandingCrash = true;
+    [Tooltip("Must be airborne at least this long before a bad landing can trigger (ignores tiny hops).")]
+    [SerializeField, Min(0f)] private float badLandingMinAirborneSeconds = 0.2f;
+    [Tooltip("Car up must dot ground normal at least this much for a safe landing (1 = perfectly flat on the surface).")]
+    [SerializeField, Range(0f, 1f)] private float badLandingUpAlignDotMin = 0.88f;
+    [Tooltip("If nose/tail alignment with the ground normal exceeds this, treat as a bad landing (buried nose/tail).")]
+    [SerializeField, Range(0f, 1f)] private float badLandingForwardNormalDotMax = 0.72f;
+    [SerializeField, Range(0f, 1f)] private float badLandingCrashSeverity = 0.42f;
+    [Tooltip("Horizontal speed kept after a bad-landing crash (no launch impulse).")]
+    [SerializeField, Range(0f, 1f)] private float badLandingSpeedRetain = 0.32f;
+    [SerializeField, Range(0f, 1f)] private float badLandingVerticalSpeedRetain = 0.08f;
+    [Tooltip("How strongly the car tumbles to settle after a bad landing (physics, not frozen rotation).")]
+    [SerializeField, Min(0f)] private float badLandingTumbleTorque = 5.5f;
+    [Tooltip("Keeps trick spin through impact, scaled by misalignment.")]
+    [SerializeField, Range(0f, 1f)] private float badLandingAngularSpeedRetain = 0.82f;
+    [SerializeField, Min(0.5f)] private float badLandingMaxAngularSpeed = 10f;
+
     public bool SkipSpeedClampWhileAirborne => skipSpeedClampWhileAirborne;
     public bool EnableLandingCarrySpeed => enableLandingCarrySpeed;
     public float LandingExcessBleedPerSecond => landingExcessBleedPerSecond;
@@ -29,4 +48,14 @@ public class CarLandingConfig : MonoBehaviour
     public float LandingBoostStrength => landingBoostStrength;
     public float LandingBoostDuration => landingBoostDuration;
     public float LandingBoostFalloff => landingBoostFalloff;
+    public bool EnableBadLandingCrash => enableBadLandingCrash;
+    public float BadLandingMinAirborneSeconds => badLandingMinAirborneSeconds;
+    public float BadLandingUpAlignDotMin => badLandingUpAlignDotMin;
+    public float BadLandingForwardNormalDotMax => badLandingForwardNormalDotMax;
+    public float BadLandingCrashSeverity => badLandingCrashSeverity;
+    public float BadLandingSpeedRetain => badLandingSpeedRetain;
+    public float BadLandingVerticalSpeedRetain => badLandingVerticalSpeedRetain;
+    public float BadLandingTumbleTorque => badLandingTumbleTorque;
+    public float BadLandingAngularSpeedRetain => badLandingAngularSpeedRetain;
+    public float BadLandingMaxAngularSpeed => badLandingMaxAngularSpeed;
 }

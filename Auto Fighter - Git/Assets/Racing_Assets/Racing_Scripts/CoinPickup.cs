@@ -169,9 +169,6 @@ public class CoinPickup : MonoBehaviour
         }
         else
         {
-            // Backward-compatible fallback if hub is not present yet.
-            if (mgr != null)
-                mgr.AddCurrency(finalValue);
             GameManager_Racing.Instance?.RegisterCoinPickup(finalValue);
             if (RacingPopups.IsReady)
                 RacingPopups.CoinGain(finalValue, spawnPos + Vector3.up * 0.5f);

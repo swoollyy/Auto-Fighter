@@ -123,14 +123,8 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
         // (turret kills award sprockets via RacingBullet)
         if (!_destroyedByTurret)
         {
-            // Award currency globally
-            RacingSkillTreeManager.Instance?.AddCurrency(rewardCurrency);
-
-            // Notify GameManager for breakdown tracking
             if (GameManager_Racing.Instance != null)
-            {
                 GameManager_Racing.Instance.RegisterObstacleReward(rewardCurrency);
-            }
         }
 
         Destroy(gameObject);

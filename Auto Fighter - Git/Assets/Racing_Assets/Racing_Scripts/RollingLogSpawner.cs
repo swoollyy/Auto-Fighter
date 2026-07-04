@@ -13,7 +13,8 @@ public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField] private GameObject rollingLogPrefab;
     [SerializeField] private Transform spawnParent;
 
-    [Header("Path sampling (match TrackObstacleSpawner)")]
+    [Header("Path sampling")]
+    [Tooltip("Ignored at runtime — logs follow ProceduralTrackGenerator's road mesh centerline (track asset useSmoothing + subdivisions).")]
     [SerializeField] private bool useSmoothing = true;
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
@@ -213,21 +214,16 @@ public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     private bool TrySpawnAt(float spawnS, float signedSpeed)
     {
-        SampleAlongPath(spawnS, out Vector3 center, out Vector3 forward);
-        Vector3 flatForward = forward;
-        flatForward.y = 0f;
-        if (flatForward.sqrMagnitude < 1e-6f)
-            flatForward = Vector3.forward;
-        flatForward.Normalize();
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, spawnS, out Vector3 center, out Vector3 flatForward);
 
         float halfWidth = trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f;
         float usable = halfWidth * lateralFraction - edgeInnerMargin;
         if (usable <= 0.05f)
             usable = halfWidth * 0.35f;
 
-        Vector3 right = Vector3.Cross(Vector3.up, flatForward);
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
         float lateral = Random.Range(-usable, usable);
-        Vector3 lateralPos = center + right.normalized * lateral;
+        Vector3 lateralPos = center + right * lateral;
 
         Vector3 origin = lateralPos + Vector3.up * raycastStartHeight;
         if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, raycastStartHeight + raycastDownDistance, roadLayer, QueryTriggerInteraction.Ignore))
@@ -282,21 +278,7 @@ public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)
     {
-        dist = Mathf.Clamp(dist, 0f, _totalLength);
-        int idx = 0;
-        for (int i = 0; i < _cumLengths.Length - 1; i++)
-        {
-            if (_cumLengths[i + 1] >= dist)
-            {
-                idx = i;
-                break;
-            }
-        }
-
-        float segLen = _cumLengths[idx + 1] - _cumLengths[idx];
-        float t = segLen > 1e-4f ? (dist - _cumLengths[idx]) / segLen : 0f;
-        pos = Vector3.Lerp(_path[idx], _path[idx + 1], t);
-        fwd = (_path[idx + 1] - _path[idx]).normalized;
+        TrackPathSampling.SampleAlongPath(_path, _cumLengths, _totalLength, dist, out pos, out fwd);
     }
 
     private void RebuildPath()
@@ -308,51 +290,12 @@ public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
         if (trackGenerator == null) return;
 
-        var src = trackGenerator.PathPoints;
-        if (src == null || src.Count < 2) return;
-
-        if (useSmoothing)
-            GenerateSmoothedPath(src, smoothingSubdivisionsPerSegment, _path);
-        else
-            _path.AddRange(src);
+        TrackPathSampling.BuildCenterlinePath(trackGenerator, _path);
+        if (_path.Count < 2) return;
 
         int n = _path.Count;
         _cumLengths = new float[n];
-        float len = 0f;
-        for (int i = 1; i < n; i++)
-        {
-            len += Vector3.Distance(_path[i - 1], _path[i]);
-            _cumLengths[i] = len;
-        }
-        _totalLength = len;
-    }
-
-    private static void GenerateSmoothedPath(List<Vector3> raw, int subdivisions, List<Vector3> outList)
-    {
-        outList.Clear();
-        outList.Add(raw[0]);
-        for (int i = 0; i < raw.Count - 1; i++)
-        {
-            Vector3 p0 = raw[Mathf.Max(i - 1, 0)];
-            Vector3 p1 = raw[i];
-            Vector3 p2 = raw[i + 1];
-            Vector3 p3 = raw[Mathf.Min(i + 2, raw.Count - 1)];
-            for (int s = 1; s <= subdivisions; s++)
-            {
-                float t = s / (float)subdivisions;
-                outList.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-    }
-
-    private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
-    {
-        return 0.5f * (
-            2f * p1 +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * (t * t) +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * (t * t * t)
-        );
+        TrackPathSampling.BuildCumulativeLengths(_path, _cumLengths, out _totalLength);
     }
 
     public string SpawnQueueLabel => "Rolling Logs";
