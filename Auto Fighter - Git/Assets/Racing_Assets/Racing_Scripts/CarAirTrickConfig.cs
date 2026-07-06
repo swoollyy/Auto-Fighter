@@ -2,24 +2,24 @@ using UnityEngine;
 
 /// <summary>
 /// Airborne trick tuning (flips, upright spins, barrel rolls). CarController reads these at Awake.
-/// Hold left bumper while airborne to enter trick mode; hold left trigger + bumper for barrel rolls.
+/// Hold right stick (or arrow keys) while airborne to flip/spin; hold left bumper for barrel rolls.
 /// </summary>
 public class CarAirTrickConfig : MonoBehaviour
 {
     [Header("Enable")]
     [SerializeField] private bool enableAirTricks = true;
 
-    [Header("Free Air Control (no bumper)")]
-    [Tooltip("Yaw rate while airborne without trick mode — steer to aim the car toward the road.")]
+    [Header("Free Air Control (left stick)")]
+    [Tooltip("Yaw rate while airborne without trick stick input — steer to aim the car toward the road.")]
     [SerializeField] private float airYawRate = 110f;
     [SerializeField, Range(0f, 1f)] private float airYawInputDeadzone = 0.12f;
 
-    [Header("Trick Mode (left bumper held)")]
-    [Tooltip("Pitch rate for front/back flips (stick Y or W/S).")]
+    [Header("Trick Mode (right stick in air)")]
+    [Tooltip("Pitch rate for front/back flips (right stick Y or arrow keys).")]
     [SerializeField] private float trickPitchRate = 195f;
-    [Tooltip("Yaw spin rate while upright (stick X, bumper only — spinning on a disc).")]
+    [Tooltip("Yaw spin rate while upright (right stick X, no barrel modifier).")]
     [SerializeField] private float trickYawSpinRate = 220f;
-    [Tooltip("Roll rate for barrel rolls (stick X + left trigger + bumper).")]
+    [Tooltip("Roll rate for barrel rolls (right stick X + left bumper).")]
     [SerializeField] private float trickRollRate = 220f;
     [SerializeField, Range(0f, 1f)] private float trickInputDeadzone = 0.15f;
     [Tooltip("How quickly trick stick input ramps in (higher = snappier, lower = softer).")]
@@ -30,10 +30,10 @@ public class CarAirTrickConfig : MonoBehaviour
     [SerializeField, Min(10f)] private float trickRotationAccel = 340f;
     [Tooltip("Degrees per second² — how fast rotation coasts down when input eases off.")]
     [SerializeField, Min(10f)] private float trickRotationDecel = 240f;
-    [Tooltip("While holding trick bumper only — blocks auto-upright so flips are not fought.")]
+    [Tooltip("While trick stick is held in the air — blocks auto-upright so flips are not fought.")]
     [SerializeField] private bool suppressRampAlignmentInTrickMode = true;
 
-    [Header("Air Upright Recovery (bumper released)")]
+    [Header("Air Upright Recovery (trick stick released)")]
     [Tooltip("When airborne and not tricking, slowly align wheels toward the landing surface.")]
     [SerializeField] private bool enableAirUprightRecovery = true;
     [SerializeField, Min(0f)] private float airUprightRecoverSpeed = 2.75f;

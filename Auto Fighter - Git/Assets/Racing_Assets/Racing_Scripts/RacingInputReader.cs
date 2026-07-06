@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Single source of input for the racing game using the new Input System (1.7+ / 1.14+).
+/// Air tricks: right stick (arrow keys on keyboard). Barrel rolls: left bumper (Q on keyboard).
 /// Assign an Input Action Asset in the inspector, or leave empty to use built-in default bindings.
 /// Access via RacingInputReader.Instance from GameManager_Racing, CarController, UIManager_Racing, etc.
 /// </summary>
@@ -18,6 +19,7 @@ public class RacingInputReader : MonoBehaviour
 
     [Header("Options")]
     [SerializeField, Range(0f, 1f)] private float steerDeadzone = 0.12f;
+    [SerializeField, Range(0f, 1f)] private float trickStickDeadzone = 0.12f;
     [SerializeField, Range(0f, 1f)] private float triggerThreshold = 0.1f;
     [SerializeField, Range(0f, 0.5f)] private float skillTreeStickDeadzone = 0.18f;
     [SerializeField] private bool autoHideCursorByInputDevice = true;
@@ -42,11 +44,13 @@ public class RacingInputReader : MonoBehaviour
     private InputAction _fovPeekAction;
     private InputAction _airTricksAction;
     private InputAction _steerVerticalAction;
+    private InputAction _trickStickAction;
 
     private bool _usingRuntimeAsset;
     private float _steerCache;
     private float _steerVerticalCache;
-    private bool _airTricksHeldCache;
+    private Vector2 _trickStickCache;
+    private bool _barrelRollHeldCache;
     private float _accelerateCache;
     private float _brakeCache;
     private bool _boostDownCache;
@@ -62,10 +66,19 @@ public class RacingInputReader : MonoBehaviour
     private bool _fovPeekCache;
 
     public float Steer => _steerCache;
-    /// <summary>Left stick Y (or keyboard W/S axis) for airborne pitch tricks.</summary>
+    /// <summary>Left stick Y (or keyboard W/S axis) — driving input only.</summary>
     public float SteerVertical => _steerVerticalCache;
-    /// <summary>Left bumper — hold while airborne to perform flips and spins.</summary>
-    public bool AirTricksHeld => _airTricksHeldCache;
+    /// <summary>Right stick X (or arrow keys) — airborne trick yaw / barrel-roll axis.</summary>
+    public float TrickStickX => _trickStickCache.x;
+    /// <summary>Right stick Y (or arrow keys) — airborne trick pitch.</summary>
+    public float TrickStickY => _trickStickCache.y;
+    public Vector2 TrickStick => _trickStickCache;
+    /// <summary>True when trick stick is outside its deadzone.</summary>
+    public bool TrickStickActive => _trickStickCache.sqrMagnitude > trickStickDeadzone * trickStickDeadzone;
+    /// <summary>Left bumper — barrel rolls while airborne (with trick stick X).</summary>
+    public bool BarrelRollHeld => _barrelRollHeldCache;
+    /// <summary>Deprecated alias for <see cref="BarrelRollHeld"/>.</summary>
+    public bool AirTricksHeld => _barrelRollHeldCache;
     public float Accelerate => _accelerateCache;
     public float Brake => _brakeCache;
     public bool BoostDown => _boostDownCache;
@@ -137,6 +150,7 @@ public class RacingInputReader : MonoBehaviour
         _fovPeekAction = _racingMap.FindAction("FovPeek");
         _airTricksAction = _racingMap.FindAction("AirTricks");
         _steerVerticalAction = _racingMap.FindAction("SteerVertical");
+        _trickStickAction = _racingMap.FindAction("TrickStick");
     }
 
     private void CacheSkillTreeActions()
@@ -196,6 +210,14 @@ public class RacingInputReader : MonoBehaviour
         var airTricks = _racingMap.AddAction("AirTricks", InputActionType.Button);
         airTricks.AddBinding("<Gamepad>/leftShoulder");
         airTricks.AddBinding("<Keyboard>/q");
+
+        var trickStick = _racingMap.AddAction("TrickStick", InputActionType.Value);
+        trickStick.AddBinding("<Gamepad>/rightStick", processors: "StickDeadzone(min=0.12,max=1)");
+        trickStick.AddCompositeBinding("2DVector")
+            .With("Up", "<Keyboard>/upArrow")
+            .With("Down", "<Keyboard>/downArrow")
+            .With("Left", "<Keyboard>/leftArrow")
+            .With("Right", "<Keyboard>/rightArrow");
 
         var steerVertical = _racingMap.AddAction("SteerVertical", InputActionType.Value);
         steerVertical.AddCompositeBinding("1DAxis").With("Negative", "<Keyboard>/s").With("Positive", "<Keyboard>/w");
@@ -270,7 +292,8 @@ public class RacingInputReader : MonoBehaviour
         {
             _steerCache = ReadSteer();
             _steerVerticalCache = ReadSteerVertical();
-            _airTricksHeldCache = ReadAirTricksHeld();
+            _trickStickCache = ReadTrickStick();
+            _barrelRollHeldCache = ReadBarrelRollHeld();
             _accelerateCache = ReadAccelerate();
             _brakeCache = ReadBrake();
             _boostDownCache = _boostAction != null && _boostAction.triggered;
@@ -305,7 +328,8 @@ public class RacingInputReader : MonoBehaviour
     private void ZeroRacingCaches()
     {
         _steerCache = _steerVerticalCache = _accelerateCache = _brakeCache = 0f;
-        _airTricksHeldCache = false;
+        _trickStickCache = Vector2.zero;
+        _barrelRollHeldCache = false;
         _boostDownCache = false;
         _driftHeldCache = false;
         _restartDownCache = false;
@@ -350,7 +374,41 @@ public class RacingInputReader : MonoBehaviour
         return Mathf.Clamp(kb, -1f, 1f);
     }
 
-    private bool ReadAirTricksHeld()
+    private Vector2 ReadTrickStick()
+    {
+        if (_trickStickAction != null)
+        {
+            Vector2 v = _trickStickAction.ReadValue<Vector2>();
+            if (v.sqrMagnitude < trickStickDeadzone * trickStickDeadzone)
+                return Vector2.zero;
+            return Vector2.ClampMagnitude(v, 1f);
+        }
+
+        if (Gamepad.current != null)
+        {
+            Vector2 v = Gamepad.current.rightStick.ReadValue();
+            if (v.sqrMagnitude < trickStickDeadzone * trickStickDeadzone)
+                return Vector2.zero;
+            return Vector2.ClampMagnitude(v, 1f);
+        }
+
+        float x = 0f;
+        float y = 0f;
+        if (Keyboard.current != null)
+        {
+            if (Keyboard.current.leftArrowKey.isPressed) x -= 1f;
+            if (Keyboard.current.rightArrowKey.isPressed) x += 1f;
+            if (Keyboard.current.upArrowKey.isPressed) y += 1f;
+            if (Keyboard.current.downArrowKey.isPressed) y -= 1f;
+        }
+
+        Vector2 kb = new Vector2(x, y);
+        if (kb.sqrMagnitude < trickStickDeadzone * trickStickDeadzone)
+            return Vector2.zero;
+        return kb.normalized;
+    }
+
+    private bool ReadBarrelRollHeld()
     {
         if (_airTricksAction != null)
             return _airTricksAction.IsPressed();

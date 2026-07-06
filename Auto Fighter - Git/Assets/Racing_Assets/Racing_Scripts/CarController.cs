@@ -219,12 +219,49 @@ public class CarController : MonoBehaviour
         return Input.GetKey(KeyCode.Mouse0) || Input.GetButton("Fire1");
     }
 
-    private bool GetAirTricksHeld()
+    private bool GetBarrelRollHeld()
     {
         var reader = RacingInputReader.Instance;
-        if (reader != null) return reader.AirTricksHeld;
+        if (reader != null) return reader.BarrelRollHeld;
         return Input.GetKey(KeyCode.Q)
             || (Gamepad.current != null && Gamepad.current.leftShoulder.isPressed);
+    }
+
+    private float GetTrickStickXRaw()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.TrickStickX;
+        if (Gamepad.current != null)
+        {
+            float v = Gamepad.current.rightStick.x.ReadValue();
+            return Mathf.Abs(v) < 0.12f ? 0f : Mathf.Clamp(v, -1f, 1f);
+        }
+        float x = 0f;
+        if (Input.GetKey(KeyCode.LeftArrow)) x -= 1f;
+        if (Input.GetKey(KeyCode.RightArrow)) x += 1f;
+        return Mathf.Clamp(x, -1f, 1f);
+    }
+
+    private float GetTrickStickYRaw()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.TrickStickY;
+        if (Gamepad.current != null)
+        {
+            float v = Gamepad.current.rightStick.y.ReadValue();
+            return Mathf.Abs(v) < 0.12f ? 0f : Mathf.Clamp(v, -1f, 1f);
+        }
+        float y = 0f;
+        if (Input.GetKey(KeyCode.UpArrow)) y += 1f;
+        if (Input.GetKey(KeyCode.DownArrow)) y -= 1f;
+        return Mathf.Clamp(y, -1f, 1f);
+    }
+
+    private bool ComputeTrickStickActive()
+    {
+        float horiz = ApplyAxisDeadzone(GetTrickStickXRaw(), trickInputDeadzone);
+        float pitch = ApplyAxisDeadzone(GetTrickStickYRaw(), trickInputDeadzone);
+        return Mathf.Abs(horiz) > 0.001f || Mathf.Abs(pitch) > 0.001f;
     }
 
     private float GetSteerVerticalRaw()
@@ -619,7 +656,7 @@ public class CarController : MonoBehaviour
     private float _trickRollAngularVel;
     private bool _trickBarrelModeActive;
     private float _airUprightRecoverBlend;
-    private bool _wasAirTricksHeldLastFrame;
+    private bool _wasTrickStickActiveLastFrame;
 
     private GameObject deathVFX;
     private float deathVFXLifetime;
@@ -822,15 +859,18 @@ public class CarController : MonoBehaviour
 
     private float _rawSteer;
     private float _rawSteerVertical;
-    private bool _airTricksHeld;
+    private float _rawTrickStickX;
+    private float _rawTrickStickY;
+    private bool _trickStickActive;
+    private bool _barrelRollHeld;
 
     private bool _trickSessionThisJump;
     private Vector3 _airborneLandingUpSnapshot = Vector3.up;
     private Vector3 _airborneLandingForwardSnapshot = Vector3.forward;
 
-    public bool IsAirTricksHeld => _airTricksHeld;
+    public bool IsAirTricksHeld => _airborneForTricks && _trickStickActive;
     public bool IsAirborneForTricks => _airborneForTricks;
-    public bool IsInAirTrickMode => _airborneForTricks && enableAirTricks && _airTricksHeld;
+    public bool IsInAirTrickMode => _airborneForTricks && enableAirTricks && _trickStickActive;
 
     private bool _airborneForTricks;
 
@@ -3183,7 +3223,7 @@ public class CarController : MonoBehaviour
         {
             _rawSteer = GetSteerRaw();
             _rawSteerVertical = GetSteerVerticalRaw();
-            _airTricksHeld = GetAirTricksHeld();
+            ReadTrickStickInputState();
             driftCharge = 0f;
             isDrifting = false;
             driftButtonHeld = false;
@@ -3202,7 +3242,7 @@ public class CarController : MonoBehaviour
 
         _rawSteer = GetSteerRaw();
         _rawSteerVertical = GetSteerVerticalRaw();
-        _airTricksHeld = GetAirTricksHeld();
+        ReadTrickStickInputState();
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
@@ -3907,6 +3947,14 @@ public class CarController : MonoBehaviour
         return Mathf.MoveTowards(current, target, rate * dt);
     }
 
+    private void ReadTrickStickInputState()
+    {
+        _rawTrickStickX = GetTrickStickXRaw();
+        _rawTrickStickY = GetTrickStickYRaw();
+        _barrelRollHeld = GetBarrelRollHeld();
+        _trickStickActive = ComputeTrickStickActive();
+    }
+
     private static float ApplyAxisDeadzone(float value, float deadzone)
     {
         float abs = Mathf.Abs(value);
@@ -3915,22 +3963,22 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Trick stick X/Y deadzones. Pitch comes only from stick Y / keyboard W-S — never from throttle or brake triggers.
+    /// Right stick X/Y deadzones. Pitch from stick Y / arrow keys — not throttle or brake.
     /// </summary>
     private void ResolveTrickStickInput(out float horiz, out float pitch)
     {
-        horiz = ApplyAxisDeadzone(_rawSteer, trickInputDeadzone);
-        pitch = ApplyAxisDeadzone(_rawSteerVertical, trickInputDeadzone);
+        horiz = ApplyAxisDeadzone(_rawTrickStickX, trickInputDeadzone);
+        pitch = ApplyAxisDeadzone(_rawTrickStickY, trickInputDeadzone);
     }
 
     /// <summary>
-    /// Airborne trick rotation (bumper held). Input and spin rates are smoothed; spin bleeds faster when bumper is released.
+    /// Airborne trick rotation (right stick). Spins bleed faster when the stick is released.
     /// </summary>
     private void HandleAirborneTricks(float dt)
     {
         if (!_airborneForTricks || !enableAirTricks || rb == null) return;
 
-        bool trickInputActive = _airTricksHeld;
+        bool trickInputActive = _trickStickActive;
         float decelMul = trickInputActive ? 1f : 1.65f;
         float pitchTarget = 0f;
         float horizTarget = 0f;
@@ -3938,7 +3986,7 @@ public class CarController : MonoBehaviour
 
         if (trickInputActive)
         {
-            barrelMode = GetBrakeKeyOrTrigger();
+            barrelMode = _barrelRollHeld;
             ResolveTrickStickInput(out float horiz, out float pitch);
             horizTarget = horiz;
             pitchTarget = pitch;
@@ -3950,7 +3998,7 @@ public class CarController : MonoBehaviour
 
         float targetPitchVel = _smoothedTrickPitch * trickPitchRate;
         float targetYawVel = (!_trickBarrelModeActive && trickInputActive) ? _smoothedTrickHoriz * trickYawSpinRate : 0f;
-        float targetRollVel = _trickBarrelModeActive ? _smoothedTrickHoriz * trickRollRate : 0f;
+        float targetRollVel = _trickBarrelModeActive ? -_smoothedTrickHoriz * trickRollRate : 0f;
 
         _trickPitchAngularVel = MoveTrickAngularVel(_trickPitchAngularVel, targetPitchVel, dt, decelMul);
         _trickYawAngularVel = MoveTrickAngularVel(_trickYawAngularVel, targetYawVel, dt, decelMul);
@@ -3992,21 +4040,21 @@ public class CarController : MonoBehaviour
         if (!_airborneForTricks || rb == null)
         {
             _airUprightRecoverBlend = 0f;
-            _wasAirTricksHeldLastFrame = _airTricksHeld;
+            _wasTrickStickActiveLastFrame = _trickStickActive;
             return;
         }
 
-        float uprightTarget = _airTricksHeld ? 0f : 1f;
+        float uprightTarget = _trickStickActive ? 0f : 1f;
         _airUprightRecoverBlend = Mathf.MoveTowards(_airUprightRecoverBlend, uprightTarget, 7.5f * dt);
 
-        if (_wasAirTricksHeldLastFrame && !_airTricksHeld)
+        if (_wasTrickStickActiveLastFrame && !_trickStickActive)
         {
             Vector3 v = rb.velocity;
             if (v.y > 0.05f)
                 rb.velocity = new Vector3(v.x, 0f, v.z);
         }
 
-        _wasAirTricksHeldLastFrame = _airTricksHeld;
+        _wasTrickStickActiveLastFrame = _trickStickActive;
     }
 
     private void HandleSteering()
@@ -4044,7 +4092,7 @@ public class CarController : MonoBehaviour
 
         if (_airborneForTricks && enableAirTricks)
         {
-            if (_airTricksHeld)
+            if (_trickStickActive)
                 return;
 
             if (Mathf.Abs(steeringInput) > airYawInputDeadzone)
@@ -4168,7 +4216,7 @@ public class CarController : MonoBehaviour
         bool groundedNow = CheckIfGrounded();
         RefreshGroundNormalForDriving(groundedNow);
 
-        if (_airborneForTricks && enableAirTricks && _airTricksHeld)
+        if (_airborneForTricks && enableAirTricks && _trickStickActive)
         {
             forwardKey = false;
             reverseKey = false;
@@ -4992,7 +5040,7 @@ public class CarController : MonoBehaviour
 
     private bool BlocksAirOrientation()
     {
-        return BlocksDrivingOrientation() || _airTricksHeld;
+        return BlocksDrivingOrientation() || (_airborneForTricks && _trickStickActive);
     }
 
     /// <summary>
@@ -6363,7 +6411,7 @@ public class CarController : MonoBehaviour
             _airborneContinuousTime += dt;
             _airborneLandingUpSnapshot = transform.up;
             _airborneLandingForwardSnapshot = transform.forward;
-            if (_airTricksHeld)
+            if (_trickStickActive)
                 _trickSessionThisJump = true;
         }
 
@@ -6373,7 +6421,7 @@ public class CarController : MonoBehaviour
             _trickSessionThisJump = false;
             ResetAirTrickRotationState();
             _airUprightRecoverBlend = 0f;
-            _wasAirTricksHeldLastFrame = false;
+            _wasTrickStickActiveLastFrame = false;
             Vector3 v = rb.velocity;
             Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
             _takeoffHorizSpeed = horiz.magnitude;
