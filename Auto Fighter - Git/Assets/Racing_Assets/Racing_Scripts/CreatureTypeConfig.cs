@@ -51,6 +51,10 @@ public class CreatureTypeConfig
     [Min(0f)] public float idlePauseMinSec = 0.25f;
     [Min(0f)] public float idlePauseMaxSec = 1.75f;
 
+    [Header("Idle Minimum Travel")]
+    [Tooltip("Minimum straight-line distance (meters, in the idle offset plane) that each new idle target must be from the creature's current spot. Prevents tiny re-targets right next to the creature that make it constantly re-face and spin in place. Automatically clamped down if it exceeds the creature's idle wiggle radius.")]
+    [Min(0f)] public float idleMinTravelDistance = 2.5f;
+
     [Header("Behavior Tuning - Passive")]
     [Tooltip("How fast the passive creature wanders.")]
     [Min(0f)] public float passiveWanderSpeed = 2f;

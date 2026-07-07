@@ -223,6 +223,7 @@ MonoBehaviour:
       idleWalkSegmentMaxSec: 3.2
       idlePauseMinSec: 0.25
       idlePauseMaxSec: 1.71
+      idleMinTravelDistance: 4
       passiveWanderSpeed: 1.5
       passiveDirectionChangeInterval: 2
       passiveFleeFromScared: 1
@@ -313,6 +314,7 @@ MonoBehaviour:
       idleWalkSegmentMaxSec: 3.2
       idlePauseMinSec: 0.25
       idlePauseMaxSec: 1.75
+      idleMinTravelDistance: 2.5
       passiveWanderSpeed: 0
       passiveDirectionChangeInterval: 0
       passiveFleeFromScared: 0
@@ -403,6 +405,7 @@ MonoBehaviour:
       idleWalkSegmentMaxSec: 3.2
       idlePauseMinSec: 0.25
       idlePauseMaxSec: 1.75
+      idleMinTravelDistance: 4
       passiveWanderSpeed: 0
       passiveDirectionChangeInterval: 0
       passiveFleeFromScared: 0

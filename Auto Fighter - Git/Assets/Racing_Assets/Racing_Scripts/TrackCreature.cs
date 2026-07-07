@@ -1119,8 +1119,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             float interval = Mathf.Max(0.05f, directionChangeInterval) * Random.Range(0.85f, 1.15f);
             nextIdleChangeTime = wanderTimer + interval;
 
-            idleTargetLateralOffset = Random.Range(-Mathf.Abs(lateralRadius), Mathf.Abs(lateralRadius));
-            idleTargetDistOffset = Random.Range(-Mathf.Abs(forwardRadius), Mathf.Abs(forwardRadius));
+            PickNewIdleTarget(lateralRadius, forwardRadius);
         }
 
         // Smooth speed toward bugSpeed
@@ -1144,6 +1143,76 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         // Smooth lateral
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, Mathf.Max(0.01f, currentSpeed) * dt);
+    }
+
+    /// <summary>
+    /// Picks a fresh idle wiggle target (lateral + along-track offsets) that is at least
+    /// <see cref="CreatureTypeConfig.idleMinTravelDistance"/> away from where the creature currently
+    /// is. Random offsets that land right on top of the creature make it re-face constantly and
+    /// spin in place; enforcing a minimum move guarantees a real heading and travel each time.
+    /// </summary>
+    private void PickNewIdleTarget(float lateralRadius, float forwardRadius)
+    {
+        float latR = Mathf.Abs(lateralRadius);
+        float fwdR = Mathf.Abs(forwardRadius);
+
+        Vector2 cur = new Vector2(idleCurrentLateralOffset, idleCurrentDistOffset);
+
+        float minMove = config != null ? Mathf.Max(0f, config.idleMinTravelDistance) : 0f;
+
+        // Never demand more than we could actually reach inside the wiggle area,
+        // otherwise a small-radius tier could never satisfy the requirement.
+        float reachable = Mathf.Max(latR, fwdR);
+        if (minMove > reachable)
+            minMove = reachable * 0.9f;
+
+        float minMoveSq = minMove * minMove;
+
+        Vector2 best = cur;
+        float bestDistSq = -1f;
+
+        const int attempts = 8;
+        for (int i = 0; i < attempts; i++)
+        {
+            Vector2 cand = new Vector2(Random.Range(-latR, latR), Random.Range(-fwdR, fwdR));
+            float dsq = (cand - cur).sqrMagnitude;
+
+            if (dsq >= minMoveSq)
+            {
+                best = cand;
+                bestDistSq = dsq;
+                break;
+            }
+
+            if (dsq > bestDistSq)
+            {
+                bestDistSq = dsq;
+                best = cand;
+            }
+        }
+
+        // If random sampling never cleared the minimum, push the best candidate directly away
+        // from the current spot until it does, clamped back into the wiggle bounds.
+        if (minMove > 0.0001f && bestDistSq < minMoveSq)
+        {
+            Vector2 dir = best - cur;
+            if (dir.sqrMagnitude < 1e-6f)
+            {
+                float ang = Random.Range(0f, Mathf.PI * 2f);
+                dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+            }
+            else
+            {
+                dir.Normalize();
+            }
+
+            Vector2 pushed = cur + dir * minMove;
+            best.x = Mathf.Clamp(pushed.x, -latR, latR);
+            best.y = Mathf.Clamp(pushed.y, -fwdR, fwdR);
+        }
+
+        idleTargetLateralOffset = best.x;
+        idleTargetDistOffset = best.y;
     }
 
     /// <summary>
