@@ -555,7 +555,7 @@ MonoBehaviour:
   maxSpeedMultiplier: 5
   accelerationMultiplier: 4
   turnSpeedMultiplier: 1
-  dragMultiplier: 0.01
+  dragMultiplier: 0.97
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.3

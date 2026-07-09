@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Airborne trick tuning (flips, upright spins, barrel rolls). CarController reads these at Awake.
 /// Hold right stick (or arrow keys) while airborne to flip/spin; hold left bumper for barrel rolls.
+/// Left stick still aims flight path and landing heading while tricking.
 /// </summary>
 public class CarAirTrickConfig : MonoBehaviour
 {
@@ -13,6 +14,26 @@ public class CarAirTrickConfig : MonoBehaviour
     [Tooltip("Yaw rate while airborne without trick stick input — steer to aim the car toward the road.")]
     [SerializeField] private float airYawRate = 110f;
     [SerializeField, Range(0f, 1f)] private float airYawInputDeadzone = 0.12f;
+    [Tooltip("Bank horizontal flight path with left stick (degrees/sec at full deflection). Keeps you on track in the air.")]
+    [SerializeField, Min(0f)] private float airTrajectorySteerRate = 78f;
+    [Tooltip("How quickly left-stick air aim ramps in (lower = softer).")]
+    [SerializeField, Min(0.5f)] private float airSteerInputSmoothRate = 3.5f;
+    [Tooltip("How quickly air aim eases off when the stick returns to center.")]
+    [SerializeField, Min(0.5f)] private float airSteerInputReleaseRate = 4.5f;
+    [Tooltip("How quickly flight-path banking builds toward the target rate (deg/s²).")]
+    [SerializeField, Min(10f)] private float airTrajectoryBankAccel = 90f;
+
+    [Header("Air Aim While Tricking (left stick + right stick)")]
+    [Tooltip("Allow left-stick yaw and trajectory steering while the trick stick is held.")]
+    [SerializeField] private bool enableAirAimWhileTricking = true;
+    [Tooltip("Left-stick yaw strength during pitch-heavy tricks (flips).")]
+    [SerializeField, Range(0f, 1.5f)] private float airAimWhileTrickingYawMult = 0.75f;
+    [Tooltip("Left-stick yaw strength during disc spin / barrel roll (right stick X).")]
+    [SerializeField, Range(0f, 1f)] private float airAimHorizSpinYawMult = 0.15f;
+    [Tooltip("Trajectory steer strength during flips.")]
+    [SerializeField, Range(0f, 1.5f)] private float airTrajectoryWhileTrickingMult = 1f;
+    [Tooltip("Trajectory steer strength during disc spin / barrel roll.")]
+    [SerializeField, Range(0f, 1f)] private float airTrajectoryHorizSpinMult = 0.55f;
 
     [Header("Trick Mode (right stick in air)")]
     [Tooltip("Pitch rate for front/back flips (right stick Y or arrow keys).")]
@@ -21,6 +42,8 @@ public class CarAirTrickConfig : MonoBehaviour
     [SerializeField] private float trickYawSpinRate = 220f;
     [Tooltip("Roll rate for barrel rolls (right stick X + left bumper).")]
     [SerializeField] private float trickRollRate = 220f;
+    [Tooltip("How quickly disc spin cross-fades into barrel roll while the barrel button is held (0–1 per second).")]
+    [SerializeField, Min(0.35f)] private float barrelModeBlendSpeed = 2.2f;
     [SerializeField, Range(0f, 1f)] private float trickInputDeadzone = 0.15f;
     [Tooltip("How quickly trick stick input ramps in (higher = snappier, lower = softer).")]
     [SerializeField, Min(0.5f)] private float trickInputSmoothRate = 11f;
@@ -45,9 +68,19 @@ public class CarAirTrickConfig : MonoBehaviour
     public bool EnableAirTricks => enableAirTricks;
     public float AirYawRate => airYawRate;
     public float AirYawInputDeadzone => airYawInputDeadzone;
+    public float AirTrajectorySteerRate => airTrajectorySteerRate;
+    public float AirSteerInputSmoothRate => airSteerInputSmoothRate;
+    public float AirSteerInputReleaseRate => airSteerInputReleaseRate;
+    public float AirTrajectoryBankAccel => airTrajectoryBankAccel;
+    public bool EnableAirAimWhileTricking => enableAirAimWhileTricking;
+    public float AirAimWhileTrickingYawMult => airAimWhileTrickingYawMult;
+    public float AirAimHorizSpinYawMult => airAimHorizSpinYawMult;
+    public float AirTrajectoryWhileTrickingMult => airTrajectoryWhileTrickingMult;
+    public float AirTrajectoryHorizSpinMult => airTrajectoryHorizSpinMult;
     public float TrickPitchRate => trickPitchRate;
     public float TrickYawSpinRate => trickYawSpinRate;
     public float TrickRollRate => trickRollRate;
+    public float BarrelModeBlendSpeed => barrelModeBlendSpeed;
     public float TrickInputDeadzone => trickInputDeadzone;
     public float TrickInputSmoothRate => trickInputSmoothRate;
     public float TrickInputReleaseRate => trickInputReleaseRate;

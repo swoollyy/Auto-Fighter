@@ -151,7 +151,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hitCollider: {fileID: 4913427648244586458}
   enableRunOverPopup: 1
-  runOverPopupType: 13
+  runOverPopupType: 14
   runOverPopupHeight: 1.2
   playCoinRewardSound: 1
   coinRewardSoundsOverride: []

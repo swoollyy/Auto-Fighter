@@ -14,17 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   trialName: Track1
   designerNotes: 
-  dayLimit: 30
+  dayLimit: 50
   targetProgress: 1
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 100
+    segmentCount: 75
     autoDetectSegmentLength: 1
     segmentLength: 5
     minTurnAngle: 10
     startMaxTurnAngle: 45
-    endMaxTurnAngle: 125
+    endMaxTurnAngle: 75
     difficultyCurve:
       serializedVersion: 2
       m_Curve:
@@ -219,13 +219,13 @@ MonoBehaviour:
       extraLateralPadding: 0
       coinReward: 1
       idleUseWalkPauseRhythm: 1
-      idleWalkSegmentMinSec: 0.9
+      idleWalkSegmentMinSec: 1.44
       idleWalkSegmentMaxSec: 3.2
-      idlePauseMinSec: 0.25
+      idlePauseMinSec: 0.52
       idlePauseMaxSec: 1.71
-      idleMinTravelDistance: 4
+      idleMinTravelDistance: 5.22
       passiveWanderSpeed: 1.5
-      passiveDirectionChangeInterval: 2
+      passiveDirectionChangeInterval: 9.08
       passiveFleeFromScared: 1
       passiveScaredDetectRadius: 3.5
       passiveScaredLoseDistance: 16
@@ -235,7 +235,7 @@ MonoBehaviour:
       passiveFleeMaxOffRoadDistance: 10
       passiveUseBugIdleMovement: 1
       passiveIdleBugMoveSpeed: 1.15
-      passiveIdleBugDirectionChangeInterval: 4
+      passiveIdleBugDirectionChangeInterval: 9.08
       passiveIdleBugLateralRadius: 8
       passiveIdleBugForwardRadius: 8
       scaredDetectionRadius: 0
@@ -310,11 +310,11 @@ MonoBehaviour:
       extraLateralPadding: 0
       coinReward: 4
       idleUseWalkPauseRhythm: 1
-      idleWalkSegmentMinSec: 0.9
-      idleWalkSegmentMaxSec: 3.2
-      idlePauseMinSec: 0.25
+      idleWalkSegmentMinSec: 1.59
+      idleWalkSegmentMaxSec: 3.45
+      idlePauseMinSec: 0.84
       idlePauseMaxSec: 1.75
-      idleMinTravelDistance: 2.5
+      idleMinTravelDistance: 7
       passiveWanderSpeed: 0
       passiveDirectionChangeInterval: 0
       passiveFleeFromScared: 0
@@ -324,11 +324,11 @@ MonoBehaviour:
       passiveFleeMaxSpeed: 10
       passiveFleeBuildupRate: 3
       passiveFleeMaxOffRoadDistance: 3
-      passiveUseBugIdleMovement: 1
+      passiveUseBugIdleMovement: 0
       passiveIdleBugMoveSpeed: 1.76
-      passiveIdleBugDirectionChangeInterval: 6
-      passiveIdleBugLateralRadius: 2.2
-      passiveIdleBugForwardRadius: 1.3
+      passiveIdleBugDirectionChangeInterval: 12.89
+      passiveIdleBugLateralRadius: 2.64
+      passiveIdleBugForwardRadius: 1.84
       scaredDetectionRadius: 2.4
       scaredBaseFleeSpeed: 2
       scaredMaxFleeSpeed: 5.02
@@ -336,7 +336,7 @@ MonoBehaviour:
       scaredMaxOffRoadDistance: 14.12
       scaredIdleUseBugMovement: 1
       scaredIdleBugMoveSpeed: 1.77
-      scaredIdleBugDirectionChangeInterval: 5
+      scaredIdleBugDirectionChangeInterval: 10.38
       scaredIdleBugLateralRadius: 10
       scaredIdleBugForwardRadius: 10
       scaredFleeFromAggressive: 1
@@ -401,10 +401,10 @@ MonoBehaviour:
       extraLateralPadding: 0
       coinReward: 0
       idleUseWalkPauseRhythm: 1
-      idleWalkSegmentMinSec: 0.9
-      idleWalkSegmentMaxSec: 3.2
-      idlePauseMinSec: 0.25
-      idlePauseMaxSec: 1.75
+      idleWalkSegmentMinSec: 1.5
+      idleWalkSegmentMaxSec: 3.83
+      idlePauseMinSec: 0.82
+      idlePauseMaxSec: 2.57
       idleMinTravelDistance: 4
       passiveWanderSpeed: 0
       passiveDirectionChangeInterval: 0
@@ -443,11 +443,11 @@ MonoBehaviour:
       scaredBugHuntSpeedMultiplier: 1.15
       aggressiveIdleUseBugMovement: 1
       aggressiveIdleBugMoveSpeed: 2.1
-      aggressiveIdleBugDirectionChangeInterval: 6
-      aggressiveIdleBugLateralRadius: 12
-      aggressiveIdleBugForwardRadius: 12
+      aggressiveIdleBugDirectionChangeInterval: 10.99
+      aggressiveIdleBugLateralRadius: 13.3
+      aggressiveIdleBugForwardRadius: 12.9
       aggressiveHuntScaredCreatures: 1
-      aggressiveHuntRadius: 7.43
+      aggressiveHuntRadius: 7.79
       aggressiveHuntSpeedMultiplier: 2
       aggressiveHuntNpcTraffic: 1
       aggressiveNpcTrafficDetectRadius: 6

@@ -212,7 +212,7 @@ MonoBehaviour:
   avoidanceIdlePathNudgeSpeed: 5
   avoidanceSideBias: 0
   avoidanceResponse: 3
-  wanderStuckWindowSeconds: 1
+  wanderStuckWindowSeconds: 0.55
   wanderProgressRatioThreshold: 0.4
   wanderPathClearFraction: 0.6
   aggressivePlayerPriorityRadius: 8

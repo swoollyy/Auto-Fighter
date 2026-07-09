@@ -101,6 +101,7 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
     private float[] _cumLengths;
     private float _totalLength;
     private Dictionary<int, GameObject> _icePathsBySlot = new();
+    private readonly Dictionary<int, int> _surfaceReservationBySlot = new();
     private int _maxSlotIndex;
     private float _updateTimer;
     private int _lastClosestIdx = 0;
@@ -301,6 +302,12 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (_icePathsBySlot.TryGetValue(slot, out var obj) && obj != null)
                 Destroy(obj);
 
+            if (_surfaceReservationBySlot.TryGetValue(slot, out int reservationId))
+            {
+                TrackSurfaceSpawnRegistry.Unregister(reservationId);
+                _surfaceReservationBySlot.Remove(slot);
+            }
+
             _icePathsBySlot.Remove(slot);
         }
     }
@@ -382,8 +389,13 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     private void TrySpawnIcePathAtDistance(int slot, float baseDist)
     {
-        float jitter = Random.Range(-distanceJitter, distanceJitter);
-        float startDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+        float totalIceLen = TrackSurfaceSpawnUtil.GetIcePathLength(segmentsPerPath, segmentLength);
+        if (!TryFindClearIceStart(baseDist, totalIceLen, out float startDist))
+        {
+            if (verboseDebug)
+                Debug.Log($"[IcePathSpawner] Skipped ice path slot {slot} near {baseDist:F1}m (overlaps boost/ramp/ice).");
+            return;
+        }
 
         GameObject pathParent = new GameObject($"IcePath_{startDist:F0}");
         Transform parent = icePathParent ? icePathParent : transform;
@@ -391,8 +403,6 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
         _icePathsBySlot[slot] = pathParent;
 
-
-        float totalIceLen = segmentsPerPath * segmentLength;
 
         GameObject stripGO = new GameObject($"IceStrip_{startDist:F0}");
         stripGO.layer = LayerMask.NameToLayer("RoadSurface");
@@ -406,9 +416,33 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
         float centerDist = Mathf.Clamp(startDist + totalIceLen * 0.5f, 0f, _totalLength);
         SampleAlongPath(centerDist, out Vector3 centerPos, out _);
         _queueLastSpawn.Record(centerPos, "Ice Path");
+        float iceEndDist = Mathf.Min(startDist + totalIceLen, _totalLength);
+        _surfaceReservationBySlot[slot] = TrackSurfaceSpawnRegistry.Register(startDist, iceEndDist);
 
         if (verboseDebug)
             Debug.Log($"[IcePathSpawner] Spawned ice path at slot {slot}, distance {startDist:F1}m");
+    }
+
+    private bool TryFindClearIceStart(float baseDist, float totalIceLen, out float startDist)
+    {
+        const int maxAttempts = 6;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            float jitter = Random.Range(-distanceJitter, distanceJitter);
+            float candidate = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+            float endDist = Mathf.Min(candidate + totalIceLen, _totalLength);
+            if (endDist <= candidate + 0.01f)
+                continue;
+
+            if (!TrackSurfaceSpawnRegistry.Overlaps(candidate, endDist))
+            {
+                startDist = candidate;
+                return true;
+            }
+        }
+
+        startDist = 0f;
+        return false;
     }
 
     private void PreSpawnInitialWindow()
@@ -635,10 +669,14 @@ public class IcePathSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     private void ClearIcePaths()
     {
+        foreach (var kvp in _surfaceReservationBySlot)
+            TrackSurfaceSpawnRegistry.Unregister(kvp.Value);
+
         foreach (var o in _icePathsBySlot.Values)
             if (o) Destroy(o);
 
         _icePathsBySlot.Clear();
+        _surfaceReservationBySlot.Clear();
     }
 
     public void SetPlayerTransform(Transform player)

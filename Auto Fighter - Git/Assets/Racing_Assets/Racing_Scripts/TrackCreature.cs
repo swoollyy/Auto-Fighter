@@ -231,6 +231,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected Vector3 currentVelocity;
     protected float currentSpeed;
     protected float currentFleeSpeed; // For scared creatures - builds up over time
+    
+    // Movement intent (used to prevent spin-in-place when velocity is clamped to ~0 by obstacles/edges)
+    private Vector3 _intendedPlanarMoveDir;
+    private bool _hasIntendedPlanarMoveDir;
+    private Vector3 _lastStableFacingDir;
+    private const float IntendedDirMinSqr = 1e-6f;
+    private const float ChargeCloseRangeWorldPursuitRadius = 6f; // meters; prevents orbiting when very close (non-bull-rush charging)
+    /// <summary>Offset-space distance at which an idle wiggle target counts as reached (no micro-corrections).</summary>
+    private const float IdleArriveEpsilon = 0.22f;
+    private const float IdleStuckWindowSeconds = 0.65f;
+    private const float IdleStuckProgressRatio = 0.38f;
 
     // Wander state
     protected float wanderTimer;
@@ -253,6 +264,11 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float idleCurrentDistOffset;
     protected float idleCurrentLateralOffset;
     protected float nextIdleChangeTime;
+    private bool _idleAtTarget;
+    private Vector3 _idleStuckAnchorPos;
+    private Vector3 _idleStuckLastPos;
+    private float _idleStuckWindowTimer;
+    private float _idleStuckDistanceAccum;
     // Detection state
     protected bool playerDetected = false;
     protected float playerDistance;
@@ -409,9 +425,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         switch (behaviorType)
         {
             case CreatureBehaviorType.Passive:
-                SetState(config != null && config.passiveUseBugIdleMovement
-                    ? CreatureState.Idle
-                    : CreatureState.Wandering);
+                // Gameplay rule: bugs only idle + flee (no wandering state).
+                SetState(CreatureState.Idle);
                 break;
             case CreatureBehaviorType.Scared:
             case CreatureBehaviorType.Aggressive:
@@ -740,7 +755,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             if (!stillFleeingCritter)
             {
-                SetState(config.passiveUseBugIdleMovement ? CreatureState.Idle : CreatureState.Wandering);
+                // Bug gameplay: idle + flee only.
+                SetState(CreatureState.Idle);
                 currentFleeSpeed = config.passiveFleeBaseSpeed;
             }
             else
@@ -772,10 +788,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
         else
         {
-            if (currentState != CreatureState.Wandering)
-                SetState(CreatureState.Wandering);
+            // Keep behavior simple and consistent even if legacy wander is configured.
+            if (currentState != CreatureState.Idle)
+                SetState(CreatureState.Idle);
 
-            UpdateWandering(dt);
+            UpdateBugIdleMovement(
+                dt,
+                config.passiveIdleBugMoveSpeed,
+                config.passiveIdleBugDirectionChangeInterval,
+                config.passiveIdleBugLateralRadius,
+                config.passiveIdleBugForwardRadius,
+                config.passiveFleeMaxOffRoadDistance * 0.5f);
         }
     }
 
@@ -800,45 +823,22 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                if (hasAggressiveThreat)
+                // Scared gameplay: idle + flee only (no hunting).
+                chaseTargetTransform = null;
+
+                if (shouldFlee)
                 {
-                    chaseTargetTransform = null;
                     if (currentState != CreatureState.Fleeing)
                         SetState(CreatureState.Fleeing);
 
-                    currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
-                                       Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
-                }
-                else if (config.scaredHuntPassiveCreatures)
-                {
-                    var bug = FindNearestCreature(CreatureBehaviorType.Passive, config.scaredHuntPassiveRadius);
-                    if (bug != null)
+                    if (hasAggressiveThreat)
                     {
-                        chaseTargetTransform = bug.transform;
-                        SetState(CreatureState.Charging);
-                        RunScaredBugHuntCharging(dt, abortForAggressiveThreat: false);
+                        currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
+                                           Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
                     }
-                    else if (hasPlayerThreat || hasNpcThreat)
-                    {
-                        chaseTargetTransform = null;
-                        if (currentState != CreatureState.Fleeing)
-                            SetState(CreatureState.Fleeing);
-                    }
-                    else
-                    {
-                        chaseTargetTransform = null;
-                        UpdateScaredCalmIdle(dt);
-                    }
-                }
-                else if (shouldFlee)
-                {
-                    chaseTargetTransform = null;
-                    if (currentState != CreatureState.Fleeing)
-                        SetState(CreatureState.Fleeing);
                 }
                 else
                 {
-                    chaseTargetTransform = null;
                     UpdateScaredCalmIdle(dt);
                 }
                 break;
@@ -853,14 +853,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
                 if (playerFar && aggroFar && npcFar && _activeThreatCount == 0)
                 {
-                    SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
+                    // Scared gameplay: return to idle only.
+                    SetState(CreatureState.Idle);
                     currentFleeSpeed = config.scaredBaseFleeSpeed;
                     chaseTargetTransform = null;
                 }
                 break;
 
             case CreatureState.Charging:
-                RunScaredBugHuntCharging(dt, abortForAggressiveThreat: hasAggressiveThreat);
+                // Scared gameplay: never charges.
+                chaseTargetTransform = null;
+                SetState(CreatureState.Fleeing);
                 break;
         }
     }
@@ -883,7 +886,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             prey.behaviorType != CreatureBehaviorType.Passive)
         {
             chaseTargetTransform = null;
-            SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
+            SetState(CreatureState.Idle);
             return;
         }
 
@@ -891,7 +894,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (huntDist > config.scaredPassiveHuntLoseDistance)
         {
             chaseTargetTransform = null;
-            SetState(config.scaredIdleUseBugMovement ? CreatureState.Idle : CreatureState.Wandering);
+            SetState(CreatureState.Idle);
             return;
         }
 
@@ -900,28 +903,19 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
     private void UpdateScaredCalmIdle(float dt)
     {
-        if (config.scaredIdleUseBugMovement)
-        {
-            if (currentState != CreatureState.Idle)
-                SetState(CreatureState.Idle);
+        // Scared gameplay: keep it simple and consistent.
+        if (currentState != CreatureState.Idle)
+            SetState(CreatureState.Idle);
 
-            UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
-                config.scaredIdleBugDirectionChangeInterval,
-                config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
-                config.scaredMaxOffRoadDistance);
-        }
-        else
-        {
-            if (currentState != CreatureState.Wandering)
-                SetState(CreatureState.Wandering);
-
-            UpdateWandering(dt);
-        }
+        UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
+            config.scaredIdleBugDirectionChangeInterval,
+            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
+            config.scaredMaxOffRoadDistance);
     }
 
     /// <summary>
-    /// Aggressive behavior: Idles until player is detected, then does bull rush.
-    /// NO continuous chasing - only bull rush attacks.
+    /// Aggressive behavior: Idles until a valid target is detected, then charges.
+    /// Uses bull rush against the player when enabled.
     /// </summary>
     protected virtual void UpdateAggressiveBehavior(float dt)
     {
@@ -933,7 +927,6 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-
                 // Reset bull rush state when idle
                 isBullRushCharging = false;
                 isBullRushActive = false;
@@ -1058,6 +1051,110 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         wanderTimer = 0f;
         nextIdleChangeTime = 0f; // force immediate target pick
+        _idleAtTarget = false;
+        ResetIdleStuckTracking();
+    }
+
+    private bool UsesBugIdleMovement()
+    {
+        if (config == null || currentState != CreatureState.Idle) return false;
+
+        return behaviorType switch
+        {
+            CreatureBehaviorType.Passive => config.passiveUseBugIdleMovement,
+            CreatureBehaviorType.Scared => config.scaredIdleUseBugMovement,
+            CreatureBehaviorType.Aggressive => config.aggressiveIdleUseBugMovement,
+            _ => false
+        };
+    }
+
+    private float GetIdleOffsetDistanceToTarget()
+    {
+        float dLat = idleTargetLateralOffset - idleCurrentLateralOffset;
+        float dFwd = idleTargetDistOffset - idleCurrentDistOffset;
+        return Mathf.Sqrt(dLat * dLat + dFwd * dFwd);
+    }
+
+    private void ResetIdleStuckTracking()
+    {
+        _idleStuckAnchorPos = transform.position;
+        _idleStuckLastPos = transform.position;
+        _idleStuckWindowTimer = 0f;
+        _idleStuckDistanceAccum = 0f;
+    }
+
+    /// <summary>
+    /// Detects idle creatures that keep "trying" to reach an offset goal but make little net progress
+    /// (blocked by obstacles/edges), then immediately picks a new reachable target.
+    /// </summary>
+    private void UpdateIdleStuckCheck(float dt, float lateralRadius, float forwardRadius)
+    {
+        Vector3 pos = transform.position;
+
+        Vector3 framePlanar = pos - _idleStuckLastPos;
+        framePlanar.y = 0f;
+        _idleStuckDistanceAccum += framePlanar.magnitude;
+        _idleStuckLastPos = pos;
+        _idleStuckWindowTimer += dt;
+
+        if (_idleStuckWindowTimer < IdleStuckWindowSeconds)
+            return;
+
+        Vector3 net = pos - _idleStuckAnchorPos;
+        net.y = 0f;
+        float netDisplacement = net.magnitude;
+
+        bool movedEnough = _idleStuckDistanceAccum > 0.08f;
+        bool littleNetProgress = netDisplacement < _idleStuckDistanceAccum * IdleStuckProgressRatio;
+        bool stillHasOffsetGoal = GetIdleOffsetDistanceToTarget() > IdleArriveEpsilon * 1.5f;
+
+        if (movedEnough && littleNetProgress && stillHasOffsetGoal)
+        {
+            // Snap to current world-backed offsets so we don't keep fighting an unreachable goal.
+            ReconcileIdleOffsetsFromWorld();
+            ForcePickReachableIdleTarget(lateralRadius, forwardRadius);
+            _idleAtTarget = true;
+            currentSpeed = 0f;
+        }
+
+        ResetIdleStuckTracking();
+    }
+
+    private void ReconcileIdleOffsetsFromWorld()
+    {
+        if (spawner == null) return;
+
+        float d = spawner.GetDistanceAlongPath(transform.position);
+        d = Mathf.Clamp(d, 0f, spawner.GetTotalLength());
+        currentDistanceAlongTrack = d;
+
+        spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatF = pathForward;
+        flatF.y = 0f;
+        if (flatF.sqrMagnitude < 1e-6f) return;
+        flatF.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, flatF).normalized;
+
+        float lat = Vector3.Dot(transform.position - pathPos, right);
+        idleCurrentLateralOffset = lat - idleAnchorLateral;
+        idleCurrentDistOffset = d - idleAnchorDistance;
+        idleTargetLateralOffset = idleCurrentLateralOffset;
+        idleTargetDistOffset = idleCurrentDistOffset;
+        currentLateralOffset = lat;
+        targetLateralOffset = lat;
+    }
+
+    private void ForcePickReachableIdleTarget(float lateralRadius, float forwardRadius)
+    {
+        wanderTimer = 0f;
+        float interval = Mathf.Max(0.05f,
+            behaviorType == CreatureBehaviorType.Passive
+                ? config.passiveIdleBugDirectionChangeInterval
+                : behaviorType == CreatureBehaviorType.Scared
+                    ? config.scaredIdleBugDirectionChangeInterval
+                    : config.aggressiveIdleBugDirectionChangeInterval);
+        nextIdleChangeTime = interval * Random.Range(0.85f, 1.15f);
+        PickNewIdleTarget(lateralRadius, forwardRadius, requireReachable: true);
     }
 
     /// <summary>
@@ -1119,16 +1216,32 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             float interval = Mathf.Max(0.05f, directionChangeInterval) * Random.Range(0.85f, 1.15f);
             nextIdleChangeTime = wanderTimer + interval;
 
-            PickNewIdleTarget(lateralRadius, forwardRadius);
+            PickNewIdleTarget(lateralRadius, forwardRadius, requireReachable: true);
+            _idleAtTarget = false;
         }
 
-        // Smooth speed toward bugSpeed
-        currentSpeed = Mathf.MoveTowards(currentSpeed, bugSpeed, Mathf.Max(0.01f, bugSpeed) * 3f * dt);
+        float distToTarget = GetIdleOffsetDistanceToTarget();
+        if (distToTarget <= IdleArriveEpsilon)
+        {
+            idleCurrentLateralOffset = idleTargetLateralOffset;
+            idleCurrentDistOffset = idleTargetDistOffset;
+            _idleAtTarget = true;
+            currentSpeed = Mathf.MoveTowards(currentSpeed, 0f, Mathf.Max(0.01f, bugSpeed) * 6f * dt);
+        }
+        else
+        {
+            _idleAtTarget = false;
+            // Smooth speed toward bugSpeed
+            currentSpeed = Mathf.MoveTowards(currentSpeed, bugSpeed, Mathf.Max(0.01f, bugSpeed) * 3f * dt);
+        }
 
         // Move our current offsets toward the target offsets
         float step = Mathf.Max(0.01f, currentSpeed) * dt;
-        idleCurrentLateralOffset = Mathf.MoveTowards(idleCurrentLateralOffset, idleTargetLateralOffset, step);
-        idleCurrentDistOffset = Mathf.MoveTowards(idleCurrentDistOffset, idleTargetDistOffset, step);
+        if (!_idleAtTarget)
+        {
+            idleCurrentLateralOffset = Mathf.MoveTowards(idleCurrentLateralOffset, idleTargetLateralOffset, step);
+            idleCurrentDistOffset = Mathf.MoveTowards(idleCurrentDistOffset, idleTargetDistOffset, step);
+        }
 
         // Apply offsets around anchor
         float totalLength = spawner.GetTotalLength();
@@ -1138,11 +1251,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float maxLateral = halfWidth + Mathf.Max(0f, extraOffRoad);
         targetLateralOffset = Mathf.Clamp(idleAnchorLateral + idleCurrentLateralOffset, -maxLateral, maxLateral);
 
-        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && avoidanceIdlePathNudgeSpeed > 0f)
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && avoidanceIdlePathNudgeSpeed > 0f
+            && !_idleAtTarget)
             NudgeIdleGoalAroundObstacles(dt, maxLateral);
 
         // Smooth lateral
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, Mathf.Max(0.01f, currentSpeed) * dt);
+
+        UpdateIdleStuckCheck(dt, lateralRadius, forwardRadius);
     }
 
     /// <summary>
@@ -1151,7 +1267,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// is. Random offsets that land right on top of the creature make it re-face constantly and
     /// spin in place; enforcing a minimum move guarantees a real heading and travel each time.
     /// </summary>
-    private void PickNewIdleTarget(float lateralRadius, float forwardRadius)
+    private void PickNewIdleTarget(float lateralRadius, float forwardRadius, bool requireReachable = false)
     {
         float latR = Mathf.Abs(lateralRadius);
         float fwdR = Mathf.Abs(forwardRadius);
@@ -1170,17 +1286,29 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         Vector2 best = cur;
         float bestDistSq = -1f;
+        bool foundReachable = false;
 
-        const int attempts = 8;
+        const int attempts = 12;
         for (int i = 0; i < attempts; i++)
         {
             Vector2 cand = new Vector2(Random.Range(-latR, latR), Random.Range(-fwdR, fwdR));
             float dsq = (cand - cur).sqrMagnitude;
 
-            if (dsq >= minMoveSq)
+            if (dsq < minMoveSq)
+            {
+                if (dsq > bestDistSq)
+                {
+                    bestDistSq = dsq;
+                    best = cand;
+                }
+                continue;
+            }
+
+            if (!requireReachable || IsIdleOffsetReachable(cand, latR, fwdR))
             {
                 best = cand;
                 bestDistSq = dsq;
+                foundReachable = true;
                 break;
             }
 
@@ -1209,10 +1337,47 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             Vector2 pushed = cur + dir * minMove;
             best.x = Mathf.Clamp(pushed.x, -latR, latR);
             best.y = Mathf.Clamp(pushed.y, -fwdR, fwdR);
+            bestDistSq = (best - cur).sqrMagnitude;
+        }
+
+        if (requireReachable && !foundReachable && !IsIdleOffsetReachable(best, latR, fwdR))
+        {
+            // Last resort: stay put rather than pick an unreachable offset that causes spin-in-place.
+            best = cur;
         }
 
         idleTargetLateralOffset = best.x;
         idleTargetDistOffset = best.y;
+    }
+
+    /// <summary>
+    /// World-space clearance check for a candidate idle offset (prevents picking goals inside walls/edges).
+    /// </summary>
+    private bool IsIdleOffsetReachable(Vector2 candidateOffset, float latR, float fwdR)
+    {
+        if (spawner == null) return true;
+
+        float targetDist = Mathf.Clamp(idleAnchorDistance + candidateOffset.y, 0f, spawner.GetTotalLength());
+        spawner.SamplePath(targetDist, out Vector3 pathPos, out Vector3 pathForward);
+        Vector3 flatF = pathForward;
+        flatF.y = 0f;
+        if (flatF.sqrMagnitude < 1e-6f) return true;
+        flatF.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, flatF).normalized;
+
+        Vector3 goal = pathPos + right * (idleAnchorLateral + candidateOffset.x);
+        goal.y = transform.position.y;
+
+        Vector3 toGoal = goal - transform.position;
+        toGoal.y = 0f;
+        float dist = toGoal.magnitude;
+        if (dist < IdleArriveEpsilon) return true;
+        if (!enableMovementAvoidance || GetAvoidanceLayerMask().value == 0) return true;
+
+        Vector3 origin = transform.position + Vector3.up * avoidanceCastHeight;
+        float look = Mathf.Max(avoidanceLookAhead, dist + 0.35f);
+        float clear = SampleObstacleClearance(origin, toGoal / dist, look);
+        return clear >= Mathf.Min(dist, look) * 0.55f;
     }
 
     /// <summary>
@@ -1365,12 +1530,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null || config == null) return;
 
+        // Scared gameplay: never charges.
         if (behaviorType == CreatureBehaviorType.Scared)
-        {
-            if (chaseTargetTransform == null) return;
-            UpdateStandardCharging(dt, chaseTargetTransform, huntingCreature: true);
             return;
-        }
 
         if (behaviorType != CreatureBehaviorType.Aggressive)
             return;
@@ -1388,6 +1550,18 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (chaseTargetTransform != null &&
             chaseTargetTransform.TryGetComponent<TrackCreature>(out var tc) && tc.isDead)
+        {
+            chaseTargetTransform = null;
+            _currentChargeTarget = null;
+            EndBullRush();
+            SetState(CreatureState.Idle);
+            currentSpeed = 0f;
+            return;
+        }
+
+        if (target != null && target != playerTransform &&
+            target.GetComponentInParent<NPCTrafficCar>() != null &&
+            !IsValidNpcTrafficTarget(target))
         {
             chaseTargetTransform = null;
             _currentChargeTarget = null;
@@ -1434,17 +1608,22 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (chaseTargetTransform != null)
         {
-            float d = Vector3.Distance(transform.position, chaseTargetTransform.position);
-            if (d <= config.aggressiveHuntRadius && d < bestD)
+            var prey = chaseTargetTransform.GetComponentInParent<TrackCreature>();
+            if (prey != null && !prey.isDead)
             {
-                bestD = d;
-                best = chaseTargetTransform;
+                float d = Vector3.Distance(transform.position, chaseTargetTransform.position);
+                if (d <= config.aggressiveHuntRadius && d < bestD)
+                {
+                    bestD = d;
+                    best = chaseTargetTransform;
+                }
             }
         }
 
         if (vehicleChaseTransform != null && config.aggressiveHuntNpcTraffic && _npcTrafficLayers.value != 0)
         {
-            if (vehicleChaseDistance <= config.aggressiveNpcTrafficDetectRadius &&
+            if (IsValidNpcTrafficTarget(vehicleChaseTransform) &&
+                vehicleChaseDistance <= config.aggressiveNpcTrafficDetectRadius &&
                 vehicleChaseDistance < bestD)
             {
                 bestD = vehicleChaseDistance;
@@ -1512,7 +1691,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return; // Don't move during charge up
         }
 
-        // ===== PHASE 2: ACTIVE RUSH (move fast in locked direction with slight steering) =====
+        // ===== PHASE 2: ACTIVE RUSH (move fast in the locked launch direction) =====
         if (isBullRushActive)
         {
             bullRushActiveTimer += dt;
@@ -1520,25 +1699,6 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             // Rush speed
             float rushSpeed = config.aggressiveChargeSpeed * config.bullRushSpeedMultiplier;
             currentSpeed = rushSpeed;
-
-            // Allow SLIGHT steering toward target (the "bend")
-            Vector3 toTargetNow = target.position - transform.position;
-            toTargetNow.y = 0f;
-
-            if (toTargetNow.sqrMagnitude > 0.01f)
-            {
-                Vector3 desiredDir = toTargetNow.normalized;
-
-                // Calculate max rotation this frame based on steer rate
-                float maxAngleThisFrame = config.bullRushMaxSteerRate * dt;
-
-                // Smoothly rotate rush direction toward target (limited steering)
-                float angleBetween = Vector3.SignedAngle(bullRushDirection, desiredDir, Vector3.up);
-                float steerAngle = Mathf.Clamp(angleBetween, -maxAngleThisFrame, maxAngleThisFrame);
-
-                bullRushDirection = Quaternion.Euler(0f, steerAngle, 0f) * bullRushDirection;
-                bullRushDirection.Normalize();
-            }
 
             // World-space motion runs in UpdateMovement along bullRushDirection (not spline projection).
             // ===== CHECK END CONDITIONS =====
@@ -1706,6 +1866,20 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// </summary>
     protected virtual void UpdateStandardCharging(float dt, Transform target, bool huntingCreature)
     {
+        if (target == null) return;
+
+        Vector3 toTarget = target.position - transform.position;
+        toTarget.y = 0f;
+        float distToTarget = toTarget.magnitude;
+
+        // Close enough: stop re-steering around the target (contact/trigger handles the kill).
+        const float chargeArriveRadius = 2.2f;
+        if (huntingCreature && distToTarget <= chargeArriveRadius)
+        {
+            currentSpeed = Mathf.MoveTowards(currentSpeed, 0f, 12f * dt);
+            return;
+        }
+
         float baseCharge = behaviorType == CreatureBehaviorType.Scared
             ? config.scaredBugHuntSpeed * Mathf.Max(0.01f, config.scaredBugHuntSpeedMultiplier)
             : config.aggressiveChargeSpeed;
@@ -1775,7 +1949,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         Vector3 moveDir;
         float desiredDist;
 
-        // Active bull rush: straight planar charge along bullRushDirection (homeward steer only, no spline pull / no obstacle weave).
+        // Active bull rush: committed world-space motion along the telegraphed rush direction.
         if (isBullRushActive && bullRushDirection.sqrMagnitude > 0.01f)
         {
             moveDir = bullRushDirection;
@@ -1785,13 +1959,40 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
         else
         {
-            Vector3 desired = targetPos - transform.position;
-            desired.y = 0f;
-            desiredDist = desired.magnitude;
-            moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
+            // Close-range charging: only for non-hunt player-style charges. Hunt charges orbit if they hard-lock onto moving targets.
+            Transform closeChargeTarget = (currentState == CreatureState.Charging) ? _currentChargeTarget : null;
+            bool huntingCreatureCharge = behaviorType == CreatureBehaviorType.Aggressive &&
+                                         closeChargeTarget != null &&
+                                         playerTransform != null &&
+                                         closeChargeTarget != playerTransform;
+            if (closeChargeTarget != null && !huntingCreatureCharge)
+            {
+                Vector3 toT = closeChargeTarget.position - transform.position;
+                toT.y = 0f;
+                float d = toT.magnitude;
+                if (d > 0.0001f && d <= ChargeCloseRangeWorldPursuitRadius)
+                {
+                    moveDir = toT / d;
+                    desiredDist = d;
+                }
+                else
+                {
+                    Vector3 desired = targetPos - transform.position;
+                    desired.y = 0f;
+                    desiredDist = desired.magnitude;
+                    moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
+                }
+            }
+            else
+            {
+                Vector3 desired = targetPos - transform.position;
+                desired.y = 0f;
+                desiredDist = desired.magnitude;
+                moveDir = desiredDist > 0.0001f ? (desired / desiredDist) : Vector3.zero;
+            }
         }
 
-        // No ApplyAvoidanceToMoveDir during bull rush (committed line); other states use normal avoidance steering.
+        // No avoidance steering during bull rush windup/active phases so charge path stays committed.
         bool skipAvoidanceSteer = isBullRushActive || isBullRushCharging;
 
         if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0 && moveDir.sqrMagnitude > 0.0001f && !skipAvoidanceSteer)
@@ -1818,9 +2019,25 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             TryBullRushDisplaceObstacle(obstacleClampHit, shoveDir, currentSpeed);
 
         Vector3 delta = transform.position - prevPos;
-        currentVelocity = delta / Mathf.Max(dt, 0.001f);
+        delta.y = 0f;
+        float planarMoved = delta.magnitude;
+        bool meaningfulMove = planarMoved > Mathf.Max(0.02f, step * 0.15f);
 
-        if (!isBullRushActive && !isBullRushCharging)
+        // Record intended direction only when we actually moved meaningfully this frame.
+        if (meaningfulMove && moveDir.sqrMagnitude > IntendedDirMinSqr)
+        {
+            _intendedPlanarMoveDir = moveDir;
+            _intendedPlanarMoveDir.y = 0f;
+            if (_intendedPlanarMoveDir.sqrMagnitude > IntendedDirMinSqr)
+            {
+                _intendedPlanarMoveDir.Normalize();
+                _hasIntendedPlanarMoveDir = true;
+            }
+        }
+
+        currentVelocity = (transform.position - prevPos) / Mathf.Max(dt, 0.001f);
+
+        if (!isBullRushActive && !isBullRushCharging && !UsesBugIdleMovement())
             SyncTrackStateFromTransform();
     }
 
@@ -2094,41 +2311,39 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return; // important: don't override with "look at player" logic
         }
 
-        switch (currentState)
+        // When velocity is tiny (blocked / clamped), NEVER "look-at" the target.
+        // That look-at fallback is what makes creatures spin in place when the player/target circles them.
+        // Instead, face the last intended movement direction (or keep last stable facing).
+        if (currentState == CreatureState.Idle)
+            return;
+
+        if (behaviorType == CreatureBehaviorType.Aggressive &&
+            currentState == CreatureState.Charging &&
+            (isBullRushCharging || isBullRushActive) &&
+            bullRushDirection.sqrMagnitude > IntendedDirMinSqr)
         {
-            case CreatureState.Wandering:
-                // Face movement direction
-                spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 pathFwd);
-                lookDirection = pathFwd * wanderDirectionZ;
-                break;
-
-            case CreatureState.Fleeing:
-                lookDirection = GetFleeDirection();
-                break;
-
-            case CreatureState.Charging:
-                {
-                    Transform t = null;
-                    if (behaviorType == CreatureBehaviorType.Scared)
-                        t = chaseTargetTransform;
-                    else if (behaviorType == CreatureBehaviorType.Aggressive)
-                        ResolveAggressiveChargeTarget(out t, out _);
-                    if (t == null)
-                        t = playerTransform;
-                    if (t != null)
-                        lookDirection = t.position - transform.position;
-                }
-                break;
-
-            case CreatureState.Idle:
-            default:
-                // Keep current rotation
-                return;
+            // Ensure windup facing and active rush facing match the telegraphed rush line.
+            lookDirection = bullRushDirection;
+        }
+        else if (_hasIntendedPlanarMoveDir && _intendedPlanarMoveDir.sqrMagnitude > IntendedDirMinSqr)
+        {
+            lookDirection = _intendedPlanarMoveDir;
+        }
+        else if (_lastStableFacingDir.sqrMagnitude > IntendedDirMinSqr)
+        {
+            lookDirection = _lastStableFacingDir;
+        }
+        else
+        {
+            // Final fallback: along-track forward.
+            spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 pathFwd);
+            lookDirection = pathFwd;
         }
 
         lookDirection.y = 0f;
         if (lookDirection.sqrMagnitude < 0.01f) return;
         lookDirection.Normalize();
+        _lastStableFacingDir = lookDirection;
 
         // Calculate target rotation
         Quaternion targetRot;
@@ -2386,6 +2601,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
 
             Transform root = c.attachedRigidbody != null ? c.attachedRigidbody.transform : c.transform;
+            if (!IsValidNpcTrafficTarget(root)) continue;
+
             float sqr = (root.position - transform.position).sqrMagnitude;
             if (sqr < bestSqr)
             {
@@ -2399,6 +2616,22 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             vehicleChaseTransform = best;
             vehicleChaseDistance = Mathf.Sqrt(bestSqr);
         }
+    }
+
+    /// <summary>
+    /// NPC traffic targets are valid only while alive (not crashed) and active.
+    /// Prevents beasts/critters from circling crashed cars.
+    /// </summary>
+    private static bool IsValidNpcTrafficTarget(Transform candidateRoot)
+    {
+        if (candidateRoot == null) return false;
+        if (!candidateRoot.gameObject.activeInHierarchy) return false;
+
+        var npc = candidateRoot.GetComponentInParent<NPCTrafficCar>();
+        if (npc == null) return false;
+        if (npc.HasCrashed) return false;
+
+        return true;
     }
 
     protected TrackCreature FindNearestCreature(CreatureBehaviorType targetType, float radius)
@@ -2624,10 +2857,21 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
 
         // Passive + Scared: die to moving obstacle impacts (original behavior).
-        if (obstacleCollider.GetComponentInParent<NPCTrafficCar>() != null)
+        if (obstacleCollider.GetComponentInParent<CarController>() != null)
+        {
+            killSource = CreatureKillSource.Car;
+            SpawnRunOverPopup();
+        }
+        else if (obstacleCollider.GetComponentInParent<NPCTrafficCar>() != null)
+        {
             SpawnNpcTrafficCrushPopup(obstacleCollider);
+            killSource = CreatureKillSource.Other;
+        }
+        else
+        {
+            killSource = CreatureKillSource.Other;
+        }
 
-        killSource = CreatureKillSource.Other;
         Die();
     }
 
@@ -3278,6 +3522,14 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
     }
 
+    private RacingPopupType ResolveRunOverPopupType()
+    {
+        // Older prefabs serialized Crash (13) before CreatureSplat existed at index 14.
+        if (runOverPopupType == RacingPopupType.Crash)
+            return RacingPopupType.CreatureSplat;
+        return runOverPopupType;
+    }
+
     private void SpawnRunOverPopup()
     {
         if (!enableRunOverPopup) return;
@@ -3287,7 +3539,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         basePos += Vector3.up * runOverPopupHeight;
 
         // Pass 0 to trigger random text selection (style asset uses useRandomText/randomTexts)
-        RacingPopups.SpawnWorldSpace(runOverPopupType, 0f, basePos);
+        RacingPopups.SpawnWorldSpace(ResolveRunOverPopupType(), 0f, basePos);
     }
 
     private void SpawnNpcTrafficCrushPopup(Collider npcCollider)
@@ -3299,7 +3551,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             ? npcCollider.ClosestPoint(transform.position)
             : transform.position;
         p += Vector3.up * runOverPopupHeight;
-        RacingPopups.SpawnWorldSpace(runOverPopupType, 0f, p);
+        RacingPopups.SpawnWorldSpace(ResolveRunOverPopupType(), 0f, p);
     }
 
     /// <summary>Beast→critter and critter→bug; callers gate with enableBeastEatPopup / enableCritterEatBugPopup.</summary>

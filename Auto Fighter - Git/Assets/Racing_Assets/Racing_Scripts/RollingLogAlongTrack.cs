@@ -3,7 +3,8 @@ using UnityEngine;
 
 /// <summary>
     /// Kinematic log that rolls along the procedural track and rams other obstacles.
-    /// It only leaves the scripted path when struck by a beast or when colliding with another rolling log.
+/// It only leaves the scripted path when struck by a beast, when colliding/overlapping another rolling log
+/// (both logs detach), or when forcefield-launched.
 /// </summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Rigidbody))]
@@ -64,6 +65,15 @@ public class RollingLogAlongTrack : MonoBehaviour
     [SerializeField, Min(0f)] private float overlapRamCooldown = 0.2f;
     [Tooltip("Scripted logs and NPCTrafficCar are both kinematic while driving; PhysX will not emit contact callbacks between them. Overlap probe applies the same crash+ram as a real collision.")]
     [SerializeField] private bool enableScriptedNpcTrafficOverlapHit = true;
+    [Tooltip("Scripted logs are kinematic; PhysX usually skips log-vs-log collision callbacks. Overlap probe detaches BOTH logs from their paths when they intersect.")]
+    [SerializeField] private bool enableScriptedLogOverlapRelease = true;
+    [Tooltip("While overlapping a dynamic player/NPC vehicle, keep applying ram force each FixedUpdate so a crashed car cannot pin the log and make it look like it slowed down.")]
+    [SerializeField] private bool enableScriptedVehicleSustainedPush = true;
+    [Tooltip("If the log barely moves for this long while wedged against a vehicle, detach to physics with full scripted momentum.")]
+    [SerializeField] private bool enableVehicleBlockRelease = true;
+    [SerializeField, Min(0.05f)] private float vehicleBlockReleaseSeconds = 0.35f;
+    [Tooltip("Actual displacement / expected displacement per step below this counts as wedged.")]
+    [SerializeField, Range(0.05f, 0.95f)] private float vehicleBlockMoveFraction = 0.35f;
 
     [Header("RacingObstacle ram (props)")]
     [Tooltip("Extra horizontal oomph vs RacingObstacle: base ramHorizontalImpulse is multiplied by this.")]
@@ -102,7 +112,9 @@ public class RollingLogAlongTrack : MonoBehaviour
     private float _pivotToBottom;
     private Quaternion _prefabRootRotation = Quaternion.identity;
     private Vector3 _lastScriptedPos;
+    private Vector3 _lastActualPos;
     private float _stuckTimer;
+    private float _vehicleBlockTimer;
 
     private bool _ready;
     private bool _freedToPhysics;
@@ -110,6 +122,8 @@ public class RollingLogAlongTrack : MonoBehaviour
     private Collider _ramProbeCollider;
     private readonly Dictionary<int, float> _overlapRamUntilByRootId = new();
     private readonly Dictionary<int, float> _overlapNpcHitUntilByRootId = new();
+    private static readonly Dictionary<long, float> s_logPairReleaseUntil = new();
+    private const float LogPairReleaseTtlSeconds = 2.5f;
     private ProceduralTrackGenerator _subscribedTrackGenerator;
 
     public bool IsScriptedAlongPath => _ready && !_freedToPhysics;
@@ -207,7 +221,9 @@ public class RollingLogAlongTrack : MonoBehaviour
         SnapToPath();
         _cachedWorldVel = ComputeScriptedWorldVelocity();
         _lastScriptedPos = _rb.position;
+        _lastActualPos = _rb.position;
         _stuckTimer = 0f;
+        _vehicleBlockTimer = 0f;
         _ready = true;
     }
 
@@ -295,6 +311,7 @@ public class RollingLogAlongTrack : MonoBehaviour
         SnapToPath();
         _cachedWorldVel = ComputeScriptedWorldVelocity();
         _lastScriptedPos = _rb.position;
+        _lastActualPos = _rb.position;
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -308,20 +325,17 @@ public class RollingLogAlongTrack : MonoBehaviour
 
         RamOtherObstacle(collision);
 
-        if (!ShouldReleaseOnCollision(o))
+        var otherLog = o.GetComponentInParent<RollingLogAlongTrack>();
+        if (otherLog != null && otherLog != this)
+        {
+            if (((1 << o.gameObject.layer) & detachIgnoreLayers.value) != 0)
+                return;
+
+            Vector3 contact = collision.contactCount > 0 ? collision.GetContact(0).point : o.bounds.center;
+            float rel = Mathf.Max(collision.relativeVelocity.magnitude, CurrentScriptedSpeed, otherLog.CurrentScriptedSpeed, 3f);
+            TryReleaseBothLogsFromContact(otherLog, contact, rel);
             return;
-
-        if (((1 << o.gameObject.layer) & detachIgnoreLayers.value) != 0)
-            return;
-
-        Vector3 planar = _cachedWorldVel;
-        planar.y = 0f;
-        if (planar.sqrMagnitude < 1e-4f)
-            planar = transform.forward * Mathf.Sign(_signedSpeed);
-        planar.Normalize();
-
-        float rel = Mathf.Max(collision.relativeVelocity.magnitude, CurrentScriptedSpeed);
-        ReleaseToPhysics(collision, planar, rel, ramHorizontalImpulse * 0.25f, selfDetachExtraUp + ramUpImpulse * 0.35f);
+        }
     }
 
     private void OnTriggerEnter(Collider other)
@@ -381,6 +395,97 @@ public class RollingLogAlongTrack : MonoBehaviour
         }
     }
 
+    private void ProbeScriptedLogOverlapReleases()
+    {
+        if (!enableScriptedLogOverlapRelease || !_ready || _freedToPhysics) return;
+        if (_ramProbeCollider == null) return;
+
+        float now = Time.time;
+        Collider[] hits = OverlapColliderShape(_ramProbeCollider, ~0);
+        if (hits == null || hits.Length == 0) return;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+
+            var otherLog = hit.GetComponentInParent<RollingLogAlongTrack>();
+            if (otherLog == null || otherLog == this || !otherLog.IsScriptedAlongPath) continue;
+
+            Vector3 contact = hit.ClosestPoint(_rb.position);
+            float relSpeed = Mathf.Max(CurrentScriptedSpeed, otherLog.CurrentScriptedSpeed, 3f);
+            TryReleaseBothLogsFromContact(otherLog, contact, relSpeed);
+        }
+    }
+
+    private static long LogPairKey(RollingLogAlongTrack a, RollingLogAlongTrack b)
+    {
+        int ia = a != null ? a.GetInstanceID() : 0;
+        int ib = b != null ? b.GetInstanceID() : 0;
+        if (ia > ib)
+            (ia, ib) = (ib, ia);
+        return ((long)ia << 32) | (uint)ib;
+    }
+
+    private static void PruneLogPairReleaseCooldowns(float now)
+    {
+        if (s_logPairReleaseUntil.Count <= 80) return;
+
+        var toRemove = new List<long>(16);
+        foreach (var kv in s_logPairReleaseUntil)
+        {
+            if (now - kv.Value > LogPairReleaseTtlSeconds)
+                toRemove.Add(kv.Key);
+        }
+
+        for (int i = 0; i < toRemove.Count; i++)
+            s_logPairReleaseUntil.Remove(toRemove[i]);
+    }
+
+    /// <summary>
+    /// Detaches both scripted logs from track pathing when they meet (collision or overlap probe).
+    /// </summary>
+    private void TryReleaseBothLogsFromContact(RollingLogAlongTrack otherLog, Vector3 contact, float relSpeed)
+    {
+        if (otherLog == null || otherLog == this) return;
+        if (!_ready || _freedToPhysics) return;
+        if (!otherLog.IsScriptedAlongPath) return;
+
+        // One initiator per pair avoids double-release in the same frame.
+        if (GetInstanceID() > otherLog.GetInstanceID()) return;
+
+        float now = Time.time;
+        PruneLogPairReleaseCooldowns(now);
+        long key = LogPairKey(this, otherLog);
+        if (s_logPairReleaseUntil.TryGetValue(key, out float until) && now < until)
+            return;
+
+        s_logPairReleaseUntil[key] = now + overlapRamCooldown;
+
+        ReleaseFromLogCollisionWith(otherLog, contact, relSpeed);
+        otherLog.ReleaseFromLogCollisionWith(this, contact, relSpeed);
+    }
+
+    private void ReleaseFromLogCollisionWith(RollingLogAlongTrack otherLog, Vector3 contact, float relSpeed)
+    {
+        if (_freedToPhysics || !_ready) return;
+
+        Vector3 away = _rb.position - (otherLog != null ? otherLog.transform.position : contact);
+        away.y = 0f;
+        if (away.sqrMagnitude < 1e-4f)
+            away = transform.forward;
+        away.Normalize();
+
+        float rel = relSpeed;
+        if (otherLog != null)
+            rel = Mathf.Max(rel, CurrentScriptedSpeed, otherLog.CurrentScriptedSpeed, 3f);
+        else
+            rel = Mathf.Max(rel, CurrentScriptedSpeed, 3f);
+
+        ReleaseToPhysics(null, away, rel, ramHorizontalImpulse * 0.25f, selfDetachExtraUp + ramUpImpulse * 0.35f);
+    }
+
     private void ProbeScriptedNpcTrafficOverlapHits()
     {
         if (!enableScriptedNpcTrafficOverlapHit || !_ready || _freedToPhysics) return;
@@ -410,6 +515,111 @@ public class RollingLogAlongTrack : MonoBehaviour
             npc.ApplyScriptedRollingLogOverlapHit(this, logSolid, contact, relSpeed);
             _overlapNpcHitUntilByRootId[id] = now + overlapRamCooldown;
         }
+    }
+
+    private void ProbeScriptedVehicleSustainedPush()
+    {
+        if (!enableScriptedVehicleSustainedPush || !_ready || _freedToPhysics) return;
+        if (_ramProbeCollider == null) return;
+
+        Collider[] hits = OverlapColliderShape(_ramProbeCollider, ~0);
+        if (hits == null || hits.Length == 0) return;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+
+            if (hit.GetComponentInParent<CarController>() == null &&
+                hit.GetComponentInParent<NPCTrafficCar>() == null)
+                continue;
+
+            Rigidbody vehicleRb = hit.attachedRigidbody != null ? hit.attachedRigidbody : hit.GetComponentInParent<Rigidbody>();
+            if (vehicleRb == null || vehicleRb == _rb || vehicleRb.isKinematic)
+                continue;
+
+            ApplySustainedVehiclePush(vehicleRb, hit);
+        }
+    }
+
+    private void ApplySustainedVehiclePush(Rigidbody vehicleRb, Collider vehicleCol)
+    {
+        Vector3 planar = _cachedWorldVel;
+        planar.y = 0f;
+        if (planar.sqrMagnitude < 1e-4f)
+            planar = transform.forward * Mathf.Sign(_signedSpeed);
+        planar.Normalize();
+
+        Vector3 contact = vehicleCol.ClosestPoint(_rb.position);
+        float speed = CurrentScriptedSpeed;
+        float speedT = Mathf.Clamp01(speed / 14f);
+        float push = ramHorizontalImpulse * vehicleRamHorizontalMultiplier * Mathf.Lerp(5f, 11f, speedT);
+        float up = ramUpImpulse * vehicleRamUpMultiplier * 0.14f;
+        vehicleRb.AddForceAtPosition(planar * push + Vector3.up * up, contact, ForceMode.Force);
+    }
+
+    private bool TryGetOverlappingVehicle(out Collider vehicleCol, out Vector3 awayPlanar)
+    {
+        vehicleCol = null;
+        awayPlanar = transform.forward;
+
+        if (_ramProbeCollider == null) return false;
+
+        Collider[] hits = OverlapColliderShape(_ramProbeCollider, ~0);
+        if (hits == null || hits.Length == 0) return false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+
+            if (hit.GetComponentInParent<CarController>() == null &&
+                hit.GetComponentInParent<NPCTrafficCar>() == null)
+                continue;
+
+            Rigidbody vehicleRb = hit.attachedRigidbody != null ? hit.attachedRigidbody : hit.GetComponentInParent<Rigidbody>();
+            if (vehicleRb == null || vehicleRb == _rb || vehicleRb.isKinematic)
+                continue;
+
+            vehicleCol = hit;
+            awayPlanar = _rb.position - vehicleRb.position;
+            awayPlanar.y = 0f;
+            if (awayPlanar.sqrMagnitude < 1e-4f)
+                awayPlanar = _cachedWorldVel.sqrMagnitude > 1e-4f ? _cachedWorldVel : transform.forward;
+            awayPlanar.y = 0f;
+            awayPlanar.Normalize();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void TryReleaseIfBlockedByVehicle(float expectedMove, float actualMove, float dt)
+    {
+        if (!enableVehicleBlockRelease || !_ready || _freedToPhysics) return;
+        if (expectedMove <= stuckMoveEpsilonPerStep) return;
+
+        float moveRatio = actualMove / expectedMove;
+        if (moveRatio >= vehicleBlockMoveFraction || !TryGetOverlappingVehicle(out _, out Vector3 awayPlanar))
+        {
+            _vehicleBlockTimer = 0f;
+            return;
+        }
+
+        _vehicleBlockTimer += dt;
+        if (_vehicleBlockTimer < vehicleBlockReleaseSeconds)
+            return;
+
+        _vehicleBlockTimer = 0f;
+        float rel = Mathf.Max(CurrentScriptedSpeed, 3f);
+        ReleaseToPhysics(
+            null,
+            awayPlanar,
+            rel,
+            ramHorizontalImpulse * vehicleRamHorizontalMultiplier,
+            ramUpImpulse * vehicleRamUpMultiplier * 0.45f);
     }
 
     private static Collider[] OverlapColliderShape(Collider col, LayerMask layerMask)
@@ -448,14 +658,6 @@ public class RollingLogAlongTrack : MonoBehaviour
 
         Bounds b = col.bounds;
         return Physics.OverlapBox(b.center, b.extents, t.rotation, layerMask, QueryTriggerInteraction.Collide);
-    }
-
-    private bool ShouldReleaseOnCollision(Collider o)
-    {
-        // User intent: only beast strikes or log-vs-log should release from path.
-        // Beast is handled via ApplyBeastStrike(); this path handles log-vs-log collisions.
-        var otherLog = o.GetComponentInParent<RollingLogAlongTrack>();
-        return otherLog != null && otherLog != this;
     }
 
     private void RamOtherObstacle(Collision collision)
@@ -658,12 +860,14 @@ public class RollingLogAlongTrack : MonoBehaviour
         _rb.MovePosition(pos);
         _rb.MoveRotation(rot);
 
-        float moved = Vector3.Distance(pos, _lastScriptedPos);
-        if (moved <= stuckMoveEpsilonPerStep || blockedByRamp)
+        float expectedMove = Vector3.Distance(pos, _lastScriptedPos);
+        float actualMove = Vector3.Distance(_rb.position, _lastActualPos);
+        if (actualMove <= stuckMoveEpsilonPerStep || blockedByRamp)
             _stuckTimer += dt;
         else
             _stuckTimer = 0f;
         _lastScriptedPos = pos;
+        _lastActualPos = _rb.position;
 
         if (_stuckTimer >= stuckDespawnSeconds)
         {
@@ -671,8 +875,14 @@ public class RollingLogAlongTrack : MonoBehaviour
             return;
         }
 
+        TryReleaseIfBlockedByVehicle(expectedMove, actualMove, dt);
+        if (_freedToPhysics)
+            return;
+
         ProbeScriptedOverlapRams();
+        ProbeScriptedLogOverlapReleases();
         ProbeScriptedNpcTrafficOverlapHits();
+        ProbeScriptedVehicleSustainedPush();
     }
 
     private bool IsRampAtDistance(float distAlongTrack)

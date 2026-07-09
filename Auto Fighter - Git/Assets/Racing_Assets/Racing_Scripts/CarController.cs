@@ -60,6 +60,9 @@ public class CarController : MonoBehaviour
     private float landingBoostStrength;
     private float landingBoostDuration;
     private float landingBoostFalloff;
+    private bool enableLandingLateralBleed;
+    private float landingLateralBleedPerSecond;
+    private float landingLateralBleedDuration;
 
     [Header("Bad Landing Crash (from CarLandingConfig)")]
     private bool enableBadLandingCrash;
@@ -469,8 +472,12 @@ public class CarController : MonoBehaviour
     private float roadGrassTransitionLiftSpeed;
     private float roadGrassTransitionMinSpeed;
     private float roadGrassTransitionLiftCooldown;
-    private float _prevGrassFractionForTransitionLift = -1f;
+    private float _grassFractionPrevFrame = -1f;
     private float _lastRoadGrassTransitionLiftTime = -999f;
+    private float _planarSpeedLastFixedUpdate;
+    private float _lastGrassToRoadSpeedPreserveTime = -999f;
+    private readonly RaycastHit[] _surfaceRayBuffer = new RaycastHit[8];
+    private const float MixedSurfaceLipNormalMinY = 0.65f;
 
     /// <summary>True when HP-death tumble uses grass-like slowdown (global ray or heavy grass sample fallback).</summary>
     private bool _hpDeathGrassEffectActive;
@@ -635,9 +642,19 @@ public class CarController : MonoBehaviour
     private bool enableAirTricks;
     private float airYawRate;
     private float airYawInputDeadzone;
+    private float airTrajectorySteerRate;
+    private float airSteerInputSmoothRate;
+    private float airSteerInputReleaseRate;
+    private float airTrajectoryBankAccel;
+    private bool enableAirAimWhileTricking;
+    private float airAimWhileTrickingYawMult;
+    private float airAimHorizSpinYawMult;
+    private float airTrajectoryWhileTrickingMult;
+    private float airTrajectoryHorizSpinMult;
     private float trickPitchRate;
     private float trickYawSpinRate;
     private float trickRollRate;
+    private float barrelModeBlendSpeed;
     private float trickInputDeadzone;
     private float trickInputSmoothRate;
     private float trickInputReleaseRate;
@@ -654,7 +671,11 @@ public class CarController : MonoBehaviour
     private float _trickPitchAngularVel;
     private float _trickYawAngularVel;
     private float _trickRollAngularVel;
+    /// <summary>0 = disc spin (yaw), 1 = barrel roll. Cross-fades while barrel is held.</summary>
+    private float _barrelModeBlend;
     private bool _trickBarrelModeActive;
+    private float _smoothedAirSteer;
+    private float _airTrajectoryBankRate;
     private float _airUprightRecoverBlend;
     private bool _wasTrickStickActiveLastFrame;
 
@@ -1032,6 +1053,11 @@ public class CarController : MonoBehaviour
     private float _baseDrag;
     private float _baseAngularDrag;
 
+    private bool _rollingLogRamPending;
+    private Vector3 _rollingLogPlanarUnit;
+    private float _rollingLogHorizImpulse;
+    private float _rollingLogUpImpulse;
+
     private float baseMaxFuel;
     private float baseIdleFuelUse;
     private float baseFuelUseFullThrottle;
@@ -1261,6 +1287,9 @@ public class CarController : MonoBehaviour
             landingBoostStrength = _landingConfig.LandingBoostStrength;
             landingBoostDuration = _landingConfig.LandingBoostDuration;
             landingBoostFalloff = _landingConfig.LandingBoostFalloff;
+            enableLandingLateralBleed = _landingConfig.EnableLandingLateralBleed;
+            landingLateralBleedPerSecond = _landingConfig.LandingLateralBleedPerSecond;
+            landingLateralBleedDuration = _landingConfig.LandingLateralBleedDuration;
             enableBadLandingCrash = _landingConfig.EnableBadLandingCrash;
             badLandingMinAirborneSeconds = _landingConfig.BadLandingMinAirborneSeconds;
             badLandingUpAlignDotMin = _landingConfig.BadLandingUpAlignDotMin;
@@ -1277,6 +1306,7 @@ public class CarController : MonoBehaviour
             skipSpeedClampWhileAirborne = true; enableLandingCarrySpeed = true;
             landingExcessBleedPerSecond = 7.17f; landingNoClampGraceSeconds = 0.08f;
             enableLandingBoost = true; landingBoostStrength = 1f; landingBoostDuration = 1.2f; landingBoostFalloff = 1.5f;
+            enableLandingLateralBleed = true; landingLateralBleedPerSecond = 14f; landingLateralBleedDuration = 0.45f;
             enableBadLandingCrash = true;
             badLandingMinAirborneSeconds = 0.2f;
             badLandingUpAlignDotMin = 0.88f;
@@ -1481,7 +1511,7 @@ public class CarController : MonoBehaviour
             groundNormalMixedSurfaceBlendScale = 0.42f;
             groundNormalMixedGrassMin = 0.06f;
             groundNormalMixedGrassMax = 0.94f;
-            roadGrassTransitionLiftSpeed = 0.35f;
+            roadGrassTransitionLiftSpeed = 0f;
             roadGrassTransitionMinSpeed = 2.5f;
             roadGrassTransitionLiftCooldown = 0.25f;
             deathHpTerrainRayLength = 56f;
@@ -1517,9 +1547,19 @@ public class CarController : MonoBehaviour
             enableAirTricks = _airTrickConfig.EnableAirTricks;
             airYawRate = _airTrickConfig.AirYawRate;
             airYawInputDeadzone = _airTrickConfig.AirYawInputDeadzone;
+            airTrajectorySteerRate = _airTrickConfig.AirTrajectorySteerRate;
+            airSteerInputSmoothRate = _airTrickConfig.AirSteerInputSmoothRate;
+            airSteerInputReleaseRate = _airTrickConfig.AirSteerInputReleaseRate;
+            airTrajectoryBankAccel = _airTrickConfig.AirTrajectoryBankAccel;
+            enableAirAimWhileTricking = _airTrickConfig.EnableAirAimWhileTricking;
+            airAimWhileTrickingYawMult = _airTrickConfig.AirAimWhileTrickingYawMult;
+            airAimHorizSpinYawMult = _airTrickConfig.AirAimHorizSpinYawMult;
+            airTrajectoryWhileTrickingMult = _airTrickConfig.AirTrajectoryWhileTrickingMult;
+            airTrajectoryHorizSpinMult = _airTrickConfig.AirTrajectoryHorizSpinMult;
             trickPitchRate = _airTrickConfig.TrickPitchRate;
             trickYawSpinRate = _airTrickConfig.TrickYawSpinRate;
             trickRollRate = _airTrickConfig.TrickRollRate;
+            barrelModeBlendSpeed = _airTrickConfig.BarrelModeBlendSpeed;
             trickInputDeadzone = _airTrickConfig.TrickInputDeadzone;
             trickInputSmoothRate = _airTrickConfig.TrickInputSmoothRate;
             trickInputReleaseRate = _airTrickConfig.TrickInputReleaseRate;
@@ -1536,9 +1576,19 @@ public class CarController : MonoBehaviour
             enableAirTricks = true;
             airYawRate = 110f;
             airYawInputDeadzone = 0.12f;
+            airTrajectorySteerRate = 78f;
+            airSteerInputSmoothRate = 3.5f;
+            airSteerInputReleaseRate = 4.5f;
+            airTrajectoryBankAccel = 90f;
+            enableAirAimWhileTricking = true;
+            airAimWhileTrickingYawMult = 0.75f;
+            airAimHorizSpinYawMult = 0.15f;
+            airTrajectoryWhileTrickingMult = 1f;
+            airTrajectoryHorizSpinMult = 0.55f;
             trickPitchRate = 195f;
             trickYawSpinRate = 220f;
             trickRollRate = 220f;
+            barrelModeBlendSpeed = 2.2f;
             trickInputDeadzone = 0.15f;
             trickInputSmoothRate = 11f;
             trickInputReleaseRate = 15f;
@@ -1963,13 +2013,14 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        // Out of fuel only: physics tumble, but player can still yaw the car (no throttle/brake/boost pipeline).
+        // Out of fuel only: coast/slide with player yaw + steer traction (no throttle/boost).
         if (isOutOfFuel)
         {
-            ReleaseHandsOffDrivingPhysics();
             if (carCollider != null)
             {
                 SampleGroundAndUpdateMultipliers();
+                RefreshSkillEffects();
+                ApplySkillEffects();
                 ApplyBoostSurfaceForce(true);
                 UpdateIcePhysicsTransitions();
             }
@@ -1984,10 +2035,11 @@ public class CarController : MonoBehaviour
             }
 
             ClearEndOfRunDrivingState();
+            ApplyOutOfFuelRotationLock();
             UpdateSteeringInputFixed();
             _airborneForTricks = CanUseAirborneControls();
             HandleSteering();
-            HandleAirborneTricks(Time.fixedDeltaTime);
+            ApplyOutOfFuelCoastAndSteerTraction();
             CheckBoostFlash();
             return;
         }
@@ -2129,6 +2181,7 @@ public class CarController : MonoBehaviour
             return;
 
         SampleGroundAndUpdateMultipliers();
+        ApplyGrassToRoadTransitionSpeedPreserve();
         HandleBoostSurfacePopup();        // boost pad / ramp popup on entry
         RefreshSkillEffects();
         ApplySkillEffects();
@@ -2151,6 +2204,14 @@ public class CarController : MonoBehaviour
         ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
         DampPostCrashLateralVelocity();
+
+        if (rb != null)
+        {
+            Vector3 hv = rb.velocity;
+            _planarSpeedLastFixedUpdate = new Vector3(hv.x, 0f, hv.z).magnitude;
+        }
+
+        _grassFractionPrevFrame = grassFraction;
 
         CheckBoostFlash();
 
@@ -2791,9 +2852,9 @@ public class CarController : MonoBehaviour
             _boostTimer = Mathf.Max(0f, isOverride ? _boostOverrideDuration : boostDuration);
             _isPostBoost = false;
 
-            // Drift-release boost popup (separate style from boost pad/ramp).
-            if (isDriftBoost && enablePopupText && RacingPopups.IsReady)
-                RacingPopups.DriftBoost(GetPopupPosition());
+            // Drift-held boost and button/skill boost use the same popup as boost pads/ramps.
+            if (enablePopupText && RacingPopups.IsReady)
+                RacingPopups.BoostPad(GetPopupPosition());
 
             Debug.Log($"[CarController] Boost STARTED: drift={isDriftBoost}, impulse={impulseForce:F2}, sustain={sustain:F2}, duration={_boostTimer:F2}, maxMult={_activeBoostMaxMult:F2}");
 
@@ -2902,6 +2963,18 @@ public class CarController : MonoBehaviour
 
         if (groundedNow)
         {
+            if (IsMixedGrassRoadSurface())
+            {
+                Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
+                float hs = horiz.magnitude;
+                if (hs > cap + capSlack && hs > 1e-6f)
+                {
+                    horiz *= cap / hs;
+                    rb.velocity = new Vector3(horiz.x, v.y, horiz.z);
+                }
+                return;
+            }
+
             Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-6f ? _lastStableGroundNormal.normalized : Vector3.up;
             float upDot = Mathf.Abs(Vector3.Dot(n, Vector3.up));
 
@@ -3860,6 +3933,14 @@ public class CarController : MonoBehaviour
             // Cap crash launch velocity.
             ApplyCrashVelocityCaps();
 
+            if (_rollingLogRamPending)
+            {
+                float invM = 1f / Mathf.Max(rb.mass, 0.01f);
+                rb.velocity += _rollingLogPlanarUnit * (_rollingLogHorizImpulse * invM)
+                    + Vector3.up * (_rollingLogUpImpulse * invM);
+                _rollingLogRamPending = false;
+            }
+
             // --- Torque (spin) stays as you had it ---
 
             Vector3 toObstacleWorld = -hitDirection;
@@ -3927,7 +4008,25 @@ public class CarController : MonoBehaviour
         _trickPitchAngularVel = 0f;
         _trickYawAngularVel = 0f;
         _trickRollAngularVel = 0f;
+        _barrelModeBlend = 0f;
         _trickBarrelModeActive = false;
+        _smoothedAirSteer = 0f;
+        _airTrajectoryBankRate = 0f;
+    }
+
+    private float SmoothAirSteerInput(float rawSteer, float dt)
+    {
+        float rate = Mathf.Abs(rawSteer) > Mathf.Abs(_smoothedAirSteer)
+            ? airSteerInputSmoothRate
+            : airSteerInputReleaseRate;
+        return Mathf.MoveTowards(_smoothedAirSteer, rawSteer, rate * dt);
+    }
+
+    private static float RawSteerFromAxis(float axis, float deadzone)
+    {
+        if (Mathf.Abs(axis) <= deadzone)
+            return 0f;
+        return Mathf.Sign(axis) * Mathf.InverseLerp(deadzone, 1f, Mathf.Abs(axis));
     }
 
     private float SmoothTrickAxis(float current, float target, float dt)
@@ -3972,6 +4071,101 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
+    /// Stick X for horizontal spin targets, or inferred from coasting yaw/roll when stick is neutral.
+    /// </summary>
+    private float GetEffectiveHorizSpinInput()
+    {
+        if (Mathf.Abs(_smoothedTrickHoriz) > 0.05f)
+            return _smoothedTrickHoriz;
+
+        if (Mathf.Abs(_trickYawAngularVel) >= Mathf.Abs(_trickRollAngularVel) && Mathf.Abs(_trickYawAngularVel) > 1f)
+            return Mathf.Clamp(_trickYawAngularVel / Mathf.Max(trickYawSpinRate, 1f), -1f, 1f);
+
+        if (Mathf.Abs(_trickRollAngularVel) > 1f)
+            return Mathf.Clamp(-_trickRollAngularVel / Mathf.Max(trickRollRate, 1f), -1f, 1f);
+
+        return 0f;
+    }
+
+    /// <summary>
+    /// 0 = pitch-heavy trick, 1 = horizontal spin / barrel roll dominates.
+    /// </summary>
+    private float GetTrickHorizSpinInfluence()
+    {
+        float horizSpin = Mathf.Max(Mathf.Abs(_smoothedTrickHoriz), Mathf.Abs(GetEffectiveHorizSpinInput()));
+        float pitchInput = Mathf.Abs(_smoothedTrickPitch);
+        float influence = horizSpin / Mathf.Max(horizSpin + pitchInput, 0.05f);
+        return Mathf.Clamp01(Mathf.Max(influence, _barrelModeBlend * 0.9f));
+    }
+
+    private float GetTrickAirYawAimMultiplier()
+    {
+        if (!_trickStickActive)
+            return 1f;
+
+        float horizInfluence = GetTrickHorizSpinInfluence();
+        return Mathf.Lerp(airAimWhileTrickingYawMult, airAimHorizSpinYawMult, horizInfluence);
+    }
+
+    private float GetTrickAirTrajectoryMultiplier()
+    {
+        if (!_trickStickActive)
+            return 1f;
+
+        float horizInfluence = GetTrickHorizSpinInfluence();
+        return Mathf.Lerp(airTrajectoryWhileTrickingMult, airTrajectoryHorizSpinMult, horizInfluence);
+    }
+
+    private void ApplyAirborneLeftStickControl(float dt)
+    {
+        if (_trickStickActive && !enableAirAimWhileTricking)
+        {
+            _smoothedAirSteer = SmoothAirSteerInput(0f, dt);
+            _airTrajectoryBankRate = Mathf.MoveTowards(_airTrajectoryBankRate, 0f, airTrajectoryBankAccel * dt);
+            return;
+        }
+
+        float rawSteer = RawSteerFromAxis(steeringInput, airYawInputDeadzone);
+        _smoothedAirSteer = SmoothAirSteerInput(rawSteer, dt);
+
+        if (Mathf.Abs(_smoothedAirSteer) < 0.001f)
+        {
+            _airTrajectoryBankRate = Mathf.MoveTowards(_airTrajectoryBankRate, 0f, airTrajectoryBankAccel * dt);
+            return;
+        }
+
+        float yawRateMul = GetTrickAirYawAimMultiplier();
+        float yawAmount = _smoothedAirSteer * airYawRate * yawRateMul * dt;
+        if (Mathf.Abs(yawAmount) > 0.0001f)
+            ApplyScriptedAirRotationLocal(0f, yawAmount, 0f);
+
+        if (airTrajectorySteerRate <= 0.01f)
+        {
+            _airTrajectoryBankRate = 0f;
+            return;
+        }
+
+        Vector3 vel = rb.velocity;
+        Vector3 horiz = Vector3.ProjectOnPlane(vel, Vector3.up);
+        if (horiz.sqrMagnitude < 4f)
+        {
+            _airTrajectoryBankRate = Mathf.MoveTowards(_airTrajectoryBankRate, 0f, airTrajectoryBankAccel * dt);
+            return;
+        }
+
+        float trajMul = GetTrickAirTrajectoryMultiplier();
+        float targetBankRate = _smoothedAirSteer * airTrajectorySteerRate * trajMul;
+        _airTrajectoryBankRate = Mathf.MoveTowards(_airTrajectoryBankRate, targetBankRate, airTrajectoryBankAccel * dt);
+
+        if (Mathf.Abs(_airTrajectoryBankRate) < 0.01f)
+            return;
+
+        float bankDeg = _airTrajectoryBankRate * dt;
+        Vector3 banked = Quaternion.AngleAxis(bankDeg, Vector3.up) * horiz;
+        rb.velocity = new Vector3(banked.x, vel.y, banked.z);
+    }
+
+    /// <summary>
     /// Airborne trick rotation (right stick). Spins bleed faster when the stick is released.
     /// </summary>
     private void HandleAirborneTricks(float dt)
@@ -3994,15 +4188,25 @@ public class CarController : MonoBehaviour
 
         _smoothedTrickPitch = SmoothTrickAxis(_smoothedTrickPitch, pitchTarget, dt);
         _smoothedTrickHoriz = SmoothTrickAxis(_smoothedTrickHoriz, horizTarget, dt);
-        _trickBarrelModeActive = trickInputActive && barrelMode;
+
+        float barrelBlendTarget = trickInputActive && barrelMode ? 1f : 0f;
+        _barrelModeBlend = Mathf.MoveTowards(_barrelModeBlend, barrelBlendTarget, barrelModeBlendSpeed * dt);
+        _trickBarrelModeActive = _barrelModeBlend > 0.01f;
+
+        float horizSpin = trickInputActive ? GetEffectiveHorizSpinInput() : 0f;
+        float yawShare = 1f - _barrelModeBlend;
+        float rollShare = _barrelModeBlend;
 
         float targetPitchVel = _smoothedTrickPitch * trickPitchRate;
-        float targetYawVel = (!_trickBarrelModeActive && trickInputActive) ? _smoothedTrickHoriz * trickYawSpinRate : 0f;
-        float targetRollVel = _trickBarrelModeActive ? -_smoothedTrickHoriz * trickRollRate : 0f;
+        float targetYawVel = horizSpin * trickYawSpinRate * yawShare;
+        float targetRollVel = -horizSpin * trickRollRate * rollShare;
+
+        // Softer bleed while cross-fading so disc spin can hand off into barrel roll naturally.
+        float blendDecelMul = (_barrelModeBlend > 0.02f && _barrelModeBlend < 0.98f) ? 0.45f : 1f;
 
         _trickPitchAngularVel = MoveTrickAngularVel(_trickPitchAngularVel, targetPitchVel, dt, decelMul);
-        _trickYawAngularVel = MoveTrickAngularVel(_trickYawAngularVel, targetYawVel, dt, decelMul);
-        _trickRollAngularVel = MoveTrickAngularVel(_trickRollAngularVel, targetRollVel, dt, decelMul);
+        _trickYawAngularVel = MoveTrickAngularVel(_trickYawAngularVel, targetYawVel, dt, decelMul * blendDecelMul);
+        _trickRollAngularVel = MoveTrickAngularVel(_trickRollAngularVel, targetRollVel, dt, decelMul * blendDecelMul);
 
         if (Mathf.Abs(_trickPitchAngularVel) < 0.01f
             && Mathf.Abs(_trickYawAngularVel) < 0.01f
@@ -4057,6 +4261,67 @@ public class CarController : MonoBehaviour
         _wasTrickStickActiveLastFrame = _trickStickActive;
     }
 
+    private void ApplyOutOfFuelRotationLock()
+    {
+        if (rb == null) return;
+        rb.angularVelocity = Vector3.zero;
+        rb.freezeRotation = true;
+    }
+
+    /// <summary>
+    /// Out-of-fuel coast decel + steer traction so yaw input redirects travel (not just visual rotation).
+    /// </summary>
+    private void ApplyOutOfFuelCoastAndSteerTraction()
+    {
+        if (rb == null) return;
+
+        rb.drag = effectiveDrag;
+
+        if (!CheckIfGrounded()) return;
+
+        RefreshGroundNormalForDriving(true);
+        Vector3 forward = GetDriveForwardAlongSurface(transform.forward, _lastStableGroundNormal, true);
+        float speed = rb.velocity.magnitude;
+        float forwardSpeed = Vector3.Dot(rb.velocity, forward);
+
+        if (forwardSpeed < -0.1f)
+        {
+            float reverseDecel = Mathf.Min(maxReverseAccelPerSecond, 3.5f);
+            float newLong = Mathf.MoveTowards(forwardSpeed, 0f, reverseDecel * Time.fixedDeltaTime);
+            SetLongitudinalVelocityAlongSurface(forward, newLong);
+        }
+        else if (speed > 0.01f)
+        {
+            ApplyCoastDecelAlongSurface(coastLowDecelPerSecond, Time.fixedDeltaTime);
+        }
+
+        if (!enableSteerTraction || _onIceSurface || Mathf.Abs(steeringInput) <= 0.001f)
+            return;
+
+        Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z).normalized;
+        Vector3 vel = rb.velocity;
+        Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
+
+        if (flatVel.sqrMagnitude <= minSpeedForSteerTraction * minSpeedForSteerTraction)
+            return;
+
+        float t = steerTractionReorientRate * Time.fixedDeltaTime;
+        Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, flatForward, t).normalized;
+
+        Vector3 fwdComp = flatForward * Vector3.Dot(flatVel, flatForward);
+        Vector3 lateral = flatVel - fwdComp;
+        lateral *= Mathf.Exp(-lateralFrictionWhileSteering * Time.fixedDeltaTime);
+
+        float mag = (fwdComp + lateral).magnitude;
+        Vector3 newFlat = blendedDir * mag;
+        rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
+
+        float coastMul = steerRollingAccelCoastMultiplier;
+        if (_onIceSurface && !applySteerRollingAccelOnIce)
+            coastMul = 0f;
+        rb.AddForce(flatForward * (steerRollingAccel * coastMul), ForceMode.Acceleration);
+    }
+
     private void HandleSteering()
     {
         if (rb == null) return;
@@ -4092,15 +4357,7 @@ public class CarController : MonoBehaviour
 
         if (_airborneForTricks && enableAirTricks)
         {
-            if (_trickStickActive)
-                return;
-
-            if (Mathf.Abs(steeringInput) > airYawInputDeadzone)
-            {
-                float yawAmount = steeringInput * airYawRate * Time.fixedDeltaTime;
-                ApplyScriptedAirRotationLocal(0f, yawAmount, 0f);
-            }
-
+            ApplyAirborneLeftStickControl(Time.fixedDeltaTime);
             return;
         }
 
@@ -4244,7 +4501,6 @@ public class CarController : MonoBehaviour
             // Brake overrides throttle: both keys = decelerate (reverse/brake path), not full accel.
             bool accelerating = forwardKey && !reverseKey;
             bool brakingOrReverse = reverseKey;
-            bool nearIdleSpeed = speed <= idleSpeedThreshold + 0.001f;
 
             bool wantsSteerTraction =
     groundedNow &&
@@ -4263,7 +4519,7 @@ public class CarController : MonoBehaviour
             {
                 if (accelerating)
                 {
-                    rb.AddForce(forward * GetThrottleAcceleration(), ForceMode.Acceleration);
+                    ApplyForwardThrottleAcceleration(forward, GetThrottleAcceleration(), effectiveDrag);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                 }
                 else if (brakingOrReverse)
@@ -4355,7 +4611,7 @@ public class CarController : MonoBehaviour
                 {
                     float accelMul = (useFullAccelWhileDrifting ? 1f : driftForwardAccelMultiplier);
                     float throttleAccel = GetThrottleAcceleration() * accelMul;
-                    rb.AddForce(forward * throttleAccel, ForceMode.Acceleration);
+                    ApplyForwardThrottleAcceleration(forward, throttleAccel, effectiveDrag * 0.01f);
                     ConsumeFuel(fuelUsePerSecondAtFullThrottle * Time.fixedDeltaTime);
                     consumedFuelThisFrame = true;
                 }
@@ -4373,7 +4629,7 @@ public class CarController : MonoBehaviour
                 }
             }
 
-            if (!accelerating && !brakingOrReverse && !driftPhysicsActive && nearIdleSpeed)
+            if (!accelerating && !brakingOrReverse && !driftPhysicsActive)
             {
                 ConsumeFuel(idleFuelUsePerSecond * Time.fixedDeltaTime);
             }
@@ -4860,6 +5116,93 @@ public class CarController : MonoBehaviour
         );
     }
 
+    private bool IsMixedGrassRoadSurface()
+    {
+        return grassFraction > groundNormalMixedGrassMin && grassFraction < groundNormalMixedGrassMax;
+    }
+
+    /// <summary>
+    /// When a grass ray hits terrain below a slightly raised road, prefer the higher non-grass surface.
+    /// Only used for surface stat sampling — does not move the car.
+    /// </summary>
+    private bool TryRaycastSurfaceSample(Vector3 origin, float rayDistance, out RaycastHit hit)
+    {
+        if (!Physics.Raycast(origin, Vector3.down, out hit, rayDistance, groundLayers, QueryTriggerInteraction.Collide))
+            return false;
+
+        GroundSurface firstSurface = hit.collider.GetComponent<GroundSurface>()
+                                     ?? hit.collider.GetComponentInParent<GroundSurface>();
+        if (firstSurface == null || firstSurface.surfaceType != SurfaceType.Grass)
+            return true;
+
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, _surfaceRayBuffer, rayDistance, groundLayers, QueryTriggerInteraction.Collide);
+        if (count <= 1)
+            return true;
+
+        float bestY = hit.point.y;
+        int bestIdx = -1;
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit candidate = _surfaceRayBuffer[i];
+            if (candidate.point.y <= bestY + 0.02f)
+                continue;
+
+            GroundSurface candidateSurface = candidate.collider.GetComponent<GroundSurface>()
+                                             ?? candidate.collider.GetComponentInParent<GroundSurface>();
+            if (candidateSurface == null || candidateSurface.surfaceType == SurfaceType.Grass)
+                continue;
+
+            if (candidate.point.y > bestY)
+            {
+                bestY = candidate.point.y;
+                bestIdx = i;
+            }
+        }
+
+        if (bestIdx >= 0)
+            hit = _surfaceRayBuffer[bestIdx];
+        return true;
+    }
+
+    /// <summary>
+    /// One-shot planar speed restore when leaving grass for road — no position or velocity-Y changes.
+    /// </summary>
+    private void ApplyGrassToRoadTransitionSpeedPreserve()
+    {
+        if (rb == null || _inCrash || _flipMashActive || IsPostCrashRecoveryDriving) return;
+
+        float g = grassFraction;
+        float prev = _grassFractionPrevFrame;
+        if (prev < 0f) return;
+
+        bool enteringRoad = prev >= 0.42f && g <= 0.38f;
+        if (!enteringRoad) return;
+
+        float now = Time.time;
+        if (now - _lastGrassToRoadSpeedPreserveTime < roadGrassTransitionLiftCooldown) return;
+
+        float referenceSpeed = _planarSpeedLastFixedUpdate;
+        if (referenceSpeed < roadGrassTransitionMinSpeed) return;
+
+        Vector3 v = rb.velocity;
+        Vector3 horiz = new Vector3(v.x, 0f, v.z);
+        float currentSpeed = horiz.magnitude;
+        if (currentSpeed >= referenceSpeed * 0.85f) return;
+
+        if (currentSpeed > 0.05f)
+            horiz = horiz.normalized * referenceSpeed;
+        else
+        {
+            Vector3 fwd = transform.forward;
+            fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-6f) return;
+            horiz = fwd.normalized * referenceSpeed;
+        }
+
+        rb.velocity = new Vector3(horiz.x, v.y, horiz.z);
+        _lastGrassToRoadSpeedPreserveTime = now;
+    }
+
     /// <summary>
     /// Updates <see cref="_lastStableGroundNormal"/> before movement forces so throttle/brake use the same frame's surface.
     /// (Ramp alignment still runs later for rotation smoothing.)
@@ -4869,7 +5212,11 @@ public class CarController : MonoBehaviour
         if (!groundedNow || carCollider == null) return;
         Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
         if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+        {
+            if (IsMixedGrassRoadSurface() && hit.normal.y < MixedSurfaceLipNormalMinY)
+                return;
             _groundNormalMeasured = hit.normal;
+        }
     }
 
     /// <summary>
@@ -4905,8 +5252,7 @@ public class CarController : MonoBehaviour
         if (!CheckIfGrounded()) return;
 
         float g = grassFraction;
-        float prev = _prevGrassFractionForTransitionLift;
-        _prevGrassFractionForTransitionLift = g;
+        float prev = _grassFractionPrevFrame;
         if (prev < 0f) return;
 
         bool crossedMid =
@@ -5125,9 +5471,8 @@ public class CarController : MonoBehaviour
         float fuelMul = 1f;
         bool isNonDefault = false;
 
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDistance, groundLayers, QueryTriggerInteraction.Collide))
+        if (TryRaycastSurfaceSample(origin, rayDistance, out RaycastHit hit))
         {
-
             if (debugSurfaceRays)
                 Debug.Log($"[Surface] Hit {hit.collider.name} (trigger={hit.collider.isTrigger})");
 
@@ -5190,7 +5535,7 @@ public class CarController : MonoBehaviour
         float fuelMul = 1f;
         bool isNonDefault = false;
 
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDistance, groundLayers, QueryTriggerInteraction.Collide))
+        if (TryRaycastSurfaceSample(origin, rayDistance, out RaycastHit hit))
         {
             if (debugSurfaceRays)
                 Debug.Log($"[Surface] Hit {hit.collider.name} (trigger={hit.collider.isTrigger})");
@@ -6333,6 +6678,33 @@ public class CarController : MonoBehaviour
         return accel;
     }
 
+    /// <summary>
+    /// Applies throttle along <paramref name="forward"/> and cancels linear drag on that axis while below max speed.
+    /// Without this, accel/drag equilibrium can sit below <see cref="effectiveMaxSpeed"/>, making acceleration feel like a top-speed cap.
+    /// </summary>
+    private void ApplyForwardThrottleAcceleration(Vector3 forward, float throttleAccel, float activeDrag)
+    {
+        if (rb == null || throttleAccel <= 0f)
+            return;
+
+        if (forward.sqrMagnitude < 1e-8f)
+            return;
+
+        forward.Normalize();
+        rb.AddForce(forward * throttleAccel, ForceMode.Acceleration);
+
+        float speedCap = GetCurrentSpeedCap();
+        if (speedCap <= 0.01f || activeDrag <= 0f)
+            return;
+
+        float forwardSpeed = Vector3.Dot(rb.velocity, forward);
+        if (forwardSpeed <= 0.01f || forwardSpeed >= speedCap - 0.02f)
+            return;
+
+        // Unity's linear drag decelerates proportional to speed; cancel only the forward component while accelerating.
+        rb.AddForce(forward * (activeDrag * forwardSpeed), ForceMode.Acceleration);
+    }
+
     private bool TrySampleLandingGroundNormal(out Vector3 groundNormal)
     {
         groundNormal = Vector3.up;
@@ -6511,10 +6883,42 @@ public class CarController : MonoBehaviour
             );
         }
 
+        if (enableLandingLateralBleed && groundedNow && landingLateralBleedDuration > 0f
+            && Time.time - _lastLandedTime <= landingLateralBleedDuration)
+        {
+            BleedLandingLateralVelocity(dt);
+        }
+
         // Update grounded state for next frame (CRITICAL - this was missing in normal flow!)
         _wasGroundedLastFrame = groundedNow;
         if (!_inCrash)
             _isGrounded = groundedNow;
+    }
+
+    /// <summary>
+    /// Bleeds horizontal velocity sideways component toward car forward after landing
+    /// (clears air trajectory banking without killing forward ramp speed).
+    /// </summary>
+    private void BleedLandingLateralVelocity(float dt)
+    {
+        if (rb == null || landingLateralBleedPerSecond <= 0f) return;
+
+        Vector3 vel = rb.velocity;
+        Vector3 horiz = Vector3.ProjectOnPlane(vel, Vector3.up);
+        if (horiz.sqrMagnitude < 0.01f) return;
+
+        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (flatForward.sqrMagnitude < 1e-6f) return;
+        flatForward.Normalize();
+
+        float forwardSpeed = Vector3.Dot(horiz, flatForward);
+        Vector3 lateral = horiz - flatForward * forwardSpeed;
+        float latMag = lateral.magnitude;
+        if (latMag < 0.05f) return;
+
+        float newLatMag = Mathf.MoveTowards(latMag, 0f, landingLateralBleedPerSecond * dt);
+        Vector3 newHoriz = flatForward * forwardSpeed + lateral * (newLatMag / latMag);
+        rb.velocity = new Vector3(newHoriz.x, vel.y, newHoriz.z);
     }
 
     private void SetLongitudinalVelocityClamped(Vector3 forwardDir, float newLong)
@@ -6845,6 +7249,10 @@ public class CarController : MonoBehaviour
             impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
         }
 
+        var hitRollingLog = hitCol.GetComponentInParent<RollingLogAlongTrack>();
+        if (hitRollingLog != null)
+            impactSpeed = Mathf.Max(impactSpeed, minImpactSpeed);
+
         if (impactSpeed < minImpactSpeed)
             return;
 
@@ -6984,6 +7392,16 @@ public class CarController : MonoBehaviour
             }
 
             return; // Don't trigger full crash state
+        }
+
+        _rollingLogRamPending = false;
+        if (hitRollingLog != null &&
+            hitRollingLog.TryGetVehicleRamImpulse(collision, out Vector3 logPlanar, out float logHoriz, out float logUp))
+        {
+            _rollingLogRamPending = true;
+            _rollingLogPlanarUnit = logPlanar;
+            _rollingLogHorizImpulse = logHoriz;
+            _rollingLogUpImpulse = logUp;
         }
 
         TriggerCrash(hitDir, crashDuration, impulseMag, torqueMag, severity, contactPoint, damageWindowOpen);
@@ -7427,11 +7845,17 @@ public class CarController : MonoBehaviour
 
     private bool IsStoppedForRunEndMash()
     {
-        if (rb == null) return true;
+        return IsPlanarLinearSpeedBelowThreshold(0.25f);
+    }
 
-        float speed = rb.velocity.magnitude;
-        float forwardSpeed = Vector3.Dot(rb.velocity, transform.forward);
-        return Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+    /// <summary>True when horizontal linear speed is near zero (rotation alone does not count as moving).</summary>
+    public bool IsStoppedForRunEnd => IsPlanarLinearSpeedBelowThreshold(0.25f);
+
+    private bool IsPlanarLinearSpeedBelowThreshold(float threshold)
+    {
+        if (rb == null) return true;
+        Vector3 planar = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+        return planar.sqrMagnitude <= threshold * threshold;
     }
 
     private void TryStartRunEndMashIfReady()

@@ -1304,10 +1304,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -1423,10 +1423,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -3960,10 +3960,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -4652,8 +4652,8 @@ Camera:
   m_GameObject: {fileID: 661794726}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0.4764151, g: 0.6800314, b: 1, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -4776,7 +4776,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_RenderShadows: 1
+  m_RenderShadows: 0
   m_RequiresDepthTextureOption: 2
   m_RequiresOpaqueTextureOption: 2
   m_CameraType: 0
@@ -6586,6 +6586,7 @@ MonoBehaviour:
     idleWalkSegmentMaxSec: 3.2
     idlePauseMinSec: 0.25
     idlePauseMaxSec: 1.71
+    idleMinTravelDistance: 2.5
     passiveWanderSpeed: 1.5
     passiveDirectionChangeInterval: 2
     passiveFleeFromScared: 1
@@ -6676,6 +6677,7 @@ MonoBehaviour:
     idleWalkSegmentMaxSec: 3.2
     idlePauseMinSec: 0.25
     idlePauseMaxSec: 1.75
+    idleMinTravelDistance: 2.5
     passiveWanderSpeed: 0
     passiveDirectionChangeInterval: 0
     passiveFleeFromScared: 0
@@ -6766,6 +6768,7 @@ MonoBehaviour:
     idleWalkSegmentMaxSec: 3.2
     idlePauseMinSec: 0.25
     idlePauseMaxSec: 1.75
+    idleMinTravelDistance: 2.5
     passiveWanderSpeed: 0
     passiveDirectionChangeInterval: 0
     passiveFleeFromScared: 0
@@ -7986,10 +7989,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -8733,7 +8736,7 @@ Light:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 863897852}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 10
   m_Type: 1
   m_Shape: 0
@@ -10003,6 +10006,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   actionAsset: {fileID: 0}
   steerDeadzone: 0.12
+  trickStickDeadzone: 0.12
   triggerThreshold: 0.1
   skillTreeStickDeadzone: 0.18
   autoHideCursorByInputDevice: 1
@@ -10688,10 +10692,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -14347,10 +14351,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -16777,10 +16781,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -17900,10 +17904,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.1
+  maxSpeedMultiplier: 0.65
   accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 0.63
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -18826,10 +18830,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.25
-  accelerationMultiplier: 0.9
+  maxSpeedMultiplier: 0.65
+  accelerationMultiplier: 0.766
   turnSpeedMultiplier: 1.2
-  dragMultiplier: 2
+  dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6

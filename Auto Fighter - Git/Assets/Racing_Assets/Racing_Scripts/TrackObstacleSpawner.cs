@@ -185,6 +185,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     private float _totalLength;
 
     private Dictionary<int, GameObject> _obstaclesBySlot = new();
+    private readonly Dictionary<int, int> _surfaceReservationBySlot = new();
     private int _maxSlotIndex;
     private float _updateTimer;
     private int _lastClosestIdx = 0;
@@ -315,6 +316,12 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (_obstaclesBySlot.TryGetValue(slot, out var obj) && obj != null)
                 Destroy(obj);
 
+            if (_surfaceReservationBySlot.TryGetValue(slot, out int reservationId))
+            {
+                TrackSurfaceSpawnRegistry.Unregister(reservationId);
+                _surfaceReservationBySlot.Remove(slot);
+            }
+
             _obstaclesBySlot.Remove(slot);
         }
     }
@@ -405,6 +412,14 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (chosenPrefab == null)
             return;
 
+        if (TrackSurfaceSpawnUtil.TryGetBoostAlongTrackSpan(chosenPrefab, sampleDist, out float reservedStart, out float reservedEnd) &&
+            TrackSurfaceSpawnRegistry.Overlaps(reservedStart, reservedEnd))
+        {
+            if (verboseDebug)
+                Debug.Log($"[TrackObstacleSpawner] Skipped {chosenPrefab.name} at {sampleDist:F1}m (overlaps ice/boost/ramp).");
+            return;
+        }
+
         SampleAlongPath(sampleDist, out var pos, out var forward);
 
         if (forward.sqrMagnitude < 0.0001f)
@@ -461,6 +476,9 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
             _obstaclesBySlot[slot] = obstacle;
             _queueLastSpawn.Record(obstacle.transform.position, chosenPrefab.name);
+
+            if (TrackSurfaceSpawnUtil.TryGetBoostAlongTrackSpan(chosenPrefab, sampleDist, out reservedStart, out reservedEnd))
+                _surfaceReservationBySlot[slot] = TrackSurfaceSpawnRegistry.Register(reservedStart, reservedEnd);
         }
     }
 
@@ -526,6 +544,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     {
         foreach (var o in _obstaclesBySlot.Values) if (o) Destroy(o);
         _obstaclesBySlot.Clear();
+        _surfaceReservationBySlot.Clear();
     }
 
     private ObstacleType GetChosenTypeForDistance(float distanceAlongTrack)
@@ -761,6 +780,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (verboseDebug)
             Debug.Log("[TrackObstacleSpawner] InitializeForRun: rebuilding path + slots.");
 
+        TrackSurfaceSpawnRegistry.Clear();
         RebuildPath();
         ClearObstacles();
         SetupSlots();

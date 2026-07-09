@@ -1441,7 +1441,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8b5b3e22a58bf94a83288c2181a771f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 6
+  baseAcceleration: 4
   baseMaxSpeed: 5.3
   baseBrakingForce: 0.009
   baseDrag: 0.13
@@ -1479,9 +1479,9 @@ MonoBehaviour:
   turnSpeed: 34
   minSpeedToSteer: 0.4
   allowSteerWhenTryingToMove: 1
-  lowSpeedSteerMultiplier: 4.5
-  highSpeedSteerMultiplier: 1.5
-  speedForSteerCurve: 3.45
+  lowSpeedSteerMultiplier: 0.31
+  highSpeedSteerMultiplier: 1.34
+  speedForSteerCurve: 2.69
   steeringInputSmooth: 6.76
   steeringReturnSmooth: 3.5
   useAutoAlignToVelocity: 0
@@ -1522,8 +1522,11 @@ MonoBehaviour:
   landingNoClampGraceSeconds: 0.5
   enableLandingBoost: 1
   landingBoostStrength: 0.65
-  landingBoostDuration: 0.25
-  landingBoostFalloff: 1.5
+  landingBoostDuration: 0.29
+  landingBoostFalloff: 1.62
+  enableLandingLateralBleed: 0
+  landingLateralBleedPerSecond: 14
+  landingLateralBleedDuration: 0.45
   enableBadLandingCrash: 1
   badLandingMinAirborneSeconds: 0.2
   badLandingUpAlignDotMin: 0.332
@@ -1706,7 +1709,7 @@ MonoBehaviour:
   groundNormalMixedSurfaceBlendScale: 0.42
   groundNormalMixedGrassMin: 0.06
   groundNormalMixedGrassMax: 0.94
-  roadGrassTransitionLiftSpeed: 0.35
+  roadGrassTransitionLiftSpeed: 0
   roadGrassTransitionMinSpeed: 2.5
   roadGrassTransitionLiftCooldown: 0.25
   deathHpTerrainRayLength: 56
@@ -1961,11 +1964,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enableAirTricks: 1
-  airYawRate: 80
+  airYawRate: 24.5
   airYawInputDeadzone: 0.12
+  airTrajectorySteerRate: 73.1
+  airSteerInputSmoothRate: 3.5
+  airSteerInputReleaseRate: 4.5
+  airTrajectoryBankAccel: 48.4
+  enableAirAimWhileTricking: 1
+  airAimWhileTrickingYawMult: 0.75
+  airAimHorizSpinYawMult: 0.15
+  airTrajectoryWhileTrickingMult: 1
+  airTrajectoryHorizSpinMult: 0.55
   trickPitchRate: 360
   trickYawSpinRate: 400
   trickRollRate: 490
+  barrelModeBlendSpeed: 2.2
   trickInputDeadzone: 0.074
   trickInputSmoothRate: 26
   trickInputReleaseRate: 72

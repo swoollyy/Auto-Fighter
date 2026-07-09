@@ -8,7 +8,7 @@ public class CrossTrackObstacle : MonoBehaviour
 {
     [Header("Motion")]
     [SerializeField] private float speed = 6f;
-    [Tooltip("Multiply cross speed by this on each hit while still on the scripted path (1.5 = +50%). Stacks per hit.")]
+    [Tooltip("Multiply cross speed by this on the first hit while still on the scripted path (1.5 = +50%). Does not stack on further hits.")]
     [SerializeField, Min(1f)] private float hitSpeedMultiplier = 1.5f;
     [Tooltip("Destroy this GameObject after it crosses. If false, just disable this script.")]
     [SerializeField] private bool destroyOnExit = true;
@@ -92,6 +92,7 @@ public class CrossTrackObstacle : MonoBehaviour
     private Vector3[] _previewScratch;
     /// <summary>When true, path line/lights stay off while still on kinematic script (e.g. after hitting a beast but remaining heavier).</summary>
     private bool _suppressPathPreview;
+    private bool _hitSpeedBoostApplied;
 
     /// <summary>Resolved tilt target; equals <see cref="transform"/> when no separate visual.</summary>
     private Transform _resolvedTiltRoot;
@@ -148,6 +149,7 @@ public class CrossTrackObstacle : MonoBehaviour
             _preview.SetYOffset(0.05f);
 
         speed = Mathf.Max(0.5f, crossSpeed);
+        _hitSpeedBoostApplied = false;
 
         _initialDelay = Mathf.Max(0f, delayBeforeMove);
         _spawnedAt = Time.time;
@@ -763,9 +765,10 @@ public class CrossTrackObstacle : MonoBehaviour
 
     private void TryBoostSpeedOnHit()
     {
-        if (_convertedToPhysics || !_active || hitSpeedMultiplier <= 1f)
+        if (_hitSpeedBoostApplied || _convertedToPhysics || !_active || hitSpeedMultiplier <= 1f)
             return;
 
+        _hitSpeedBoostApplied = true;
         speed = Mathf.Max(0.5f, speed * hitSpeedMultiplier);
         if (_lastVelocity.sqrMagnitude > 1e-6f)
             _lastVelocity *= hitSpeedMultiplier;

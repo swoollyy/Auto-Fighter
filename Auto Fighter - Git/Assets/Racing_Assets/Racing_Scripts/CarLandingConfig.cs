@@ -21,6 +21,14 @@ public class CarLandingConfig : MonoBehaviour
     [Tooltip("Falloff curve: 1 = linear decay, >1 = drops off faster at end, <1 = longer tail.")]
     [SerializeField, Min(0.1f)] private float landingBoostFalloff = 1.5f;
 
+    [Header("Post-Landing Air-Steer Carryover")]
+    [Tooltip("After landing, bleed sideways velocity (from air trajectory steering) toward the car nose so grounded turns don't feel sticky.")]
+    [SerializeField] private bool enableLandingLateralBleed = true;
+    [Tooltip("How quickly lateral speed bleeds off after touchdown (m/s per second). Higher = snappier return to normal turning.")]
+    [SerializeField, Min(0f)] private float landingLateralBleedPerSecond = 14f;
+    [Tooltip("Seconds after touchdown that extra lateral bleed runs. After this, only normal steer traction applies.")]
+    [SerializeField, Min(0f)] private float landingLateralBleedDuration = 0.45f;
+
     [Header("Bad Landing Crash")]
     [Tooltip("Crash (with damage) when landing tilted — on side, roof, nose, or tail instead of flat on wheels.")]
     [SerializeField] private bool enableBadLandingCrash = true;
@@ -48,6 +56,9 @@ public class CarLandingConfig : MonoBehaviour
     public float LandingBoostStrength => landingBoostStrength;
     public float LandingBoostDuration => landingBoostDuration;
     public float LandingBoostFalloff => landingBoostFalloff;
+    public bool EnableLandingLateralBleed => enableLandingLateralBleed;
+    public float LandingLateralBleedPerSecond => landingLateralBleedPerSecond;
+    public float LandingLateralBleedDuration => landingLateralBleedDuration;
     public bool EnableBadLandingCrash => enableBadLandingCrash;
     public float BadLandingMinAirborneSeconds => badLandingMinAirborneSeconds;
     public float BadLandingUpAlignDotMin => badLandingUpAlignDotMin;

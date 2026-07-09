@@ -53,4 +53,4 @@ MonoBehaviour:
   progressiveUnlocks:
   - requiredLevel: 3
     unlocks:
-    - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}
+    - {fileID: 11400000, guid: ccb6450a343b3c64e884ac21a53342d3, type: 2}

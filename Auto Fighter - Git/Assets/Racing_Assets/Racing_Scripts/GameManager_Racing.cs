@@ -396,19 +396,10 @@ public class GameManager_Racing : MonoBehaviour
 
         Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
 
-        // Finalize run only when out of fuel AND forward/overall speed is tiny
+        // Finalize run only when out of fuel/HP AND planar linear speed is tiny (rotation alone does not block results).
         if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
-            float forwardSpeed = 0f;
-            float speed = 0f;
-
-            if (_carRb != null && carInstance != null)
-            {
-                speed = _carRb.velocity.magnitude;
-                forwardSpeed = Vector3.Dot(_carRb.velocity, carInstance.transform.forward);
-            }
-
-            bool stopped = Mathf.Abs(forwardSpeed) <= 0.05f && speed <= 0.2f;
+            bool stopped = carController.IsStoppedForRunEnd;
 
             if (stopped)
             {
