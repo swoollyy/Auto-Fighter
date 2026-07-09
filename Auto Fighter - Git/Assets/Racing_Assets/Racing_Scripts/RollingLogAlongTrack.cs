@@ -44,8 +44,18 @@ public class RollingLogAlongTrack : MonoBehaviour
     [SerializeField, Min(0.0001f)] private float stuckMoveEpsilonPerStep = 0.02f;
 
     [Header("Ramp blocking")]
-    [Tooltip("If enabled, scripted logs stop before entering ramp surfaces instead of climbing onto ramps.")]
+    [Tooltip("If enabled, scripted logs that are regressing (rolling backward along the track, e.g. toward the player) stop before entering ramp surfaces instead of climbing onto ramps.")]
     [SerializeField] private bool stopBeforeRamps = true;
+    [Tooltip("If enabled, scripted logs progressing forward along the track ride up ramps and launch off the lip into physics instead of stopping.")]
+    [SerializeField] private bool forwardLogsRideRamps = true;
+    [Tooltip("Distance ahead (meters along track) used to detect the ramp lip so forward logs launch at the top edge instead of snapping back down.")]
+    [SerializeField, Min(0.05f)] private float rampLaunchLookahead = 0.75f;
+    [Tooltip("Multiplies the vertical climb speed the log built up on the ramp when launching. >1 exaggerates the pop off the lip.")]
+    [SerializeField, Min(0f)] private float rampLaunchUpMultiplier = 1.1f;
+    [Tooltip("Minimum upward launch speed off a ramp lip so forward logs always get airborne naturally.")]
+    [SerializeField, Min(0f)] private float rampLaunchMinUpSpeed = 2.5f;
+    [Tooltip("Rolling spin applied when launching off a ramp (scaled by launch speed) so the log keeps tumbling naturally in the air.")]
+    [SerializeField, Min(0f)] private float rampLaunchSpinFactor = 0.15f;
 
     [Header("Physics release")]
     [Tooltip("Optional extra layers to ignore for detaching (in addition to static world with no obstacle scripts).")]
@@ -797,6 +807,35 @@ public class RollingLogAlongTrack : MonoBehaviour
             _rb.AddTorque(torqueAxis.normalized * (relativeSpeed * 0.15f), ForceMode.Impulse);
     }
 
+    /// <summary>
+    /// Detaches a forward-progressing log from scripted pathing at a ramp lip and hands it to physics, preserving
+    /// its forward momentum and the vertical speed it built while climbing so it flies off the ramp naturally.
+    /// </summary>
+    private void LaunchOffRamp(Vector3 flatFwd, float verticalClimbSpeed)
+    {
+        if (_freedToPhysics) return;
+        _freedToPhysics = true;
+        _ready = false;
+
+        _rb.isKinematic = false;
+        _rb.useGravity = true;
+        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        _rb.constraints = RigidbodyConstraints.None;
+
+        Vector3 fwd = flatFwd.sqrMagnitude > 1e-6f ? flatFwd.normalized : transform.forward;
+        Vector3 horizontal = fwd * _signedSpeed; // _signedSpeed > 0 here, so this points down-track (forward).
+        float up = Mathf.Max(verticalClimbSpeed * rampLaunchUpMultiplier, rampLaunchMinUpSpeed);
+
+        Vector3 launchVel = horizontal + Vector3.up * up;
+        _rb.velocity = launchVel;
+        _cachedWorldVel = launchVel;
+
+        Vector3 spinAxis = Vector3.Cross(Vector3.up, fwd);
+        if (spinAxis.sqrMagnitude > 1e-4f)
+            _rb.AddTorque(spinAxis.normalized * (launchVel.magnitude * rampLaunchSpinFactor), ForceMode.Impulse);
+    }
+
     private void FixedUpdate()
     {
         if (_freedToPhysics)
@@ -824,12 +863,17 @@ public class RollingLogAlongTrack : MonoBehaviour
             return;
         }
 
+        bool progressingForward = _signedSpeed > 0f;
         bool blockedByRamp = false;
         if (stopBeforeRamps && IsRampAtDistance(nextS))
         {
-            // Keep the log at the bottom cusp of the ramp by refusing forward scripted progress onto ramp surfaces.
-            nextS = _s;
-            blockedByRamp = true;
+            // Regressing logs stop at the bottom cusp of the ramp. Forward-progressing logs are allowed to
+            // climb onto the ramp so they can ride it and launch off the lip (handled after placement below).
+            if (!(progressingForward && forwardLogsRideRamps))
+            {
+                nextS = _s;
+                blockedByRamp = true;
+            }
         }
 
         _s = nextS;
@@ -856,6 +900,18 @@ public class RollingLogAlongTrack : MonoBehaviour
         Quaternion align = Quaternion.LookRotation(flatFwd, Vector3.up);
         Quaternion rollSpin = Quaternion.AngleAxis(_rollAngleDeg, rollLocalAxis.normalized);
         Quaternion rot = align * _prefabRootRotation * rollSpin;
+
+        // Forward-progressing logs that have ridden up a ramp launch off the lip: once we're on a ramp but the
+        // surface a short distance ahead is no longer a ramp, detach to physics with the climb velocity so the log
+        // flies off naturally, arcs, and lands under gravity instead of snapping back down to the road.
+        if (progressingForward && forwardLogsRideRamps && !blockedByRamp &&
+            IsRampAtDistance(_s) &&
+            !IsRampAtDistance(Mathf.Min(_totalLength, _s + rampLaunchLookahead)))
+        {
+            float verticalClimbSpeed = dt > 1e-5f ? (pos.y - _lastScriptedPos.y) / dt : 0f;
+            LaunchOffRamp(flatFwd, verticalClimbSpeed);
+            return;
+        }
 
         _rb.MovePosition(pos);
         _rb.MoveRotation(rot);

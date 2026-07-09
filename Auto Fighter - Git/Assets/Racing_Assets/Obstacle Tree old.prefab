@@ -239,6 +239,12 @@ MonoBehaviour:
   treeToppleImpulseMin: 3
   treeToppleImpulseMax: 25
   treeToppleForceHeight: 2
+  enableTreeToppleCrashPopup: 1
+  treeToppleCrashPopupHeight: 1.2
+  enablePropClashCrashPopup: 1
+  propClashPopupHeight: 1
+  propClashMinRelativeSpeed: 2.5
+  propClashPairCooldown: 0.2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!54 &-9222208852432572727
@@ -249,7 +255,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3874382558013832276}
   serializedVersion: 4
-  m_Mass: 10
+  m_Mass: 100
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}

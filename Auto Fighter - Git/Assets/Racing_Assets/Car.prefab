@@ -1444,7 +1444,7 @@ MonoBehaviour:
   baseAcceleration: 4
   baseMaxSpeed: 5.3
   baseBrakingForce: 0.009
-  baseDrag: 0.13
+  baseDrag: 0.1
   coastLowDecelPerSecond: 0.39
   coastHighDecelPerSecond: 5.55
   coastHighSpeedFraction: 1

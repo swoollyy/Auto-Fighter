@@ -677,7 +677,6 @@ public class CarController : MonoBehaviour
     private float _smoothedAirSteer;
     private float _airTrajectoryBankRate;
     private float _airUprightRecoverBlend;
-    private bool _wasTrickStickActiveLastFrame;
 
     private GameObject deathVFX;
     private float deathVFXLifetime;
@@ -4220,16 +4219,18 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Scripted airborne rotation only — pins world position so collider re-solve cannot pop the car upward.
+    /// Scripted airborne rotation only — forces the car's rotation (as tricks/upright recovery did before) but
+    /// never reads or writes position, so the car keeps its natural ballistic (velocity + gravity) motion and
+    /// never snaps positionally while tricking or reorienting.
     /// </summary>
     private void ApplyScriptedAirRotation(Quaternion worldRotation)
     {
         if (rb == null) return;
 
-        Vector3 worldPos = rb.position;
+        // Set rotation only. transform.rotation is what actually makes the spin stick on a non-kinematic body
+        // (rb.MoveRotation alone is unreliable here); position is deliberately left untouched.
         rb.MoveRotation(worldRotation);
-        rb.MovePosition(worldPos);
-        transform.SetPositionAndRotation(worldPos, worldRotation);
+        transform.rotation = worldRotation;
         rb.angularVelocity = Vector3.zero;
     }
 
@@ -4244,21 +4245,13 @@ public class CarController : MonoBehaviour
         if (!_airborneForTricks || rb == null)
         {
             _airUprightRecoverBlend = 0f;
-            _wasTrickStickActiveLastFrame = _trickStickActive;
             return;
         }
 
+        // Releasing a trick only blends the upright-recovery rotation back in — it must never touch velocity or
+        // position, so the car keeps its natural ballistic arc instead of stopping/dropping in place.
         float uprightTarget = _trickStickActive ? 0f : 1f;
         _airUprightRecoverBlend = Mathf.MoveTowards(_airUprightRecoverBlend, uprightTarget, 7.5f * dt);
-
-        if (_wasTrickStickActiveLastFrame && !_trickStickActive)
-        {
-            Vector3 v = rb.velocity;
-            if (v.y > 0.05f)
-                rb.velocity = new Vector3(v.x, 0f, v.z);
-        }
-
-        _wasTrickStickActiveLastFrame = _trickStickActive;
     }
 
     private void ApplyOutOfFuelRotationLock()
@@ -4355,11 +4348,10 @@ public class CarController : MonoBehaviour
         float speedSteerMul = Mathf.Lerp(lowSpeedSteerMultiplier, highSpeedSteerMultiplier, t);
         float driftSteerMul = isDrifting ? Mathf.Lerp(1f, maxDriftSteerMultiplier, driftCharge) : 1f;
 
-        if (_airborneForTricks && enableAirTricks)
-        {
-            ApplyAirborneLeftStickControl(Time.fixedDeltaTime);
-            return;
-        }
+        // Airborne left-stick steering uses the standard grounded steering model below (normal yaw + drift
+        // multiplier + drift side force), so the car turns in the air and drifting in the air gives a sharper
+        // air turn — no separate air-turn rate settings. This runs even during right-stick tricks: it yaws the
+        // transform first, then HandleAirborneTricks composes its spin on top of the resulting rotation.
 
         if (Mathf.Abs(steeringInput) > 0.001f)
         {
@@ -6793,7 +6785,6 @@ public class CarController : MonoBehaviour
             _trickSessionThisJump = false;
             ResetAirTrickRotationState();
             _airUprightRecoverBlend = 0f;
-            _wasTrickStickActiveLastFrame = false;
             Vector3 v = rb.velocity;
             Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
             _takeoffHorizSpeed = horiz.magnitude;
