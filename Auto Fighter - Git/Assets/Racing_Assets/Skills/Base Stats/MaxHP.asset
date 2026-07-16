@@ -15,32 +15,9 @@ MonoBehaviour:
   type: 4700
   displayName: Max HP
   description: Increases max HP by 5
-  maxLevel: 40
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 5
-      inSlope: 2.5
-      outSlope: 2.5
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 39
-      value: 100
-      inSlope: 2.5
-      outSlope: 2.5
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  maxLevel: 10
+  baseCost: 10
+  costPerLevel: 12
   mode: 0
   baseValue: 0
   perLevelAdd: 5

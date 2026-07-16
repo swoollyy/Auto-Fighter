@@ -16,43 +16,11 @@ MonoBehaviour:
   displayName: Raw Coin Value
   description: Adds +1 to coins base values!
   maxLevel: 3
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 60
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 136
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 2
-      value: 80
-      inSlope: 20
-      outSlope: 20
-      tangentMode: 136
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 3
-      value: 100
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 136
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 60
+  costPerLevel: 60
   mode: 0
   baseValue: 1
-  perLevelAdd: 0
+  perLevelAdd: 1
   uiPosition: {x: 0, y: 300}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

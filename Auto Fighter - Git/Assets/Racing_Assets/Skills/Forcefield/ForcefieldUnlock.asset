@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Forcefield Unlock
   description: Unlocks a forcefield, pushing objects away from your car!
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 0
+  costPerLevel: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 0.01

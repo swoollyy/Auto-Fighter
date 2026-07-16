@@ -15,35 +15,12 @@ MonoBehaviour:
   type: 41
   displayName: Coin Spawn Rate
   description: Increases spawn rate of coins by .5
-  maxLevel: 10
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 6
-      outSlope: 6
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 10
-      value: 60
-      inSlope: 6
-      outSlope: 6
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  maxLevel: 5
+  baseCost: 12
+  costPerLevel: 12
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.5
+  perLevelAdd: 0.75
   uiPosition: {x: 0, y: 225}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

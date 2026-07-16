@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Coin Compadre Coin Boost
   description: Increases the value of the coin collected by +1!
   maxLevel: 3
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 40
-      outSlope: 40
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 3
-      value: 120
-      inSlope: 40
-      outSlope: 40
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 40
+  costPerLevel: 40
   mode: 0
   baseValue: 0
   perLevelAdd: 1

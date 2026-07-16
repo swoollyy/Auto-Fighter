@@ -9,7 +9,7 @@ using UnityEngine;
 /// - Kinematic RB + non-trigger collider => real collisions (can land on other obstacles).
 /// - DOTween drives bounce progress in <b>Fixed</b> update so it stays in lockstep with MovePosition (Update-loop tweens cause huge per-step teleports and phantom hits).
 /// - Always follows track path (cannot be pushed off path), but pushes OTHER obstacles on impact.
-/// - Car hit triggers full crash sim via OnCollisionEnter (layer matrix must allow obstacle vs car contact).
+/// - Car hit triggers full crash sim via OnCollisionEnter when impact speed meets the car's Min Impact Speed (frozen or bouncing).
 /// </summary>
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
@@ -143,7 +143,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
     [Tooltip("Fallback 0–1 severity when the car has no CrashSeverityConfig assigned, or extra tuning hint. Also used for legacy flat-damage mode as FX severity.")]
     [SerializeField, Range(0f, 1f)] private float crashFxSeverity = 0.65f;
 
-    [Tooltip("Closing speed passed into crash severity (centralized mode) and impact speed for crash sim (fling/torque). Car caps with Max Crash Fling Speed on CarCrashMashConfig.")]
+    [Tooltip("Unused for player hits — impact speed comes from the collision (same Min Impact Speed gate as other obstacles). Kept for prefab compatibility.")]
     [SerializeField, Min(0f)] private float crashImpactSpeed = 14f;
 
     [Tooltip("If true (recommended), hitting the player car does not take the obstacle off its bounce spline. NPC traffic is never detached here.")]
@@ -878,7 +878,6 @@ public class TrackObstacleBounceBack : MonoBehaviour
     private void TryHandleCarCollisionEnter(Collision collision, float now)
     {
         if (_forcefieldDetached || !damagePlayerOnHit || now < _nextAllowedCarHitTime) return;
-        if (_state != State.Bouncing) return;
 
         Collider other = collision.collider;
         if (other == null || other.isTrigger) return;
@@ -893,22 +892,21 @@ public class TrackObstacleBounceBack : MonoBehaviour
             return;
         }
 
-        Vector3 contactPoint = collision.contactCount > 0
-            ? collision.GetContact(0).point
-            : other.ClosestPoint(_rb.position);
-
-        Vector3 contactNormal = collision.contactCount > 0
-            ? collision.GetContact(0).normal
-            : (_rb.position - contactPoint);
-
-        if (contactNormal.sqrMagnitude < 0.0001f) contactNormal = Vector3.up;
-        else contactNormal.Normalize();
-
-        ApplyCarDamageAndDetach(car, other, contactPoint, contactNormal, now);
+        ApplyCarDamageAndDetach(car, collision, now);
     }
 
-    private void ApplyCarDamageAndDetach(CarController car, Collider carCol, Vector3 contactPoint, Vector3 contactNormal, float now)
+    private void ApplyCarDamageAndDetach(CarController car, Collision collision, float now)
     {
+        if (!car.TryCrashFromObstacleCollision(
+                collision,
+                out Vector3 contactPoint,
+                out Vector3 contactNormal,
+                out float impactSpeed))
+        {
+            return;
+        }
+
+        Collider carCol = collision.collider;
         IgnoreCollisionTemporarily(carCol, now);
 
         Vector3 hitDir = (car.transform.position - _rb.position);
@@ -921,7 +919,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
             float extra = centralizedSeverityExtraMultiplier > 0f ? centralizedSeverityExtraMultiplier : 1f;
             car.ApplyExternalCrashDamage(
                 hitDir,
-                crashImpactSpeed,
+                impactSpeed,
                 contactPoint,
                 crashFxSeverity,
                 transform,
@@ -937,7 +935,7 @@ public class TrackObstacleBounceBack : MonoBehaviour
                 contactPoint,
                 contactNormal,
                 hitDir,
-                crashImpactSpeed,
+                impactSpeed,
                 crashFxSeverity);
         }
 

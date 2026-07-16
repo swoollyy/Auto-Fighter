@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.Serialization;
 
 [CreateAssetMenu(menuName = "Racing/Skill Definition", fileName = "SkillDefinition")]
 public class SkillDefinition : ScriptableObject
@@ -10,10 +11,15 @@ public class SkillDefinition : ScriptableObject
 
     [Min(1)] public int maxLevel = 10;
 
-    [Header("Progression")]
-    [Tooltip("If set, evaluates cost per level (x = level starting at 1). Overrides flatCost.")]
-    public AnimationCurve costCurve;
-    [Min(0)] public int flatCost = 10;
+    [Header("Progression (Coins)")]
+    [Tooltip("Coin cost for level 1.")]
+    [Min(0)]
+    [FormerlySerializedAs("flatCost")]
+    public int baseCost = 10;
+
+    [Tooltip("Extra coin cost added per level after 1. Level N costs baseCost + (N-1) * costPerLevel.")]
+    [Min(0)]
+    public int costPerLevel = 0;
 
     [Header("Effect")]
     public SkillApplicationMode mode = SkillApplicationMode.Multiplicative;
@@ -57,12 +63,14 @@ public class SkillDefinition : ScriptableObject
     [Tooltip("Configure which other skills become visible as this skill levels up.")]
     public List<ProgressiveUnlock> progressiveUnlocks = new();
 
+    /// <summary>
+    /// Coin cost for purchasing <paramref name="nextLevel"/> (1-based).
+    /// Linear: baseCost + (nextLevel - 1) * costPerLevel.
+    /// </summary>
     public int GetCostForLevel(int nextLevel)
     {
         if (nextLevel <= 0) nextLevel = 1;
-        if (costCurve != null && costCurve.keys.Length > 0)
-            return Mathf.Max(1, Mathf.RoundToInt(costCurve.Evaluate(nextLevel)));
-        return flatCost;
+        return Mathf.Max(0, baseCost + (nextLevel - 1) * costPerLevel);
     }
 
     /// <summary>

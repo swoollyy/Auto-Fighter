@@ -17,13 +17,8 @@ MonoBehaviour:
   description: Obstacles hit with the forcefield carry so much force they damage
     other obstacles hit! Steady your aim!
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 50
+  baseCost: 50
+  costPerLevel: 0
   mode: 0
   baseValue: 1
   perLevelAdd: 0

@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Coins Per Meter
   description: Increases coins given per meter by .015
   maxLevel: 10
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 100
-      inSlope: 11.111111
-      outSlope: 11.111111
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 10
-      value: 200
-      inSlope: 11.111111
-      outSlope: 11.111111
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 100
+  costPerLevel: 11
   mode: 0
   baseValue: 0
   perLevelAdd: 0.015

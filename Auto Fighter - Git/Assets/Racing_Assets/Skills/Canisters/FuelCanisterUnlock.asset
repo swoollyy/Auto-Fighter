@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Fuel Canisters
   description: Allows Fuel Canisters to spawn, recovering 15 Fuel. 5% initial Chance.
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 35
+  baseCost: 35
+  costPerLevel: 0
   mode: 1
   baseValue: 1
   perLevelAdd: 0.05

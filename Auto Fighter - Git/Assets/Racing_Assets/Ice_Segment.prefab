@@ -101,7 +101,7 @@ MonoBehaviour:
   surfaceType: 3
   maxSpeedMultiplier: 1.44
   accelerationMultiplier: 0.13
-  turnSpeedMultiplier: 1.74
+  turnSpeedMultiplier: 1.7
   dragMultiplier: 0.000001
   iceDynamicFrictionMultiplier: 0.082
   iceStaticFrictionMultiplier: 0

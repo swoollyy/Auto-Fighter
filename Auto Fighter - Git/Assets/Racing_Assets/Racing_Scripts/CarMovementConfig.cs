@@ -5,9 +5,14 @@ using UnityEngine;
 /// </summary>
 public class CarMovementConfig : MonoBehaviour
 {
+    [Header("TEST — Always Accelerate (easy revert)")]
+    [Tooltip("ON: always throttle forward when not drifting (start + after crash), no coast. While drifting, real accelerate input picks hard vs soft drift. Brake/reverse still work. OFF: normal movement.")]
+    [SerializeField] private bool testAlwaysAccelerate = false;
+
     [Header("Base Movement (on Default surface)")]
     [SerializeField] private float baseAcceleration = 5.2f;
     [SerializeField] private float baseMaxSpeed = 3.95f;
+    [Tooltip("Extra brake decel (m/s²) added on top of Max Brake Decel × Brake Forward Factor.")]
     [SerializeField] private float baseBrakingForce = 0.003f;
 
     [Header("Base Physics")]
@@ -46,6 +51,7 @@ public class CarMovementConfig : MonoBehaviour
     [Tooltip("If true, no slope assist on ice.")]
     [SerializeField] private bool slopeDriveAssistDisableOnIce = true;
 
+    public bool TestAlwaysAccelerate => testAlwaysAccelerate;
     public float BaseAcceleration => baseAcceleration;
     public float BaseMaxSpeed => baseMaxSpeed;
     public float BaseBrakingForce => baseBrakingForce;

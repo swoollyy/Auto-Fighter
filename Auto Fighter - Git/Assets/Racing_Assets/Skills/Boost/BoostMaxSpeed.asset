@@ -17,31 +17,8 @@ MonoBehaviour:
   description: Temporarily increases the max speed of your car during the boost duration
     by .1
   maxLevel: 5
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 40
-      inSlope: 10
-      outSlope: 10
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 5
-      value: 80
-      inSlope: 10
-      outSlope: 10
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 40
+  costPerLevel: 10
   mode: 0
   baseValue: 0
   perLevelAdd: 0.1

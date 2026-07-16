@@ -15,35 +15,16 @@ MonoBehaviour:
   type: 25
   displayName: Driving Fuel Use
   description: Decreases your fuel usage when driving
-  maxLevel: 10
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 15
-      inSlope: 6.875
-      outSlope: 6.875
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 9
-      value: 70
-      inSlope: 6.875
-      outSlope: 6.875
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  maxLevel: 5
+  baseCost: 20
+  costPerLevel: 20
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.01
+  perLevelAdd: 0.03
   uiPosition: {x: -75, y: -225}
   revealedAtStart: 0
+  revealOnFirstSprocket: 0
+  usesSprockets: 0
+  baseSprocketCost: 5
+  sprocketCostPerLevel: 3
   progressiveUnlocks: []

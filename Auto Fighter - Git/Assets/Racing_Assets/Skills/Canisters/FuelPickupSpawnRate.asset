@@ -16,40 +16,8 @@ MonoBehaviour:
   displayName: More Canisters!
   description: Increases spawn rate of fuel canisters by 1.5%
   maxLevel: 5
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 20
-      inSlope: 4.9001265
-      outSlope: 4.9001265
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.3285694
-    - serializedVersion: 3
-      time: 3
-      value: 30
-      inSlope: 5.4909973
-      outSlope: 5.4909973
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.56990916
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 5
-      value: 40
-      inSlope: 4.5165424
-      outSlope: 4.5165424
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.6617173
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 20
+  costPerLevel: 5
   mode: 0
   baseValue: 0
   perLevelAdd: 0.15

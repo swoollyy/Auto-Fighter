@@ -181,20 +181,17 @@ public class RacingInputReader : MonoBehaviour
 
         var boost = _racingMap.AddAction("Boost", InputActionType.Button);
         boost.AddBinding("<Keyboard>/space");
-        boost.AddBinding("<Gamepad>/buttonSouth");
         var drift = _racingMap.AddAction("Drift", InputActionType.Button);
         drift.AddBinding("<Keyboard>/leftShift");
         drift.AddBinding("<Gamepad>/buttonEast");
         var restart = _racingMap.AddAction("Restart", InputActionType.Button);
         restart.AddBinding("<Keyboard>/r");
-        restart.AddBinding("<Gamepad>/buttonSouth");
+        restart.AddBinding("<Gamepad>/start");
 
         var mashSouth = _racingMap.AddAction("MashSouth", InputActionType.Button);
         mashSouth.AddBinding("<Gamepad>/buttonSouth");
-        mashSouth.AddBinding("<Keyboard>/space");
         var mashNorth = _racingMap.AddAction("MashNorth", InputActionType.Button);
         mashNorth.AddBinding("<Gamepad>/buttonNorth");
-        mashNorth.AddBinding("<Keyboard>/space");
         var mashEast = _racingMap.AddAction("MashEast", InputActionType.Button);
         mashEast.AddBinding("<Gamepad>/buttonEast");
         var mashWest = _racingMap.AddAction("MashWest", InputActionType.Button);
@@ -202,7 +199,7 @@ public class RacingInputReader : MonoBehaviour
 
         var fire = _racingMap.AddAction("Fire", InputActionType.Button);
         fire.AddBinding("<Mouse>/leftButton");
-        fire.AddBinding("<Gamepad>/rightTrigger");
+        fire.AddBinding("<Gamepad>/rightShoulder");
 
         var fovPeek = _racingMap.AddAction("FovPeek", InputActionType.Button);
         fovPeek.AddBinding("<Keyboard>/tab");

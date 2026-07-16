@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Passive Mash Click Strength
   description: Increases the strength of passive clicks per click by 2
   maxLevel: 15
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 0
+  costPerLevel: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 2

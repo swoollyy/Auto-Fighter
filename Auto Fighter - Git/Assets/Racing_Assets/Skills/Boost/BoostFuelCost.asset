@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Boost Fuel Cost
   description: Decreases the fuel cost of your boost by 1
   maxLevel: 10
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 25
-      inSlope: 2.572897
-      outSlope: 2.572897
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.2900972
-    - serializedVersion: 3
-      time: 10
-      value: 50
-      inSlope: 3.2413287
-      outSlope: 3.2413287
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.28358284
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 25
+  costPerLevel: 3
   mode: 0
   baseValue: 0
   perLevelAdd: 1

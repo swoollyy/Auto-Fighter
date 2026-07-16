@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Boost Force
   description: Increases force of the boost by .015
   maxLevel: 5
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 50
-      inSlope: 8.683548
-      outSlope: 8.683548
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.17397171
-    - serializedVersion: 3
-      time: 5
-      value: 90
-      inSlope: 7.943436
-      outSlope: 7.943436
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.22059774
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 50
+  costPerLevel: 10
   mode: 0
   baseValue: 0
   perLevelAdd: 0.015

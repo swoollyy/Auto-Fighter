@@ -60,18 +60,21 @@ public class CameraFollow : MonoBehaviour
     [SerializeField] private bool enableTrickCameraFreeze = true;
     [Tooltip("How fast the camera blends into the frozen trick pose.")]
     [SerializeField, Min(0.5f)] private float trickCameraBlendInSpeed = 12f;
-    [Tooltip("How fast the camera blends back to normal follow after releasing tricks (lower = softer).")]
+    [Tooltip("Unused for release (release uses catch-up lag). Kept so existing scene values don't warn.")]
     [SerializeField, Min(0.5f)] private float trickCameraBlendOutSpeed = 3.5f;
-    [Tooltip("Rotation follow multiplier while easing out of trick lock (lower = less snap).")]
-    [SerializeField, Range(0.05f, 1f)] private float trickReleaseRotationFollowScale = 0.28f;
-    [Tooltip("How quickly camera heading catches the car after trick release, scaled by blend-out progress.")]
-    [SerializeField, Min(0.5f)] private float trickReleaseForwardCatchup = 5f;
+    [Tooltip("Heading catch-up rate after landing from a trick (higher = faster ease off the lock). Then settles to normal Rotation Lag.")]
+    [SerializeField, Min(0.5f)] private float trickReleaseCatchupLag = 9f;
+    [Tooltip("How quickly post-trick catch-up lag blends down to the normal Rotation Lag.")]
+    [SerializeField, Min(0.5f)] private float trickReleaseLagReturnSpeed = 6f;
 
     private Vector3 smoothedForward = Vector3.zero;
     private float _trickCameraBlend;
     private Vector3 _trickLockForward = Vector3.forward;
     private Quaternion _trickLockRotation;
     private bool _wasInAirTrickMode;
+    private bool _holdTrickCameraUntilLand;
+    private bool _postTrickReleaseActive;
+    private float _postTrickLag;
 
     // Screen shake state
     private float shakeTimer = 0f;
@@ -338,35 +341,54 @@ public class CameraFollow : MonoBehaviour
     {
         if (target == null) return;
 
-        Vector3 targetForwardFlat = target.forward;
-        targetForwardFlat.y = 0f;
-        if (targetForwardFlat.sqrMagnitude < 0.0001f)
-            targetForwardFlat = Vector3.forward;
-        targetForwardFlat.Normalize();
+        Vector3 fallbackFlat = smoothedForward.sqrMagnitude > 0.0001f
+            ? smoothedForward
+            : (_prevTargetForwardFlat.sqrMagnitude > 0.0001f ? _prevTargetForwardFlat : Vector3.forward);
+        Vector3 targetForwardFlat = FlattenForward(target.forward, fallbackFlat);
 
         if (smoothedForward == Vector3.zero)
             smoothedForward = targetForwardFlat;
 
         bool inAirTrickMode = enableTrickCameraFreeze && car != null && car.IsInAirTrickMode;
+        bool airborneForTricks = car != null && car.IsAirborneForTricks;
+
         if (inAirTrickMode && !_wasInAirTrickMode)
             CaptureTrickCameraLock();
+
         if (!inAirTrickMode && _wasInAirTrickMode)
         {
-            smoothedForward = _trickLockForward;
-            _prevTargetForwardFlat = _trickLockForward;
-            _currentZRoll = 0f;
+            // Released trick stick: stay locked until landing if still airborne.
+            if (airborneForTricks)
+            {
+                _holdTrickCameraUntilLand = true;
+                _trickCameraBlend = 1f;
+            }
+            else
+            {
+                BeginTrickCameraRelease(targetForwardFlat);
+            }
+        }
+
+        if (_holdTrickCameraUntilLand && !airborneForTricks)
+        {
+            BeginTrickCameraRelease(targetForwardFlat);
+            _holdTrickCameraUntilLand = false;
         }
 
         _wasInAirTrickMode = inAirTrickMode;
 
-        float blendTarget = inAirTrickMode ? 1f : 0f;
-        float blendSpeed = inAirTrickMode ? trickCameraBlendInSpeed : trickCameraBlendOutSpeed;
-        _trickCameraBlend = Mathf.Lerp(
-            _trickCameraBlend,
-            blendTarget,
-            1f - Mathf.Exp(-blendSpeed * Time.deltaTime));
+        bool useTrickLockPose = inAirTrickMode || _holdTrickCameraUntilLand;
 
-        bool fullyLocked = inAirTrickMode && _trickCameraBlend >= 0.995f;
+        // Only blend INTO trick lock while actively tricking.
+        if (inAirTrickMode)
+        {
+            _trickCameraBlend = Mathf.Lerp(
+                _trickCameraBlend,
+                1f,
+                1f - Mathf.Exp(-trickCameraBlendInSpeed * Time.deltaTime));
+        }
+
+        bool fullyLocked = useTrickLockPose && _trickCameraBlend >= 0.995f;
         float blendT = Mathf.SmoothStep(0f, 1f, _trickCameraBlend);
 
         Vector3 basePos;
@@ -377,20 +399,18 @@ public class CameraFollow : MonoBehaviour
             basePos = ComputeTrickPositionFollow();
             baseRot = _trickLockRotation;
         }
+        else if (useTrickLockPose && _trickCameraBlend > 0.001f)
+        {
+            // Blending into freeze only — mix toward locked pose.
+            ComputeNormalFollow(targetForwardFlat, out Vector3 normalPos, out Quaternion normalRot);
+            Vector3 trickPos = ComputeTrickPositionFollow();
+            basePos = Vector3.Lerp(normalPos, trickPos, blendT);
+            baseRot = Quaternion.Slerp(normalRot, _trickLockRotation, blendT);
+        }
         else
         {
-            ComputeNormalFollow(targetForwardFlat, _trickCameraBlend, inAirTrickMode, out Vector3 normalPos, out Quaternion normalRot);
-            if (_trickCameraBlend > 0.001f)
-            {
-                Vector3 trickPos = ComputeTrickPositionFollow();
-                basePos = Vector3.Lerp(normalPos, trickPos, blendT);
-                baseRot = Quaternion.Slerp(normalRot, _trickLockRotation, blendT);
-            }
-            else
-            {
-                basePos = normalPos;
-                baseRot = normalRot;
-            }
+            // Normal follow (including post-landing trick release).
+            ComputeNormalFollow(targetForwardFlat, out basePos, out baseRot);
         }
 
         Vector3 shakeOffset = ComputeShakeOffset(baseRot);
@@ -409,17 +429,25 @@ public class CameraFollow : MonoBehaviour
         HandleMapPeekInput();
     }
 
+    private static Vector3 FlattenForward(Vector3 forward, Vector3 fallbackFlat)
+    {
+        Vector3 flat = forward;
+        flat.y = 0f;
+        if (flat.sqrMagnitude < 0.0001f)
+        {
+            flat = fallbackFlat;
+            flat.y = 0f;
+            if (flat.sqrMagnitude < 0.0001f)
+                flat = Vector3.forward;
+        }
+        return flat.normalized;
+    }
+
     private void CaptureTrickCameraLock()
     {
-        Vector3 forward = smoothedForward;
-        if (forward.sqrMagnitude < 0.0001f)
-        {
-            forward = target.forward;
-            forward.y = 0f;
-            if (forward.sqrMagnitude < 0.0001f)
-                forward = Vector3.forward;
-            forward.Normalize();
-        }
+        Vector3 forward = smoothedForward.sqrMagnitude > 0.0001f
+            ? FlattenForward(smoothedForward, Vector3.forward)
+            : FlattenForward(target.forward, _prevTargetForwardFlat);
 
         _trickLockForward = forward;
 
@@ -429,6 +457,20 @@ public class CameraFollow : MonoBehaviour
         _trickLockRotation = Quaternion.Euler(e);
     }
 
+    /// <summary>
+    /// Leave trick lock without a hard snap: start from the locked heading, use a fast
+    /// catch-up lag briefly, then settle back into the default Rotation Lag.
+    /// </summary>
+    private void BeginTrickCameraRelease(Vector3 targetForwardFlat)
+    {
+        _trickCameraBlend = 0f;
+        _currentZRoll = 0f;
+        _prevTargetForwardFlat = targetForwardFlat;
+        smoothedForward = _trickLockForward;
+        _postTrickReleaseActive = true;
+        _postTrickLag = Mathf.Max(trickReleaseCatchupLag, rotationLag);
+    }
+
     private Vector3 ComputeTrickPositionFollow()
     {
         Quaternion lockYaw = Quaternion.LookRotation(_trickLockForward, Vector3.up);
@@ -436,12 +478,7 @@ public class CameraFollow : MonoBehaviour
         return Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
     }
 
-    private void ComputeNormalFollow(
-        Vector3 targetForwardFlat,
-        float trickBlend,
-        bool inAirTrickMode,
-        out Vector3 basePos,
-        out Quaternion baseRot)
+    private void ComputeNormalFollow(Vector3 targetForwardFlat, out Vector3 basePos, out Quaternion baseRot)
     {
         float effectiveRotationLag = rotationLag;
         if (car != null && driftRotationLagMultiplier > 1f)
@@ -450,24 +487,39 @@ public class CameraFollow : MonoBehaviour
             effectiveRotationLag = rotationLag / Mathf.Lerp(1f, driftRotationLagMultiplier, charge);
         }
 
-        if (inAirTrickMode && trickBlend > 0.5f)
-            smoothedForward = _trickLockForward;
-        else if (trickBlend > 0.001f)
+        // While entering trick lock (or holding it until landing), keep orbit heading on the freeze basis.
+        if (enableTrickCameraFreeze && car != null && (car.IsInAirTrickMode || _holdTrickCameraUntilLand))
         {
-            float catchup = trickReleaseForwardCatchup * (1f - trickBlend) * Time.deltaTime;
-            if (catchup > 0.0001f)
-                smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, catchup);
+            smoothedForward = _trickLockForward;
+            _postTrickReleaseActive = false;
         }
         else
-            smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, effectiveRotationLag * Time.deltaTime);
+        {
+            float lag = effectiveRotationLag;
+            if (_postTrickReleaseActive)
+            {
+                // Fast ease off the lock, then blend lag rate itself down to the normal default.
+                _postTrickLag = Mathf.Lerp(
+                    _postTrickLag,
+                    effectiveRotationLag,
+                    1f - Mathf.Exp(-trickReleaseLagReturnSpeed * Time.deltaTime));
+                lag = Mathf.Max(_postTrickLag, effectiveRotationLag);
+
+                float headingErr = Vector3.Angle(smoothedForward, targetForwardFlat);
+                if (headingErr < 2.5f && Mathf.Abs(_postTrickLag - effectiveRotationLag) < 0.08f)
+                {
+                    _postTrickReleaseActive = false;
+                    lag = effectiveRotationLag;
+                }
+            }
+
+            smoothedForward = Vector3.Slerp(smoothedForward, targetForwardFlat, lag * Time.deltaTime);
+        }
 
         Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
 
         Vector3 desiredPos = target.position + yawOnly * offset;
-        float posFollow = positionFollowSpeed;
-        if (trickBlend > 0.001f)
-            posFollow = Mathf.Lerp(positionFollowSpeed, positionFollowSpeed * trickReleaseRotationFollowScale, trickBlend);
-        basePos = Vector3.Lerp(transform.position, desiredPos, posFollow * Time.deltaTime);
+        basePos = Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
 
         Vector3 e = yawOnly.eulerAngles;
         e.x = cameraPitch;
@@ -476,6 +528,7 @@ public class CameraFollow : MonoBehaviour
         if (enableZRoll)
         {
             float signedYawDelta = Vector3.SignedAngle(_prevTargetForwardFlat, targetForwardFlat, Vector3.up);
+            signedYawDelta = Mathf.Clamp(signedYawDelta, -45f, 45f);
             float yawRateDegPerSec = signedYawDelta / Mathf.Max(1e-6f, Time.deltaTime);
             float yawNorm = Mathf.Clamp(yawRateDegPerSec / zRollYawRateDivisor, -1f, 1f);
 
@@ -492,15 +545,12 @@ public class CameraFollow : MonoBehaviour
             float driftAmp = 1f + (driftInfluence * lateralFactor);
             float rollTarget = Mathf.Clamp(baseRoll * driftAmp, -maxRollDegrees, maxRollDegrees);
             _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmoothing * Time.deltaTime));
-            rollAngle = _currentZRoll * (1f - trickBlend);
+            rollAngle = _currentZRoll;
         }
 
         e.z = rollAngle;
         Quaternion desiredRot = Quaternion.Euler(e);
-        float rotFollow = rotationFollowSpeed;
-        if (trickBlend > 0.001f)
-            rotFollow = Mathf.Lerp(rotationFollowSpeed, rotationFollowSpeed * trickReleaseRotationFollowScale, trickBlend);
-        baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotFollow * Time.deltaTime);
+        baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotationFollowSpeed * Time.deltaTime);
     }
 
     private Vector3 ComputeShakeOffset(Quaternion baseRot)
@@ -543,6 +593,8 @@ public class CameraFollow : MonoBehaviour
         smoothedForward = Vector3.zero;
         _trickCameraBlend = 0f;
         _wasInAirTrickMode = false;
+        _holdTrickCameraUntilLand = false;
+        _postTrickReleaseActive = false;
         if (car == null && t != null)
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
 

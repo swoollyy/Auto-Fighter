@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Coin Compadre Range
   description: Increases the range of how far your compadre can detect coins by .5!
   maxLevel: 10
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 7
-      outSlope: 7
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 10
-      value: 70
-      inSlope: 7
-      outSlope: 7
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 7
+  costPerLevel: 7
   mode: 0
   baseValue: 0
   perLevelAdd: 0.5

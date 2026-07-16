@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Drift Boost Force
   description: Increases the force of drift boost by .015
   maxLevel: 5
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 30
-      inSlope: 2.3297298
-      outSlope: 2.3297298
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.17083332
-    - serializedVersion: 3
-      time: 5
-      value: 40
-      inSlope: 2.6801014
-      outSlope: 2.6801014
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.13750005
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 30
+  costPerLevel: 2
   mode: 0
   baseValue: 0
   perLevelAdd: 0.015

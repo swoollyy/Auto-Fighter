@@ -4748,8 +4748,8 @@ MonoBehaviour:
   enableTrickCameraFreeze: 1
   trickCameraBlendInSpeed: 12
   trickCameraBlendOutSpeed: 3.5
-  trickReleaseRotationFollowScale: 0.28
-  trickReleaseForwardCatchup: 5
+  trickReleaseCatchupLag: 9
+  trickReleaseLagReturnSpeed: 6
   boostVFXObject: {fileID: 115066103}
   boostVfxLingerSeconds: 1
   boostZoomOutDeltaFOV: 6.57
@@ -6247,7 +6247,7 @@ MonoBehaviour:
   maxSpeedMultiplier: 1
   accelerationMultiplier: 1.15
   turnSpeedMultiplier: 1
-  dragMultiplier: 4.5
+  dragMultiplier: 1.52
   iceDynamicFrictionMultiplier: 0.15
   iceStaticFrictionMultiplier: 0.1
   iceHandlingMultiplier: 0.6
@@ -10493,7 +10493,7 @@ MonoBehaviour:
   leadDistanceRange: {x: 8, y: 25}
   maxConcurrent: 6
   concurrentScaleByProgress: 1.5
-  spawnEnableProgress: 0.1
+  spawnEnableProgress: 0.3
   minSpawnCooldown: 8
   spawnCooldownRandomRange: {x: 0.85, y: 1.15}
   baseProjectileSpeed: 4.01
@@ -10501,16 +10501,16 @@ MonoBehaviour:
   arcHeight: 0
   hitLayers:
     serializedVersion: 2
-    m_Bits: 3934209
+    m_Bits: 12322817
   explosiveByDefault: 0
   explosionRadius: 3
-  explosionKnockback: 6
-  projectileSizeRange: {x: 1.1, y: 1.4}
-  sizeGainOverDistance: 0.028
+  explosionKnockback: 8
+  projectileSizeRange: {x: 1.1, y: 1.7}
+  sizeGainOverDistance: 0.2
   speedRandomMultiplierRange: {x: 0.8, y: 1.8}
   spawnSideOffset: 6.5
   spawnHeight: 6.7
-  minLandingDistanceFromPlayer: 6
+  minLandingDistanceFromPlayer: 4
   minLeadDistance: 12.5
   allowCloseLandings: 0
   lateralJitter: 2.63
@@ -10518,22 +10518,22 @@ MonoBehaviour:
   destroyReward: 12
   debugDraw: 1
   spawnTestKey: 113
-  baseAccuracy: 0.125
+  baseAccuracy: 0.25
   accuracyByDistance:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0.5
-      inSlope: 0
-      outSlope: 0
+      value: 0
+      inSlope: 2
+      outSlope: 2
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.8
+      value: 1
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -10545,7 +10545,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   maxMissLateral: 6
   maxMissForward: 7
-  explosionBaseChance: 0.01
+  explosionBaseChance: 0.15
   explosionChanceByDistance:
     serializedVersion: 2
     m_Curve:
@@ -10560,7 +10560,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.35
+      value: 0.5
       inSlope: 1
       outSlope: 1
       tangentMode: 0
@@ -16980,7 +16980,7 @@ MonoBehaviour:
     m_Bits: 8192
   raycastStartHeight: 6
   raycastDownDistance: 24
-  minNormalizedProgressToSpawn: 0
+  minNormalizedProgressToSpawn: 0.25
 --- !u!4 &1950602005
 Transform:
   m_ObjectHideFlags: 0

@@ -95,6 +95,9 @@ namespace AutoFighter.Core
         [SerializeField] private bool enableNameEntryControllerShortcuts = true;
 
         private EventSystem _eventSystem;
+#if ENABLE_INPUT_SYSTEM
+        private UnityEngine.InputSystem.UI.InputSystemUIInputModule _uiInputModule;
+#endif
         private Camera _uiCam;
         private Vector2 _screenPos;
         private Vector2 _lastMousePos;
@@ -164,6 +167,28 @@ namespace AutoFighter.Core
 
             _screenPos = ClampToScreen(Input.mousePosition);
             ApplyScreenPosToCursor(_screenPos);
+            SyncUIInputModuleForMode();
+        }
+
+        /// <summary>
+        /// Virtual cursor synthesizes pointer submit in controller mode; leave UI Input Module on for mouse/keyboard only.
+        /// </summary>
+        private void SyncUIInputModuleForMode()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (_uiInputModule == null && _eventSystem != null)
+                _uiInputModule = _eventSystem.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+
+            if (_uiInputModule == null)
+                return;
+
+            bool virtualCursorHandlesSubmit =
+                enableVirtualCursor &&
+                IsCursorAllowedForCurrentGameState() &&
+                _mode == ControlMode.Controller;
+
+            _uiInputModule.enabled = !virtualCursorHandlesSubmit;
+#endif
         }
 
         private void OnEnable()
@@ -186,6 +211,7 @@ namespace AutoFighter.Core
                 if (autoSwitchInputMode)
                     DetectAndSwitchMode();
                 ApplyCursorVisibility(mechanicActive: false);
+                SyncUIInputModuleForMode();
                 return;
             }
 
@@ -219,6 +245,7 @@ namespace AutoFighter.Core
 
             HandleNameEntryControllerShortcuts();
             UpdateControllerPointerState(stick != Vector2.zero);
+            SyncUIInputModuleForMode();
         }
 
         private void DetectAndSwitchMode()
@@ -498,6 +525,11 @@ namespace AutoFighter.Core
         private void CacheEventSystemAndCamera()
         {
             _eventSystem = EventSystem.current;
+#if ENABLE_INPUT_SYSTEM
+            _uiInputModule = _eventSystem != null
+                ? _eventSystem.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>()
+                : null;
+#endif
 
             if (cursorCanvas != null)
                 _uiCam = cursorCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : cursorCanvas.worldCamera;

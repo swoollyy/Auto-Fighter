@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Coin Compadre Unlock
   description: Unlocks a little coin compadre that helps you collect coins!
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 0
+  costPerLevel: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 0

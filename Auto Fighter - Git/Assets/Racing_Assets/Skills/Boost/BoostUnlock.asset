@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Unlock Boost
   description: Press 'Space' to use a boost! Great for getting some distance!
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 70
+  baseCost: 70
+  costPerLevel: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 0

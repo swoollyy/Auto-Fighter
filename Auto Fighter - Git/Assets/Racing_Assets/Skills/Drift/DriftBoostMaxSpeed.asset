@@ -16,31 +16,8 @@ MonoBehaviour:
   displayName: Drift Boost Max Speed
   description: Increases duration of drift boost by .1
   maxLevel: 5
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 1
-      value: 30
-      inSlope: 3.8150687
-      outSlope: 3.8150687
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.15071982
-    - serializedVersion: 3
-      time: 5
-      value: 45
-      inSlope: 3.6248798
-      outSlope: 3.6248798
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.15201914
-      outWeight: 0.33333334
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  baseCost: 30
+  costPerLevel: 4
   mode: 0
   baseValue: 0
   perLevelAdd: 0.1

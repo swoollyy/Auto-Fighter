@@ -19,7 +19,7 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 75
+    segmentCount: 100
     autoDetectSegmentLength: 1
     segmentLength: 5
     minTurnAngle: 10
@@ -106,62 +106,62 @@ MonoBehaviour:
     - id: Boulder
       prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
       baseWeight: 2
-      startAtNormalizedDist: 0.05
-      fullWeightNormalizedDist: 0.35
-      stopAtNormalizedDist: 0.5
+      startAtNormalizedDist: 0.1
+      fullWeightNormalizedDist: 0.5
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     - id: Rock
       prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
       baseWeight: 3
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.002
-      stopAtNormalizedDist: 0.8
+      startAtNormalizedDist: 0.01
+      fullWeightNormalizedDist: 0.3
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     - id: Barrier
       prefab: {fileID: 3874382558013832276, guid: b3d9c63f4edc44242a107ccad0185dd0, type: 3}
       baseWeight: 1.3
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.085
-      stopAtNormalizedDist: 0.6
+      startAtNormalizedDist: 0.01
+      fullWeightNormalizedDist: 0.4
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     - id: Tree
       prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
       baseWeight: 2
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.1
-      stopAtNormalizedDist: 0.3
+      startAtNormalizedDist: 0.03
+      fullWeightNormalizedDist: 0.5
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     - id: Shuttle Track Obstacle
       prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
       baseWeight: 2
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.1
-      stopAtNormalizedDist: 0.3
+      startAtNormalizedDist: 0.15
+      fullWeightNormalizedDist: 0.6
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     - id: Boost Ramp
       prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
       baseWeight: 1
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.1
-      stopAtNormalizedDist: 0.3
+      startAtNormalizedDist: 0.1
+      fullWeightNormalizedDist: 0.5
+      stopAtNormalizedDist: 1
       extraHeightOffset: -0.5
       extraLateralPadding: 0
     - id: Boost Pad
       prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
       baseWeight: 0.8
-      startAtNormalizedDist: 0.001
-      fullWeightNormalizedDist: 0.1
-      stopAtNormalizedDist: 0.5
+      startAtNormalizedDist: 0.05
+      fullWeightNormalizedDist: 0.5
+      stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacing: 6
+    obstacleSpacing: 10
     maxActiveObstacles: 200
     minSpawnDistanceAhead: 80
     maxSpawnDistanceAhead: 150
@@ -394,8 +394,8 @@ MonoBehaviour:
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
       baseWeight: 1
-      startAtNormalizedDist: 0.086
-      fullWeightNormalizedDist: 0.6
+      startAtNormalizedDist: 0.3
+      fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
@@ -535,12 +535,6 @@ MonoBehaviour:
       weight: 1
       startAtNormalizedDist: 0.007
       fullWeightNormalizedDist: 0.05
-      stopAtNormalizedDist: 1
-    - id: NPCCar BIG
-      prefab: {fileID: 8123480379425158355, guid: b03125cf9943bc348b2d519ae25f10e2, type: 3}
-      weight: 0.75
-      startAtNormalizedDist: 0.03
-      fullWeightNormalizedDist: 0.1
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6

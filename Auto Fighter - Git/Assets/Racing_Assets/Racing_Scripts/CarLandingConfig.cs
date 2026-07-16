@@ -22,12 +22,22 @@ public class CarLandingConfig : MonoBehaviour
     [SerializeField, Min(0.1f)] private float landingBoostFalloff = 1.5f;
 
     [Header("Post-Landing Air-Steer Carryover")]
-    [Tooltip("After landing, bleed sideways velocity (from air trajectory steering) toward the car nose so grounded turns don't feel sticky.")]
+    [Tooltip("After landing, continuously bleed sideways velocity toward the car nose for a timed window. Can fight mid-turn; prefer Slip Straighten.")]
     [SerializeField] private bool enableLandingLateralBleed = true;
     [Tooltip("How quickly lateral speed bleeds off after touchdown (m/s per second). Higher = snappier return to normal turning.")]
     [SerializeField, Min(0f)] private float landingLateralBleedPerSecond = 14f;
     [Tooltip("Seconds after touchdown that extra lateral bleed runs. After this, only normal steer traction applies.")]
     [SerializeField, Min(0f)] private float landingLateralBleedDuration = 0.45f;
+
+    [Header("Landing Slip Straighten")]
+    [Tooltip("After touchdown, gently ease travel toward the car nose over a short window (not a one-frame snap).")]
+    [SerializeField] private bool enableLandingSlipStraighten = true;
+    [Tooltip("How long the soft straighten runs after touchdown.")]
+    [SerializeField, Min(0.01f)] private float landingSlipStraightenDuration = 0.18f;
+    [Tooltip("Max total degrees to rotate travel toward the nose over the full straighten window.")]
+    [SerializeField, Range(0f, 90f)] private float landingSlipMaxAlignDegrees = 28f;
+    [Tooltip("Fraction of sideways speed kept by the end of the window (1 = keep all, 0 = kill all).")]
+    [SerializeField, Range(0f, 1f)] private float landingSlipLateralKeep = 0.7f;
 
     [Header("Bad Landing Crash")]
     [Tooltip("Crash (with damage) when landing tilted — on side, roof, nose, or tail instead of flat on wheels.")]
@@ -59,6 +69,10 @@ public class CarLandingConfig : MonoBehaviour
     public bool EnableLandingLateralBleed => enableLandingLateralBleed;
     public float LandingLateralBleedPerSecond => landingLateralBleedPerSecond;
     public float LandingLateralBleedDuration => landingLateralBleedDuration;
+    public bool EnableLandingSlipStraighten => enableLandingSlipStraighten;
+    public float LandingSlipStraightenDuration => landingSlipStraightenDuration;
+    public float LandingSlipMaxAlignDegrees => landingSlipMaxAlignDegrees;
+    public float LandingSlipLateralKeep => landingSlipLateralKeep;
     public bool EnableBadLandingCrash => enableBadLandingCrash;
     public float BadLandingMinAirborneSeconds => badLandingMinAirborneSeconds;
     public float BadLandingUpAlignDotMin => badLandingUpAlignDotMin;

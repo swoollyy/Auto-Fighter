@@ -1441,18 +1441,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8b5b3e22a58bf94a83288c2181a771f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAcceleration: 4
-  baseMaxSpeed: 5.3
-  baseBrakingForce: 0.009
-  baseDrag: 0.1
-  coastLowDecelPerSecond: 0.39
-  coastHighDecelPerSecond: 5.55
+  testAlwaysAccelerate: 0
+  baseAcceleration: 4.2
+  baseMaxSpeed: 6.6
+  baseBrakingForce: 0.02
+  baseDrag: 1
+  coastLowDecelPerSecond: 1.88
+  coastHighDecelPerSecond: 2.05
   coastHighSpeedFraction: 1
   useExponentialCoast: 0
   coastDampingPerSecond: 4.48
-  coastDecelFactor: 0.74
-  brakeForwardFactor: 0.7
-  reverseAccelFactor: 1.06
+  coastDecelFactor: 1.93
+  brakeForwardFactor: 3.72
+  reverseAccelFactor: 1.21
   brakeToReverseSpeed: 0.5
   maxBrakeDecelPerSecond: 1
   maxReverseAccelPerSecond: 5.06
@@ -1476,14 +1477,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3b650392f965134c887430e8a592a46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  turnSpeed: 34
-  minSpeedToSteer: 0.4
+  turnSpeed: 46.3
+  minSpeedToSteer: 0.15
   allowSteerWhenTryingToMove: 1
-  lowSpeedSteerMultiplier: 0.31
-  highSpeedSteerMultiplier: 1.34
+  lowSpeedSteerMultiplier: 1.87
+  highSpeedSteerMultiplier: 1
   speedForSteerCurve: 2.69
-  steeringInputSmooth: 6.76
-  steeringReturnSmooth: 3.5
+  steeringInputSmooth: 7.97
+  steeringReturnSmooth: 3.8
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
   enableIceSteerRamp: 1
@@ -1517,16 +1518,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   skipSpeedClampWhileAirborne: 1
-  enableLandingCarrySpeed: 1
+  enableLandingCarrySpeed: 0
   landingExcessBleedPerSecond: 5.5
-  landingNoClampGraceSeconds: 0.5
+  landingNoClampGraceSeconds: 0.29
   enableLandingBoost: 1
   landingBoostStrength: 0.65
   landingBoostDuration: 0.29
-  landingBoostFalloff: 1.62
+  landingBoostFalloff: 2.66
   enableLandingLateralBleed: 0
   landingLateralBleedPerSecond: 14
   landingLateralBleedDuration: 0.45
+  enableLandingSlipStraighten: 1
+  landingSlipStraightenDuration: 0.18
+  landingSlipMaxAlignDegrees: 28
+  landingSlipLateralKeep: 0.7
   enableBadLandingCrash: 1
   badLandingMinAirborneSeconds: 0.2
   badLandingUpAlignDotMin: 0.332
@@ -1779,8 +1784,8 @@ MonoBehaviour:
     m_Bits: 10225664
   minImpactSpeed: 2.3
   maxImpactSpeed: 14
-  minCrashDuration: 1.08
-  maxCrashDuration: 2.13
+  minCrashDuration: 0.1
+  maxCrashDuration: 0.3
   impulsePerUnitSpeed: 1.12
   torquePerUnitSpeed: 18.8
   maxCrashFlingSpeed: 12

@@ -14,99 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 19
   displayName: Max Speed
-  description: Boosts max speed by .25
-  maxLevel: 15
-  costCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 6
-      outSlope: 6
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 2
-      value: 12
-      inSlope: 5.2002306
-      outSlope: 5.2002306
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 4
-      value: 24
-      inSlope: 5.1137977
-      outSlope: 5.1137977
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 6
-      value: 36
-      inSlope: 4.5006146
-      outSlope: 4.5006146
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 8
-      value: 48
-      inSlope: 6.8664446
-      outSlope: 6.8664446
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 10
-      value: 60
-      inSlope: 3.8926184
-      outSlope: 3.8926184
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.2812704
-    - serializedVersion: 3
-      time: 11
-      value: 62
-      inSlope: 2.0936394
-      outSlope: 2.0936394
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 12
-      value: 64
-      inSlope: 1.8708649
-      outSlope: 1.8708649
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 15
-      value: 70
-      inSlope: 2
-      outSlope: 2
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 0
+  description: Boosts max speed by .35
+  maxLevel: 5
+  baseCost: 7
+  costPerLevel: 7
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.25
+  perLevelAdd: 0.35
   uiPosition: {x: 75, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
@@ -116,7 +30,7 @@ MonoBehaviour:
   progressiveUnlocks:
   - requiredLevel: 3
     unlocks:
-    - {fileID: 11400000, guid: 2986344b46bcf5d4aa9875a4f3f88119, type: 2}
+    - {fileID: 11400000, guid: 06419b338e835904abeb70c909862cce, type: 2}
   - requiredLevel: 5
     unlocks:
     - {fileID: 11400000, guid: 3b595d30a2572a14191d488e2b50e51d, type: 2}

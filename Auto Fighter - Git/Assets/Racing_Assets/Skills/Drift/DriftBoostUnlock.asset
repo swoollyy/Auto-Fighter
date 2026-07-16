@@ -16,13 +16,8 @@ MonoBehaviour:
   displayName: Drift Boost Unlock
   description: Let's you get boost from your drifts!
   maxLevel: 1
-  costCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  flatCost: 30
+  baseCost: 30
+  costPerLevel: 0
   mode: 0
   baseValue: 0
   perLevelAdd: 0.01
