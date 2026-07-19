@@ -6628,6 +6628,17 @@ public class CarController : MonoBehaviour
     
     */
 
+    /// <summary>
+    /// Stop the equipped forcefield's launch slow-mo (if any). Called by the run-end flow so a
+    /// forcefield slow-mo can't linger into the results freeze.
+    /// </summary>
+    public void CancelForcefieldSlowMo()
+    {
+        if (_forcefield == null)
+            _forcefield = GetComponent<CarForcefield>();
+        _forcefield?.CancelLaunchSlowMo();
+    }
+
     public bool IsCloseCallInvincible => _closeCallInvincible && Time.time < _closeCallInvincibilityEndTime;
 
     /// <summary>
@@ -7491,17 +7502,22 @@ public class CarController : MonoBehaviour
         if (collision.collider.GetComponentInParent<TrackObstacleBounceBack>() != null)
             return;
 
-        // === NEW: FORCEFIELD PROTECTION CHECK ===
-        // If the forcefield is armed and this collider is on obstacle layers,
-        // the forcefield should handle it - don't process as crash
+        // === FORCEFIELD PROTECTION CHECK (targeted) ===
+        // Previously: while the forcefield was armed we blanket-ignored EVERY crash-layer collision,
+        // which made the car ghost through everything the whole time the field was armed / re-armed.
+        // Now we only skip the crash if the forcefield can actually intercept and launch THIS specific
+        // object. If it can't (already launched, wrong type, etc.), the hit falls through and crashes
+        // normally. This makes the forcefield a single-use proc rather than a lingering invincibility.
         if (_forcefield != null && _forcefield.IsArmed)
         {
             if (((1 << collision.gameObject.layer) & crashLayers) != 0)
             {
-                // Let forcefield handle this - it will intercept via its trigger
-                // This prevents the collision from also triggering crash logic
-                Debug.Log($"[CarController] Collision ignored - forcefield is armed and will handle {collision.gameObject.name}");
-                return;
+                if (_forcefield.TryInterceptObstacleForOverlapHit(collision.collider))
+                {
+                    Debug.Log($"[CarController] Forcefield launched {collision.gameObject.name} - crash skipped");
+                    return;
+                }
+                // Not intercepted by the forcefield -> treat as a normal crash below.
             }
         }
 
@@ -7955,12 +7971,18 @@ public class CarController : MonoBehaviour
         if (impactSpeed < minImpactSpeed)
             return;
 
+        // Targeted forcefield protection (see OnCollisionEnter): only skip the crash if the forcefield
+        // actually launches THIS object; otherwise let it crash normally.
         if (_forcefield != null && _forcefield.IsArmed)
         {
             if (((1 << other.gameObject.layer) & crashLayers) != 0)
             {
-                Debug.Log($"[CarController] Trigger ignored - forcefield is armed and will handle {other.name}");
-                return;
+                if (_forcefield.TryInterceptObstacleForOverlapHit(other))
+                {
+                    Debug.Log($"[CarController] Forcefield launched {other.name} - crash skipped");
+                    return;
+                }
+                // Not intercepted -> fall through to normal crash handling.
             }
         }
 

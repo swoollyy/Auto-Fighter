@@ -261,6 +261,14 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         Physics.gravity = new Vector3(0, -9.81f, 0);
+
+        // A scene (re)load creates a fresh GameManager. The TimeScaleHub is DontDestroyOnLoad, so any
+        // slow-mo/pause owners registered by objects from the PREVIOUS scene remain as stale dictionary
+        // entries (their owners were destroyed). Those stale entries make Time.timeScale resolve to the
+        // slowest stale scale every recompute, which reads as an ever-stronger, permanent slow-mo across
+        // runs and blocks the results screen. Purge everything on spawn so each run starts at full speed.
+        TimeScaleHub.ForceClearAll();
+        TimeScaleHub.ForceClearAllPauses();
         Time.timeScale = 1f;
 
 
@@ -313,18 +321,20 @@ public class GameManager_Racing : MonoBehaviour
     {
         ExitLoadingGameplayGate();
 
-        // Make sure we release any slowmo we own when this manager is disabled
+        // Release ALL slow-mo this manager may own (crash AND close-call share the same owner key = this).
+        // Do this unconditionally so a close-call-only slow-mo can't leak a stale owner into the hub.
         if (_crashSlowMoRoutine != null)
         {
             StopCoroutine(_crashSlowMoRoutine);
             _crashSlowMoRoutine = null;
         }
-
-        if (_ownsCrashSlowMo)
+        if (_closeCallCR != null)
         {
-            TimeScaleHub.End(this);
-            _ownsCrashSlowMo = false;
+            StopCoroutine(_closeCallCR);
+            _closeCallCR = null;
         }
+        _ownsCrashSlowMo = false;
+        TimeScaleHub.End(this);
     }
 
     void Update()
@@ -492,6 +502,10 @@ public class GameManager_Racing : MonoBehaviour
     private void RestartRun()
     {
         Debug.Log("[GameManager_Racing] Restarting run...");
+        // Drop any slow-mo/pause owners before reloading so a mid-slow-mo restart can't carry a stale
+        // owner (and a stuck sub-1 timescale) into the next run.
+        TimeScaleHub.ForceClearAll();
+        TimeScaleHub.ForceClearAllPauses();
         Time.timeScale = 1f;
         Scene current = SceneManager.GetActiveScene();
         SceneManager.LoadScene(current.buildIndex);
@@ -850,6 +864,31 @@ public class GameManager_Racing : MonoBehaviour
         _closeCallCR = null;
     }
 
+    /// <summary>
+    /// Hard-stops every transient slow-mo source (crash, close-call, and the car's forcefield launch)
+    /// and clears all hub owners so they can't stack or fight a subsequent effect / the run-end freeze.
+    /// </summary>
+    private void CancelAllTransientSlowMo()
+    {
+        if (_crashSlowMoRoutine != null)
+        {
+            StopCoroutine(_crashSlowMoRoutine);
+            _crashSlowMoRoutine = null;
+        }
+        if (_closeCallCR != null)
+        {
+            StopCoroutine(_closeCallCR);
+            _closeCallCR = null;
+        }
+        _ownsCrashSlowMo = false;
+
+        // The forcefield owns its own launch slow-mo coroutine on the car; stop it too so it can't
+        // re-register with the hub a frame later and re-stack the slow-mo.
+        carController?.CancelForcefieldSlowMo();
+
+        TimeScaleHub.ForceClearAll();
+    }
+
     private void StartCrashSlowMo(float severity, float holdMultiplier = 1f)
     {
         if (_crashSlowMoRoutine != null)
@@ -978,7 +1017,12 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         if (enableCrashSlowMo)
+        {
+            // Clear any in-flight slow-mo first so the final death-stop is a single, controlled burst
+            // instead of compounding on top of a crash/close-call/forcefield slow-mo already running.
+            CancelAllTransientSlowMo();
             StartCrashSlowMo(deathStopSlowMoSeverity);
+        }
     }
 
     private void EnsureTrackCallbacksWired()
@@ -1028,8 +1072,11 @@ public class GameManager_Racing : MonoBehaviour
         while (Time.realtimeSinceStartup < end)
             yield return null;
 
-        // Ensure any crash slowmo controller is not fighting the freeze
-        TimeScaleHub.End(this);
+        // Stop every slow-mo source (crash/close-call/forcefield) and clear all hub owners so nothing
+        // re-registers a frame later and un-freezes the game. Without this, the death-stop slow-mo
+        // coroutine (which runs on realtime) keeps calling TimeScaleHub.Begin and repeatedly overrides
+        // the freeze, producing the "stuck in heavy slow-mo, can't pass results" symptom.
+        CancelAllTransientSlowMo();
 
         Time.timeScale = 0f;
     }
@@ -1184,9 +1231,6 @@ public class GameManager_Racing : MonoBehaviour
         yield return null;
         trackSpawnerQueue?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
-        uiManager?.SetLoadingState("Building navigation...", 0.94f);
-        AstarRuntimeBootstrap.Instance?.ScanForTrack(trackGenerator.transform);
-        yield return null;
 
 
         Rigidbody rb = carInstance.GetComponent<Rigidbody>();
@@ -1229,9 +1273,14 @@ public class GameManager_Racing : MonoBehaviour
 
     private bool RestartAllowedNow()
     {
-        // Only allow "Press X to continue" after all slowmo/pause owners are done.
-        // Note: Run-end may intentionally freeze gameplay with Time.timeScale = 0 (CoFreezeAfterRunComplete),
-        // but input should still work, so do NOT gate on Time.timeScale here.
+        // Once the run-end freeze has actually kicked in (results are up and gameplay is frozen),
+        // ALWAYS allow "Press X to continue" so the player can never get trapped by a lingering
+        // slow-mo owner. This is the safety net behind the hub purge / freeze cleanup.
+        if (runEnded && Time.timeScale <= 0.0001f)
+            return true;
+
+        // Otherwise only allow continue after all slowmo/pause owners are done (lets the dramatic
+        // death-stop slow-mo play out before the freeze without being skippable early).
         return !TimeScaleHub.IsPaused
             && !TimeScaleHub.IsAnyActive;
     }

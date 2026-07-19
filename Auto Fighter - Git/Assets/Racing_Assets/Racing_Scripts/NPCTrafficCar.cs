@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
-using Pathfinding;
 
 /// <summary>
 /// NPC traffic: follows procedural spline, avoids obstacles with a stable two-phase driver (track follow vs committed dodge).
@@ -220,16 +219,6 @@ public class NPCTrafficCar : MonoBehaviour
     [SerializeField] private bool destroyAfterCrash = true;
     [SerializeField] private float destroyDelay = 5f;
 
-    [Header("H — Crash NavmeshCut")]
-    [SerializeField] private bool addNavmeshCutOnCrash = true;
-    [SerializeField] private bool crashCutUsePrefab = false;
-    [SerializeField] private GameObject crashCutPrefab;
-    [SerializeField] private Vector3 crashCutBoxSize = new Vector3(1.5f, 3f, 1.5f);
-    [SerializeField] private float crashCutUpdateDistance = 0.4f;
-    [SerializeField] private float crashCutUpdateRotationDistance = 10f;
-    [SerializeField] private bool crashCutUseRotationAndScale = true;
-    [SerializeField] private bool crashCutCutsAddedGeometry = true;
-
     // -------------------------------------------------------------------------
     // AUDIO / SURFACE / BOOST
     // -------------------------------------------------------------------------
@@ -277,9 +266,6 @@ public class NPCTrafficCar : MonoBehaviour
     private Rigidbody _rb;
     private Collider _col;
     private AudioSource _engineSource;
-    private IAstarAI _ai;
-    private RichAI _richAI;
-    private NavmeshCut _crashCut;
     private readonly Collider[] _overlapHits = new Collider[24];
 
     // --- Motion ---------------------------------------------------------------
@@ -363,8 +349,6 @@ public class NPCTrafficCar : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _col = GetComponent<Collider>();
-        _ai = GetComponent<IAstarAI>();
-        _richAI = GetComponent<RichAI>();
 
         if (_rb != null)
         {
@@ -1580,17 +1564,6 @@ public class NPCTrafficCar : MonoBehaviour
         if (autoFitRootColliderToVisual)
             TryFitRootColliderToVisual();
 
-        if (_ai != null)
-        {
-            _ai.canSearch = false;
-            _ai.canMove = false;
-        }
-        if (_richAI != null)
-        {
-            _richAI.canMove = false;
-            _richAI.enableRotation = false;
-        }
-
         ComputePivotToBottom();
         ComputeAvoidanceSphereRadius();
 
@@ -2063,17 +2036,9 @@ public class NPCTrafficCar : MonoBehaviour
             Debug.Log("Crash Initiator " + other.gameObject.name + " via " + crashMethod);
 
         _crashed = true;
-        EnableCrashNavmeshCut();
 
         if (verboseDebug)
             Debug.Log($"[NPCTrafficCar] CRASHED with {other.name}");
-
-        if (_ai != null)
-        {
-            _ai.canMove = false;
-            _ai.canSearch = false;
-            _ai.SetPath(null);
-        }
 
         StopEngineAudio();
         PlayCrashSfx();
@@ -2134,42 +2099,6 @@ public class NPCTrafficCar : MonoBehaviour
         _engineSource.volume = engineVolume;
         _engineSource.pitch = enginePitchMin;
         _engineSource.Play();
-    }
-
-    private void EnableCrashNavmeshCut()
-    {
-        if (!addNavmeshCutOnCrash) return;
-        if (_crashCut != null) return;
-
-        if (crashCutUsePrefab && crashCutPrefab != null)
-        {
-            GameObject go = Instantiate(crashCutPrefab, transform);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-            _crashCut = go.GetComponent<NavmeshCut>();
-            if (_crashCut == null) _crashCut = go.AddComponent<NavmeshCut>();
-        }
-        else
-        {
-            GameObject go = new GameObject("Crash_NavmeshCut");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-            _crashCut = go.AddComponent<NavmeshCut>();
-            _crashCut.type = NavmeshCut.MeshType.Box;
-            _crashCut.center = Vector3.zero;
-            _crashCut.rectangleSize = new Vector2(crashCutBoxSize.x, crashCutBoxSize.z);
-            _crashCut.height = crashCutBoxSize.y;
-            _crashCut.updateDistance = crashCutUpdateDistance;
-            _crashCut.useRotationAndScale = crashCutUseRotationAndScale;
-            _crashCut.updateRotationDistance = crashCutUpdateRotationDistance;
-            _crashCut.cutsAddedGeom = crashCutCutsAddedGeometry;
-            _crashCut.radiusExpansionMode = NavmeshCut.RadiusExpansionMode.DontExpand;
-            _crashCut.graphMask = GraphMask.everything;
-        }
-
-        _crashCut.enabled = true;
-        _crashCut.ForceUpdate();
     }
 
     private void UpdateEngineAudio()

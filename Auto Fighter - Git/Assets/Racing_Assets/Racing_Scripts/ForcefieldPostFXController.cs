@@ -106,6 +106,16 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
 
     public void PlayBurst()
     {
+        PlayBurst(fadeIn, hold, fadeOut);
+    }
+
+    /// <summary>
+    /// Play a burst using the configured intensities (chroma/lens/scale/bloom) but with explicit,
+    /// caller-controlled timing. Lets callers (e.g. the forcefield) ease the effect in/out smoothly
+    /// instead of relying on the short default fade that reads as a snap.
+    /// </summary>
+    public void PlayBurst(float fadeInSeconds, float holdSeconds, float fadeOutSeconds)
+    {
         if (!EnsureSettings()) return;
         _bursts.Add(new FxBurst
         {
@@ -115,9 +125,9 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             centerX = lensCenterX,
             centerY = lensCenterY,
             bloomPeak = bloomIntensity,
-            fadeIn = Mathf.Max(0f, fadeIn),
-            hold = Mathf.Max(0f, hold),
-            fadeOut = Mathf.Max(0.01f, fadeOut),
+            fadeIn = Mathf.Max(0.01f, fadeInSeconds),
+            hold = Mathf.Max(0f, holdSeconds),
+            fadeOut = Mathf.Max(0.01f, fadeOutSeconds),
             elapsed = 0f
         });
     }
@@ -158,9 +168,14 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float chromaSum = 0f;
         float lensSum = 0f;
 
-        // Weighted accumulation for lens center/scale (weighted by each burst's contribution).
-        float weight = 0f;
-        float cxW = 0f, cyW = 0f, scaleW = 0f;
+        // Accumulate lens scale/center as an envelope-scaled DEVIATION FROM NEUTRAL (scale 1, center 0).
+        // The old weighted-average approach held scale at ~0.85 even as a burst's envelope reached 0, so
+        // when the finished burst was removed the scale snapped 0.85 -> 1.0 (the "snaps back to normal"
+        // pop). By scaling every deviation by the envelope, all values glide back to neutral on their own
+        // and removing a spent burst causes no discontinuity.
+        float scaleDeviation = 0f;
+        float centerX = 0f;
+        float centerY = 0f;
 
         for (int i = _bursts.Count - 1; i >= 0; i--)
         {
@@ -180,38 +195,31 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             chromaSum += b.chroma * e;
             lensSum += b.lens * e;
 
-            float w = e * (Mathf.Abs(b.lens) + 0.0001f);
-            weight += w;
-            cxW += b.centerX * w;
-            cyW += b.centerY * w;
-            scaleW += b.lensScale * w;
+            scaleDeviation += (1f - b.lensScale) * e;
+            centerX += b.centerX * e;
+            centerY += b.centerY * e;
         }
 
         SetBloom(_baseBloom + bloomAdd);
         SetCA(chromaSum);
 
-        if (weight > 1e-5f)
-        {
-            float cx = cxW / weight;
-            float cy = cyW / weight;
-            float scale = scaleW / weight;
+        float scale = Mathf.Clamp(1f - scaleDeviation, 0.01f, 1f);
+        float cx = Mathf.Clamp(centerX, -1f, 1f);
+        float cy = Mathf.Clamp(centerY, -1f, 1f);
 
-            if (wobbleCenter && wobbleAmplitude > 0f && wobbleFrequency > 0f)
-            {
-                _wobbleClock += dt;
-                float wob = Mathf.Sin(_wobbleClock * Mathf.PI * 2f * wobbleFrequency) * wobbleAmplitude;
-                cx = Mathf.Clamp(cx + wob, -1f, 1f);
-                cy = Mathf.Clamp(cy - wob, -1f, 1f);
-            }
-
-            SetLD(lensSum, scale, cx, cy);
-        }
-        else
+        // Only wobble while there is actual distortion, so it fully settles as the effect eases out.
+        if (wobbleCenter && wobbleAmplitude > 0f && wobbleFrequency > 0f && Mathf.Abs(lensSum) > 1e-4f)
         {
-            SetLD(lensSum, 1f, 0f, 0f);
+            _wobbleClock += dt;
+            float wob = Mathf.Sin(_wobbleClock * Mathf.PI * 2f * wobbleFrequency) * wobbleAmplitude;
+            cx = Mathf.Clamp(cx + wob, -1f, 1f);
+            cy = Mathf.Clamp(cy - wob, -1f, 1f);
         }
 
-        // All bursts finished this frame -> clean reset to base.
+        SetLD(lensSum, scale, cx, cy);
+
+        // All bursts finished this frame -> settle exactly to base (values are already at neutral here,
+        // so this is just a clean snap-to-exact and no longer produces a visible jump).
         if (_bursts.Count == 0)
         {
             _wobbleClock = 0f;

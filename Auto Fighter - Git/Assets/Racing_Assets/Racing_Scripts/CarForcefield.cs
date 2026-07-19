@@ -52,8 +52,11 @@ public sealed class CarForcefield : MonoBehaviour
     [SerializeField] private float defaultAddedMass = 20f;
 
     [Header("Collision Safety")]
-    [Tooltip("Seconds to ignore collisions between the launched obstacle and the car to avoid re-colliding/crash logic.")]
-    [SerializeField] private float ignoreWithCarSeconds = 2.0f;
+    [Tooltip("SHORT grace window (seconds) after a forcefield launch. Only the object that was launched is " +
+             "ignored/immune during this window (in case the physics push shoves it back onto the car). " +
+             "Kept short on purpose: once it elapses, ANY hit — including the same object coming back — " +
+             "registers as a normal crash. This is NOT a general invincibility.")]
+    [SerializeField, Min(0f)] private float postLaunchGraceSeconds = 0.6f;
 
     [Header("Optional Visual")]
     [Tooltip("Optional visible bubble to show arming state (scaled to trigger radius).")]
@@ -85,6 +88,14 @@ public sealed class CarForcefield : MonoBehaviour
     [Header("Post-Processing (PPSv2)")]
     [SerializeField, Tooltip("ForcefieldPostFXController driving Chromatic Aberration and Lens Distortion.")]
     private ForcefieldPostFXController postFX;
+
+    [Header("Post-Processing Smoothing (camera feel)")]
+    [Tooltip("Seconds the lens/chroma burst eases IN when the forcefield procs. Higher = smoother, less snappy.")]
+    [SerializeField, Min(0.01f)] private float fxFadeIn = 0.18f;
+    [Tooltip("Seconds the burst holds at full strength (kept near the launch slow-mo hold so the camera and time feel connected).")]
+    [SerializeField, Min(0f)] private float fxHold = 0.14f;
+    [Tooltip("Seconds the burst eases OUT back to normal. Higher = smoother release (fixes the 'snaps back' feel).")]
+    [SerializeField, Min(0.01f)] private float fxFadeOut = 0.4f;
 
     // NEW: Audio
     [Header("Audio (Forcefield)")]
@@ -341,8 +352,8 @@ public sealed class CarForcefield : MonoBehaviour
                 }
             }
 
-            if (ignoreWithCarSeconds > 0f)
-                StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, ignoreWithCarSeconds));
+            if (postLaunchGraceSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(creatureCols, carCols, postLaunchGraceSeconds));
 
             EnsureLaunchImmunity(creatureRb.transform);
             ApplyForcefieldLaunchPhysicsAndPresentation(other, creatureRb);
@@ -379,7 +390,7 @@ public sealed class CarForcefield : MonoBehaviour
             t_awayDir.Normalize();
 
             // Call the projectile's public interception handler
-            thrown.InterceptedByForcefield(t_awayDir, t_awayDV, t_upDV, ignoreWithCarSeconds);
+            thrown.InterceptedByForcefield(t_awayDir, t_awayDV, t_upDV, postLaunchGraceSeconds);
 
             // Spawn VFX at interception point
             Vector3 vfxPos = other.bounds.ClosestPoint(transform.position);
@@ -403,7 +414,7 @@ public sealed class CarForcefield : MonoBehaviour
 
             // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
             if (postFX != null)
-                postFX.PlayBurst();
+                postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
 
             ShowForcefieldInvinciblePopup();
 
@@ -445,7 +456,7 @@ public sealed class CarForcefield : MonoBehaviour
             // Add immunity marker so CarController ignores it even if something still �touches�
             var immunity = npcRoot.GetComponent<LaunchImmunityMarker>();
             if (!immunity) immunity = npcRoot.gameObject.AddComponent<LaunchImmunityMarker>();
-            immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
+            immunity.Activate(Mathf.Max(0f, postLaunchGraceSeconds + 0.1f));
 
             // Ignore collisions between NPC and player car temporarily (like launched obstacles)
             foreach (var c in npcCols)
@@ -459,8 +470,8 @@ public sealed class CarForcefield : MonoBehaviour
                 }
             }
 
-            if (ignoreWithCarSeconds > 0f)
-                StartCoroutine(ReenableCollisionsLater(npcCols, carCols, ignoreWithCarSeconds));
+            if (postLaunchGraceSeconds > 0f)
+                StartCoroutine(ReenableCollisionsLater(npcCols, carCols, postLaunchGraceSeconds));
 
 
             // FX/SFX like your other intercepts
@@ -480,7 +491,7 @@ public sealed class CarForcefield : MonoBehaviour
             Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
 
             if (postFX != null)
-                postFX.PlayBurst();
+                postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
 
             ShowForcefieldInvinciblePopup();
 
@@ -529,8 +540,8 @@ public sealed class CarForcefield : MonoBehaviour
                 if (carCol) Physics.IgnoreCollision(carCol, c, true);
             }
         }
-        if (ignoreWithCarSeconds > 0f)
-            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, ignoreWithCarSeconds));
+        if (postLaunchGraceSeconds > 0f)
+            StartCoroutine(ReenableCollisionsLater(obstacleCols, CarCols, postLaunchGraceSeconds));
 
         ArmForcefieldLaunchTag(launchRb.gameObject);
         ApplyForcefieldLaunchPhysicsAndPresentation(other, launchRb);
@@ -599,13 +610,13 @@ public sealed class CarForcefield : MonoBehaviour
         if (target == null) return;
         var immunity = target.GetComponent<LaunchImmunityMarker>();
         if (!immunity) immunity = target.gameObject.AddComponent<LaunchImmunityMarker>();
-        immunity.Activate(Mathf.Max(0f, ignoreWithCarSeconds + 0.1f));
+        immunity.Activate(Mathf.Max(0f, postLaunchGraceSeconds + 0.1f));
     }
 
     private void ArmForcefieldLaunchTag(GameObject host)
     {
         if (host == null) return;
-        float dur = Mathf.Max(forcefieldLaunchTagDuration, ignoreWithCarSeconds + 0.5f);
+        float dur = Mathf.Max(forcefieldLaunchTagDuration, postLaunchGraceSeconds + 0.5f);
         var tag = host.GetComponent<ForcefieldLaunchTag>();
         if (tag == null) tag = host.AddComponent<ForcefieldLaunchTag>();
         tag.Arm(dur);
@@ -703,7 +714,7 @@ public sealed class CarForcefield : MonoBehaviour
         Play3DClipAtPoint(forcefieldUseClip, vfxPos2, forcefieldUseVolume);
 
         if (postFX != null)
-            postFX.PlayBurst();
+            postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
 
         ShowForcefieldInvinciblePopup();
 
@@ -723,6 +734,24 @@ public sealed class CarForcefield : MonoBehaviour
     {
         if (_slowMoRoutine != null) return;
         _slowMoRoutine = StartCoroutine(LaunchSlowMoRoutine());
+    }
+
+    /// <summary>
+    /// Immediately end the forcefield launch slow-mo and release its hub ownership. Used by the run-end
+    /// flow so a forcefield slow-mo can't linger/stack into the death-stop slow-mo or the results freeze.
+    /// </summary>
+    public void CancelLaunchSlowMo()
+    {
+        if (_slowMoRoutine != null)
+        {
+            StopCoroutine(_slowMoRoutine);
+            _slowMoRoutine = null;
+        }
+        if (_ownsSlowMo)
+        {
+            TimeScaleHub.End(this);
+            _ownsSlowMo = false;
+        }
     }
 
     private void Play3DClipAtPoint(AudioClip clip, Vector3 pos, float volume = 1f)
