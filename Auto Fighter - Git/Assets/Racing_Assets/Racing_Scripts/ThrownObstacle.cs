@@ -4,11 +4,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Deterministic thrown projectile:
-/// - Moves via Rigidbody.MovePosition along a straight horizontal path while adding a height arc (configurable).
-/// - Rigidbody is non-kinematic, gravity disabled, collision detection ContinuousDynamic so collisions with CarController/obstacles invoke physics callbacks.
-/// - Explosive variant uses radius overlap on arrival/impact.
-/// - Plain variant now ALSO uses a radius overlap "impact zone" on arrival (so it isn't purely collider-contact based).
+/// Deterministic meteor projectile:
+/// - Moves via Rigidbody.MovePosition along a straight dive from sky spawn → road impact.
+/// - Ignores world/road collisions mid-flight so it does not detonate early.
+/// - Explosive variant applies radius overlap damage on arrival; plain uses a smaller impact zone.
 /// - Returns itself to ProjectilePool when done.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -129,18 +128,22 @@ public class ThrownObstacle : MonoBehaviour
 
         // position and orient the projectile at the intended spawn origin
         transform.position = _spawnPos;
-        transform.LookAt(_landPos);
+        Vector3 dive = _landPos - _spawnPos;
+        if (dive.sqrMagnitude > 1e-6f)
+            transform.rotation = Quaternion.LookRotation(dive.normalized, Vector3.up);
+        else
+            transform.LookAt(_landPos);
 
         // clear old physics velocities (safety)
         _rb.velocity = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
         _rb.WakeUp();
 
-        _flatDir = (_landPos - _spawnPos);
-        _flatDir.y = 0f;
+        // Full 3D dive path (meteor), not a flat lob with a mid-air sine peak.
+        _flatDir = dive;
         _travelDistance = _flatDir.magnitude;
-        if (_travelDistance < 0.001f) _travelDistance = Vector3.Distance(_spawnPos, _landPos);
-        _flatDir = (_travelDistance > 0f) ? (_flatDir / _travelDistance) : Vector3.forward;
+        if (_travelDistance < 0.001f) _travelDistance = 0.001f;
+        _flatDir /= _travelDistance;
 
         _travelT = 0f;
         _initialized = true;
@@ -225,15 +228,20 @@ public class ThrownObstacle : MonoBehaviour
         float moved = advance / Mathf.Max(0.0001f, _travelDistance);
         _travelT = Mathf.Clamp01(_travelT + moved);
 
-        Vector3 horiz = Vector3.Lerp(_spawnPos, _landPos, _travelT);
-        float y = Mathf.Sin(Mathf.Clamp01(_travelT) * Mathf.PI) * _arcHeight;
-        Vector3 target = new Vector3(horiz.x, Mathf.Lerp(_spawnPos.y, _landPos.y, _travelT) + y, horiz.z);
+        // Straight dive from sky spawn → road impact (optional mild bow via arcHeight).
+        Vector3 target = Vector3.Lerp(_spawnPos, _landPos, _travelT);
+        if (_arcHeight > 0.01f)
+        {
+            // Positive arcHeight bows the path slightly above the chord without changing endpoints.
+            float bow = Mathf.Sin(Mathf.Clamp01(_travelT) * Mathf.PI) * _arcHeight;
+            target += Vector3.up * bow;
+        }
 
         _rb.MovePosition(target);
 
         if (orientToMotion)
         {
-            Vector3 fwd = (target - transform.position);
+            Vector3 fwd = (_landPos - transform.position);
             if (fwd.sqrMagnitude > 1e-6f)
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(fwd.normalized, Vector3.up), 0.9f);
         }
@@ -241,41 +249,51 @@ public class ThrownObstacle : MonoBehaviour
         if (_travelT >= 1f) OnArrived();
     }
 
+    private static bool IsDirectHitTarget(Collider other)
+    {
+        if (other == null) return false;
+        return other.GetComponentInParent<CarController>() != null
+            || other.GetComponentInParent<RacingObstacle>() != null
+            || other.GetComponentInParent<CrossTrackObstacle>() != null
+            || other.GetComponentInParent<TrackObstacleBounceBack>() != null
+            || other.GetComponentInParent<ShuttleTrackObstacle>() != null
+            || other.GetComponentInParent<RollingLogAlongTrack>() != null
+            || other.GetComponentInParent<ThrownObstacle>() != null;
+    }
+
     private void OnArrived()
     {
         if (_hasImpacted) return;
         _hasImpacted = true;
 
+        // Snap to intended impact so AoE is centered on the predicted road point.
+        Vector3 impactPos = _landPos;
+        if (_rb != null) _rb.position = impactPos;
+        transform.position = impactPos;
+
         // If suppressed by forcefield, avoid explosion/damage and simply deactivate gracefully
         if (Time.time < _suppressExplodeUntil)
         {
-            SpawnImpactVFX(transform.position, Vector3.up);
+            SpawnImpactVFX(impactPos, Vector3.up);
             ExplodeOrDeactivate();
             return;
         }
 
-        // Always spawn impact VFX at arrival
-        SpawnImpactVFX(transform.position, Vector3.up);
+        SpawnImpactVFX(impactPos, Vector3.up);
 
         if (_explosive)
         {
-            // optional: only spawn fallback ring if director did not already preview one
             if (!_previewRingSpawned) SpawnRing();
-
-            GameManager_Racing.Instance?.HandleProjectileExplosion(transform.position, _explosionRadius);
-            ExplodeAt(transform.position, skipCrashPopup: false);
+            _director?.NotifyProjectileExploded(this, impactPos, _explosionRadius);
+            ExplodeAt(impactPos, skipCrashPopup: false);
         }
         else
         {
             if (Time.time >= _suppressExplodeUntil)
-                TryThrownImpactCrashPopup(transform.position);
+                TryThrownImpactCrashPopup(impactPos);
 
-            // Always apply landing AoE so nearby obstacles are displaced even without direct contact.
-            ApplyPlainImpactZone(transform.position);
-
-            // Use the same radius you’re telegraphing for proximity feedback
-            GameManager_Racing.Instance?.HandleProjectileProximity(transform.position, _impactRadius);
-
+            ApplyPlainImpactZone(impactPos);
+            GameManager_Racing.Instance?.HandleProjectileProximity(impactPos, _impactRadius);
             ExplodeOrDeactivate();
         }
     }
@@ -542,6 +560,10 @@ public class ThrownObstacle : MonoBehaviour
         var other = collision.collider;
         if (((1 << other.gameObject.layer) & _hitLayers.value) == 0) return;
 
+        // Mid-dive: only react to cars/obstacles. Road/world must not detonate the meteor early.
+        if (!IsDirectHitTarget(other) && _travelT < 0.92f)
+            return;
+
         bool hitCar = false;
 
         // If collided with a RacingObstacle, apply knockback to that obstacle
@@ -566,7 +588,6 @@ public class ThrownObstacle : MonoBehaviour
 
             if (_explosive)
             {
-                // avoid double telegraph; director may already have preview
                 SpawnRing();
 
                 Vector3 contactPoint = transform.position;
@@ -579,7 +600,7 @@ public class ThrownObstacle : MonoBehaviour
                 }
 
                 SpawnImpactVFX(contactPoint, normal);
-                GameManager_Racing.Instance?.HandleProjectileExplosion(contactPoint, _explosionRadius);
+                _director?.NotifyProjectileExploded(this, contactPoint, _explosionRadius);
                 _hasImpacted = true;
                 ExplodeAt(contactPoint, skipCrashPopup: false);
                 return;
@@ -590,6 +611,7 @@ public class ThrownObstacle : MonoBehaviour
         var car = other.GetComponentInParent<CarController>();
         if (car != null)
         {
+            hitCar = true;
             if (Time.time < _suppressExplodeUntil)
             {
                 SpawnImpactVFX(transform.position, Vector3.up);
@@ -616,7 +638,7 @@ public class ThrownObstacle : MonoBehaviour
         // For all other cases treat as impact and deactivate / explode depending on type
         _hasImpacted = true;
 
-        Vector3 impactPoint = transform.position;
+        Vector3 impactPoint = _landPos;
         Vector3 nrm = Vector3.up;
         if (collision.contactCount > 0)
         {
@@ -624,6 +646,10 @@ public class ThrownObstacle : MonoBehaviour
             impactPoint = contact.point;
             nrm = contact.normal;
         }
+
+        // Prefer the scripted landing point when we're already near the end of the dive.
+        if (_travelT >= 0.85f)
+            impactPoint = _landPos;
 
         if (Time.time < _suppressExplodeUntil)
         {
@@ -636,7 +662,7 @@ public class ThrownObstacle : MonoBehaviour
         {
             if (!_previewRingSpawned) SpawnRing();
             SpawnImpactVFX(impactPoint, nrm);
-            GameManager_Racing.Instance?.HandleProjectileExplosion(impactPoint, _explosionRadius);
+            _director?.NotifyProjectileExploded(this, impactPoint, _explosionRadius);
             ExplodeAt(impactPoint, skipCrashPopup: hitCar);
         }
         else
@@ -644,6 +670,9 @@ public class ThrownObstacle : MonoBehaviour
             if (!hitCar)
                 TryThrownImpactCrashPopup(impactPoint);
             SpawnImpactVFX(impactPoint, nrm);
+            // Plain mid-air car hit: still apply small impact zone at contact.
+            if (hitCar)
+                ApplyPlainImpactZone(impactPoint);
             ExplodeOrDeactivate();
         }
     }

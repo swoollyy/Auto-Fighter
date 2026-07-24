@@ -608,7 +608,7 @@ Transform:
   m_GameObject: {fileID: 4362480833433498972}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.293, y: -0.161, z: 0.347}
+  m_LocalPosition: {x: 0.387, y: -0.161, z: 0.387}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -639,7 +639,7 @@ Transform:
   m_GameObject: {fileID: 4886677226180828311}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.293, y: -0.161, z: 0.347}
+  m_LocalPosition: {x: -0.574, y: -0.161, z: 0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1115,7 +1115,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5657100606639614825}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 89b2e77f32e7dcc49891fc188565328c, type: 3}
   m_Name: 
@@ -1192,7 +1192,7 @@ MonoBehaviour:
   useProxyLayer: 1
   obstacleLayers:
     serializedVersion: 2
-    m_Bits: 9177088
+    m_Bits: 10225664
   triggerRadius: 1.45
   affectOnlyAggressiveTrackCreatures: 1
   startsArmed: 1
@@ -1206,7 +1206,7 @@ MonoBehaviour:
   disableCrossTrackObstacleOnLaunch: 1
   addRigidbodyIfMissing: 1
   defaultAddedMass: 10
-  ignoreWithCarSeconds: 1.5
+  postLaunchGraceSeconds: 0.6
   visualRoot: {fileID: 5877052236992759241}
   disableVisualOnUse: 1
   gatherAllCarColliders: 1
@@ -1218,6 +1218,9 @@ MonoBehaviour:
   launchSlowMoHold: 0.17
   launchSlowMoEaseOut: 0.2
   postFX: {fileID: 3055004073125483376}
+  fxFadeIn: 0.18
+  fxHold: 0.14
+  fxFadeOut: 0.4
   forcefieldUseClip: {fileID: 8300000, guid: 95cca097aec1d484c8f6e4bb32ff4e8e, type: 3}
   forcefieldUseVolume: 0.966
   forcefieldRearmClip: {fileID: 8300000, guid: 20682cd13ca66a04d9e9b0ffe79879d1, type: 3}
@@ -1442,9 +1445,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   testAlwaysAccelerate: 0
-  baseAcceleration: 4.2
-  baseMaxSpeed: 6.6
-  baseBrakingForce: 0.02
+  baseAcceleration: 3.9
+  baseMaxSpeed: 10
+  baseBrakingForce: 0.01
   baseDrag: 1
   coastLowDecelPerSecond: 1.88
   coastHighDecelPerSecond: 2.05
@@ -1452,11 +1455,11 @@ MonoBehaviour:
   useExponentialCoast: 0
   coastDampingPerSecond: 4.48
   coastDecelFactor: 1.93
-  brakeForwardFactor: 3.72
-  reverseAccelFactor: 1.21
-  brakeToReverseSpeed: 0.5
-  maxBrakeDecelPerSecond: 1
-  maxReverseAccelPerSecond: 5.06
+  brakeForwardFactor: 1.6
+  reverseAccelFactor: 2.4
+  brakeToReverseSpeed: 0.7
+  maxBrakeDecelPerSecond: 1.53
+  maxReverseAccelPerSecond: 2
   enableSlopeDriveAssist: 1
   slopeDriveAssistMaxAccel: 7.5
   slopeDriveAssistMinAngle: 10
@@ -1493,8 +1496,8 @@ MonoBehaviour:
   iceSteerMinFactor: 0.755
   iceSteerFlipPenalty: 0.35
   invertSteeringWhenReversing: 1
-  reverseSteerMultiplier: 1
-  reverseSteerEngageForwardSpeed: 1.5
+  reverseSteerMultiplier: 0.94
+  reverseSteerEngageForwardSpeed: 0.2
   baseSteeringDamp: 10
   enableSteerTraction: 1
   steerTractionReorientRate: 4.51
@@ -1994,6 +1997,7 @@ MonoBehaviour:
   airUprightRecoverSpeed: 2.75
   airUprightNearGroundBoost: 16
   airUprightMinAlignDot: 0.992
+  airGravityMultiplier: 1
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0
@@ -2019,7 +2023,7 @@ Transform:
   m_GameObject: {fileID: 6041800278618126018}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.293, y: -0.161, z: -0.347}
+  m_LocalPosition: {x: -0.574, y: -0.161, z: -0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2168,7 +2172,7 @@ Transform:
   m_GameObject: {fileID: 7790923619103713089}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.293, y: -0.161, z: -0.347}
+  m_LocalPosition: {x: 0.387, y: -0.161, z: -0.347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

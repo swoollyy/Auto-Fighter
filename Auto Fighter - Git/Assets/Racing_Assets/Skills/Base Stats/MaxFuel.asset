@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 21
   displayName: Max Fuel
-  description: Boosts Max Fuel by 30
+  description: Boosts Max Fuel by 20
   maxLevel: 10
-  baseCost: 3
-  costPerLevel: 3
+  baseCost: 2
+  costPerLevel: 2
   mode: 0
   baseValue: 0
-  perLevelAdd: 30
+  perLevelAdd: 20
   uiPosition: {x: 0, y: 0}
   revealedAtStart: 1
   revealOnFirstSprocket: 0
@@ -28,9 +28,12 @@ MonoBehaviour:
   baseSprocketCost: 5
   sprocketCostPerLevel: 3
   progressiveUnlocks:
-  - requiredLevel: 3
+  - requiredLevel: 1
     unlocks:
     - {fileID: 11400000, guid: aa1eeda89502fbf4aaebc90ca4ab0d89, type: 2}
+  - requiredLevel: 3
+    unlocks:
+    - {fileID: 11400000, guid: 06419b338e835904abeb70c909862cce, type: 2}
   - requiredLevel: 5
     unlocks:
     - {fileID: 11400000, guid: ccb6450a343b3c64e884ac21a53342d3, type: 2}

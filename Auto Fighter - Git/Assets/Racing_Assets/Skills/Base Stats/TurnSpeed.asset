@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: Turn Speed
   description: Helps Turning Speed
   maxLevel: 5
-  baseCost: 10
-  costPerLevel: 10
+  baseCost: 5
+  costPerLevel: 2
   mode: 0
   baseValue: 0
   perLevelAdd: 8
@@ -28,6 +28,6 @@ MonoBehaviour:
   baseSprocketCost: 5
   sprocketCostPerLevel: 3
   progressiveUnlocks:
-  - requiredLevel: 3
+  - requiredLevel: 1
     unlocks:
     - {fileID: 11400000, guid: b3aa602431fb09f4ea91c8a5ec50d36e, type: 2}

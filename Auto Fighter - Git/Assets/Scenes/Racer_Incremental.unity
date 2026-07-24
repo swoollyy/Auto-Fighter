@@ -4723,7 +4723,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
-  offset: {x: 0, y: 1.94, z: -4.05}
+  offset: {x: 0, y: 1.5, z: -4.05}
   cameraPitch: 13.1
   cam: {fileID: 661794728}
   defaultFOV: 45
@@ -4737,14 +4737,22 @@ MonoBehaviour:
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 0
-  fovSpeedMax: 7
-  fovAtMinSpeed: 31.4
-  fovAtMaxSpeed: 75
+  fovSpeedMax: 12
+  fovAtMinSpeed: 24
+  fovAtMaxSpeed: 80
   speedFovSmooth: 3.25
   positionFollowSpeed: 3.67
   rotationFollowSpeed: 7.5
   rotationLag: 1.23
-  driftRotationLagMultiplier: 0.1
+  driftLagSharpness: 3.72
+  driftLagSharpnessRampIn: 12
+  driftLagSharpnessRampOut: 4
+  driftTremorStrength: 0.06
+  driftTremorFrequency: 74.9
+  driftTremorResponse: 18
+  driftZoomInDeltaFOV: 18
+  driftFovRampIn: 0.15
+  driftFovRampOut: 0.25
   enableTrickCameraFreeze: 1
   trickCameraBlendInSpeed: 12
   trickCameraBlendOutSpeed: 3.5
@@ -4760,10 +4768,15 @@ MonoBehaviour:
   invertZRoll: 0
   zRollScale: 0.24
   zRollYawRateDivisor: 86
-  driftInfluence: 2.34
-  maxRollDegrees: 1.6
-  rollSmoothing: 4.1
-  lateralVelocityNormalization: 6
+  driftInfluence: 3
+  maxRollDegrees: 2
+  driftRollMultiplier: 15
+  maxDriftRollDegrees: 22
+  driftTiltIntensitySmooth: 3
+  driftTiltReleaseSmooth: 3
+  driftTiltRollReleaseSmooth: 3.3
+  rollSmoothing: 3
+  lateralVelocityNormalization: 4
 --- !u!114 &661794731
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6497,8 +6510,6 @@ MonoBehaviour:
   allowSpawnBehind: 1
   minSpawnDistanceBehind: 5
   maxSpawnDistanceBehind: 20
-  mainCamera: {fileID: 661794728}
-  viewportMargin: -0.13
   initialPreSpawnDistance: 17.76
   despawnBehindDistance: 60
   despawnCrashedAfter: 10
@@ -7172,7 +7183,7 @@ MonoBehaviour:
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
   spawnHeightOffset: 0.2
-  baseCoinsPerMeter: 0.05
+  baseCoinsPerMeter: 0.025
   coinFriendBaseRange: 30
   coinFriendBaseCooldown: 3
   coinFriendBaseValueBonus: 0
@@ -10489,16 +10500,20 @@ MonoBehaviour:
   projectilePrefabExplosive: {fileID: 3874382558013832276, guid: 9da423cd4d7a2b54e975aab5b7d06cb2, type: 3}
   groundRingPrefab: {fileID: 4108758772899792739, guid: b33c2f1ca85c9b94ba4f4fff69aa0a86, type: 3}
   enabledSpawning: 1
-  spawnCooldownBase: 8
+  spawnCooldownBase: 4
   leadDistanceRange: {x: 8, y: 25}
   maxConcurrent: 6
   concurrentScaleByProgress: 1.5
-  spawnEnableProgress: 0.3
-  minSpawnCooldown: 8
+  spawnEnableProgress: 0.25
+  minSpawnCooldown: 5
   spawnCooldownRandomRange: {x: 0.85, y: 1.15}
-  baseProjectileSpeed: 4.01
-  travelAllowanceMultiplier: 14.47
-  arcHeight: 0
+  baseProjectileSpeed: 5
+  flightTimeClamp: {x: 0.55, y: 3.25}
+  meteorSpawnHeight: 22
+  meteorHorizontalOffset: 14
+  minLeadDistance: 12.5
+  minLandingDistanceFromPlayer: 0
+  allowCloseLandings: 0
   hitLayers:
     serializedVersion: 2
     m_Bits: 12322817
@@ -10507,51 +10522,45 @@ MonoBehaviour:
   explosionKnockback: 8
   projectileSizeRange: {x: 1.1, y: 1.7}
   sizeGainOverDistance: 0.2
-  speedRandomMultiplierRange: {x: 0.8, y: 1.8}
-  spawnSideOffset: 6.5
-  spawnHeight: 6.7
-  minLandingDistanceFromPlayer: 4
-  minLeadDistance: 12.5
-  allowCloseLandings: 0
   lateralJitter: 2.63
   forwardJitter: 0
   destroyReward: 12
   debugDraw: 1
   spawnTestKey: 113
-  baseAccuracy: 0.25
+  baseAccuracy: 0.5
   accuracyByDistance:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 2
-      outSlope: 2
+      time: -0.0041656494
+      value: 0.35
+      inSlope: 1.5983123
+      outSlope: 1.5983123
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0
+      outWeight: 0.070246
     - serializedVersion: 3
       time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
+      value: 0.9764151
+      inSlope: 0.0761923
+      outSlope: 0.0761923
       tangentMode: 0
       weightedMode: 0
-      inWeight: 0
+      inWeight: 0.21488732
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
   maxMissLateral: 6
-  maxMissForward: 7
+  maxMissForward: 5
   explosionBaseChance: 0.15
   explosionChanceByDistance:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0.01
+      value: 0.15
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -10560,7 +10569,7 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 1
-      value: 0.5
+      value: 0.6
       inSlope: 1
       outSlope: 1
       tangentMode: 0
@@ -10570,6 +10579,11 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  travelAllowanceMultiplier: 14.47
+  arcHeight: 0
+  spawnSideOffset: 6.5
+  spawnHeight: 6.7
+  speedRandomMultiplierRange: {x: 0.8, y: 1.8}
 --- !u!4 &1127221277
 Transform:
   m_ObjectHideFlags: 0
@@ -17192,15 +17206,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4f29d3af89f0f6d4a9b128a2fae1f133, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  roadSurfaceMask:
-    serializedVersion: 2
-    m_Bits: 8192
-  agentLayerMaskToExclude:
-    serializedVersion: 2
-    m_Bits: 524289
-  boundsPadding: {x: 10, y: 10, z: 10}
-  rescanOnSceneLoad: 1
-  ensureRvoSimulator: 1
 --- !u!1 &1976095308
 GameObject:
   m_ObjectHideFlags: 0

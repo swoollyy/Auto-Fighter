@@ -329,7 +329,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         if (style != null)
             tmp.text = style.FormatText(value);
         else
-            tmp.text = $"+{value}";
+            tmp.text = $"+{RacingUiNumberFormat.ToDisplayInt(value)}";
 
         // Use custom text color (start invisible for fade-in)
         tmp.color = new Color(textColor.r, textColor.g, textColor.b, 0f);
@@ -538,7 +538,7 @@ public class RacingPopupSystem : MonoBehaviour, IRacingPopupSystem
         }
         else
         {
-            tmp.text = value.ToString("0.#");
+            tmp.text = RacingUiNumberFormat.ToDisplayString(value);
         }
 
         // Color

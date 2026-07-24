@@ -3,18 +3,20 @@ using UnityEngine;
 /// <summary>
 /// Airborne trick tuning (flips, upright spins, barrel rolls). CarController reads these at Awake.
 /// Hold right stick (or arrow keys) while airborne to flip/spin; hold left bumper for barrel rolls.
-/// Left stick still aims flight path and landing heading while tricking.
+/// Left stick still yaws in the air at a reduced turn rate vs ground.
 /// </summary>
 public class CarAirTrickConfig : MonoBehaviour
 {
     [Header("Enable")]
     [SerializeField] private bool enableAirTricks = true;
 
-    [Header("Free Air Control (left stick)")]
-    [Tooltip("Yaw rate while airborne without trick stick input — steer to aim the car toward the road.")]
+    [Header("Air Turn (left stick)")]
+    [Tooltip("Air yaw as a fraction of current ground turn speed (0.6 = 60% of ground feel).")]
+    [SerializeField, Range(0.05f, 1.5f)] private float airTurnSpeedMultiplier = 0.6f;
+    [Tooltip("Legacy absolute air yaw rate (deg/s) used by older air-aim path.")]
     [SerializeField] private float airYawRate = 110f;
     [SerializeField, Range(0f, 1f)] private float airYawInputDeadzone = 0.12f;
-    [Tooltip("Bank horizontal flight path with left stick (degrees/sec at full deflection). Keeps you on track in the air.")]
+    [Tooltip("Bank horizontal flight path with left stick while airborne (degrees/sec at full deflection).")]
     [SerializeField, Min(0f)] private float airTrajectorySteerRate = 78f;
     [Tooltip("How quickly left-stick air aim ramps in (lower = softer).")]
     [SerializeField, Min(0.5f)] private float airSteerInputSmoothRate = 3.5f;
@@ -23,7 +25,7 @@ public class CarAirTrickConfig : MonoBehaviour
     [Tooltip("How quickly flight-path banking builds toward the target rate (deg/s²).")]
     [SerializeField, Min(10f)] private float airTrajectoryBankAccel = 90f;
 
-    [Header("Air Aim While Tricking (left stick + right stick)")]
+    [Header("Air Aim While Tricking")]
     [Tooltip("Allow left-stick yaw and trajectory steering while the trick stick is held.")]
     [SerializeField] private bool enableAirAimWhileTricking = true;
     [Tooltip("Left-stick yaw strength during pitch-heavy tricks (flips).")]
@@ -65,7 +67,12 @@ public class CarAirTrickConfig : MonoBehaviour
     [Tooltip("Skip recovery when car up already aligns this closely with the target surface.")]
     [SerializeField, Range(0.85f, 1f)] private float airUprightMinAlignDot = 0.992f;
 
+    [Header("Air Gravity")]
+    [Tooltip("Multiplier on Physics.gravity while airborne. 1 = default; >1 = heavier / less floaty.")]
+    [SerializeField, Min(0.1f)] private float airGravityMultiplier = 1.12f;
+
     public bool EnableAirTricks => enableAirTricks;
+    public float AirTurnSpeedMultiplier => airTurnSpeedMultiplier;
     public float AirYawRate => airYawRate;
     public float AirYawInputDeadzone => airYawInputDeadzone;
     public float AirTrajectorySteerRate => airTrajectorySteerRate;
@@ -91,4 +98,5 @@ public class CarAirTrickConfig : MonoBehaviour
     public float AirUprightRecoverSpeed => airUprightRecoverSpeed;
     public float AirUprightNearGroundBoost => airUprightNearGroundBoost;
     public float AirUprightMinAlignDot => airUprightMinAlignDot;
+    public float AirGravityMultiplier => airGravityMultiplier;
 }

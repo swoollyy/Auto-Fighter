@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 19
   displayName: Max Speed
-  description: Boosts max speed by .35
+  description: Boosts max speed by .8
   maxLevel: 5
-  baseCost: 7
-  costPerLevel: 7
+  baseCost: 8
+  costPerLevel: 8
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.35
+  perLevelAdd: 0.8
   uiPosition: {x: 75, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

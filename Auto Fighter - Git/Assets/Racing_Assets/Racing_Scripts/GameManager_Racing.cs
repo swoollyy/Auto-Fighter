@@ -106,6 +106,9 @@ public class GameManager_Racing : MonoBehaviour
 
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
+    // Separate hub owners so crash and close-call cannot overwrite each other (shared `this` caused flicker).
+    private readonly object _crashSlowMoOwner = new object();
+    private readonly object _closeCallSlowMoOwner = new object();
 
     [Header("Skill Tree UI (assign the root object that holds RacingSkillUI)")]
     [SerializeField] private GameObject skillTreeRoot;
@@ -321,8 +324,7 @@ public class GameManager_Racing : MonoBehaviour
     {
         ExitLoadingGameplayGate();
 
-        // Release ALL slow-mo this manager may own (crash AND close-call share the same owner key = this).
-        // Do this unconditionally so a close-call-only slow-mo can't leak a stale owner into the hub.
+        // Release ALL slow-mo this manager may own (crash and close-call use separate owner tokens).
         if (_crashSlowMoRoutine != null)
         {
             StopCoroutine(_crashSlowMoRoutine);
@@ -334,7 +336,9 @@ public class GameManager_Racing : MonoBehaviour
             _closeCallCR = null;
         }
         _ownsCrashSlowMo = false;
-        TimeScaleHub.End(this);
+        TimeScaleHub.End(_crashSlowMoOwner);
+        TimeScaleHub.End(_closeCallSlowMoOwner);
+        TimeScaleHub.End(this); // legacy cleanup if anything still keyed to the manager instance
     }
 
     void Update()
@@ -663,12 +667,6 @@ public class GameManager_Racing : MonoBehaviour
 
         float sev = Mathf.Clamp01(severity);
 
-        // Remap severity through curve if provided
-        if (crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0)
-        {
-            sev = Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev));
-        }
-
         // Screen shake (camera)
         if (enableCrashScreenShake && cameraFollow != null)
         {
@@ -681,6 +679,7 @@ public class GameManager_Racing : MonoBehaviour
 
         if (enableCrashSlowMo)
         {
+            // Pass raw severity — CrashSlowMoRoutine applies the curve once.
             StartCrashSlowMo(sev);
         }
 
@@ -727,6 +726,24 @@ public class GameManager_Racing : MonoBehaviour
 
         if (proximity <= 0f) return;
 
+        // Outside the blast damage radius but still close enough to feel the boom → treat as a
+        // close call (popup + bloom flash/brightening + close-call slow-mo), not a crash hit.
+        float damageRadius = Mathf.Max(0.01f, explosionRadius);
+        if (dist > damageRadius)
+        {
+            HandleProjectileCloseCall(explosionPos, dist);
+
+            // Keep a light boom shake so it still reads as a nearby meteor impact.
+            if (enableCrashScreenShake && cameraFollow != null)
+            {
+                float dur = Mathf.Lerp(0.04f, explosionShakeBaseDuration * 0.55f, proximity);
+                float str = Mathf.Lerp(0.03f, explosionShakeBaseStrength * 0.45f, proximity);
+                int vib = Mathf.RoundToInt(crashShakeVibrato * Mathf.Lerp(0.5f, 0.9f, proximity));
+                cameraFollow.StartShake(dur, str, vib, crashShakeRandomness);
+            }
+            return;
+        }
+
         // Screen shake scaled by proximity
         if (enableCrashScreenShake && cameraFollow != null)
         {
@@ -746,7 +763,7 @@ public class GameManager_Racing : MonoBehaviour
             postFX.PlayBurstCustom(chroma, 0f, hold, 0.06f, 0.18f);
         }
 
-        // NEW: trigger a scaled slow-motion based on proximity (reuses crash slow-mo routine)
+        // Scaled slow-motion based on proximity (reuses crash slow-mo routine)
         if (enableCrashSlowMo && proximity > 0f)
         {
             // Use proximity as severity (0..1) so CrashSlowMoCurve and related settings control feel
@@ -811,7 +828,10 @@ public class GameManager_Racing : MonoBehaviour
             Play2DClip(closeCallClip, closeCallVolume);
         }
 
-        // Start a gentle slow-mo for the close-call
+        // Start a gentle slow-mo for the close-call — never while crash slow-mo owns time (crash is top priority).
+        if (_ownsCrashSlowMo || _crashSlowMoRoutine != null)
+            return;
+
         if (_closeCallCR != null)
         {
             StopCoroutine(_closeCallCR);
@@ -842,25 +862,45 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CloseCallSlowMoRoutine()
     {
-        // Enter slow-mo (realtime safe)
-        TimeScaleHub.Begin(this, Mathf.Clamp(closeCallSlowMoScale, 0.05f, 1f), affectFixedDelta: true);
+        // Crash always wins — bail if a crash slow-mo started after we were queued.
+        if (_ownsCrashSlowMo)
+        {
+            _closeCallCR = null;
+            yield break;
+        }
+
+        TimeScaleHub.Begin(_closeCallSlowMoOwner, Mathf.Clamp(closeCallSlowMoScale, 0.05f, 1f), affectFixedDelta: true);
 
         float holdEnd = Time.realtimeSinceStartup + Mathf.Max(0f, closeCallSlowMoHold);
         while (Time.realtimeSinceStartup < holdEnd)
+        {
+            if (_ownsCrashSlowMo)
+            {
+                TimeScaleHub.End(_closeCallSlowMoOwner);
+                _closeCallCR = null;
+                yield break;
+            }
             yield return null;
+        }
 
         float ease = Mathf.Max(0f, closeCallSlowMoEaseOut);
         float t0 = Time.realtimeSinceStartup;
         float t1 = t0 + ease;
         while (Time.realtimeSinceStartup < t1)
         {
+            if (_ownsCrashSlowMo)
+            {
+                TimeScaleHub.End(_closeCallSlowMoOwner);
+                _closeCallCR = null;
+                yield break;
+            }
             float t = Mathf.InverseLerp(t0, t1, Time.realtimeSinceStartup);
             float scale = Mathf.Lerp(closeCallSlowMoScale, 1f, t);
-            TimeScaleHub.Begin(this, scale, affectFixedDelta: true);
+            TimeScaleHub.Begin(_closeCallSlowMoOwner, scale, affectFixedDelta: true);
             yield return null;
         }
 
-        TimeScaleHub.End(this);
+        TimeScaleHub.End(_closeCallSlowMoOwner);
         _closeCallCR = null;
     }
 
@@ -882,15 +922,24 @@ public class GameManager_Racing : MonoBehaviour
         }
         _ownsCrashSlowMo = false;
 
-        // The forcefield owns its own launch slow-mo coroutine on the car; stop it too so it can't
-        // re-register with the hub a frame later and re-stack the slow-mo.
         carController?.CancelForcefieldSlowMo();
 
+        TimeScaleHub.End(_crashSlowMoOwner);
+        TimeScaleHub.End(_closeCallSlowMoOwner);
         TimeScaleHub.ForceClearAll();
     }
 
     private void StartCrashSlowMo(float severity, float holdMultiplier = 1f)
     {
+        // Crash is always top priority: kill close-call + forcefield slow-mo so they cannot overwrite it.
+        if (_closeCallCR != null)
+        {
+            StopCoroutine(_closeCallCR);
+            _closeCallCR = null;
+        }
+        TimeScaleHub.End(_closeCallSlowMoOwner);
+        carController?.CancelForcefieldSlowMo();
+
         if (_crashSlowMoRoutine != null)
         {
             StopCoroutine(_crashSlowMoRoutine);
@@ -898,30 +947,31 @@ public class GameManager_Racing : MonoBehaviour
         }
 
         if (_ownsCrashSlowMo)
-        {
-            TimeScaleHub.End(this);
-            _ownsCrashSlowMo = false;
-        }
+            TimeScaleHub.End(_crashSlowMoOwner);
 
+        // Claim ownership before the coroutine runs so same-frame close-calls cannot sneak in.
+        _ownsCrashSlowMo = true;
         _crashSlowMoRoutine = StartCoroutine(CrashSlowMoRoutine(severity, holdMultiplier));
     }
 
     private IEnumerator CrashSlowMoRoutine(float severity, float holdMultiplier)
     {
-        _ownsCrashSlowMo = true;
-
         float sev = Mathf.Clamp01(severity);
-        float curveVal = crashSlowMoCurve != null ? crashSlowMoCurve.Evaluate(sev) : sev;
+        float curveVal = crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0
+            ? Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev))
+            : sev;
         float targetScale = Mathf.Lerp(1f, crashSlowMoScale, curveVal);
 
-        float hold = crashSlowMoHold * Mathf.Max(1f, holdMultiplier);   // <<< ONLY CHANGE THAT MATTERS
+        float hold = crashSlowMoHold * Mathf.Max(1f, holdMultiplier);
         float easeOut = crashSlowMoEaseOut;
 
-        TimeScaleHub.Begin(this, targetScale, affectFixedDelta: true);
-
+        // Re-assert every frame during hold so no other source can weaken crash slow-mo mid-fling.
         float holdEnd = Time.realtimeSinceStartup + hold;
         while (Time.realtimeSinceStartup < holdEnd)
+        {
+            TimeScaleHub.Begin(_crashSlowMoOwner, targetScale, affectFixedDelta: true);
             yield return null;
+        }
 
         float start = Time.realtimeSinceStartup;
         float end = start + easeOut;
@@ -930,11 +980,11 @@ public class GameManager_Racing : MonoBehaviour
         {
             float t = Mathf.InverseLerp(start, end, Time.realtimeSinceStartup);
             float scale = Mathf.Lerp(targetScale, 1f, t);
-            TimeScaleHub.Begin(this, scale, affectFixedDelta: true);
+            TimeScaleHub.Begin(_crashSlowMoOwner, scale, affectFixedDelta: true);
             yield return null;
         }
 
-        TimeScaleHub.End(this);
+        TimeScaleHub.End(_crashSlowMoOwner);
         _ownsCrashSlowMo = false;
         _crashSlowMoRoutine = null;
     }
@@ -1543,13 +1593,8 @@ public class GameManager_Racing : MonoBehaviour
         if (!enabled) return;
         if (!enableCrashSlowMo) return;
 
-        float sev = Mathf.Clamp01(severity);
-
-        // match OnCarCrash remap behavior
-        if (crashSlowMoCurve != null && crashSlowMoCurve.keys.Length > 0)
-            sev = Mathf.Clamp01(crashSlowMoCurve.Evaluate(sev));
-
-        StartCrashSlowMo(sev, lethalCrashSlowMoHoldMultiplier);
+        // Raw severity — CrashSlowMoRoutine applies the curve once (same as OnCarCrash).
+        StartCrashSlowMo(Mathf.Clamp01(severity), lethalCrashSlowMoHoldMultiplier);
     }
 
     private void PlayRunCompleteCoinSound()

@@ -1768,7 +1768,6 @@ public class NPCTrafficCar : MonoBehaviour
 
     /// <summary>
     /// Approximate arc-length along this car’s traffic spline under its current position.
-    /// Used by <see cref="NPCTrafficCarSpawner"/> so despawn follows the car as it drives, not its original spawn slot.
     /// </summary>
     public bool TryGetDistanceAlongTrack(out float distanceAlong)
     {

@@ -1,21 +1,10 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Director that spawns deterministic thrown obstacles ahead of the player.
-/// - Uses track sampling from ProceduralTrackGenerator.PathPoints
-/// - Predictive intercept (path-based)
-/// - Deterministic, non-gravity arc (projectile moves itself; collisions still happen)
-/// - Pooling via ProjectilePool
-/// - Supports plain-impact and explosive variants (explosive shows ground ring)
-/// - Debug gizmos and spawn hotkey
-///
-/// Refactor notes:
-/// - Accuracy now means "chance this throw is a true hit attempt".
-/// - Misses get deliberate offsets (near-miss behavior).
-/// - MinLandingDistance is enforced for misses, but NOT for true hits (so 0 distance remains possible sometimes).
-/// - Aim error is applied AFTER intercept refinement and BEFORE final ground projection, so it cannot be overwritten.
+/// Spawns meteors that dive from above toward a predicted player impact on the road.
+/// Accuracy = chance of a true predicted hit; misses get deliberate near-miss offsets.
+/// Flight speed is derived from path length / flight time so arrival matches the prediction.
 /// </summary>
 [DisallowMultipleComponent]
 public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
@@ -25,23 +14,19 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField] private Transform playerTransform;
     [SerializeField] private CarController carController;
 
-    public Transform PlayerTransform => playerTransform; // expose for projectiles
+    public Transform PlayerTransform => playerTransform;
 
-    [Header("Prefabs / Pool (assign two prefabs)")]
-    [Tooltip("Projectile prefab (plain-impact).")]
+    [Header("Prefabs / Pool")]
     [SerializeField] private GameObject projectilePrefabPlain;
-    [Tooltip("Explosive projectile prefab (optional). If null, plain prefab will be used for explosive too.")]
     [SerializeField] private GameObject projectilePrefabExplosive;
-    [Tooltip("Optional ground ring prefab for explosive variant (pooled).")]
     [SerializeField] private GameObject groundRingPrefab;
 
     [Header("Spawn Control")]
     [SerializeField] private bool enabledSpawning = true;
     [SerializeField, Min(0f)] private float spawnCooldownBase = 3.5f;
-    [Tooltip("Min / Max lead distance ahead of player to aim")]
+    [Tooltip("How far ahead (meters along track) the meteor aims, relative to current car speed.")]
     [SerializeField] private Vector2 leadDistanceRange = new Vector2(12f, 36f);
     [SerializeField, Range(1, 6)] private int maxConcurrent = 2;
-    [Tooltip("Scale extra concurrent spawns as track progress increases (0..1 -> added slots).")]
     [SerializeField, Range(0f, 3f)] private float concurrentScaleByProgress = 1.5f;
 
     [Header("Spawn Gate")]
@@ -51,10 +36,17 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField, Min(0.05f)] private float minSpawnCooldown = 0.6f;
     [SerializeField] private Vector2 spawnCooldownRandomRange = new Vector2(0.85f, 1.15f);
 
-    [Header("Projectile Defaults")]
-    [SerializeField] private float baseProjectileSpeed = 18f; // used as initial guess only
-    [SerializeField] private float travelAllowanceMultiplier = 1.05f;
-    [SerializeField] private float arcHeight = 3f;
+    [Header("Meteor Flight")]
+    [Tooltip("Fallback / clamp reference speed when deriving flight time from lead distance.")]
+    [SerializeField] private float baseProjectileSpeed = 18f;
+    [SerializeField] private Vector2 flightTimeClamp = new Vector2(0.55f, 3.25f);
+    [Tooltip("World-space height above the impact point where the meteor spawns.")]
+    [SerializeField, Min(2f)] private float meteorSpawnHeight = 22f;
+    [Tooltip("Horizontal offset from impact (side approach) so the dive has a clear downward angle.")]
+    [SerializeField, Min(1f)] private float meteorHorizontalOffset = 14f;
+    [SerializeField, Min(0f)] private float minLeadDistance = 6.0f;
+    [SerializeField, Min(0f)] private float minLandingDistanceFromPlayer = 4.0f;
+    [SerializeField] private bool allowCloseLandings = true;
     [SerializeField] private LayerMask hitLayers = ~0;
     [SerializeField] private bool explosiveByDefault = false;
     [SerializeField] private float explosionRadius = 6f;
@@ -63,19 +55,6 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Projectile Size Variation")]
     [SerializeField, Min(0f)] private Vector2 projectileSizeRange = new Vector2(0.92f, 1.12f);
     [SerializeField, Range(0f, 1f)] private float sizeGainOverDistance = 0.25f;
-
-    [Header("Projectile Speed Variation")]
-    [SerializeField, Min(0.1f)] private Vector2 speedRandomMultiplierRange = new Vector2(0.5f, 2.2f);
-
-    [Header("Spawn Placement")]
-    [SerializeField, Min(0f)] private float spawnSideOffset = 2.0f;
-    [SerializeField, Min(0f)] private float spawnHeight = 2.0f;
-    [SerializeField, Min(0f)] private float minLandingDistanceFromPlayer = 4.0f;
-    [SerializeField, Min(0f)] private float minLeadDistance = 6.0f;
-
-    [Header("Close-Landing Policy")]
-    [Tooltip("If true, misses that would land within MinLandingDistance will be clamped forward instead of skipped.")]
-    [SerializeField] private bool allowCloseLandings = true;
 
     [Header("Spawn Variance")]
     [SerializeField, Range(0f, 3f)] private float lateralJitter = 1.0f;
@@ -89,31 +68,36 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField] private KeyCode spawnTestKey = KeyCode.T;
 
     [Header("Accuracy / Misses")]
-    [Tooltip("Interpreted as: chance a throw is a TRUE HIT attempt (0..1). Low values = mostly near-misses.")]
+    [Tooltip("Chance this throw is a TRUE predicted hit on the player (0..1).")]
     [SerializeField, Range(0f, 1f)] private float baseAccuracy = 0.10f;
-    [Tooltip("Multiplier applied to baseAccuracy by normalized distance along track (0..1).")]
     [SerializeField] private AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
-    [Tooltip("Max lateral miss offset (meters).")]
     [SerializeField, Min(0f)] private float maxMissLateral = 4f;
-    [Tooltip("Max forward/back miss offset (meters).")]
     [SerializeField, Min(0f)] private float maxMissForward = 6f;
 
     [Header("Explosion Frequency")]
     [SerializeField, Range(0f, 1f)] private float explosionBaseChance = 0.06f;
     [SerializeField] private AnimationCurve explosionChanceByDistance = AnimationCurve.Linear(0, 0.5f, 1, 1.5f);
 
+    // Legacy serialized fields kept so existing prefab/scene values don't vanish; unused by new aim model.
+#pragma warning disable 0414
+    [SerializeField, HideInInspector] private float travelAllowanceMultiplier = 1.05f;
+    [SerializeField, HideInInspector] private float arcHeight = 3f;
+    [SerializeField, HideInInspector] private float spawnSideOffset = 2.0f;
+    [SerializeField, HideInInspector] private float spawnHeight = 2.0f;
+    [SerializeField, HideInInspector] private Vector2 speedRandomMultiplierRange = new Vector2(0.5f, 2.2f);
+#pragma warning restore 0414
+
     private float _cooldown;
     private readonly List<ThrownObstacle> _active = new();
     private readonly TrackSpawnQueuePendingState _queueState = new();
     private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
-
-    // base scales so pooled objects do not compound scale
     private readonly Dictionary<GameObject, Vector3> _prefabBaseScales = new();
+    private TrackDistanceMeter _distanceMeter;
 
     private struct AimDecision
     {
         public bool isTrueHit;
-        public float accuracy; // final 0..1 used
+        public float accuracy;
     }
 
     void Awake()
@@ -127,6 +111,8 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
         }
         if (!carController && playerTransform != null)
             carController = playerTransform.GetComponent<CarController>();
+
+        _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
 
         if (ProjectilePool.Instance == null)
         {
@@ -150,10 +136,9 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
             return;
         }
 
-        int allowedConcurrentAutonomous = ScaleConcurrentByTrackProgress(maxConcurrent);
-
+        int allowed = ScaleConcurrentByTrackProgress(maxConcurrent);
         _cooldown -= Time.deltaTime;
-        if (_cooldown <= 0f && _active.Count < allowedConcurrentAutonomous)
+        if (_cooldown <= 0f && _active.Count < allowed)
         {
             TrySpawn();
             if (_cooldown <= 0f)
@@ -169,314 +154,375 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
         if (!trackGenerator || playerTransform == null) return;
         if (projectilePrefabPlain == null && projectilePrefabExplosive == null) return;
 
-        // choose lead distance with jitter and enforce minLeadDistance
+        if (_distanceMeter == null)
+            _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+
+        float playerDist = _distanceMeter != null ? _distanceMeter.DistanceAlongTrack : 0f;
+        float trackTotal = ComputeTrackTotalLength();
+        float distanceNorm = trackTotal > 0f ? Mathf.Clamp01(playerDist / trackTotal) : 0f;
+
+        if (trackTotal > 0f && distanceNorm < spawnEnableProgress)
+        {
+            if (debugDraw)
+                Debug.Log($"[ThrownObstacleDirector] spawn gated until {spawnEnableProgress * 100f:0}% (current {distanceNorm * 100f:0}%).");
+            _cooldown = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, distanceNorm) *
+                        UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
+            return;
+        }
+
+        float carSpeed = GetCarSpeedAlongTrack();
         float lead = Mathf.Lerp(leadDistanceRange.x, leadDistanceRange.y, UnityEngine.Random.value);
         lead += UnityEngine.Random.Range(-forwardJitter, forwardJitter);
         lead = Mathf.Max(lead, minLeadDistance);
 
-        // player distance along track
-        float playerDist = 0f;
-        var distanceMeter = FindObjectOfType<TrackDistanceMeter>();
-        if (distanceMeter != null) playerDist = distanceMeter.DistanceAlongTrack;
+        // Flight time = time for the car to cover the lead distance (prediction horizon).
+        float flightTime = lead / Mathf.Max(carSpeed, Mathf.Max(1f, baseProjectileSpeed * 0.35f));
+        flightTime = Mathf.Clamp(flightTime, flightTimeClamp.x, flightTimeClamp.y);
 
-        float sSpawnMeters = Mathf.Max(0f, playerDist + lead);
-        float trackTotal = ComputeTrackTotalLength();
-
-        // gate spawns early
-        if (trackTotal > 0f)
-        {
-            float playerProgress = Mathf.Clamp01(playerDist / trackTotal);
-            if (playerProgress < spawnEnableProgress)
-            {
-                if (debugDraw) Debug.Log($"[ThrownObstacleDirector] spawn gated until {spawnEnableProgress * 100f:0}% (current {playerProgress * 100f:0}%).");
-                _cooldown = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, playerProgress) *
-                            UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
-                return;
-            }
-        }
-
-        if (!TrySamplePositionAtDistance(sSpawnMeters, out Vector3 spawnCenter, out Vector3 spawnFwd))
+        if (!TryPredictImpactPoint(playerDist, carSpeed, flightTime, out Vector3 impactPos, out Vector3 impactFwd, out Vector3 impactRight))
             return;
 
-        // origin
-        Vector3 right = Vector3.Cross(Vector3.up, spawnFwd).normalized;
-        float sideSign = (UnityEngine.Random.value < 0.5f) ? -1f : 1f;
-        float sideOffset = spawnSideOffset + UnityEngine.Random.Range(-lateralJitter, lateralJitter);
-        Vector3 origin = spawnCenter + right * sideSign * sideOffset + Vector3.up * spawnHeight;
-
-        // solve intercept
-        float speedAllowance = baseProjectileSpeed * travelAllowanceMultiplier;
-
-        bool found = TryComputePathPredictiveIntercept(origin, speedAllowance, out Vector3 interceptPos, out float interceptTime);
-
-        if (!found)
-        {
-            Vector3 targetPos = playerTransform.position;
-            Rigidbody carRb = playerTransform.GetComponent<Rigidbody>();
-            Vector3 targetVel = carRb != null ? carRb.velocity : Vector3.zero;
-
-            if (!TryComputeIntercept(origin, targetPos, targetVel, speedAllowance, speedAllowance * 10f, out interceptPos, out interceptTime))
-            {
-                interceptPos = targetPos + playerTransform.forward * Mathf.Clamp(baseProjectileSpeed * 0.65f, 6f, 30f);
-                float horizDist = Vector3.Distance(new Vector3(origin.x, 0f, origin.z), new Vector3(interceptPos.x, 0f, interceptPos.z));
-                interceptTime = Mathf.Clamp(horizDist / Mathf.Max(2f, baseProjectileSpeed), 0.25f, 6f);
-            }
-        }
-
-        // distance norm for tuning curves
-        float distanceNorm = (trackTotal > 0f) ? Mathf.Clamp01(sSpawnMeters / trackTotal) : 0f;
-
-        // decide aim intent (true hit vs near-miss)
         AimDecision aim = DecideAim(distanceNorm);
 
-        // explosion selection
-        float explosionChanceMultiplier = explosionChanceByDistance != null ? explosionChanceByDistance.Evaluate(distanceNorm) : 1f;
-        float explosionChance = Mathf.Clamp01(explosionBaseChance * explosionChanceMultiplier);
-        bool explosive = UnityEngine.Random.value < explosionChance || explosiveByDefault;
-
-        // prefab
-        GameObject chosenPrefab = explosive ? (projectilePrefabExplosive ?? projectilePrefabPlain) : projectilePrefabPlain;
-        if (chosenPrefab == null) return;
-
-        // compute speed estimate
-        Vector3 flatOrigin = new Vector3(origin.x, 0f, origin.z);
-        Vector3 flatIntercept = new Vector3(interceptPos.x, 0f, interceptPos.z);
-        float horizDistance = Vector3.Distance(flatOrigin, flatIntercept);
-
-        float finalSpeed = (interceptTime > 0f) ? (horizDistance / Mathf.Max(0.001f, interceptTime)) : baseProjectileSpeed;
-
-        float speedRand = UnityEngine.Random.Range(speedRandomMultiplierRange.x, speedRandomMultiplierRange.y);
-        finalSpeed *= speedRand;
-        finalSpeed = Mathf.Clamp(finalSpeed, baseProjectileSpeed * 0.25f, baseProjectileSpeed * 3.0f);
-
-        // refinement using actual chosen speed
-        if (TryComputePathPredictiveIntercept(origin, finalSpeed, out Vector3 refinedPos, out float refinedTime))
-        {
-            interceptPos = refinedPos;
-            interceptTime = refinedTime;
-        }
-        else
-        {
-            if (debugDraw) Debug.Log("[ThrownObstacleDirector] refinement failed; using initial intercept.");
-        }
-
-        // Apply miss offsets ONLY if not a true hit attempt
         if (!aim.isTrueHit)
-            ApplyMissOffset(ref interceptPos, right, spawnFwd, aim.accuracy, distanceNorm);
+            ApplyMissOffset(ref impactPos, impactRight, impactFwd, aim.accuracy, distanceNorm);
 
-        // Project center + landing to road AFTER aim is final (prevents overwrites)
-        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
-        Vector3 groundCenter = SpawnUtils.ProjectOntoSurface(spawnCenter, 2f, 25f, roadMask);
-        Vector3 groundLanding = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
+        impactPos = ProjectToRoad(impactPos);
 
-        origin = groundCenter + right * sideSign * sideOffset + Vector3.up * spawnHeight;
-        interceptPos = groundLanding;
-
-        // close landing rule:
-        // - For TRUE HIT: allow distance 0 (your original intent)
-        // - For MISS: enforce minLandingDistanceFromPlayer via skip or clamp
+        // Misses: keep a minimum near-miss gap. True hits may land on the player.
         if (!aim.isTrueHit)
         {
-            float landingDistToPlayer = Vector3.Distance(interceptPos, playerTransform.position);
+            float landingDistToPlayer = HorizontalDistance(impactPos, playerTransform.position);
             if (landingDistToPlayer < minLandingDistanceFromPlayer)
             {
-                if (allowCloseLandings)
+                if (!allowCloseLandings)
                 {
-                    Vector3 dir = (interceptPos - playerTransform.position);
-                    if (dir.sqrMagnitude < 1e-6f) dir = playerTransform.forward;
-                    dir.y = 0f;
-                    if (dir.sqrMagnitude < 1e-6f) dir = Vector3.forward;
-                    dir.Normalize();
-
-                    interceptPos = playerTransform.position + dir * minLandingDistanceFromPlayer;
-                    interceptPos += right * UnityEngine.Random.Range(-Mathf.Min(lateralJitter, 1.2f), Mathf.Min(lateralJitter, 1.2f));
-
-                    // re-project after clamp (keeps it on road)
-                    interceptPos = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
-
-                    if (debugDraw) Debug.Log($"[ThrownObstacleDirector] miss clamped to min landing dist {minLandingDistanceFromPlayer:F2}");
-                }
-                else
-                {
-                    if (debugDraw) Debug.Log($"[ThrownObstacleDirector] miss skipped (too close: {landingDistToPlayer:F2} < {minLandingDistanceFromPlayer:F2})");
+                    if (debugDraw)
+                        Debug.Log($"[ThrownObstacleDirector] miss skipped (too close: {landingDistToPlayer:F2})");
                     return;
                 }
+
+                Vector3 dir = impactPos - playerTransform.position;
+                dir.y = 0f;
+                if (dir.sqrMagnitude < 1e-6f) dir = impactFwd;
+                if (dir.sqrMagnitude < 1e-6f) dir = Vector3.forward;
+                dir.Normalize();
+                impactPos = playerTransform.position + dir * minLandingDistanceFromPlayer;
+                impactPos = ProjectToRoad(impactPos);
             }
+
+            // Small extra variety on misses only — never on true hits.
+            impactPos += impactRight * UnityEngine.Random.Range(-Mathf.Min(lateralJitter, 0.8f), Mathf.Min(lateralJitter, 0.8f));
+            impactPos = ProjectToRoad(impactPos);
         }
 
-        // optional small lateral variety (keep it subtle so it doesn't fight the aim model)
-        interceptPos += right * UnityEngine.Random.Range(-Mathf.Min(lateralJitter, 0.8f), Mathf.Min(lateralJitter, 0.8f));
-        interceptPos = SpawnUtils.ProjectOntoSurface(interceptPos, 2f, 25f, roadMask);
-
-
-        float telegraphRadius = explosionRadius;
-
-        if (!explosive)
+        Vector3 origin = BuildMeteorOrigin(impactPos, impactFwd, impactRight);
+        float pathLen = Vector3.Distance(origin, impactPos);
+        if (pathLen < 0.5f)
         {
-            // Use the projectile's collider footprint as the non-explosive "hit radius"
-            GameObject previewPrefab = projectilePrefabPlain != null ? projectilePrefabPlain : chosenPrefab;
-
-            float r = 1.5f;
-            if (previewPrefab != null)
-            {
-                // SphereCollider preferred
-                var sc = previewPrefab.GetComponentInChildren<SphereCollider>();
-                if (sc != null) r = sc.radius * Mathf.Max(previewPrefab.transform.lossyScale.x, previewPrefab.transform.lossyScale.z);
-                else
-                {
-                    // Otherwise approximate from bounds
-                    var col = previewPrefab.GetComponentInChildren<Collider>();
-                    if (col != null)
-                    {
-                        Bounds b = col.bounds;
-                        r = Mathf.Max(b.extents.x, b.extents.z);
-                    }
-                }
-            }
-
-            telegraphRadius = Mathf.Clamp(r, 0.75f, 4.0f);
+            origin = impactPos + Vector3.up * meteorSpawnHeight + impactRight * meteorHorizontalOffset;
+            pathLen = Vector3.Distance(origin, impactPos);
         }
 
+        // Speed locks arrival to the predicted flight time (no post-hoc speed RNG that desyncs aim).
+        float finalSpeed = pathLen / Mathf.Max(0.05f, flightTime);
+        finalSpeed = Mathf.Clamp(finalSpeed, baseProjectileSpeed * 0.35f, baseProjectileSpeed * 4.5f);
+        // Re-derive time from clamped speed so telegraph / arrival stay consistent.
+        flightTime = pathLen / Mathf.Max(0.05f, finalSpeed);
 
+        float explosionChanceMul = explosionChanceByDistance != null ? explosionChanceByDistance.Evaluate(distanceNorm) : 1f;
+        bool explosive = explosiveByDefault || UnityEngine.Random.value < Mathf.Clamp01(explosionBaseChance * explosionChanceMul);
 
-        // preview telegraph for ALL throws (supports GroundRing OR URPDecalTelegraph)
-        bool previewSpawned = false;
-        if (groundRingPrefab != null)
-        {
-            var tele = ProjectilePool.Instance.Get(groundRingPrefab);
-            if (tele != null)
-            {
-                // EXACT landing point + forced rotation
-                tele.transform.position = interceptPos;
-                tele.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-                tele.SetActive(true);
+        GameObject chosenPrefab = explosive
+            ? (projectilePrefabExplosive != null ? projectilePrefabExplosive : projectilePrefabPlain)
+            : projectilePrefabPlain;
+        if (chosenPrefab == null) return;
 
-                float holdSeconds = Mathf.Max(0f, interceptTime - 0.05f);
+        float telegraphRadius = explosive
+            ? explosionRadius
+            : EstimatePlainTelegraphRadius(chosenPrefab);
 
-                // NEW: URP Decal projector telegraph path
-                var decalTele = tele.GetComponent<URPDecalTelegraph>();
-                if (decalTele != null)
-                {
-                    decalTele.SetWorldPose(interceptPos); // sets pos + rotation again (safe)
-                    decalTele.Play(
-                        radius: telegraphRadius,
-                        seconds: holdSeconds,
-                        onComplete: () => ProjectilePool.Instance.Return(groundRingPrefab, tele)
-                    );
-                    previewSpawned = true;
-                }
-                else
-                {
-                    // Legacy GroundRing path
-                    var gr = tele.GetComponent<GroundRing>();
-                    if (gr != null)
-                    {
-                        gr.Play(
-                            telegraphRadius,
-                            onComplete: () => ProjectilePool.Instance.Return(groundRingPrefab, tele),
-                            holdOverride: holdSeconds
-                        );
-                        previewSpawned = true;
-                    }
-                    else
-                    {
-                        // If it's neither, don't silently insta-return in case it has its own visuals
-                        // Keep it alive for holdSeconds then return.
-                        StartCoroutine(ReturnTelegraphLater(groundRingPrefab, tele, Mathf.Max(0.1f, holdSeconds)));
-                        previewSpawned = true;
-                    }
-                }
-            }
-        }
+        bool previewSpawned = TrySpawnTelegraph(impactPos, telegraphRadius, flightTime);
 
-
-
-
-        // spawn projectile
         SpawnProjectile(
             origin,
-            interceptPos,
-            (interceptPos - origin).normalized,
+            impactPos,
             explosive,
             chosenPrefab,
             finalSpeed,
             test,
-            interceptTime,
+            flightTime,
             previewSpawned,
-            distanceNorm
-        );
+            distanceNorm);
 
-        _queueLastSpawn.Record(interceptPos, chosenPrefab.name);
+        _queueLastSpawn.Record(impactPos, chosenPrefab.name);
 
-        // cooldown
         float baseCd = Mathf.Lerp(spawnCooldownBase, minSpawnCooldown, distanceNorm);
         float jitter = UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
         _cooldown = Mathf.Max(minSpawnCooldown, baseCd) * jitter;
 
         if (debugDraw)
         {
-            Debug.Log($"[ThrownObstacleDirector] aim={(aim.isTrueHit ? "HIT" : "MISS")} acc={aim.accuracy:0.000} distNorm={distanceNorm:0.00} explosive={explosive}");
+            Debug.DrawLine(origin, impactPos, explosive ? Color.red : Color.yellow, 8f);
+            Debug.Log($"[ThrownObstacleDirector] aim={(aim.isTrueHit ? "HIT" : "MISS")} acc={aim.accuracy:0.00} " +
+                      $"T={flightTime:0.00}s speed={finalSpeed:0.0} path={pathLen:0.0} explosive={explosive}");
         }
+    }
+
+    private bool TryPredictImpactPoint(
+        float carDist,
+        float carSpeed,
+        float flightTime,
+        out Vector3 impactPos,
+        out Vector3 impactFwd,
+        out Vector3 impactRight)
+    {
+        impactPos = playerTransform.position;
+        impactFwd = playerTransform.forward;
+        impactRight = playerTransform.right;
+
+        float predictedDist = carDist + Mathf.Max(0f, carSpeed) * flightTime;
+        if (trackGenerator != null)
+        {
+            float total = ComputeTrackTotalLength();
+            if (total > 0f)
+                predictedDist = Mathf.Clamp(predictedDist, 0f, Mathf.Max(0f, total - 0.25f));
+        }
+
+        if (!TrySamplePositionAtDistance(predictedDist, out Vector3 pathPos, out Vector3 pathFwd))
+        {
+            // Velocity fallback when path sampling fails.
+            Rigidbody rb = playerTransform.GetComponent<Rigidbody>();
+            Vector3 vel = rb != null ? rb.velocity : playerTransform.forward * carSpeed;
+            impactPos = playerTransform.position + vel * flightTime;
+            impactFwd = pathFwd.sqrMagnitude > 1e-6f ? pathFwd : playerTransform.forward;
+            impactFwd.y = 0f;
+            if (impactFwd.sqrMagnitude < 1e-6f) impactFwd = Vector3.forward;
+            impactFwd.Normalize();
+            impactRight = Vector3.Cross(Vector3.up, impactFwd).normalized;
+            impactPos = ProjectToRoad(impactPos);
+            return true;
+        }
+
+        impactFwd = pathFwd;
+        impactFwd.y = 0f;
+        if (impactFwd.sqrMagnitude < 1e-6f) impactFwd = playerTransform.forward;
+        impactFwd.Normalize();
+        impactRight = Vector3.Cross(Vector3.up, impactFwd).normalized;
+
+        // Preserve the player's current lateral offset from the path centerline.
+        float lateral = 0f;
+        if (TrySamplePositionAtDistance(carDist, out Vector3 pathNow, out Vector3 fwdNow))
+        {
+            Vector3 rightNow = Vector3.Cross(Vector3.up, fwdNow.normalized).normalized;
+            lateral = Vector3.Dot(playerTransform.position - pathNow, rightNow);
+        }
+
+        impactPos = pathPos + impactRight * lateral;
+
+        // Blend a bit of raw velocity prediction so sudden steering is respected.
+        Rigidbody carRb = playerTransform.GetComponent<Rigidbody>();
+        if (carRb != null && carRb.velocity.sqrMagnitude > 0.25f)
+        {
+            Vector3 velPred = playerTransform.position + carRb.velocity * flightTime;
+            impactPos = Vector3.Lerp(impactPos, velPred, 0.25f);
+        }
+
+        impactPos = ProjectToRoad(impactPos);
+        return true;
+    }
+
+    private Vector3 BuildMeteorOrigin(Vector3 impactPos, Vector3 impactFwd, Vector3 impactRight)
+    {
+        float sideSign = UnityEngine.Random.value < 0.5f ? -1f : 1f;
+        float horiz = meteorHorizontalOffset + UnityEngine.Random.Range(-lateralJitter, lateralJitter);
+        horiz = Mathf.Max(4f, horiz);
+
+        // Approach from the side and slightly ahead so the dive is clearly downward, not vertical.
+        Vector3 origin = impactPos
+            + impactRight * (sideSign * horiz)
+            + impactFwd * UnityEngine.Random.Range(-horiz * 0.15f, horiz * 0.35f)
+            + Vector3.up * meteorSpawnHeight;
+
+        return origin;
+    }
+
+    private float GetCarSpeedAlongTrack()
+    {
+        if (carController != null)
+        {
+            // Prefer planar speed in the car's forward direction (matches track progress).
+            Rigidbody rb = carController.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                Vector3 fwd = carController.transform.forward;
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude > 1e-6f)
+                {
+                    fwd.Normalize();
+                    float along = Vector3.Dot(rb.velocity, fwd);
+                    if (along > 0.25f) return along;
+                }
+                return Mathf.Max(0f, rb.velocity.magnitude);
+            }
+            return Mathf.Max(0f, carController.CurrentSpeed);
+        }
+
+        if (playerTransform != null)
+        {
+            Rigidbody rb = playerTransform.GetComponent<Rigidbody>();
+            if (rb != null) return Mathf.Max(0f, rb.velocity.magnitude);
+        }
+
+        return 0f;
+    }
+
+    private static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b);
+    }
+
+    private Vector3 ProjectToRoad(Vector3 worldPos)
+    {
+        LayerMask roadMask = LayerMask.GetMask("RoadSurface");
+        LayerMask roadGrassMask = LayerMask.GetMask("RoadSurface", "Grass", "Road");
+        const float up = 10f;
+        const float down = 50f;
+
+        Vector3 projected = SpawnUtils.ProjectOntoSurface(worldPos + Vector3.up * up, up, down, roadMask);
+        if (Mathf.Approximately(projected.y, worldPos.y))
+            projected = SpawnUtils.ProjectOntoSurface(worldPos + Vector3.up * up, up, down, roadGrassMask);
+        if (Mathf.Approximately(projected.y, worldPos.y))
+            projected = SpawnUtils.ProjectOntoSurface(worldPos + Vector3.up * up, up, down, null);
+        return projected;
+    }
+
+    private float EstimatePlainTelegraphRadius(GameObject previewPrefab)
+    {
+        float r = 1.5f;
+        if (previewPrefab == null) return r;
+
+        var sc = previewPrefab.GetComponentInChildren<SphereCollider>();
+        if (sc != null)
+        {
+            r = sc.radius * Mathf.Max(previewPrefab.transform.lossyScale.x, previewPrefab.transform.lossyScale.z);
+        }
+        else
+        {
+            var col = previewPrefab.GetComponentInChildren<Collider>();
+            if (col != null)
+                r = Mathf.Max(col.bounds.extents.x, col.bounds.extents.z);
+        }
+
+        return Mathf.Clamp(r, 0.75f, 4.0f);
+    }
+
+    private bool TrySpawnTelegraph(Vector3 impactPos, float telegraphRadius, float flightTime)
+    {
+        if (groundRingPrefab == null || ProjectilePool.Instance == null)
+            return false;
+
+        var tele = ProjectilePool.Instance.Get(groundRingPrefab);
+        if (tele == null) return false;
+
+        tele.transform.position = impactPos;
+        tele.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        tele.SetActive(true);
+
+        float holdSeconds = Mathf.Max(0f, flightTime - 0.05f);
+
+        var decalTele = tele.GetComponent<URPDecalTelegraph>();
+        if (decalTele != null)
+        {
+            decalTele.SetWorldPose(impactPos);
+            decalTele.Play(
+                radius: telegraphRadius,
+                seconds: holdSeconds,
+                onComplete: () => ProjectilePool.Instance.Return(groundRingPrefab, tele));
+            return true;
+        }
+
+        var gr = tele.GetComponent<GroundRing>();
+        if (gr != null)
+        {
+            gr.Play(
+                telegraphRadius,
+                onComplete: () => ProjectilePool.Instance.Return(groundRingPrefab, tele),
+                holdOverride: holdSeconds);
+            return true;
+        }
+
+        StartCoroutine(ReturnTelegraphLater(groundRingPrefab, tele, Mathf.Max(0.1f, holdSeconds)));
+        return true;
     }
 
     private AimDecision DecideAim(float distanceNorm)
     {
-        float curveMul = (accuracyByDistance != null) ? accuracyByDistance.Evaluate(distanceNorm) : 1f;
+        float curveMul = accuracyByDistance != null ? accuracyByDistance.Evaluate(distanceNorm) : 1f;
         float acc = Mathf.Clamp01(baseAccuracy * curveMul);
-
-        // Interpret accuracy as "chance to attempt a true hit"
         bool trueHit = UnityEngine.Random.value < acc;
-
         return new AimDecision { isTrueHit = trueHit, accuracy = acc };
     }
 
     private void ApplyMissOffset(ref Vector3 interceptPos, Vector3 right, Vector3 spawnFwd, float accuracy, float distanceNorm)
     {
-        // When accuracy is low, miss offsets should be stronger.
         float missScale = (1f - accuracy) * Mathf.Lerp(0.6f, 1.4f, distanceNorm);
+        // Always miss by at least a modest amount so "miss" never lands on the player by chance.
+        float minLat = Mathf.Lerp(1.2f, 2.2f, missScale);
+        float lateral = UnityEngine.Random.Range(minLat, Mathf.Max(minLat, maxMissLateral * missScale));
+        if (UnityEngine.Random.value < 0.5f) lateral = -lateral;
 
-        float lateral = UnityEngine.Random.Range(-maxMissLateral, maxMissLateral) * missScale;
         float forward = UnityEngine.Random.Range(-maxMissForward, maxMissForward) * missScale;
-
         interceptPos += right * lateral;
         interceptPos += spawnFwd * forward;
     }
 
-    private void SpawnProjectile(Vector3 origin, Vector3 landPoint, Vector3 aimDir, bool explosive, GameObject chosenPrefab, float speed, bool test, float timeToLanding, bool previewSpawned, float distanceNorm)
+    private void SpawnProjectile(
+        Vector3 origin,
+        Vector3 landPoint,
+        bool explosive,
+        GameObject chosenPrefab,
+        float speed,
+        bool test,
+        float timeToLanding,
+        bool previewSpawned,
+        float distanceNorm)
     {
-        if (chosenPrefab == null) return;
+        if (chosenPrefab == null || ProjectilePool.Instance == null) return;
 
         var go = ProjectilePool.Instance.Get(chosenPrefab);
         if (go == null) return;
 
-        go.transform.position = origin;
-        go.transform.rotation = Quaternion.LookRotation((landPoint - origin).normalized, Vector3.up);
+        Vector3 diveDir = landPoint - origin;
+        if (diveDir.sqrMagnitude < 1e-6f) diveDir = Vector3.down;
+        diveDir.Normalize();
 
-        // reset pooled scale to prefab baseline
+        go.transform.position = origin;
+        go.transform.rotation = Quaternion.LookRotation(diveDir, Vector3.up);
+
         if (!_prefabBaseScales.TryGetValue(chosenPrefab, out Vector3 baseScale))
         {
             baseScale = chosenPrefab.transform.localScale;
             _prefabBaseScales[chosenPrefab] = baseScale;
         }
-        go.transform.localScale = baseScale;
 
-        // size variation
         float baseSize = UnityEngine.Random.Range(projectileSizeRange.x, projectileSizeRange.y);
         float gain = 1f + sizeGainOverDistance * distanceNorm;
-        float finalSize = baseSize * gain;
-        go.transform.localScale = baseScale * finalSize;
-
+        go.transform.localScale = baseScale * (baseSize * gain);
         go.SetActive(true);
 
         var ob = go.GetComponent<ThrownObstacle>();
         if (ob == null) ob = go.AddComponent<ThrownObstacle>();
 
+        // Arc height unused for dive meteors (0 = straight dive). Kept in API for prefab compatibility.
         ob.Initialize(
             director: this,
             spawnPos: origin,
             landPos: landPoint,
             speed: speed,
-            arcHeight: arcHeight,
+            arcHeight: 0f,
             explosive: explosive,
             explosionRadius: explosionRadius,
             explosionImpulse: explosionKnockback,
@@ -484,16 +530,12 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
             prefabReference: chosenPrefab,
             ringPrefab: groundRingPrefab,
             rewardOnDestroy: destroyReward,
-            previewRingSpawned: previewSpawned
-        );
+            previewRingSpawned: previewSpawned);
 
         _active.Add(ob);
 
-        if (debugDraw)
-        {
-            Debug.DrawLine(origin, landPoint, explosive ? Color.red : Color.yellow, 8f);
-            if (test) Debug.Log($"[ThrownObstacleDirector] Spawned {(explosive ? "Explosive" : "Plain")} speed={speed:F2} size={finalSize:F2} time={timeToLanding:F2}");
-        }
+        if (debugDraw && test)
+            Debug.Log($"[ThrownObstacleDirector] Spawned {(explosive ? "Explosive" : "Plain")} speed={speed:F2} time={timeToLanding:F2}");
     }
 
     private bool TrySamplePositionAtDistance(float distanceAlongTrackMeters, out Vector3 pos, out Vector3 forward)
@@ -539,8 +581,9 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
         Vector3 b = pts[Mathf.Min(idx + 1, n - 1)];
 
         pos = Vector3.Lerp(a, b, t);
-        forward = (b - a).normalized;
+        forward = (b - a);
         if (forward.sqrMagnitude < 1e-6f) forward = transform.forward;
+        else forward.Normalize();
 
         return true;
     }
@@ -549,156 +592,23 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     {
         if (concurrentScaleByProgress <= 0f) return baseVal;
 
-        var distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+        if (_distanceMeter == null)
+            _distanceMeter = FindObjectOfType<TrackDistanceMeter>();
+
         float norm = 0f;
-        if (distanceMeter != null && trackGenerator != null)
+        if (_distanceMeter != null && trackGenerator != null)
         {
             float total = ComputeTrackTotalLength();
-            norm = Mathf.Clamp01(distanceMeter.DistanceAlongTrack / Mathf.Max(1f, total));
+            norm = Mathf.Clamp01(_distanceMeter.DistanceAlongTrack / Mathf.Max(1f, total));
         }
 
         int extra = Mathf.FloorToInt(norm * concurrentScaleByProgress);
         return Mathf.Clamp(baseVal + extra, 1, 8);
     }
 
-    private bool TryComputeIntercept(
-        Vector3 shooterPos,
-        Vector3 targetPos,
-        Vector3 targetVel,
-        float projectileSpeedLimit,
-        float maxTravel,
-        out Vector3 interceptPos,
-        out float interceptTime)
-    {
-        interceptPos = Vector3.zero;
-        interceptTime = 0f;
-
-        float s = Mathf.Max(0.001f, projectileSpeedLimit);
-        Vector3 r = targetPos - shooterPos;
-        float c = r.sqrMagnitude;
-        if (c < 1e-6f) return false;
-
-        if (targetVel.sqrMagnitude < 1e-6f)
-        {
-            float dist = Mathf.Sqrt(c);
-            if (dist > maxTravel) return false;
-            interceptPos = targetPos;
-            interceptTime = dist / s;
-            return true;
-        }
-
-        float v2 = targetVel.sqrMagnitude;
-        float a = v2 - s * s;
-        float b = 2f * Vector3.Dot(targetVel, r);
-
-        float t;
-        if (Mathf.Abs(a) < 1e-6f)
-        {
-            if (Mathf.Abs(b) < 1e-6f) return false;
-            t = -c / b;
-            if (t <= 0f) return false;
-        }
-        else
-        {
-            float disc = b * b - 4f * a * c;
-            if (disc < 0f) return false;
-            float sqrtDisc = Mathf.Sqrt(disc);
-            float t1 = (-b + sqrtDisc) / (2f * a);
-            float t2 = (-b - sqrtDisc) / (2f * a);
-            t = float.MaxValue;
-            if (t1 > 0f) t = Mathf.Min(t, t1);
-            if (t2 > 0f) t = Mathf.Min(t, t2);
-            if (!float.IsFinite(t) || t == float.MaxValue) return false;
-        }
-
-        float travel = s * t;
-        if (travel > maxTravel) return false;
-
-        interceptPos = targetPos + targetVel * t;
-        interceptTime = t;
-        return true;
-    }
-
-    // Path-based predictive intercept solver
-    private bool TryComputePathPredictiveIntercept(Vector3 origin, float projectileSpeedAllowance, out Vector3 interceptPos, out float interceptTime)
-    {
-        interceptPos = Vector3.zero;
-        interceptTime = 0f;
-
-        if (trackGenerator == null || playerTransform == null)
-            return false;
-
-        var distMeter = FindObjectOfType<TrackDistanceMeter>();
-        if (distMeter == null)
-            return false;
-
-        float carDist = distMeter.DistanceAlongTrack;
-
-        float carSpeed = 0f;
-        if (carController != null)
-            carSpeed = carController.CurrentSpeed;
-        else
-        {
-            var rb = playerTransform.GetComponent<Rigidbody>();
-            if (rb != null)
-                carSpeed = Mathf.Max(0f, Vector3.Dot(rb.velocity, playerTransform.forward));
-        }
-
-        float minProjectileSpeed = Mathf.Max(0.001f, projectileSpeedAllowance * 0.25f);
-        float maxProjectileSpeed = Mathf.Max(minProjectileSpeed, projectileSpeedAllowance * 3.0f);
-
-        Vector3 carPos = playerTransform.position;
-        float initialHoriz = Vector3.Distance(new Vector3(origin.x, 0f, origin.z), new Vector3(carPos.x, 0f, carPos.z));
-        float guessSpeed = Mathf.Max(minProjectileSpeed, Mathf.Min(maxProjectileSpeed, projectileSpeedAllowance));
-        float t = Mathf.Clamp(initialHoriz / Mathf.Max(0.001f, guessSpeed), 0.05f, 18f);
-
-        const int maxIter = 20;
-        const float eps = 0.005f;
-
-        for (int i = 0; i < maxIter; i++)
-        {
-            float predictedCarDist = carDist + carSpeed * t;
-
-            if (!TrySamplePositionAtDistance(predictedCarDist, out Vector3 predictedPos, out _))
-                return false;
-
-            float horiz = Vector3.Distance(new Vector3(origin.x, 0f, origin.z), new Vector3(predictedPos.x, 0f, predictedPos.z));
-            if (horiz < 1e-4f)
-            {
-                interceptPos = predictedPos;
-                interceptTime = 0f;
-                return true;
-            }
-
-            float unclampedSpeed = horiz / Mathf.Max(1e-5f, t);
-            float usedSpeed = Mathf.Clamp(unclampedSpeed, minProjectileSpeed, maxProjectileSpeed);
-            float tNew = horiz / usedSpeed;
-
-            if (!float.IsFinite(tNew) || float.IsNaN(tNew)) return false;
-
-            if (Mathf.Abs(tNew - t) < eps)
-            {
-                interceptPos = predictedPos;
-                interceptTime = tNew;
-                return true;
-            }
-
-            t = Mathf.Lerp(t, tNew, 0.85f);
-            t = Mathf.Clamp(t, 0.01f, 18f);
-        }
-
-        float finalPred = carDist + carSpeed * t;
-        if (!TrySamplePositionAtDistance(finalPred, out Vector3 finalPos, out _))
-            return false;
-
-        interceptPos = finalPos;
-        interceptTime = t;
-        return true;
-    }
-
     public void SetCar(CarController car)
     {
-        playerTransform = car.transform;
+        playerTransform = car != null ? car.transform : null;
         carController = car;
     }
 
@@ -709,16 +619,12 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
 
     internal void NotifyProjectileCloseCall(ThrownObstacle ob, float closestDistance)
     {
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
-            gm.HandleProjectileCloseCall(ob.transform.position, closestDistance);
+        GameManager_Racing.Instance?.HandleProjectileCloseCall(ob.transform.position, closestDistance);
     }
 
     internal void NotifyProjectileExploded(ThrownObstacle ob, Vector3 position, float radius)
     {
-        var gm = GameManager_Racing.Instance;
-        if (gm != null)
-            gm.HandleProjectileExplosion(position, radius);
+        GameManager_Racing.Instance?.HandleProjectileExplosion(position, radius);
     }
 
     private System.Collections.IEnumerator ReturnTelegraphLater(GameObject prefab, GameObject instance, float delay)
@@ -730,15 +636,16 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
 
     public void ForceSpawnAt(Vector3 origin, Vector3 landing, bool explosive)
     {
-        Vector3 flatOrigin = new Vector3(origin.x, 0f, origin.z);
-        Vector3 flatLanding = new Vector3(landing.x, 0f, landing.z);
-        float horizDist = Vector3.Distance(flatOrigin, flatLanding);
+        float pathLen = Vector3.Distance(origin, landing);
         float speed = Mathf.Max(1f, baseProjectileSpeed);
-        if (horizDist > 0.01f) speed = Mathf.Clamp(horizDist / 1.2f, baseProjectileSpeed * 0.5f, baseProjectileSpeed * 2f);
+        if (pathLen > 0.01f)
+            speed = Mathf.Clamp(pathLen / 1.2f, baseProjectileSpeed * 0.5f, baseProjectileSpeed * 3f);
 
-        GameObject chosen = explosive ? (projectilePrefabExplosive ?? projectilePrefabPlain) : projectilePrefabPlain;
-        float approxTime = horizDist / Mathf.Max(0.001f, speed);
-        SpawnProjectile(origin, landing, (landing - origin).normalized, explosive, chosen, speed, test: true, timeToLanding: approxTime, previewSpawned: false, distanceNorm: 0.5f);
+        GameObject chosen = explosive
+            ? (projectilePrefabExplosive != null ? projectilePrefabExplosive : projectilePrefabPlain)
+            : projectilePrefabPlain;
+        float approxTime = pathLen / Mathf.Max(0.001f, speed);
+        SpawnProjectile(origin, landing, explosive, chosen, speed, test: true, timeToLanding: approxTime, previewSpawned: false, distanceNorm: 0.5f);
     }
 
     private float ComputeTrackTotalLength()

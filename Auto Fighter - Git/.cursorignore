@@ -1,0 +1,17 @@
+﻿# Unity keeps these memory-mapped while the editor runs.
+# Cursor/OmniSharp holding them causes:
+# "user-mapped section open" on Assembly-CSharp.dll/.pdb
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+Artifacts/
+*.csproj
+*.sln
+*.suo
+*.user
+.vs/
+.idea/

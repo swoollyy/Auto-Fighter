@@ -36,7 +36,7 @@ public class RacingPopupStyleSO : ScriptableObject
     [Tooltip("Text to show after the value (e.g., ' HP', ' Fuel', or TMP sprite tag like '<sprite=0>').")]
     public string suffix = "";
 
-    [Tooltip("Format string for the number (e.g., '0', '0.#', '0.00').")]
+    [Tooltip("Unused for display now — values always show as integers via RacingUiNumberFormat.")]
     public string numberFormat = "0";
 
     [Header("Random Text Options")]
@@ -207,7 +207,7 @@ public class RacingPopupStyleSO : ScriptableObject
         {
             return randomTexts[UnityEngine.Random.Range(0, randomTexts.Length)];
         }
-        return $"{prefix}{value.ToString(numberFormat)}{suffix}";
+        return $"{prefix}{RacingUiNumberFormat.ToDisplayInt(value)}{suffix}";
     }
 
     /// <summary>

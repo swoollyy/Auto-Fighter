@@ -6,7 +6,7 @@ using UnityEngine;
 /// when a section's "override" toggle is ON, every field below is pushed into the live component at
 /// run start (config wins). When OFF, that component keeps its own scene values.
 ///
-/// Excluded on purpose: scene-object references (trackGenerator/playerTransform/parents/mainCamera) —
+/// Excluded on purpose: scene-object references (trackGenerator/playerTransform/parents) —
 /// a ScriptableObject asset can't hold scene refs; those stay wired on the components. Project-asset
 /// references (segment prefab, road material, prefab lists) and LayerMasks/AnimationCurves are fine.
 ///
@@ -245,10 +245,6 @@ public class TrialConfig : ScriptableObject
         public bool allowSpawnBehind = true;
         public float minSpawnDistanceBehind = 40f;
         public float maxSpawnDistanceBehind = 150f;
-
-        [Header("Camera Culling")]
-        [Tooltip("mainCamera reference stays on the spawner (it auto-finds the main camera).")]
-        public float viewportMargin = 0.1f;
 
         [Header("Initial Pre-Spawn")]
         public float initialPreSpawnDistance = 200f;

@@ -214,11 +214,14 @@ public class UIManager_Racing : MonoBehaviour
             float v = car.CurrentSpeed;
             if (speedometerUseKmh)
             {
-                int kmh = Mathf.RoundToInt(v * 3.6f);
+                int kmh = RacingUiNumberFormat.ToDisplayInt(v * 3.6f);
                 speedometerText.text = $"{kmh} km/h";
             }
             else
-                speedometerText.text = $"{v:F1} m/s";
+            {
+                int ms = RacingUiNumberFormat.ToDisplayInt(v);
+                speedometerText.text = $"{ms} m/s";
+            }
         }
 
         UpdateCrashRecoveryUI();
@@ -325,12 +328,12 @@ public class UIManager_Racing : MonoBehaviour
     private static string FormatPercent01(float fraction01)
     {
         float pct = Mathf.Clamp(fraction01 * 100f, 0f, 100f);
-        return pct.ToString("0.##");
+        return RacingUiNumberFormat.ToDisplayString(pct);
     }
 
     private static string FormatResourceValue(float value)
     {
-        return Mathf.Max(0f, value).ToString("0.##");
+        return RacingUiNumberFormat.ToDisplayString(Mathf.Max(0f, value));
     }
 
     public void UpdateRunCoins(int coinsThisRun)

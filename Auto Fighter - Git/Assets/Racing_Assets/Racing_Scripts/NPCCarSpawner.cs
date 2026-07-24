@@ -45,28 +45,21 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Tooltip("Allow spawning cars behind the player.")]
     [SerializeField] private bool allowSpawnBehind = true;
 
-    [Tooltip("Minimum distance behind player to spawn (must be outside camera view).")]
+    [Tooltip("Minimum distance behind player to spawn.")]
     [SerializeField] private float minSpawnDistanceBehind = 40f;
 
     [Tooltip("Maximum distance behind player to spawn.")]
     [SerializeField] private float maxSpawnDistanceBehind = 150f;
-
-    [Header("Camera Culling")]
-    [Tooltip("Reference to main camera (auto-finds if null).")]
-    [SerializeField] private Camera mainCamera;
-
-    [Tooltip("Extra margin outside viewport to ensure car is fully off-screen before spawning.")]
-    [SerializeField] private float viewportMargin = 0.1f;
 
     [Header("Initial Pre-Spawn")]
     [Tooltip("How far ahead (from start) we pre-fill cars before the run begins.")]
     [SerializeField] private float initialPreSpawnDistance = 200f;
 
     [Header("Despawn")]
-    [Tooltip("Despawn cars whose *current* position along the track spline is this far behind the player (uses each NPC’s live progress, not its spawn slot).")]
+    [Tooltip("Only applies to crashed wrecks: cull them when this far behind the player. Driving (non-crashed) cars are never despawned by the spawner.")]
     [SerializeField] private float despawnBehindDistance = 30f;
 
-    [Tooltip("Also despawn crashed cars after this duration.")]
+    [Tooltip("Unused by spawner (kept for TrialConfig compatibility). Crashed cars self-destroy via NPCTrafficCar.destroyDelay.")]
     [SerializeField] private float despawnCrashedAfter = 8f;
 
     [Header("Randomization")]
@@ -144,8 +137,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         minSpawnDistanceBehind = s.minSpawnDistanceBehind;
         maxSpawnDistanceBehind = s.maxSpawnDistanceBehind;
 
-        viewportMargin = s.viewportMargin;
-
         initialPreSpawnDistance = s.initialPreSpawnDistance;
         despawnBehindDistance = s.despawnBehindDistance;
         despawnCrashedAfter = s.despawnCrashedAfter;
@@ -191,7 +182,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             allowSpawnBehind = allowSpawnBehind,
             minSpawnDistanceBehind = minSpawnDistanceBehind,
             maxSpawnDistanceBehind = maxSpawnDistanceBehind,
-            viewportMargin = viewportMargin,
             initialPreSpawnDistance = initialPreSpawnDistance,
             despawnBehindDistance = despawnBehindDistance,
             despawnCrashedAfter = despawnCrashedAfter,
@@ -296,7 +286,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
     /// <summary>
     /// TEST only (P key).
     /// Force-spawns one NPC traffic car at the beginning of the track, bypassing:
-    /// - camera/viewport culling
     /// - spawn distance windows
     /// - spawn blockers / overlap checks
     /// - streaming / updateInterval
@@ -488,15 +477,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (UnityEngine.Random.value > effectiveChance)
             return;
 
-        // Pre-check: get spawn position and ensure it's NOT in camera view
-        SampleAlongPath(dist, out Vector3 candidatePos, out _);
-        if (IsPositionInCameraView(candidatePos))
-        {
-            if (verboseDebug)
-                Debug.Log($"[NPCTrafficCarSpawner] Skipped slot {slot} - in camera view");
-            return;
-        }
-
         TrySpawnCarAtDistance(slot, dist);
     }
 
@@ -524,20 +504,20 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
                 continue;
             }
 
-            // Robust world-space "behind" test. The previous arc-length-along-spline comparison
-            // could mis-project on curved / self-approaching track sections (and wrap near a loop),
-            // wrongly flagging a car that was actually in front of the player and making visible
-            // cars vanish. A car is now only culled when it is genuinely behind the player's travel
-            // direction, beyond the despawn distance, AND not currently on screen. Crashed cars are
-            // despawned separately by NPCTrafficCar's own crash timer and are unaffected by this.
+            // Driving cars must never be culled — only crashed wrecks (or already-destroyed nulls).
+            var npc = kvp.Value.GetComponent<NPCTrafficCar>();
+            if (npc == null || !npc.HasCrashed)
+                continue;
+
+            // Crashed wrecks: cull when behind the player and far enough.
+            // (NPCTrafficCar also self-destroys after destroyDelay; this frees slots sooner.)
             Vector3 toCar = kvp.Value.transform.position - playerPos;
             toCar.y = 0f;
 
             bool behind = Vector3.Dot(toCar, playerForward) < 0f;
             bool farEnough = toCar.sqrMagnitude > despawnSqr;
-            bool offScreen = !IsPositionInCameraView(kvp.Value.transform.position);
 
-            if (behind && farEnough && offScreen)
+            if (behind && farEnough)
                 _toRemove.Add(kvp.Key);
         }
 
@@ -545,7 +525,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         {
             if (_carsBySlot.TryGetValue(slot, out var obj) && obj != null)
                 DestroyCarCompletely(obj);
-                
+
             _carsBySlot.Remove(slot);
         }
     }
@@ -666,14 +646,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         {
             if (verboseDebug)
                 Debug.LogWarning($"[NPCTrafficCarSpawner] No ground found at slot {slot}");
-            return;
-        }
-
-        Vector3 spawnPos = hit.point + Vector3.up * carHeightOffset;
-        if (IsPositionInCameraView(spawnPos))
-        {
-            if (verboseDebug)
-                Debug.Log($"[NPCTrafficCarSpawner] Skipped spawn at slot {slot} - final position in camera view");
             return;
         }
 
@@ -859,25 +831,6 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         }
 
         return true;
-    }
-
-
-    private bool IsPositionInCameraView(Vector3 worldPos)
-    {
-        if (mainCamera == null)
-            mainCamera = Camera.main;
-
-        if (mainCamera == null)
-            return false; // Can't check, assume not visible
-
-        Vector3 viewportPoint = mainCamera.WorldToViewportPoint(worldPos);
-
-        // Check if in front of camera and within viewport (with margin)
-        bool inFront = viewportPoint.z > 0f;
-        bool inViewportX = viewportPoint.x > -viewportMargin && viewportPoint.x < 1f + viewportMargin;
-        bool inViewportY = viewportPoint.y > -viewportMargin && viewportPoint.y < 1f + viewportMargin;
-
-        return inFront && inViewportX && inViewportY;
     }
 
     public string SpawnQueueLabel => "NPC Traffic";

@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 17
   displayName: Max Acceleration
-  description: Boosts acceleration by .6
+  description: Boosts acceleration by .5
   maxLevel: 5
-  baseCost: 5
-  costPerLevel: 5
+  baseCost: 4
+  costPerLevel: 4
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.6
+  perLevelAdd: 0.5
   uiPosition: {x: -75, y: 0}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

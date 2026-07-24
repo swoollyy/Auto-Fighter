@@ -539,35 +539,43 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     carSpacing: 10
-    maxActiveCars: 12
+    maxActiveCars: 3
     minSpawnDistanceAhead: 10
     maxSpawnDistanceAhead: 30.3
-    allowSpawnBehind: 1
-    minSpawnDistanceBehind: 5
-    maxSpawnDistanceBehind: 20
-    viewportMargin: -0.13
+    allowSpawnBehind: 0
+    minSpawnDistanceBehind: 3
+    maxSpawnDistanceBehind: 7
     initialPreSpawnDistance: 17.76
     despawnBehindDistance: 60
     despawnCrashedAfter: 10
-    distanceJitter: 5.14
+    distanceJitter: 0.4
     spawnChancePerSlot: 0.963
     spawnChanceByDistance:
       serializedVersion: 2
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.85
-        inSlope: 0.14999998
-        outSlope: 0.14999998
+        value: 0
+        inSlope: 0
+        outSlope: 0
         tangentMode: 34
         weightedMode: 0
         inWeight: 0
         outWeight: 0.33333334
       - serializedVersion: 3
+        time: 0.5
+        value: 0
+        inSlope: -0.00810442
+        outSlope: -0.00810442
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.2525345
+        outWeight: 0.33333334
+      - serializedVersion: 3
         time: 1
         value: 1
-        inSlope: 0.14999998
-        outSlope: 0.14999998
+        inSlope: 2
+        outSlope: 2
         tangentMode: 34
         weightedMode: 0
         inWeight: 0.33333334
@@ -626,7 +634,7 @@ MonoBehaviour:
         m_RotationOrder: 4
     - coinType: 1
       enabled: 1
-      globalScale: 0.95
+      globalScale: 0.65
       distanceCurve:
         serializedVersion: 2
         m_Curve:
@@ -640,8 +648,8 @@ MonoBehaviour:
           inWeight: 0
           outWeight: 0
         - serializedVersion: 3
-          time: 0.5
-          value: 0.9
+          time: 0.49179077
+          value: 0.6284164
           inSlope: 0.82987446
           outSlope: 0.82987446
           tangentMode: 0
@@ -662,7 +670,7 @@ MonoBehaviour:
         m_RotationOrder: 4
     - coinType: 2
       enabled: 1
-      globalScale: 0.8
+      globalScale: 0.2
       distanceCurve:
         serializedVersion: 2
         m_Curve:
@@ -676,8 +684,8 @@ MonoBehaviour:
           inWeight: 0
           outWeight: 0
         - serializedVersion: 3
-          time: 1
-          value: 0.9
+          time: 0.9877014
+          value: 0.40754545
           inSlope: 0
           outSlope: 0
           tangentMode: 0
@@ -768,8 +776,8 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-    coinSpacing: 6.3
-    maxActiveCoins: 80
+    coinSpacing: 11.4
+    maxActiveCoins: 30
     minSpawnDistanceAhead: 70
     maxSpawnDistanceAhead: 150
     despawnBehindDistance: 25

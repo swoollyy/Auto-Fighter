@@ -52,8 +52,28 @@ public class CameraFollow : MonoBehaviour
 
     [Tooltip("How quickly the *camera's forward* catches up to the car's forward.\nLower = more lag, more looseness.")]
     [SerializeField] private float rotationLag = 4f;
-    [Tooltip("When drifting, multiply rotation lag by this (camera lags more). Falls off with drift charge like drift turn.")]
-    [SerializeField, Min(0.01f)] private float driftRotationLagMultiplier = 1.5f;
+    [Tooltip("While drifting, multiply all camera follow rates by this (higher = less lag / sharper). Eases back after drift.")]
+    [SerializeField, Min(1f)] private float driftLagSharpness = 2.2f;
+    [Tooltip("How quickly follow rates snap up when drift starts.")]
+    [SerializeField, Min(0.5f)] private float driftLagSharpnessRampIn = 12f;
+    [Tooltip("How quickly follow rates ease back to normal after drift ends.")]
+    [SerializeField, Min(0.5f)] private float driftLagSharpnessRampOut = 4f;
+
+    [Header("Drift Camera Tremor")]
+    [Tooltip("Maximum local positional shake while drifting. Keep this small.")]
+    [SerializeField, Min(0f)] private float driftTremorStrength = 0.045f;
+    [Tooltip("How rapidly the small drift tremors change direction.")]
+    [SerializeField, Min(0f)] private float driftTremorFrequency = 28f;
+    [Tooltip("How quickly the tremor fades in and out with drifting.")]
+    [SerializeField, Min(0f)] private float driftTremorResponse = 18f;
+
+    [Header("Drift FOV Zoom")]
+    [Tooltip("How many FOV degrees to zoom in (subtract) at full drift charge.")]
+    [SerializeField, Min(0f)] private float driftZoomInDeltaFOV = 8f;
+    [Tooltip("Seconds to blend the drift zoom-in.")]
+    [SerializeField, Min(0.01f)] private float driftFovRampIn = 0.15f;
+    [Tooltip("Seconds to blend the drift zoom back out.")]
+    [SerializeField, Min(0.01f)] private float driftFovRampOut = 0.25f;
 
     [Header("Air Trick Camera Lock")]
     [Tooltip("While tricking in the air: keep camera upright with a fixed heading, but still follow the car's position.")]
@@ -83,6 +103,10 @@ public class CameraFollow : MonoBehaviour
     private int shakeVibrato = 10;
     private float shakeRandomness = 0f;
     private float shakeSeed;
+    private float _driftTremorBlend;
+    private float _driftTremorSeed;
+    private float _driftFovOffsetCurrent;
+    private float _driftLagSharpnessBlend;
     private Coroutine _mapPeekCR;
     private bool _mapPeekHeld;
 
@@ -142,6 +166,21 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Maximum allowed absolute roll angle in degrees.")]
     [SerializeField, Range(0f, 45f)] private float maxRollDegrees = 18f;
 
+    [Tooltip("Multiplier applied to camera roll while actively drifting.")]
+    [SerializeField, Min(1f)] private float driftRollMultiplier = 2.2f;
+
+    [Tooltip("Maximum camera roll allowed at full drift charge.")]
+    [SerializeField, Range(0f, 45f)] private float maxDriftRollDegrees = 6f;
+
+    [Tooltip("How quickly camera tilt follows steer intensity while drifting (higher = snappier).")]
+    [SerializeField, Min(0.5f)] private float driftTiltIntensitySmooth = 8f;
+
+    [Tooltip("How quickly tilt eases to level after drift fully ends. Lower = softer.")]
+    [SerializeField, Min(0.5f)] private float driftTiltReleaseSmooth = 2.5f;
+
+    [Tooltip("Roll smoothing after drift fully ends (lower = less snappy level-out).")]
+    [SerializeField, Min(0.5f)] private float driftTiltRollReleaseSmooth = 3f;
+
     [Tooltip("Smoothing speed for roll interpolation (higher = faster).")]
     [SerializeField, Min(0f)] private float rollSmoothing = 8f;
 
@@ -153,6 +192,8 @@ public class CameraFollow : MonoBehaviour
 
     // internal roll state
     private float _currentZRoll = 0f;
+    private float _latchedDriftRollSign = 0f;
+    private float _driftTiltIntensity = 0f;
     private Vector3 _prevTargetForwardFlat = Vector3.forward;
     private bool _boostVfxPlaying;
     private float _boostVfxLingerTimer;
@@ -171,6 +212,7 @@ public class CameraFollow : MonoBehaviour
         _startFOV = _targetFOV = defaultFOV;
         _fovLerpDuration = 0f;
         _fovAnimating = false;
+        _driftTremorSeed = UnityEngine.Random.value * 1000f;
 
         // ★ Try to auto-bind car if not supplied
         if (car == null && target != null)
@@ -314,6 +356,23 @@ public class CameraFollow : MonoBehaviour
         _boostFovOffsetCurrent = Mathf.Lerp(_boostFovOffsetCurrent, _boostFovOffsetTarget, t);
     }
 
+    private void UpdateDriftFovOffset(float dt)
+    {
+        // Negative FOV = zoom in. Scales with drift charge while actively drifting.
+        float driftTarget = car != null && car.IsDrifting
+            ? -Mathf.Max(0f, driftZoomInDeltaFOV)
+                * Mathf.Lerp(0.45f, 1f, Mathf.Clamp01(car.DriftCharge))
+                * Mathf.Clamp01(car.DriftGroundFeel)
+            : 0f;
+
+        float rampSeconds = driftTarget < _driftFovOffsetCurrent
+            ? Mathf.Max(0.01f, driftFovRampIn)
+            : Mathf.Max(0.01f, driftFovRampOut);
+
+        float t = 1f - Mathf.Exp(-dt / rampSeconds);
+        _driftFovOffsetCurrent = Mathf.Lerp(_driftFovOffsetCurrent, driftTarget, t);
+    }
+
     private void UpdateUnifiedAutoFov(float dt)
     {
         if (cam == null || _fovAnimating)
@@ -323,6 +382,7 @@ public class CameraFollow : MonoBehaviour
             SyncBoostPresentation(_subscribedCar.IsBoostPresentationActive, dt);
 
         UpdateBoostFovOffset(dt);
+        UpdateDriftFovOffset(dt);
 
         float baseTarget = useSpeedBasedFOV ? ComputeSpeedFovTarget() : defaultFOV;
 
@@ -330,7 +390,7 @@ public class CameraFollow : MonoBehaviour
             ? Mathf.InverseLerp(fovSpeedMin, fovSpeedMax, car.CurrentSpeed)
             : 0f;
         float boostScale = Mathf.Lerp(1f, 1f - boostFovOffsetSpeedFalloff, speedNorm);
-        float combinedTarget = baseTarget + _boostFovOffsetCurrent * boostScale;
+        float combinedTarget = baseTarget + _boostFovOffsetCurrent * boostScale + _driftFovOffsetCurrent;
         _speedFovCurrent = Mathf.Lerp(_speedFovCurrent, combinedTarget, speedFovSmooth * dt);
 
         if (!_suppressAutoFov)
@@ -413,7 +473,7 @@ public class CameraFollow : MonoBehaviour
             ComputeNormalFollow(targetForwardFlat, out basePos, out baseRot);
         }
 
-        Vector3 shakeOffset = ComputeShakeOffset(baseRot);
+        Vector3 shakeOffset = ComputeShakeOffset(baseRot) + ComputeDriftTremorOffset(baseRot);
 
         transform.position = basePos + shakeOffset;
         transform.rotation = baseRot;
@@ -480,12 +540,22 @@ public class CameraFollow : MonoBehaviour
 
     private void ComputeNormalFollow(Vector3 targetForwardFlat, out Vector3 basePos, out Quaternion baseRot)
     {
-        float effectiveRotationLag = rotationLag;
-        if (car != null && driftRotationLagMultiplier > 1f)
-        {
-            float charge = car.DriftCharge;
-            effectiveRotationLag = rotationLag / Mathf.Lerp(1f, driftRotationLagMultiplier, charge);
-        }
+        float driftTarget = car != null && car.IsDrifting
+            ? Mathf.Lerp(0.35f, 1f, Mathf.Clamp01(car.DriftCharge)) * Mathf.Clamp01(car.DriftGroundFeel)
+            : 0f;
+        float sharpnessRamp = driftTarget > _driftLagSharpnessBlend
+            ? driftLagSharpnessRampIn
+            : driftLagSharpnessRampOut;
+        _driftLagSharpnessBlend = Mathf.Lerp(
+            _driftLagSharpnessBlend,
+            driftTarget,
+            1f - Mathf.Exp(-sharpnessRamp * Time.deltaTime));
+
+        float sharpness = Mathf.Lerp(1f, Mathf.Max(1f, driftLagSharpness), _driftLagSharpnessBlend);
+        float effectiveRotationLag = rotationLag * sharpness;
+        float effectivePositionFollow = positionFollowSpeed * sharpness;
+        float effectiveRotationFollow = rotationFollowSpeed * sharpness;
+        float effectiveRollSmoothing = rollSmoothing * sharpness;
 
         // While entering trick lock (or holding it until landing), keep orbit heading on the freeze basis.
         if (enableTrickCameraFreeze && car != null && (car.IsInAirTrickMode || _holdTrickCameraUntilLand))
@@ -519,7 +589,7 @@ public class CameraFollow : MonoBehaviour
         Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
 
         Vector3 desiredPos = target.position + yawOnly * offset;
-        basePos = Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
+        basePos = Vector3.Lerp(transform.position, desiredPos, effectivePositionFollow * Time.deltaTime);
 
         Vector3 e = yawOnly.eulerAngles;
         e.x = cameraPitch;
@@ -532,25 +602,64 @@ public class CameraFollow : MonoBehaviour
             float yawRateDegPerSec = signedYawDelta / Mathf.Max(1e-6f, Time.deltaTime);
             float yawNorm = Mathf.Clamp(yawRateDegPerSec / zRollYawRateDivisor, -1f, 1f);
 
-            float lateralFactor = 0f;
-            var rb = target.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                float lateralVel = Vector3.Dot(rb.velocity, target.right);
-                lateralFactor = Mathf.Clamp01(Mathf.Abs(lateralVel) / lateralVelocityNormalization);
-            }
-
             float sign = invertZRoll ? -1f : 1f;
             float baseRoll = yawNorm * zRollScale * 180f * sign;
-            float driftAmp = 1f + (driftInfluence * lateralFactor);
-            float rollTarget = Mathf.Clamp(baseRoll * driftAmp, -maxRollDegrees, maxRollDegrees);
-            _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmoothing * Time.deltaTime));
+
+            // Drift bank follows steer intensity (how hard you hold left/right), NOT drift charge.
+            // Charge can keep building for held-boost with stick released; tilt should ease down then.
+            bool driftingNow = car != null && car.IsDrifting;
+            float intensityTarget = driftingNow ? Mathf.Clamp01(car.DriftSteerIntensity) : 0f;
+            float intensityRamp = driftingNow
+                ? driftTiltIntensitySmooth
+                : driftTiltReleaseSmooth;
+            _driftTiltIntensity = Mathf.Lerp(
+                _driftTiltIntensity,
+                intensityTarget,
+                1f - Mathf.Exp(-intensityRamp * Time.deltaTime));
+
+            float rollTarget;
+            if (driftingNow)
+            {
+                int driftDir = car.DriftSteerDirectionSign;
+                if (driftDir != 0)
+                    _latchedDriftRollSign = driftDir;
+            }
+            else if (_driftTiltIntensity <= 0.001f)
+            {
+                _latchedDriftRollSign = 0f;
+            }
+
+            if (_latchedDriftRollSign != 0f && _driftTiltIntensity > 0.001f)
+            {
+                // Full stick into the drift → maxDriftRollDegrees; stick released → levels out.
+                rollTarget = _latchedDriftRollSign * sign * (maxDriftRollDegrees * _driftTiltIntensity);
+            }
+            else
+            {
+                // Non-drift camera roll (yaw-based).
+                float lateralFactor = 0f;
+                var rb = target.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    float lateralVel = Vector3.Dot(rb.velocity, target.right);
+                    lateralFactor = Mathf.Clamp01(Mathf.Abs(lateralVel) / lateralVelocityNormalization);
+                }
+
+                float rollAmp = 1f + (driftInfluence * lateralFactor);
+                rollTarget = Mathf.Clamp(baseRoll * rollAmp, -maxRollDegrees, maxRollDegrees);
+            }
+
+            // Softer roll lerp only after drift ends; while drifting, track steer intensity closely.
+            float rollSmooth = (!driftingNow && _driftTiltIntensity > 0.001f)
+                ? Mathf.Min(effectiveRollSmoothing, driftTiltRollReleaseSmooth)
+                : effectiveRollSmoothing;
+            _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmooth * Time.deltaTime));
             rollAngle = _currentZRoll;
         }
 
         e.z = rollAngle;
         Quaternion desiredRot = Quaternion.Euler(e);
-        baseRot = Quaternion.Slerp(transform.rotation, desiredRot, rotationFollowSpeed * Time.deltaTime);
+        baseRot = Quaternion.Slerp(transform.rotation, desiredRot, effectiveRotationFollow * Time.deltaTime);
     }
 
     private Vector3 ComputeShakeOffset(Quaternion baseRot)
@@ -585,6 +694,27 @@ public class CameraFollow : MonoBehaviour
         Vector3 right = baseRot * Vector3.right;
         Vector3 up = baseRot * Vector3.up;
         return (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
+    }
+
+    private Vector3 ComputeDriftTremorOffset(Quaternion baseRot)
+    {
+        float driftTarget = car != null && car.IsDrifting
+            ? Mathf.Lerp(0.45f, 1f, Mathf.Clamp01(car.DriftCharge)) * Mathf.Clamp01(car.DriftGroundFeel)
+            : 0f;
+        _driftTremorBlend = Mathf.Lerp(
+            _driftTremorBlend,
+            driftTarget,
+            1f - Mathf.Exp(-driftTremorResponse * Time.deltaTime));
+
+        if (_driftTremorBlend <= 0.001f || driftTremorStrength <= 0f || driftTremorFrequency <= 0f)
+            return Vector3.zero;
+
+        float sampleTime = Time.time * driftTremorFrequency;
+        float x = Mathf.PerlinNoise(_driftTremorSeed, sampleTime) * 2f - 1f;
+        float y = Mathf.PerlinNoise(_driftTremorSeed + 37.1f, sampleTime) * 2f - 1f;
+        Vector3 right = baseRot * Vector3.right;
+        Vector3 up = baseRot * Vector3.up;
+        return (right * x + up * y) * (driftTremorStrength * _driftTremorBlend);
     }
 
     public void SetTarget(Transform t)
@@ -786,7 +916,9 @@ public class CameraFollow : MonoBehaviour
 
     private float GetBaselineFov()
     {
-        return useSpeedBasedFOV ? ComputeSpeedFovTarget() + _boostFovOffsetCurrent : defaultFOV;
+        return useSpeedBasedFOV
+            ? ComputeSpeedFovTarget() + _boostFovOffsetCurrent + _driftFovOffsetCurrent
+            : defaultFOV;
     }
 
     private IEnumerator MapPeekReturnCoroutine(float fromFOV, float duration)

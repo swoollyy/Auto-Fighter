@@ -59,14 +59,8 @@ MonoBehaviour:
   - kind: 3
     severityWeight: 1.35
     extraScaleBonus: 0
-  - kind: 4
-    severityWeight: 1.8
-    extraScaleBonus: 0
   - kind: 5
     severityWeight: 1.65
-    extraScaleBonus: 0
-  - kind: 6
-    severityWeight: 2
     extraScaleBonus: 0
   - kind: 7
     severityWeight: 1.3
@@ -74,9 +68,15 @@ MonoBehaviour:
   - kind: 8
     severityWeight: 1.65
     extraScaleBonus: 0
-  - kind: 10
-    severityWeight: 1.85
-    extraScaleBonus: 0
+  - kind: 4
+    severityWeight: 2.4
+    extraScaleBonus: 0.1
   - kind: 11
     severityWeight: 2
     extraScaleBonus: 0
+  - kind: 10
+    severityWeight: 3
+    extraScaleBonus: 0
+  - kind: 6
+    severityWeight: 5
+    extraScaleBonus: 1

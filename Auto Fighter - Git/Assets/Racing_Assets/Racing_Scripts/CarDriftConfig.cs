@@ -27,6 +27,7 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private float driftBrakeDecayPerSecond = 0.001f;
 
     [Header("Drift Charge")]
+    [Tooltip("If true, drift charge only builds while steering. Leave false to keep charging while holding drift with stick released (drift-held boost).")]
     [SerializeField] private bool requireDirectionalInputForDriftCharge = false;
     [SerializeField] private float driftNeutralDrainRate = 2.6f;
     [SerializeField] private float driftNeutralFullResetDelay = 3.65f;
@@ -37,6 +38,8 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private float steerFlipRebuildDelay = 0.1f;
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
     [SerializeField] private float driftGlideDecayPerSecond = 0.15f;
+    [Tooltip("After landing while still holding a mid-air drift, how long to ease into full ground-drift feel (steer, side force, camera). 0 = snap.")]
+    [SerializeField, Min(0f)] private float driftLandingFeelBlendSeconds = 0.38f;
 
     [Header("Close Call Speed Boost")]
     [SerializeField] private float closeCallBoostBaseDuration = 0.9f;
@@ -89,6 +92,7 @@ public class CarDriftConfig : MonoBehaviour
     public float SteerFlipRebuildDelay => steerFlipRebuildDelay;
     public bool AllowDriftGlideWithoutSteer => allowDriftGlideWithoutSteer;
     public float DriftGlideDecayPerSecond => driftGlideDecayPerSecond;
+    public float DriftLandingFeelBlendSeconds => driftLandingFeelBlendSeconds;
     public float CloseCallBoostBaseDuration => closeCallBoostBaseDuration;
     public float CloseCallBoostForce => closeCallBoostForce;
     public ForceMode CloseCallBoostForceMode => closeCallBoostForceMode;

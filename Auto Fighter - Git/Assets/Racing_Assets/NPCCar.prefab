@@ -186,7 +186,7 @@ MonoBehaviour:
   trackLookAhead: 2
   speed: 3
   randomizeSpeed: 1
-  speedRange: {x: 2, y: 6}
+  speedRange: {x: 4, y: 9}
   slowDownWhileAvoiding: 1
   avoidingSpeedMultiplier: 1
   roadLayer:
@@ -215,13 +215,13 @@ MonoBehaviour:
   obstacleDetectionLayers:
     serializedVersion: 2
     m_Bits: 13371521
-  scanRange: 6
-  pathHalfWidth: 2
+  scanRange: 5
+  pathHalfWidth: 3
   scanRayCount: 20
-  scanFanAngleDeg: 100
-  forwardThreatConeHalfAngleDeg: 15
-  forwardThreatConeDangerBoostMultiplier: 1.8
-  postDodgeThreatConeBoostDuration: 0.5
+  scanFanAngleDeg: 80
+  forwardThreatConeHalfAngleDeg: 17.8
+  forwardThreatConeDangerBoostMultiplier: 1.9
+  postDodgeThreatConeBoostDuration: 0.86
   widenForwardThreatConeWhileAvoiding: 1
   rayHeight: 0
   rayForwardOffset: 0.4
@@ -232,12 +232,12 @@ MonoBehaviour:
   avoidSteerWeight: 0.85
   dodgeHeadingSlewDegPerSec: 45
   preCommitSteerBlend: 0
-  framesForwardClearToExit: 4
+  framesForwardClearToExit: 6
   exitWhenTrackAheadClear: 1
   trackAheadClearCheckDistance: 3
   framesTrackAheadClearToExit: 4
-  sideNudgeMaxDistance: 4.5
-  minAvoidTimeBeforeExit: 0.15
+  sideNudgeMaxDistance: 5
+  minAvoidTimeBeforeExit: 0.25
   obstacleAheadBlocksExitDistance: 0.5
   obstacleBehindRequiredForExit: 0.25
   recoveryMinDuration: 0.2
@@ -279,14 +279,6 @@ MonoBehaviour:
   crashVFXLifetime: 5
   destroyAfterCrash: 1
   destroyDelay: 5
-  addNavmeshCutOnCrash: 0
-  crashCutUsePrefab: 0
-  crashCutPrefab: {fileID: 0}
-  crashCutBoxSize: {x: 2.5, y: 3, z: 2.5}
-  crashCutUpdateDistance: 0.4
-  crashCutUpdateRotationDistance: 10
-  crashCutUseRotationAndScale: 1
-  crashCutCutsAddedGeometry: 1
   engineClip: {fileID: 0}
   engineVolume: 0.361
   enginePitchMin: 0.16
