@@ -59,6 +59,18 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("How quickly follow rates ease back to normal after drift ends.")]
     [SerializeField, Min(0.5f)] private float driftLagSharpnessRampOut = 4f;
 
+    [Header("Turn Lag Tightening")]
+    [Tooltip("At full steer, multiply all camera follow rates by this (position, rotation lag, look, roll). Higher = less lag / tighter tracking. 1 = no change.")]
+    [SerializeField, Min(1f)] private float turnLagSharpness = 1.85f;
+    [Tooltip("Steer strength (0–1) where lag tightening begins.")]
+    [SerializeField, Range(0f, 1f)] private float turnLagTightenStart = 0.25f;
+    [Tooltip("Steer strength (0–1) where lag tightening reaches full Turn Lag Sharpness.")]
+    [SerializeField, Range(0f, 1f)] private float turnLagTightenFull = 1f;
+    [Tooltip("How quickly lag tightens as you push into a turn (higher = snappier).")]
+    [SerializeField, Min(0.5f)] private float turnLagSharpnessRampIn = 10f;
+    [Tooltip("How quickly lag loosens when you ease off the stick (higher = faster return to base lag).")]
+    [SerializeField, Min(0.5f)] private float turnLagSharpnessRampOut = 5f;
+
     [Header("Drift Camera Tremor")]
     [Tooltip("Maximum local positional shake while drifting. Keep this small.")]
     [SerializeField, Min(0f)] private float driftTremorStrength = 0.045f;
@@ -107,6 +119,7 @@ public class CameraFollow : MonoBehaviour
     private float _driftTremorSeed;
     private float _driftFovOffsetCurrent;
     private float _driftLagSharpnessBlend;
+    private float _turnLagSharpnessBlend;
     private Coroutine _mapPeekCR;
     private bool _mapPeekHeld;
 
@@ -169,14 +182,17 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Multiplier applied to camera roll while actively drifting.")]
     [SerializeField, Min(1f)] private float driftRollMultiplier = 2.2f;
 
-    [Tooltip("Maximum camera roll allowed at full drift charge.")]
+    [Tooltip("Maximum camera roll allowed at full drift turn intensity.")]
     [SerializeField, Range(0f, 45f)] private float maxDriftRollDegrees = 6f;
 
-    [Tooltip("How quickly camera tilt follows steer intensity while drifting (higher = snappier).")]
-    [SerializeField, Min(0.5f)] private float driftTiltIntensitySmooth = 8f;
+    [Tooltip("How fast signed drift tilt moves toward the stick (-1..1 units per second). Lower = slower build / softer side-to-side crossfade.")]
+    [SerializeField, Min(0.1f)] private float driftTiltChangeSpeed = 2.4f;
 
-    [Tooltip("How quickly tilt eases to level after drift fully ends. Lower = softer.")]
-    [SerializeField, Min(0.5f)] private float driftTiltReleaseSmooth = 2.5f;
+    [Tooltip("While reversing mid-drift, multiply Drift Tilt Change Speed by this so left↔right crossfades through center instead of snapping.")]
+    [SerializeField, Range(0.05f, 1f)] private float driftTiltCrossfadeSpeedMult = 0.45f;
+
+    [Tooltip("How fast tilt returns to level after drift ends (-1..1 units per second).")]
+    [SerializeField, Min(0.1f)] private float driftTiltReleaseSpeed = 1.6f;
 
     [Tooltip("Roll smoothing after drift fully ends (lower = less snappy level-out).")]
     [SerializeField, Min(0.5f)] private float driftTiltRollReleaseSmooth = 3f;
@@ -192,8 +208,8 @@ public class CameraFollow : MonoBehaviour
 
     // internal roll state
     private float _currentZRoll = 0f;
-    private float _latchedDriftRollSign = 0f;
-    private float _driftTiltIntensity = 0f;
+    /// <summary>Smoothed signed drift bank in [-1, 1]. Crosses 0 when flipping sides mid-drift.</summary>
+    private float _driftRollSigned = 0f;
     private Vector3 _prevTargetForwardFlat = Vector3.forward;
     private bool _boostVfxPlaying;
     private float _boostVfxLingerTimer;
@@ -551,7 +567,28 @@ public class CameraFollow : MonoBehaviour
             driftTarget,
             1f - Mathf.Exp(-sharpnessRamp * Time.deltaTime));
 
-        float sharpness = Mathf.Lerp(1f, Mathf.Max(1f, driftLagSharpness), _driftLagSharpnessBlend);
+        float driftSharpness = Mathf.Lerp(1f, Mathf.Max(1f, driftLagSharpness), _driftLagSharpnessBlend);
+
+        // Harder steer → less camera rotation lag so heading matches the car more closely.
+        float steer01 = car != null ? Mathf.Clamp01(car.SteerIntensity) : 0f;
+        float turnTarget = 0f;
+        if (turnLagTightenFull > turnLagTightenStart + 0.0001f)
+            turnTarget = Mathf.InverseLerp(turnLagTightenStart, turnLagTightenFull, steer01);
+        else if (steer01 >= turnLagTightenFull)
+            turnTarget = 1f;
+
+        float turnRamp = turnTarget > _turnLagSharpnessBlend
+            ? turnLagSharpnessRampIn
+            : turnLagSharpnessRampOut;
+        _turnLagSharpnessBlend = Mathf.Lerp(
+            _turnLagSharpnessBlend,
+            turnTarget,
+            1f - Mathf.Exp(-turnRamp * Time.deltaTime));
+
+        float turnSharpness = Mathf.Lerp(1f, Mathf.Max(1f, turnLagSharpness), _turnLagSharpnessBlend);
+
+        // Drift + turn sharpness tighten every camera lag channel (position, heading, look, roll).
+        float sharpness = driftSharpness * turnSharpness;
         float effectiveRotationLag = rotationLag * sharpness;
         float effectivePositionFollow = positionFollowSpeed * sharpness;
         float effectiveRotationFollow = rotationFollowSpeed * sharpness;
@@ -605,34 +642,36 @@ public class CameraFollow : MonoBehaviour
             float sign = invertZRoll ? -1f : 1f;
             float baseRoll = yawNorm * zRollScale * 180f * sign;
 
-            // Drift bank follows steer intensity (how hard you hold left/right), NOT drift charge.
-            // Charge can keep building for held-boost with stick released; tilt should ease down then.
+            // Drift bank: signed tilt tracks turn intensity and must ease through 0 when flipping sides.
             bool driftingNow = car != null && car.IsDrifting;
-            float intensityTarget = driftingNow ? Mathf.Clamp01(car.DriftSteerIntensity) : 0f;
-            float intensityRamp = driftingNow
-                ? driftTiltIntensitySmooth
-                : driftTiltReleaseSmooth;
-            _driftTiltIntensity = Mathf.Lerp(
-                _driftTiltIntensity,
-                intensityTarget,
-                1f - Mathf.Exp(-intensityRamp * Time.deltaTime));
-
-            float rollTarget;
+            float signedTiltTarget = 0f;
             if (driftingNow)
             {
                 int driftDir = car.DriftSteerDirectionSign;
+                float intensity = Mathf.Clamp01(car.DriftSteerIntensity);
                 if (driftDir != 0)
-                    _latchedDriftRollSign = driftDir;
-            }
-            else if (_driftTiltIntensity <= 0.001f)
-            {
-                _latchedDriftRollSign = 0f;
+                    signedTiltTarget = driftDir * intensity;
             }
 
-            if (_latchedDriftRollSign != 0f && _driftTiltIntensity > 0.001f)
+            float tiltSpeed = driftingNow ? driftTiltChangeSpeed : driftTiltReleaseSpeed;
+            // Opposite-side target while still tilted: slow crossfade through center (no snap).
+            bool crossingSides = driftingNow
+                && Mathf.Abs(_driftRollSigned) > 0.01f
+                && Mathf.Abs(signedTiltTarget) > 0.01f
+                && Mathf.Sign(_driftRollSigned) != Mathf.Sign(signedTiltTarget);
+            if (crossingSides)
+                tiltSpeed *= driftTiltCrossfadeSpeedMult;
+
+            _driftRollSigned = Mathf.MoveTowards(
+                _driftRollSigned,
+                signedTiltTarget,
+                Mathf.Max(0.01f, tiltSpeed) * Time.deltaTime);
+
+            float rollTarget;
+            if (Mathf.Abs(_driftRollSigned) > 0.001f)
             {
-                // Full stick into the drift → maxDriftRollDegrees; stick released → levels out.
-                rollTarget = _latchedDriftRollSign * sign * (maxDriftRollDegrees * _driftTiltIntensity);
+                // Hard steer into the drift → maxDriftRollDegrees; ease / flip → scales with signed tilt.
+                rollTarget = sign * (maxDriftRollDegrees * _driftRollSigned);
             }
             else
             {
@@ -649,8 +688,8 @@ public class CameraFollow : MonoBehaviour
                 rollTarget = Mathf.Clamp(baseRoll * rollAmp, -maxRollDegrees, maxRollDegrees);
             }
 
-            // Softer roll lerp only after drift ends; while drifting, track steer intensity closely.
-            float rollSmooth = (!driftingNow && _driftTiltIntensity > 0.001f)
+            // Softer roll lerp only after drift ends; while drifting, track the signed tilt closely.
+            float rollSmooth = (!driftingNow && Mathf.Abs(_driftRollSigned) > 0.001f)
                 ? Mathf.Min(effectiveRollSmoothing, driftTiltRollReleaseSmooth)
                 : effectiveRollSmoothing;
             _currentZRoll = Mathf.Lerp(_currentZRoll, rollTarget, 1f - Mathf.Exp(-rollSmooth * Time.deltaTime));
@@ -698,9 +737,11 @@ public class CameraFollow : MonoBehaviour
 
     private Vector3 ComputeDriftTremorOffset(Quaternion baseRot)
     {
-        float driftTarget = car != null && car.IsDrifting
-            ? Mathf.Lerp(0.45f, 1f, Mathf.Clamp01(car.DriftCharge)) * Mathf.Clamp01(car.DriftGroundFeel)
-            : 0f;
+        // Tremor follows smoothed drift-bank intensity (not charge alone), so side flips ease out/in.
+        float driftTarget = Mathf.Abs(_driftRollSigned);
+        if (car != null && car.IsDrifting)
+            driftTarget *= Mathf.Lerp(0.55f, 1f, Mathf.Clamp01(car.DriftCharge)) * Mathf.Clamp01(car.DriftGroundFeel);
+
         _driftTremorBlend = Mathf.Lerp(
             _driftTremorBlend,
             driftTarget,

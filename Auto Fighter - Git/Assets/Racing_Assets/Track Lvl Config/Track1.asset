@@ -87,7 +87,7 @@ MonoBehaviour:
     useRandomSeed: 1
     fixedSeed: 12345
     generateRoadMesh: 1
-    roadWidth: 5.5
+    roadWidth: 6.5
     roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
     uvTiling: 0.08
     useSmoothing: 1

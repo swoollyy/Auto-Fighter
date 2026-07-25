@@ -17,6 +17,10 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private float driftBuildRate = 0.7f;
     [SerializeField] private float driftReleaseRate = 12.2f;
     [SerializeField] private float driftSideForce = 0.41f;
+    [Tooltip("How much of Drift Side Force remains while accelerating in a drift (0 = old hard cut / grip turn, 1 = full slide even on throttle).")]
+    [SerializeField, Range(0f, 1f)] private float driftSideForceWhileAccelerating = 0.35f;
+    [Tooltip("How fast side-force blends between throttle-on and throttle-off (higher = snappier).")]
+    [SerializeField, Min(0.1f)] private float driftSideForceThrottleBlendRate = 4f;
     [SerializeField] private float driftSpeedDecayPerSecond = 0.06f;
     [SerializeField] private float driftHeldSpeedDecayPerSecond = 0f;
     [SerializeField] private float driftForwardAccelMultiplier = 0f;
@@ -76,6 +80,8 @@ public class CarDriftConfig : MonoBehaviour
     public float DriftBuildRate => driftBuildRate;
     public float DriftReleaseRate => driftReleaseRate;
     public float DriftSideForce => driftSideForce;
+    public float DriftSideForceWhileAccelerating => driftSideForceWhileAccelerating;
+    public float DriftSideForceThrottleBlendRate => driftSideForceThrottleBlendRate;
     public float DriftSpeedDecayPerSecond => driftSpeedDecayPerSecond;
     public float DriftHeldSpeedDecayPerSecond => driftHeldSpeedDecayPerSecond;
     public float DriftForwardAccelMultiplier => driftForwardAccelMultiplier;

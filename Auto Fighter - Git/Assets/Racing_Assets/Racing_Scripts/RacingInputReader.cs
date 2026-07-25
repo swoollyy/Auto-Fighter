@@ -54,6 +54,7 @@ public class RacingInputReader : MonoBehaviour
     private float _accelerateCache;
     private float _brakeCache;
     private bool _boostDownCache;
+    private bool _boostHeldCache;
     private bool _driftHeldCache;
     private bool _restartDownCache;
     private bool _mashSouthDownCache;
@@ -82,6 +83,8 @@ public class RacingInputReader : MonoBehaviour
     public float Accelerate => _accelerateCache;
     public float Brake => _brakeCache;
     public bool BoostDown => _boostDownCache;
+    /// <summary>True while the boost button is held (not just the press edge).</summary>
+    public bool BoostHeld => _boostHeldCache;
     public bool DriftHeld => _driftHeldCache;
     public bool RestartDown => _restartDownCache;
     public bool MashSouthDown => _mashSouthDownCache;
@@ -294,6 +297,7 @@ public class RacingInputReader : MonoBehaviour
             _accelerateCache = ReadAccelerate();
             _brakeCache = ReadBrake();
             _boostDownCache = _boostAction != null && _boostAction.triggered;
+            _boostHeldCache = _boostAction != null && _boostAction.IsPressed();
             _driftHeldCache = _driftAction != null && _driftAction.IsPressed();
             _restartDownCache = _restartAction != null && _restartAction.triggered;
             _mashSouthDownCache = _mashSouthAction != null && _mashSouthAction.triggered;
@@ -328,6 +332,7 @@ public class RacingInputReader : MonoBehaviour
         _trickStickCache = Vector2.zero;
         _barrelRollHeldCache = false;
         _boostDownCache = false;
+        _boostHeldCache = false;
         _driftHeldCache = false;
         _restartDownCache = false;
         _mashSouthDownCache = false;

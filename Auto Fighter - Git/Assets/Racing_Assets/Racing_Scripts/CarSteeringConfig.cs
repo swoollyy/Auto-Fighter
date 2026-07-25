@@ -37,14 +37,22 @@ public class CarSteeringConfig : MonoBehaviour
     [SerializeField, Min(0f)] private float reverseSteerEngageForwardSpeed = 1.5f;
 
     [Header("Steer Rolling Traction")]
+    [Tooltip("This is the accel-vs-coast turn feel: while coasting + turning, velocity is pulled onto the nose. While accelerating, that effect is reduced/off.")]
     [SerializeField] private float baseSteeringDamp = 8f;
     [SerializeField] private bool enableSteerTraction = true;
+    [Tooltip("How quickly travel direction follows the car nose while traction is active. Higher = snappier coast turns.")]
     [SerializeField] private float steerTractionReorientRate = 5.59f;
+    [Tooltip("Extra forward push along the nose while coast-turning (helps keep speed through the turn).")]
     [SerializeField] private float steerRollingAccel = 2.25f;
     [SerializeField] private float minSpeedForSteerTraction = 0.1f;
+    [Tooltip("How hard sideways slide is killed while coast-turning. Higher = gripper / less slide.")]
     [SerializeField] private float lateralFrictionWhileSteering = 2.46f;
-    [SerializeField] private float steerTractionBlendIn = 8.21f;
-    [SerializeField] private float steerTractionBlendOut = 7.1f;
+    [Tooltip("How fast coast-turn traction ramps ON when you release accel (lower = softer).")]
+    [SerializeField] private float steerTractionBlendIn = 3.2f;
+    [Tooltip("How fast coast-turn traction ramps OFF when you press accel (lower = softer).")]
+    [SerializeField] private float steerTractionBlendOut = 2.8f;
+    [Tooltip("How much of full coast-turn traction remains while accelerating + turning (0 = old hard cut, 1 = same as coast).")]
+    [SerializeField, Range(0f, 1f)] private float steerTractionWhileAccelerating = 0.4f;
     [SerializeField, Range(0f, 2f)] private float steerRollingAccelCoastMultiplier = 0.441f;
     [SerializeField] private bool applySteerRollingAccelOnIce = false;
 
@@ -74,6 +82,7 @@ public class CarSteeringConfig : MonoBehaviour
     public float LateralFrictionWhileSteering => lateralFrictionWhileSteering;
     public float SteerTractionBlendIn => steerTractionBlendIn;
     public float SteerTractionBlendOut => steerTractionBlendOut;
+    public float SteerTractionWhileAccelerating => steerTractionWhileAccelerating;
     public float SteerRollingAccelCoastMultiplier => steerRollingAccelCoastMultiplier;
     public bool ApplySteerRollingAccelOnIce => applySteerRollingAccelOnIce;
 }

@@ -1447,7 +1447,7 @@ MonoBehaviour:
   testAlwaysAccelerate: 0
   baseAcceleration: 3.9
   baseMaxSpeed: 10
-  baseBrakingForce: 0.01
+  baseBrakingForce: 2
   baseDrag: 1
   coastLowDecelPerSecond: 1.88
   coastHighDecelPerSecond: 2.05
@@ -1506,6 +1506,7 @@ MonoBehaviour:
   lateralFrictionWhileSteering: 0.76
   steerTractionBlendIn: 3.64
   steerTractionBlendOut: 3.02
+  steerTractionWhileAccelerating: 0.4
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
 --- !u!114 &6905870851410593353
@@ -1559,12 +1560,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   requireDriftUnlock: 1
   driftKey: 304
-  driftMinSpeed: 0.95
-  maxDriftSteerMultiplier: 3.33
-  driftSteeringInputBuildupMultiplier: 0.506
+  driftMinSpeed: 2
+  maxDriftSteerMultiplier: 2.9
+  driftSteeringInputBuildupMultiplier: 0.43
   driftBuildRate: 0.4
   driftReleaseRate: 8.75
   driftSideForce: 0.47
+  driftSideForceWhileAccelerating: 0.35
+  driftSideForceThrottleBlendRate: 4
   driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
@@ -1581,6 +1584,7 @@ MonoBehaviour:
   steerFlipRebuildDelay: 0.1
   allowDriftGlideWithoutSteer: 1
   driftGlideDecayPerSecond: 0.09
+  driftLandingFeelBlendSeconds: 0.5
   closeCallBoostBaseDuration: 0.9
   closeCallBoostForce: 9
   closeCallBoostForceMode: 2
@@ -1972,7 +1976,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enableAirTricks: 1
-  airYawRate: 24.5
+  airTurnSpeedMultiplier: 1.1
+  airYawRate: 30
   airYawInputDeadzone: 0.12
   airTrajectorySteerRate: 73.1
   airSteerInputSmoothRate: 3.5

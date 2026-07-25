@@ -189,9 +189,30 @@ public class CarController : MonoBehaviour
 
     private bool GetBoostDown()
     {
+        bool held = IsBoostHeldRaw();
+
+        if (IsDrivingGameplayLockedByCrash)
+        {
+            _blockBoostUntilReleased = true;
+            return false;
+        }
+
+        if (_blockBoostUntilReleased)
+        {
+            if (held) return false;
+            _blockBoostUntilReleased = false;
+        }
+
         var reader = RacingInputReader.Instance;
         if (reader != null) return reader.BoostDown;
         return Input.GetKeyDown(boostKey) || Input.GetKeyDown(boostButtonController);
+    }
+
+    private bool IsBoostHeldRaw()
+    {
+        var reader = RacingInputReader.Instance;
+        if (reader != null) return reader.BoostHeld;
+        return Input.GetKey(boostKey) || Input.GetKey(boostButtonController);
     }
 
     private bool GetDriftHeld()
@@ -210,6 +231,11 @@ public class CarController : MonoBehaviour
 
     private bool GetAccelerateKeyOrTrigger()
     {
+        // Ignore while crashed/reorienting/mashing, but do not require a fresh press afterward —
+        // holding through recovery should resume throttle as soon as control returns.
+        if (IsDrivingGameplayLockedByCrash)
+            return false;
+
         var reader = RacingInputReader.Instance;
         if (reader != null) return reader.Accelerate > 0.1f;
         return Input.GetKey(KeyCode.W) || Input.GetAxisRaw("RightTrigger") > 0.1f;
@@ -217,6 +243,9 @@ public class CarController : MonoBehaviour
 
     private bool GetBrakeKeyOrTrigger()
     {
+        if (IsDrivingGameplayLockedByCrash)
+            return false;
+
         var reader = RacingInputReader.Instance;
         if (reader != null) return reader.Brake > 0.1f;
         return Input.GetKey(KeyCode.S) || Input.GetAxisRaw("Vertical") < -0.1f || Input.GetAxisRaw("LeftTrigger") > 0.1f;
@@ -351,6 +380,7 @@ public class CarController : MonoBehaviour
     private float lateralFrictionWhileSteering;
     private float steerTractionBlendIn;
     private float steerTractionBlendOut;
+    private float steerTractionWhileAccelerating;
     private float _steerTractionBlend = 0f;
     private float steerRollingAccelCoastMultiplier;
     private bool applySteerRollingAccelOnIce;
@@ -375,6 +405,9 @@ public class CarController : MonoBehaviour
     private float driftBuildRate;
     private float driftReleaseRate;
     private float driftSideForce;
+    private float driftSideForceWhileAccelerating;
+    private float driftSideForceThrottleBlendRate;
+    private float _driftSideForceThrottle01 = 1f;
     private float driftSpeedDecayPerSecond;
     private float driftHeldSpeedDecayPerSecond;
     private float driftForwardAccelMultiplier;
@@ -658,6 +691,9 @@ public class CarController : MonoBehaviour
     private float airTurnSpeedMultiplier;
     private float airYawRate;
     private float airYawInputDeadzone;
+    private float airVelocityFollowNose;
+    private float airVelocityFollowRate;
+    private float airVelocityFollowReturnSeconds;
     private float airTrajectorySteerRate;
     private float airSteerInputSmoothRate;
     private float airSteerInputReleaseRate;
@@ -694,6 +730,8 @@ public class CarController : MonoBehaviour
     private float _smoothedAirSteer;
     private float _airTrajectoryBankRate;
     private float _airUprightRecoverBlend;
+    /// <summary>0–1 how fully air nose-follow applies. Drops while tricking, eases back after release.</summary>
+    private float _airVelocityFollowBlend01 = 1f;
 
     private GameObject deathVFX;
     private float deathVFXLifetime;
@@ -1028,6 +1066,16 @@ public class CarController : MonoBehaviour
 
     private bool IsPostCrashRecoveryDriving => Time.time < _postCrashRecoveryUntil;
 
+    /// <summary>
+    /// After crash / mash / reorient, ignore held boost until released once — boost is
+    /// edge-queued and would otherwise fire the moment control returns. Accel/brake may
+    /// stay held through recovery and resume driving immediately.
+    /// </summary>
+    private bool _blockBoostUntilReleased;
+
+    private bool IsDrivingGameplayLockedByCrash =>
+        _inCrash || _isReorienting || _flipMashActive;
+
     private bool _onBoostSurface;
     private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
     private float _nextBoostPadPopupTime;            // re-trigger guard for boost-pad popup
@@ -1278,6 +1326,7 @@ public class CarController : MonoBehaviour
             lateralFrictionWhileSteering = _steeringConfig.LateralFrictionWhileSteering;
             steerTractionBlendIn = _steeringConfig.SteerTractionBlendIn;
             steerTractionBlendOut = _steeringConfig.SteerTractionBlendOut;
+            steerTractionWhileAccelerating = _steeringConfig.SteerTractionWhileAccelerating;
             steerRollingAccelCoastMultiplier = _steeringConfig.SteerRollingAccelCoastMultiplier;
             applySteerRollingAccelOnIce = _steeringConfig.ApplySteerRollingAccelOnIce;
         }
@@ -1291,7 +1340,8 @@ public class CarController : MonoBehaviour
             invertSteeringWhenReversing = true; reverseSteerMultiplier = 1f; reverseSteerEngageForwardSpeed = 1.5f;
             baseSteeringDamp = 8f; enableSteerTraction = true; steerTractionReorientRate = 5.59f;
             steerRollingAccel = 2.25f; minSpeedForSteerTraction = 0.1f; lateralFrictionWhileSteering = 2.46f;
-            steerTractionBlendIn = 8.21f; steerTractionBlendOut = 7.1f; steerRollingAccelCoastMultiplier = 0.441f;
+            steerTractionBlendIn = 3.2f; steerTractionBlendOut = 2.8f; steerTractionWhileAccelerating = 0.4f;
+            steerRollingAccelCoastMultiplier = 0.441f;
             applySteerRollingAccelOnIce = false;
         }
 
@@ -1353,6 +1403,8 @@ public class CarController : MonoBehaviour
             driftBuildRate = _driftConfig.DriftBuildRate;
             driftReleaseRate = _driftConfig.DriftReleaseRate;
             driftSideForce = _driftConfig.DriftSideForce;
+            driftSideForceWhileAccelerating = _driftConfig.DriftSideForceWhileAccelerating;
+            driftSideForceThrottleBlendRate = _driftConfig.DriftSideForceThrottleBlendRate;
             driftSpeedDecayPerSecond = _driftConfig.DriftSpeedDecayPerSecond;
             driftHeldSpeedDecayPerSecond = _driftConfig.DriftHeldSpeedDecayPerSecond;
             driftForwardAccelMultiplier = _driftConfig.DriftForwardAccelMultiplier;
@@ -1394,7 +1446,8 @@ public class CarController : MonoBehaviour
         {
             requireDriftUnlock = true; driftKey = KeyCode.LeftShift; driftMinSpeed = 2.15f;
             maxDriftSteerMultiplier = 3.1f; driftSteeringInputBuildupMultiplier = 0.55f; driftBuildRate = 0.7f; driftReleaseRate = 12.2f;
-            driftSideForce = 0.41f; driftSpeedDecayPerSecond = 0.06f; driftHeldSpeedDecayPerSecond = 0f;
+            driftSideForce = 0.41f; driftSideForceWhileAccelerating = 0.35f; driftSideForceThrottleBlendRate = 4f;
+            driftSpeedDecayPerSecond = 0.06f; driftHeldSpeedDecayPerSecond = 0f;
             driftForwardAccelMultiplier = 0f; useFullAccelWhileDrifting = true; lockToDriftPeakSpeed = true;
             driftBrakeDecayPerSecond = 0.001f; requireDirectionalInputForDriftCharge = false;
             driftNeutralDrainRate = 2.6f; driftNeutralFullResetDelay = 3.65f; resetDriftChargeOnSteerFlip = true;
@@ -1574,6 +1627,9 @@ public class CarController : MonoBehaviour
             airTurnSpeedMultiplier = _airTrickConfig.AirTurnSpeedMultiplier;
             airYawRate = _airTrickConfig.AirYawRate;
             airYawInputDeadzone = _airTrickConfig.AirYawInputDeadzone;
+            airVelocityFollowNose = _airTrickConfig.AirVelocityFollowNose;
+            airVelocityFollowRate = _airTrickConfig.AirVelocityFollowRate;
+            airVelocityFollowReturnSeconds = _airTrickConfig.AirVelocityFollowReturnSeconds;
             airTrajectorySteerRate = _airTrickConfig.AirTrajectorySteerRate;
             airSteerInputSmoothRate = _airTrickConfig.AirSteerInputSmoothRate;
             airSteerInputReleaseRate = _airTrickConfig.AirSteerInputReleaseRate;
@@ -1605,7 +1661,10 @@ public class CarController : MonoBehaviour
             airTurnSpeedMultiplier = 0.6f;
             airYawRate = 110f;
             airYawInputDeadzone = 0.12f;
-            airTrajectorySteerRate = 78f;
+            airVelocityFollowNose = 0.45f;
+            airVelocityFollowRate = 3.5f;
+            airVelocityFollowReturnSeconds = 0.48f;
+            airTrajectorySteerRate = 0f;
             airSteerInputSmoothRate = 3.5f;
             airSteerInputReleaseRate = 4.5f;
             airTrajectoryBankAccel = 90f;
@@ -1966,8 +2025,15 @@ public class CarController : MonoBehaviour
 
         HandleInput();
 
-        if (GetBoostDown() && !IsCrashInvulnerable && Time.time >= _boostBlockedUntil && !isOutOfFuel && !isOutOfHP)
+        if (IsDrivingGameplayLockedByCrash)
+        {
+            _boostRequested = false;
+            ClearBoostOverride();
+        }
+        else if (GetBoostDown() && Time.time >= _boostBlockedUntil && !isOutOfFuel && !isOutOfHP)
+        {
             _boostRequested = true;
+        }
 
         if (!_inCrash && hpRegenPerSecond > 0f && currentHP < maxHP)
         {
@@ -2175,6 +2241,7 @@ public class CarController : MonoBehaviour
                     rb.angularVelocity = Vector3.zero;
                 }
 
+                ArmCrashDrivingInputGates();
                 _isBoosting = false;
                 _isPostBoost = false;
                 _postBoostTimer = 0f;
@@ -2239,6 +2306,9 @@ public class CarController : MonoBehaviour
         // Push left-stick air yaw onto the rigidbody before trick spins compose on top.
         if (_airborneForTricks && rb != null)
             rb.MoveRotation(transform.rotation);
+        // Redirect travel toward the flat nose while turning/drifting in air (not while tricking).
+        UpdateAirVelocityFollowBlend(Time.fixedDeltaTime);
+        ApplyAirborneVelocityFollowNose(Time.fixedDeltaTime);
         HandleAirborneTricks(Time.fixedDeltaTime);
         UpdateAirTrickReleaseState(Time.fixedDeltaTime);
         HandleMovement();                 // coasting + existing decel logic still works
@@ -2325,6 +2395,7 @@ public class CarController : MonoBehaviour
         _reorientElapsed = 0f;
 
         ClearDriftStateForCrashOrReorient();
+        ArmCrashDrivingInputGates();
 
         RestoreDrivingRotationLock();
 
@@ -2359,6 +2430,10 @@ public class CarController : MonoBehaviour
         Vector3 groundUp = SampleGroundUpForReorient();
         _groundNormalMeasured = groundUp;
         _lastStableGroundNormal = groundUp;
+
+        ArmCrashDrivingInputGates();
+        CancelAllBoostState(0.35f);
+        _postCrashRecoveryUntil = Time.time + PostCrashRecoverySeconds;
     }
 
     private Vector3 SampleGroundUpForReorient()
@@ -2732,7 +2807,7 @@ public class CarController : MonoBehaviour
     private void HandleBoost()
     {
 
-        if (IsCrashInvulnerable || Time.time < _boostBlockedUntil)
+        if (IsDrivingGameplayLockedByCrash || IsCrashInvulnerable || Time.time < _boostBlockedUntil)
         {
             _boostRequested = false;
             ClearBoostOverride();
@@ -2745,7 +2820,15 @@ public class CarController : MonoBehaviour
         if (_boostCooldownTimer > 0f)
             _boostCooldownTimer -= dt;
         if (_driftBoostCooldownTimer > 0f)
+        {
+            float prevDriftCd = _driftBoostCooldownTimer;
             _driftBoostCooldownTimer -= dt;
+            if (_driftBoostCooldownTimer < 0f)
+                _driftBoostCooldownTimer = 0f;
+            // Cooldown just ended: wipe any hold built while waiting so charge starts at 0.
+            if (prevDriftCd > 0f && _driftBoostCooldownTimer <= 0f)
+                ResetDriftHeldTimer();
+        }
 
         // Active boost sustain
         if (_isBoosting)
@@ -3379,12 +3462,22 @@ public class CarController : MonoBehaviour
         bool wasDrifting = isDrifting;
         int prevHoldDirectionSign = _driftHoldDirectionSign;
 
-        // Crash / upright recovery: kill drift, charge bar, and camera tilt immediately.
-        if (_inCrash || _isReorienting || IsPostCrashRecoveryDriving)
+        // Crash / upright recovery / mash: no driving gameplay input (accel, brake, boost, drift).
+        if (_inCrash || _isReorienting || _flipMashActive)
         {
             ClearDriftStateForCrashOrReorient();
+            ArmCrashDrivingInputGates();
+            steeringInput = 0f;
+            _rawSteer = 0f;
+            _boostRequested = false;
+            _boostOverrideActive = false;
+            _suppressThrottleBrakeThisFrame = true;
+            _suppressSteeringThisFrame = true;
+            _inputsSuppressedThisFrame = true;
+            return;
         }
-        else if (!driftUnlocked)
+
+        if (!driftUnlocked)
         {
             driftCharge = 0f;
             isDrifting = false;
@@ -3511,6 +3604,11 @@ public class CarController : MonoBehaviour
                 // Also wipe any stored drift-held charge so release cannot fling you.
                 if (brakeHeld || _inCrash || isOutOfHP || isOutOfFuel)
                 {
+                    ResetDriftHeldTimer();
+                }
+                else if (_driftBoostCooldownTimer > 0f)
+                {
+                    // On cooldown: never bank hold time — bar must rebuild from 0 after CD ends.
                     ResetDriftHeldTimer();
                 }
                 else
@@ -3661,6 +3759,12 @@ public class CarController : MonoBehaviour
         if (_inCrash || _isReorienting || IsPostCrashRecoveryDriving) return;
         if (Time.time < _boostBlockedUntil) return;
         if (!enableDriftHeldBoost) return;
+        // Still cooling down — discard any hold so a later release cannot use pre-CD charge.
+        if (_driftBoostCooldownTimer > 0f)
+        {
+            ResetDriftHeldTimer();
+            return;
+        }
 
         bool brakeHeld = GetBrakeKeyOrTrigger();
         if (brakeHeld) return;
@@ -3736,7 +3840,19 @@ public class CarController : MonoBehaviour
         driftClampSpeed = 0f;
         driftPeakSpeed = 0f;
         _driftGroundFeel01 = 1f;
+        _driftSideForceThrottle01 = 1f;
         ResetDriftHeldTimer();
+    }
+
+    /// <summary>
+    /// Clear queued boost and require a fresh boost press after crash recovery.
+    /// Accel/brake are intentionally left alone so a held throttle/brake carries through.
+    /// </summary>
+    private void ArmCrashDrivingInputGates()
+    {
+        _blockBoostUntilReleased = true;
+        _boostRequested = false;
+        ClearBoostOverride();
     }
 
     /// <summary>Eased 0–1 ground-drift feel (smoothstep). Used by physics and camera.</summary>
@@ -3870,6 +3986,7 @@ public class CarController : MonoBehaviour
         _crashKilledDriftHeldBoost = true;
         // NEW: also prevent drift-held boost from “arming” during crash sequences
         ClearDriftStateForCrashOrReorient();
+        ArmCrashDrivingInputGates();
         _boostOverrideActive = false;
         _overrideIsDriftBoost = false;
 
@@ -4116,6 +4233,7 @@ public class CarController : MonoBehaviour
         _trickBarrelModeActive = false;
         _smoothedAirSteer = 0f;
         _airTrajectoryBankRate = 0f;
+        _airVelocityFollowBlend01 = 1f;
     }
 
     private float SmoothAirSteerInput(float rawSteer, float dt)
@@ -4218,6 +4336,76 @@ public class CarController : MonoBehaviour
 
         float horizInfluence = GetTrickHorizSpinInfluence();
         return Mathf.Lerp(airTrajectoryWhileTrickingMult, airTrajectoryHorizSpinMult, horizInfluence);
+    }
+
+    /// <summary>
+    /// Eases nose-follow travel strength back in after tricks so releasing the trick stick
+    /// does not suddenly yank the flight path onto the nose.
+    /// </summary>
+    private void UpdateAirVelocityFollowBlend(float dt)
+    {
+        if (!_airborneForTricks)
+        {
+            _airVelocityFollowBlend01 = 1f;
+            return;
+        }
+
+        // Hold at 0 through active tricks and residual flip spin, then ease back up.
+        bool suppressFollow = _trickStickActive || ShouldSuppressAirUprightForTricks();
+        if (suppressFollow)
+        {
+            _airVelocityFollowBlend01 = 0f;
+            return;
+        }
+
+        if (airVelocityFollowReturnSeconds <= 0.0001f)
+        {
+            _airVelocityFollowBlend01 = 1f;
+            return;
+        }
+
+        float rate = 1f / airVelocityFollowReturnSeconds;
+        _airVelocityFollowBlend01 = Mathf.MoveTowards(_airVelocityFollowBlend01, 1f, rate * dt);
+    }
+
+    /// <summary>
+    /// While airborne and turning/drifting (not tricking), ease horizontal velocity toward the
+    /// flat nose so travel follows the visual yaw. Strength is tunable — not a 1:1 lock.
+    /// </summary>
+    private void ApplyAirborneVelocityFollowNose(float dt)
+    {
+        if (rb == null || !_airborneForTricks || dt <= 0f) return;
+        if (_airVelocityFollowBlend01 <= 0.001f) return;
+        if (airVelocityFollowNose <= 0.001f || airVelocityFollowRate <= 0.001f) return;
+
+        bool turningOrDrifting = Mathf.Abs(steeringInput) > 0.05f
+            || isDrifting
+            || driftButtonHeld;
+        if (!turningOrDrifting) return;
+
+        Vector3 vel = rb.velocity;
+        Vector3 horiz = Vector3.ProjectOnPlane(vel, Vector3.up);
+        if (horiz.sqrMagnitude < 0.25f) return;
+
+        Vector3 nose = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (nose.sqrMagnitude < 1e-6f) return;
+        nose.Normalize();
+
+        Vector3 velDir = horiz.normalized;
+        // Don't yank travel through a 180° flip if the nose is pointing roughly backward.
+        if (Vector3.Dot(velDir, nose) < -0.15f)
+            return;
+
+        float intent = (isDrifting || driftButtonHeld)
+            ? 1f
+            : Mathf.Clamp01(Mathf.Abs(steeringInput));
+        float blend = _airVelocityFollowBlend01;
+        blend = blend * blend * (3f - 2f * blend); // smoothstep
+        float rate = airVelocityFollowRate * Mathf.Clamp01(airVelocityFollowNose) * intent * blend;
+        float t = 1f - Mathf.Exp(-rate * dt);
+        Vector3 newDir = Vector3.Slerp(velDir, nose, t).normalized;
+        Vector3 newHoriz = newDir * horiz.magnitude;
+        rb.velocity = new Vector3(newHoriz.x, vel.y, newHoriz.z);
     }
 
     private void ApplyAirborneLeftStickControl(float dt)
@@ -4484,6 +4672,47 @@ public class CarController : MonoBehaviour
         rb.AddForce(alignTarget * (steerRollingAccel * coastMul), ForceMode.Acceleration);
     }
 
+    /// <summary>
+    /// Pulls planar velocity onto the nose while turning. Strength comes from
+    /// <see cref="_steerTractionBlend"/> (full while coasting, reduced while accelerating).
+    /// </summary>
+    private void ApplySteerRollingTraction()
+    {
+        if (rb == null || !enableSteerTraction || _onIceSurface) return;
+        if (driftButtonHeld || Mathf.Abs(steeringInput) <= 0.001f) return;
+        if (_steerTractionBlend <= 0.0001f) return;
+
+        Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z);
+        if (flatForward.sqrMagnitude < 1e-6f) return;
+        flatForward.Normalize();
+
+        Vector3 vel = rb.velocity;
+        Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
+        if (flatVel.sqrMagnitude <= minSpeedForSteerTraction * minSpeedForSteerTraction)
+            return;
+
+        Vector3 alignTarget = flatForward;
+        if (Vector3.Dot(flatVel, flatForward) < 0f)
+            alignTarget = -flatForward;
+
+        float t = steerTractionReorientRate * _steerTractionBlend * Time.fixedDeltaTime;
+        Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, alignTarget, t).normalized;
+
+        Vector3 fwdComp = alignTarget * Vector3.Dot(flatVel, alignTarget);
+        Vector3 lateral = flatVel - fwdComp;
+        lateral *= Mathf.Exp(-lateralFrictionWhileSteering * _steerTractionBlend * Time.fixedDeltaTime);
+
+        float mag = (fwdComp + lateral).magnitude;
+        Vector3 newFlat = blendedDir * mag;
+        rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
+
+        float coastMul = steerRollingAccelCoastMultiplier;
+        if (_onIceSurface && !applySteerRollingAccelOnIce)
+            coastMul = 0f;
+
+        rb.AddForce(alignTarget * (steerRollingAccel * coastMul * _steerTractionBlend), ForceMode.Acceleration);
+    }
+
     private void HandleSteering()
     {
         if (rb == null) return;
@@ -4581,14 +4810,25 @@ public class CarController : MonoBehaviour
                 && GetAccelerateKeyOrTrigger()
                 && !GetBrakeKeyOrTrigger();
 
-            if (isDrifting && !airborneNow && speed > 0.1f && !acceleratingDrift)
+            float sideForceThrottleTarget = acceleratingDrift
+                ? Mathf.Clamp01(driftSideForceWhileAccelerating)
+                : 1f;
+            float sideForceBlendRate = Mathf.Max(0.1f, driftSideForceThrottleBlendRate);
+            _driftSideForceThrottle01 = Mathf.MoveTowards(
+                _driftSideForceThrottle01,
+                sideForceThrottleTarget,
+                sideForceBlendRate * Time.deltaTime);
+
+            if (isDrifting && !airborneNow && speed > 0.1f && _driftSideForceThrottle01 > 0.001f)
             {
                 float sign = Mathf.Sign(steeringInput);
                 Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
                 float sideMul = Mathf.Lerp(0.5f, 1f, driftCharge);
                 // Reduce lateral snap during flip rebuild delay.
                 float sideForceScale = Time.time < _driftFlipBlockUntil ? 0.4f : 1f;
-                rb.AddForce(sideDir * driftSideForce * sideMul * sideForceScale * driftFeel, ForceMode.Acceleration);
+                rb.AddForce(
+                    sideDir * driftSideForce * sideMul * sideForceScale * driftFeel * _driftSideForceThrottle01,
+                    ForceMode.Acceleration);
             }
         }
 
@@ -4685,17 +4925,22 @@ public class CarController : MonoBehaviour
             bool brakingOrReverse = reverseKey;
             bool burnFuel = !isOutOfFuel && maxFuel > 0f;
 
-            bool wantsSteerTraction =
-    groundedNow &&
-    enableSteerTraction &&
-    !driftButtonHeld &&
-    Mathf.Abs(steeringInput) > 0.001f &&
-    !accelerating &&
-    !brakingOrReverse;
+            // Accel-vs-coast turn feel: full traction while coast-turning, reduced while accelerating.
+            // Blend runs every frame (not only in the coast branch) so pressing/releasing accel eases instead of snaps.
+            bool canHaveSteerTraction =
+                groundedNow &&
+                enableSteerTraction &&
+                !driftButtonHeld &&
+                !driftPhysicsActive &&
+                Mathf.Abs(steeringInput) > 0.001f &&
+                !brakingOrReverse;
 
-            float blendSpeed = wantsSteerTraction ? steerTractionBlendIn : steerTractionBlendOut;
-            float blendTarget = wantsSteerTraction ? 1f : 0f;
-            _steerTractionBlend = Mathf.MoveTowards(_steerTractionBlend, blendTarget, blendSpeed * Time.fixedDeltaTime);
+            float tractionTarget = 0f;
+            if (canHaveSteerTraction)
+                tractionTarget = accelerating ? Mathf.Clamp01(steerTractionWhileAccelerating) : 1f;
+
+            float blendSpeed = tractionTarget > _steerTractionBlend ? steerTractionBlendIn : steerTractionBlendOut;
+            _steerTractionBlend = Mathf.MoveTowards(_steerTractionBlend, tractionTarget, blendSpeed * Time.fixedDeltaTime);
 
 
             if (!driftPhysicsActive)
@@ -4741,46 +4986,11 @@ public class CarController : MonoBehaviour
                             ApplyCoastDecelAlongSurface(decel, Time.fixedDeltaTime);
                             CancelPlanarDrag(effectiveDrag);
                         }
-
-                        // Steer rolling traction while coasting
-                        if (_steerTractionBlend > 0.0001f && enableSteerTraction && !_onIceSurface && !driftButtonHeld && Mathf.Abs(steeringInput) > 0.001f)
-                        {
-                            Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z);
-                            if (flatForward.sqrMagnitude > 1e-6f)
-                            {
-                                flatForward.Normalize();
-                                Vector3 vel = rb.velocity;
-                                Vector3 flatVel = new Vector3(vel.x, 0f, vel.z);
-
-                                if (flatVel.sqrMagnitude > (minSpeedForSteerTraction * minSpeedForSteerTraction))
-                                {
-                                    Vector3 alignTarget = flatForward;
-                                    if (Vector3.Dot(flatVel, flatForward) < 0f)
-                                        alignTarget = -flatForward;
-
-                                    float t = steerTractionReorientRate * _steerTractionBlend * Time.fixedDeltaTime;
-                                    Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, alignTarget, t).normalized;
-
-                                    Vector3 fwdComp = alignTarget * Vector3.Dot(flatVel, alignTarget);
-                                    Vector3 lateral = flatVel - fwdComp;
-
-                                    float latDamp = lateralFrictionWhileSteering * _steerTractionBlend;
-                                    lateral *= Mathf.Exp(-latDamp * Time.fixedDeltaTime);
-
-                                    float mag = (fwdComp + lateral).magnitude;
-                                    Vector3 newFlat = blendedDir * mag;
-                                    rb.velocity = new Vector3(newFlat.x, vel.y, newFlat.z);
-
-                                    float coastMul = steerRollingAccelCoastMultiplier;
-                                    if (_onIceSurface && !applySteerRollingAccelOnIce)
-                                        coastMul = 0f;
-
-                                    rb.AddForce(alignTarget * (steerRollingAccel * coastMul * _steerTractionBlend), ForceMode.Acceleration);
-                                }
-                            }
-                        }
                     }
                 }
+
+                if (groundedNow && _steerTractionBlend > 0.0001f)
+                    ApplySteerRollingTraction();
             }
             else
             {
@@ -4932,13 +5142,27 @@ public class CarController : MonoBehaviour
                 Vector3 horiz = finalDir.normalized * Mathf.Max(0f, smoothedMag);
                 rb.velocity = new Vector3(horiz.x, y, horiz.z);
 
-                if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f && !holdingThrottle)
+                if (isDrifting && Mathf.Abs(steeringInput) > 0.001f && currentMag > 0.1f)
                 {
-                    float sign = Mathf.Sign(steeringInput);
-                    Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
-                    float sideMul = Mathf.Lerp(0.5f, 1f, driftCharge);
-                    float sideForceScale = Time.time < _driftFlipBlockUntil ? 0.4f : 1f;
-                    rb.AddForce(sideDir * driftSideForce * sideMul * sideForceScale * driftFeel, ForceMode.Acceleration);
+                    float sideForceThrottleTarget = holdingThrottle
+                        ? Mathf.Clamp01(driftSideForceWhileAccelerating)
+                        : 1f;
+                    float sideForceBlendRate = Mathf.Max(0.1f, driftSideForceThrottleBlendRate);
+                    _driftSideForceThrottle01 = Mathf.MoveTowards(
+                        _driftSideForceThrottle01,
+                        sideForceThrottleTarget,
+                        sideForceBlendRate * Time.fixedDeltaTime);
+
+                    if (_driftSideForceThrottle01 > 0.001f)
+                    {
+                        float sign = Mathf.Sign(steeringInput);
+                        Vector3 sideDir = Vector3.Cross(Vector3.up, transform.forward) * sign;
+                        float sideMul = Mathf.Lerp(0.5f, 1f, driftCharge);
+                        float sideForceScale = Time.time < _driftFlipBlockUntil ? 0.4f : 1f;
+                        rb.AddForce(
+                            sideDir * driftSideForce * sideMul * sideForceScale * driftFeel * _driftSideForceThrottle01,
+                            ForceMode.Acceleration);
+                    }
                 }
             }
         }
@@ -7028,6 +7252,8 @@ public class CarController : MonoBehaviour
         _flipMashActive = false;
 
         CancelAllBoostState(0.35f);   // small lockout prevents instant re-trigger
+        ArmCrashDrivingInputGates();
+        _postCrashRecoveryUntil = Time.time + PostCrashRecoverySeconds;
 
         // Also kill any leftover landing carry allowance so you can't "keep" boosted cap as excess speed
         _landingExcessSpeed = 0f;
@@ -8633,6 +8859,7 @@ public class CarController : MonoBehaviour
         _isRunEndMash = runEndMash;
         _isReorienting = false;
         _isFlippedDuringRecovery = isFlipped;
+        ArmCrashDrivingInputGates();
         // Calculate dynamic click count
         _flipMashClicksNeeded = CalculateMashClicksNeeded(isFlipped);
         _flipMashClicks = 0;
@@ -9032,6 +9259,11 @@ public class CarController : MonoBehaviour
     /// How hard the player is currently steering into the drift (0–1). Falls when the stick
     /// returns to neutral even if <see cref="DriftCharge"/> keeps building for held-boost.
     /// </summary>
+    /// <summary>
+    /// Current left/right steer strength 0–1 (smoothed gameplay steer). Used by camera lag tightening.
+    /// </summary>
+    public float SteerIntensity => (_inCrash || _isReorienting) ? 0f : Mathf.Clamp01(Mathf.Abs(steeringInput));
+
     public float DriftSteerIntensity => IsDrifting
         ? Mathf.Clamp01(Mathf.Abs(steeringInput)) * GetDriftGroundFeelEased()
         : 0f;

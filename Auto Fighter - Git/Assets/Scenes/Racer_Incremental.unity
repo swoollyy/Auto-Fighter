@@ -4747,6 +4747,11 @@ MonoBehaviour:
   driftLagSharpness: 3.72
   driftLagSharpnessRampIn: 12
   driftLagSharpnessRampOut: 4
+  turnLagSharpness: 2.5
+  turnLagTightenStart: 0.03
+  turnLagTightenFull: 1
+  turnLagSharpnessRampIn: 1
+  turnLagSharpnessRampOut: 1
   driftTremorStrength: 0.06
   driftTremorFrequency: 74.9
   driftTremorResponse: 18

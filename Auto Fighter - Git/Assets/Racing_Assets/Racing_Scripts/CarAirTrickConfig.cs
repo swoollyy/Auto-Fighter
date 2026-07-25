@@ -16,8 +16,14 @@ public class CarAirTrickConfig : MonoBehaviour
     [Tooltip("Legacy absolute air yaw rate (deg/s) used by older air-aim path.")]
     [SerializeField] private float airYawRate = 110f;
     [SerializeField, Range(0f, 1f)] private float airYawInputDeadzone = 0.12f;
-    [Tooltip("Bank horizontal flight path with left stick while airborne (degrees/sec at full deflection).")]
-    [SerializeField, Min(0f)] private float airTrajectorySteerRate = 78f;
+    [Tooltip("How strongly horizontal travel follows the flat nose while turning/drifting in air. 0 = visual yaw only (ballistic path). 1 = travel snaps hard toward the nose. Off while tricking.")]
+    [SerializeField, Range(0f, 1f)] private float airVelocityFollowNose = 0.45f;
+    [Tooltip("How quickly travel catches the nose at full Air Velocity Follow Nose (higher = snappier).")]
+    [SerializeField, Min(0.1f)] private float airVelocityFollowRate = 3.5f;
+    [Tooltip("After releasing tricks, how long to ease nose-follow travel back in so the path doesn't snap onto the nose. 0 = instant.")]
+    [SerializeField, Min(0f)] private float airVelocityFollowReturnSeconds = 0.48f;
+    [Tooltip("Legacy: bank path from stick at this deg/s. Prefer Air Velocity Follow Nose for nose-tracking. 0 = off.")]
+    [SerializeField, Min(0f)] private float airTrajectorySteerRate = 0f;
     [Tooltip("How quickly left-stick air aim ramps in (lower = softer).")]
     [SerializeField, Min(0.5f)] private float airSteerInputSmoothRate = 3.5f;
     [Tooltip("How quickly air aim eases off when the stick returns to center.")]
@@ -75,6 +81,9 @@ public class CarAirTrickConfig : MonoBehaviour
     public float AirTurnSpeedMultiplier => airTurnSpeedMultiplier;
     public float AirYawRate => airYawRate;
     public float AirYawInputDeadzone => airYawInputDeadzone;
+    public float AirVelocityFollowNose => airVelocityFollowNose;
+    public float AirVelocityFollowRate => airVelocityFollowRate;
+    public float AirVelocityFollowReturnSeconds => airVelocityFollowReturnSeconds;
     public float AirTrajectorySteerRate => airTrajectorySteerRate;
     public float AirSteerInputSmoothRate => airSteerInputSmoothRate;
     public float AirSteerInputReleaseRate => airSteerInputReleaseRate;
