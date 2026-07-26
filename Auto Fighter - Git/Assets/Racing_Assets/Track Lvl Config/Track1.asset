@@ -19,7 +19,7 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 100
+    segmentCount: 70
     autoDetectSegmentLength: 1
     segmentLength: 5
     minTurnAngle: 10
@@ -78,7 +78,7 @@ MonoBehaviour:
     maxWiggleAngle: 7
     wiggleOverDistance: 0.542
     useAvoidance: 1
-    avoidanceRadius: 2.92
+    avoidanceRadius: 16.9
     avoidanceStrength: 0.828
     avoidanceFalloff: 1
     constrainToGlobalDirection: 1
@@ -87,7 +87,7 @@ MonoBehaviour:
     useRandomSeed: 1
     fixedSeed: 12345
     generateRoadMesh: 1
-    roadWidth: 6.5
+    roadWidth: 6
     roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
     uvTiling: 0.08
     useSmoothing: 1
@@ -303,8 +303,8 @@ MonoBehaviour:
       prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
       behaviorType: 1
       baseWeight: 0.5
-      startAtNormalizedDist: 0.035
-      fullWeightNormalizedDist: 0.3
+      startAtNormalizedDist: 0.2
+      fullWeightNormalizedDist: 0.4
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
@@ -346,7 +346,7 @@ MonoBehaviour:
       scaredFleeFromNpcTraffic: 1
       scaredNpcTrafficDetectRadius: 2.1
       scaredHuntPassiveCreatures: 1
-      scaredHuntPassiveRadius: 5.1
+      scaredHuntPassiveRadius: 8
       scaredPassiveHuntLoseDistance: 13.6
       scaredBugHuntSpeed: 8
       scaredBugHuntSpeedMultiplier: 1
@@ -394,8 +394,8 @@ MonoBehaviour:
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
       baseWeight: 1
-      startAtNormalizedDist: 0.3
-      fullWeightNormalizedDist: 0.5
+      startAtNormalizedDist: 0.5
+      fullWeightNormalizedDist: 0.8
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
@@ -484,7 +484,7 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     creatureSpacing: 15
-    maxActiveCreatures: 30
+    maxActiveCreatures: 15
     minSpawnDistanceAhead: 5
     maxSpawnDistanceAhead: 70
     initialPreSpawnDistance: 70

@@ -551,6 +551,14 @@ public class CarController : MonoBehaviour
 
     [Header("Crash / Hit (from CarCrashMashConfig)")]
     private LayerMask crashLayers;
+    private bool enableDriveOnObstacleTops;
+    private float obstacleTopNormalDotMin;
+    private float obstacleTopCarUpDotMin;
+    private LayerMask driveableObstacleLayers;
+    private int obstacleTopLandingCoinReward;
+    private float obstacleTopLandingFuelReward;
+    private float obstacleTopLandingRewardCooldown;
+    private readonly Dictionary<int, float> _obstacleTopRewardTime = new Dictionary<int, float>();
     private float minImpactSpeed;
     private float maxImpactSpeed;
     private float minCrashDuration;
@@ -1663,7 +1671,7 @@ public class CarController : MonoBehaviour
             airYawInputDeadzone = 0.12f;
             airVelocityFollowNose = 0.45f;
             airVelocityFollowRate = 3.5f;
-            airVelocityFollowReturnSeconds = 0.48f;
+            airVelocityFollowReturnSeconds = 0.18f;
             airTrajectorySteerRate = 0f;
             airSteerInputSmoothRate = 3.5f;
             airSteerInputReleaseRate = 4.5f;
@@ -1714,6 +1722,13 @@ public class CarController : MonoBehaviour
             flippedClickMultiplier = _crashMashConfig.FlippedClickMultiplier;
             airborneClickMultiplier = _crashMashConfig.AirborneClickMultiplier;
             crashLayers = _crashMashConfig.CrashLayers;
+            enableDriveOnObstacleTops = _crashMashConfig.EnableDriveOnObstacleTops;
+            obstacleTopNormalDotMin = _crashMashConfig.ObstacleTopNormalDotMin;
+            obstacleTopCarUpDotMin = _crashMashConfig.ObstacleTopCarUpDotMin;
+            driveableObstacleLayers = _crashMashConfig.DriveableObstacleLayers;
+            obstacleTopLandingCoinReward = _crashMashConfig.ObstacleTopLandingCoinReward;
+            obstacleTopLandingFuelReward = _crashMashConfig.ObstacleTopLandingFuelReward;
+            obstacleTopLandingRewardCooldown = _crashMashConfig.ObstacleTopLandingRewardCooldown;
             minImpactSpeed = _crashMashConfig.MinImpactSpeed;
             maxImpactSpeed = _crashMashConfig.MaxImpactSpeed;
             minCrashDuration = _crashMashConfig.MinCrashDuration;
@@ -1804,6 +1819,13 @@ public class CarController : MonoBehaviour
             mashDifficultyPerClickPowerStep = 1.4f;
             mashUiHideSecondsOnExtraHit = 0.45f;
             requireCrashMashUnlock = true; // Default to skill-gated (mash disabled) when no config is present.
+            enableDriveOnObstacleTops = true;
+            obstacleTopNormalDotMin = 0.72f;
+            obstacleTopCarUpDotMin = 0.55f;
+            driveableObstacleLayers = 0;
+            obstacleTopLandingCoinReward = 3;
+            obstacleTopLandingFuelReward = 0f;
+            obstacleTopLandingRewardCooldown = 2.5f;
             _crashSeverityConfig = null;
             _crashFuelDamageScale = 1f;
         }
@@ -1974,6 +1996,15 @@ public class CarController : MonoBehaviour
         currentHP = Mathf.Max(1f, maxHP);
 
         groundCheckLayers = groundLayers;
+
+        // Crash-layer tops count as ground so landing atop obstacles is driveable.
+        if (enableDriveOnObstacleTops)
+        {
+            LayerMask tops = driveableObstacleLayers.value != 0 ? driveableObstacleLayers : crashLayers;
+            groundLayers |= tops;
+            groundCheckLayers |= tops;
+        }
+
         RefreshSkillEffects();
         ApplySkillEffects();
 
@@ -2055,13 +2086,10 @@ public class CarController : MonoBehaviour
         bool brakeHeldNow = GetBrakeKeyOrTrigger();
         if (brakeHeldNow)
         {
-            // Kills active/queued boost + locks out boosts (your existing behavior)
-            if (_boostRequested || _isBoosting || _isPostBoost || _driftHoldTimeSeconds > 0f || _boostOverrideActive)
+            // Kills active/queued boost + locks out boosts (your existing behavior).
+            // Do NOT wipe drift-held boost charge — braking while drifting should keep charging.
+            if (_boostRequested || _isBoosting || _isPostBoost || _boostOverrideActive)
                 CancelAllBoostState(0f);
-
-            // PATCH: also kill stored drift-held boost charge immediately
-            if (_driftHoldTimeSeconds > 0f || _driftHoldDirectionSign != 0)
-                ResetDriftHeldTimer();
         }
 
         UpdateDamageVFXImmediate();
@@ -2958,11 +2986,10 @@ public class CarController : MonoBehaviour
             if (enablePopupText && RacingPopups.IsReady)
                 RacingPopups.BoostPad(GetPopupPosition());
 
-            // Drift boost: same screen flash / bloom as boost pads + close calls.
+            // Drift boost: pad-style bloom + flash only — no close-call FX / slow-mo.
             if (isDriftBoost)
             {
                 TriggerBoostPadBloom();
-                GameManager_Racing.Instance?.PlayCloseCallStyleFXBurst();
                 ScreenFlashManager.Boost();
             }
 
@@ -3451,7 +3478,6 @@ public class CarController : MonoBehaviour
         float speed = rb != null ? rb.velocity.magnitude : 0f;
         bool prevDriftKeyHeld = driftButtonHeld;
         driftButtonHeld = GetDriftHeld();
-        bool brakeHeld = GetBrakeKeyOrTrigger();
 
         // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
         if (driftButtonHeld && !prevDriftKeyHeld)
@@ -3600,9 +3626,7 @@ public class CarController : MonoBehaviour
             // Drift-held boost accumulation
             if (enableDriftHeldBoost)
             {
-                // PATCH: if player is braking, do NOT accumulate drift-held boost.
-                // Also wipe any stored drift-held charge so release cannot fling you.
-                if (brakeHeld || _inCrash || isOutOfHP || isOutOfFuel)
+                if (_inCrash || isOutOfHP || isOutOfFuel)
                 {
                     ResetDriftHeldTimer();
                 }
@@ -3613,7 +3637,7 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    // Build time as long as drift key + a steering direction are held
+                    // Build while drift + steer are held — braking/decel does not wipe charge.
                     if (driftButtonHeld && _driftCurrentSteerSign != 0)
                     {
                         if (_driftHoldDirectionSign == 0 || _driftHoldDirectionSign == _driftCurrentSteerSign)
@@ -3630,7 +3654,7 @@ public class CarController : MonoBehaviour
                         _driftHoldTimeSeconds += Time.deltaTime;
                     }
 
-                    // Trigger boost ONLY on drift key release
+                    // Trigger boost ONLY on drift key release (still blocked while brake held in TryTrigger).
                     if (!driftButtonHeld && prevDriftKeyHeld)
                     {
                         TryTriggerDriftHeldBoost();
@@ -4350,9 +4374,9 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        // Hold at 0 through active tricks and residual flip spin, then ease back up.
-        bool suppressFollow = _trickStickActive || ShouldSuppressAirUprightForTricks();
-        if (suppressFollow)
+        // Hold at 0 only while the trick stick is held. Residual flip spin no longer delays
+        // nose-follow — upright recovery still waits separately via ShouldSuppressAirUprightForTricks.
+        if (_trickStickActive)
         {
             _airVelocityFollowBlend01 = 0f;
             return;
@@ -6712,9 +6736,6 @@ public class CarController : MonoBehaviour
             : Vector3.up;
         impactSpeed = RefineImpactSpeed(collision, contactNormal, collision.relativeVelocity.magnitude);
 
-        if (impactSpeed < minImpactSpeed)
-            return false;
-
         if (collision.contactCount > 0)
         {
             var c = collision.GetContact(0);
@@ -6723,11 +6744,15 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            contactPoint = transform.position;
-            contactNormal = (transform.position - collision.transform.position).normalized;
-            if (contactNormal.sqrMagnitude < 0.0001f)
-                contactNormal = Vector3.up;
+            contactPoint = collision.collider.ClosestPoint(transform.position);
         }
+
+        // Top-face landing: drive atop, no crash (and optional reward).
+        if (TryHandleObstacleTopLanding(collision.collider, contactPoint, contactNormal))
+            return false;
+
+        if (impactSpeed < minImpactSpeed)
+            return false;
 
         int rootId = collision.collider.transform.root.GetInstanceID();
         _recentCrashRootTime[rootId] = Time.time;
@@ -6735,6 +6760,92 @@ public class CarController : MonoBehaviour
         _closeCallTracking.Remove(rootId);
 
         return true;
+    }
+
+    /// <summary>
+    /// True when the contact is on an upward-facing obstacle top and the car is upright enough to drive on it.
+    /// </summary>
+    private bool IsDriveableObstacleTopContact(Collider other, Vector3 contactNormal)
+    {
+        if (!enableDriveOnObstacleTops || other == null)
+            return false;
+
+        // NPC traffic / creatures are never platforms.
+        if (other.GetComponentInParent<NPCTrafficCar>() != null)
+            return false;
+        if (other.GetComponentInParent<TrackCreature>() != null)
+            return false;
+        // Diving projectiles should still crash even if the normal looks "up".
+        if (other.GetComponentInParent<ThrownObstacle>() != null)
+            return false;
+
+        int layerBit = 1 << other.gameObject.layer;
+        LayerMask topsMask = driveableObstacleLayers.value != 0 ? driveableObstacleLayers : crashLayers;
+        if ((layerBit & topsMask) == 0 && (layerBit & crashLayers) == 0)
+            return false;
+
+        float upDot = Vector3.Dot(contactNormal.normalized, Vector3.up);
+        if (upDot < obstacleTopNormalDotMin)
+            return false;
+
+        if (Vector3.Dot(transform.up, Vector3.up) < obstacleTopCarUpDotMin)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// If this is a driveable top landing: award once (cooldown) and skip crash. Returns true when crash should be skipped.
+    /// </summary>
+    private bool TryHandleObstacleTopLanding(Collider other, Vector3 contactPoint, Vector3 contactNormal)
+    {
+        if (!IsDriveableObstacleTopContact(other, contactNormal))
+            return false;
+
+        TryRewardObstacleTopLanding(other, contactPoint);
+        return true;
+    }
+
+    private void TryRewardObstacleTopLanding(Collider other, Vector3 contactPoint)
+    {
+        if (other == null) return;
+
+        Transform root = other.attachedRigidbody != null ? other.attachedRigidbody.transform : other.transform;
+        int id = root.GetInstanceID();
+        if (_obstacleTopRewardTime.TryGetValue(id, out float last)
+            && Time.time - last < Mathf.Max(0.1f, obstacleTopLandingRewardCooldown))
+            return;
+
+        _obstacleTopRewardTime[id] = Time.time;
+
+        Vector3 popupPos = contactPoint + Vector3.up * 1.5f;
+        if (popupPos.sqrMagnitude < 0.01f)
+            popupPos = GetPopupPosition();
+
+        int coins = Mathf.Max(0, obstacleTopLandingCoinReward);
+        if (coins > 0)
+        {
+            if (RacingCoinCollectionHub.Instance != null)
+            {
+                RacingCoinCollectionHub.Instance.AwardCoins(
+                    coins,
+                    popupPos,
+                    RacingCoinRewardSource.Obstacle);
+            }
+            else
+            {
+                GameManager_Racing.Instance?.RegisterCoinPickup(coins);
+                if (RacingPopups.IsReady)
+                    RacingPopups.Spawn(RacingPopupType.CoinGain, coins, popupPos);
+            }
+        }
+
+        float fuel = Mathf.Max(0f, obstacleTopLandingFuelReward);
+        if (fuel > 0f)
+            AddFuel(fuel);
+
+        if (enablePopupText && RacingPopups.IsReady)
+            RacingPopups.ObstacleTop(popupPos);
     }
 
     /// <param name="severityFallback01">Used when <see cref="CrashSeverityConfig"/> is not assigned or <paramref name="otherRoot"/> is null.</param>
@@ -7993,8 +8104,17 @@ public class CarController : MonoBehaviour
         float impactSpeed = collision.relativeVelocity.magnitude;
 
         Vector3 contactNormalEarly = Vector3.up;
+        Vector3 contactPointEarly = transform.position;
         if (collision.contactCount > 0)
-            contactNormalEarly = collision.GetContact(0).normal;
+        {
+            var c0 = collision.GetContact(0);
+            contactNormalEarly = c0.normal;
+            contactPointEarly = c0.point;
+        }
+
+        // Landing on the top face of an obstacle: drive atop it (no crash) + reward.
+        if (TryHandleObstacleTopLanding(collision.collider, contactPointEarly, contactNormalEarly))
+            return;
 
         impactSpeed = RefineImpactSpeed(collision, contactNormalEarly, impactSpeed);
 
@@ -8453,6 +8573,11 @@ public class CarController : MonoBehaviour
         Vector3 approxNormal = (transform.position - contactPoint).sqrMagnitude > 1e-6f
             ? (transform.position - contactPoint).normalized
             : Vector3.up;
+
+        // Approximate top landing for trigger-based crash props.
+        if (TryHandleObstacleTopLanding(other, contactPoint, approxNormal))
+            return;
+
         float impactForLegacy = Mathf.Clamp(impactSpeed, minImpactSpeed, maxImpactSpeed);
         float legacySeverity = Mathf.InverseLerp(minImpactSpeed, maxImpactSpeed, impactForLegacy);
         float severity = ResolveCrashSeverity(impactSpeed, obstacleRootForSeverity, otherRb, approxNormal, legacySeverity, 1f, null);

@@ -54,6 +54,22 @@ public class CarCrashMashConfig : MonoBehaviour
     [SerializeField] private float crashDragMultiplier = 1f;
     [SerializeField] private float crashAngularDrag = 1f;
 
+    [Header("Drive On Obstacle Tops")]
+    [Tooltip("Landing on the upward-facing top of a crash-layer obstacle does not crash — you can drive atop it.")]
+    [SerializeField] private bool enableDriveOnObstacleTops = true;
+    [Tooltip("Contact normal · world-up must be at least this to count as a top landing (1 = perfectly flat top).")]
+    [SerializeField, Range(0.35f, 0.98f)] private float obstacleTopNormalDotMin = 0.72f;
+    [Tooltip("Car up · world-up must be at least this (rejects belly/side landings on the roof).")]
+    [SerializeField, Range(0.2f, 0.98f)] private float obstacleTopCarUpDotMin = 0.55f;
+    [Tooltip("Extra layers treated as driveable tops / ground while this feature is on. Leave empty to use Crash Layers.")]
+    [SerializeField] private LayerMask driveableObstacleLayers;
+    [Tooltip("Coins awarded the first time you land on a given obstacle top (per cooldown).")]
+    [SerializeField, Min(0)] private int obstacleTopLandingCoinReward = 3;
+    [Tooltip("Optional fuel granted on a rewarded top landing.")]
+    [SerializeField, Min(0f)] private float obstacleTopLandingFuelReward = 0f;
+    [Tooltip("Seconds before the same obstacle can award another top-landing reward.")]
+    [SerializeField, Min(0.1f)] private float obstacleTopLandingRewardCooldown = 2.5f;
+
     [Header("Popup Text Settings")]
     [SerializeField] private bool enablePopupText = true;
     [SerializeField] private float popupVerticalOffset = 0.25f;
@@ -185,6 +201,13 @@ public class CarCrashMashConfig : MonoBehaviour
     public float AirborneClickMultiplier => airborneClickMultiplier;
     public CrashSeverityConfig CrashSeverityConfig => crashSeverityConfig;
     public LayerMask CrashLayers => crashLayers;
+    public bool EnableDriveOnObstacleTops => enableDriveOnObstacleTops;
+    public float ObstacleTopNormalDotMin => obstacleTopNormalDotMin;
+    public float ObstacleTopCarUpDotMin => obstacleTopCarUpDotMin;
+    public LayerMask DriveableObstacleLayers => driveableObstacleLayers;
+    public int ObstacleTopLandingCoinReward => obstacleTopLandingCoinReward;
+    public float ObstacleTopLandingFuelReward => obstacleTopLandingFuelReward;
+    public float ObstacleTopLandingRewardCooldown => obstacleTopLandingRewardCooldown;
     public float MinImpactSpeed => minImpactSpeed;
     public float MaxImpactSpeed => maxImpactSpeed;
     public float MinCrashDuration => minCrashDuration;

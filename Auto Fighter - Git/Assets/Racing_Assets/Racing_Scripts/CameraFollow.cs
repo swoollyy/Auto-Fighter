@@ -185,13 +185,16 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Maximum camera roll allowed at full drift turn intensity.")]
     [SerializeField, Range(0f, 45f)] private float maxDriftRollDegrees = 6f;
 
-    [Tooltip("How fast signed drift tilt moves toward the stick (-1..1 units per second). Lower = slower build / softer side-to-side crossfade.")]
+    [Tooltip("How fast signed drift tilt builds toward a harder steer (-1..1 units per second).")]
     [SerializeField, Min(0.1f)] private float driftTiltChangeSpeed = 2.4f;
+
+    [Tooltip("How fast tilt eases back toward neutral when you release / soften drift direction while still drifting. Lower = much slower return to level. This is the main knob for 'stick released, tilt hangs'.")]
+    [SerializeField, Min(0.05f)] private float driftTiltNeutralSpeed = 0.35f;
 
     [Tooltip("While reversing mid-drift, multiply Drift Tilt Change Speed by this so left↔right crossfades through center instead of snapping.")]
     [SerializeField, Range(0.05f, 1f)] private float driftTiltCrossfadeSpeedMult = 0.45f;
 
-    [Tooltip("How fast tilt returns to level after drift ends (-1..1 units per second).")]
+    [Tooltip("How fast tilt returns to level after the drift fully ends (-1..1 units per second).")]
     [SerializeField, Min(0.1f)] private float driftTiltReleaseSpeed = 1.6f;
 
     [Tooltip("Roll smoothing after drift fully ends (lower = less snappy level-out).")]
@@ -653,14 +656,25 @@ public class CameraFollow : MonoBehaviour
                     signedTiltTarget = driftDir * intensity;
             }
 
-            float tiltSpeed = driftingNow ? driftTiltChangeSpeed : driftTiltReleaseSpeed;
-            // Opposite-side target while still tilted: slow crossfade through center (no snap).
-            bool crossingSides = driftingNow
-                && Mathf.Abs(_driftRollSigned) > 0.01f
-                && Mathf.Abs(signedTiltTarget) > 0.01f
-                && Mathf.Sign(_driftRollSigned) != Mathf.Sign(signedTiltTarget);
-            if (crossingSides)
-                tiltSpeed *= driftTiltCrossfadeSpeedMult;
+            float tiltSpeed;
+            if (!driftingNow)
+            {
+                tiltSpeed = driftTiltReleaseSpeed;
+            }
+            else
+            {
+                bool easingTowardNeutral = Mathf.Abs(signedTiltTarget) < Mathf.Abs(_driftRollSigned) - 0.001f;
+                bool crossingSides = Mathf.Abs(_driftRollSigned) > 0.01f
+                    && Mathf.Abs(signedTiltTarget) > 0.01f
+                    && Mathf.Sign(_driftRollSigned) != Mathf.Sign(signedTiltTarget);
+
+                if (crossingSides)
+                    tiltSpeed = driftTiltChangeSpeed * driftTiltCrossfadeSpeedMult;
+                else if (easingTowardNeutral)
+                    tiltSpeed = driftTiltNeutralSpeed;
+                else
+                    tiltSpeed = driftTiltChangeSpeed;
+            }
 
             _driftRollSigned = Mathf.MoveTowards(
                 _driftRollSigned,

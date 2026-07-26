@@ -20,8 +20,8 @@ public class CarAirTrickConfig : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float airVelocityFollowNose = 0.45f;
     [Tooltip("How quickly travel catches the nose at full Air Velocity Follow Nose (higher = snappier).")]
     [SerializeField, Min(0.1f)] private float airVelocityFollowRate = 3.5f;
-    [Tooltip("After releasing tricks, how long to ease nose-follow travel back in so the path doesn't snap onto the nose. 0 = instant.")]
-    [SerializeField, Min(0f)] private float airVelocityFollowReturnSeconds = 0.48f;
+    [Tooltip("After releasing tricks, how long to ease nose-follow travel back in so the path doesn't snap onto the nose. Lower = nose control returns sooner.")]
+    [SerializeField, Min(0f)] private float airVelocityFollowReturnSeconds = 0.18f;
     [Tooltip("Legacy: bank path from stick at this deg/s. Prefer Air Velocity Follow Nose for nose-tracking. 0 = off.")]
     [SerializeField, Min(0f)] private float airTrajectorySteerRate = 0f;
     [Tooltip("How quickly left-stick air aim ramps in (lower = softer).")]

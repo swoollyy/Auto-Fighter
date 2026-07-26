@@ -50,6 +50,8 @@ public enum RacingPopupType
     MashClickDamage,
 
     // Ice path: shown when the car drives onto ice and is being affected by ice handling.
-    // IMPORTANT: keep this LAST so existing serialized popup-type indices don't shift.
     IcePath,
+
+    // Landing / driving on the top face of an obstacle (keep after IcePath so older indices stay valid).
+    ObstacleTop,
 }

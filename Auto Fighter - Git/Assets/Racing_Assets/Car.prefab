@@ -1445,8 +1445,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   testAlwaysAccelerate: 0
-  baseAcceleration: 3.9
-  baseMaxSpeed: 10
+  baseAcceleration: 4.1
+  baseMaxSpeed: 13
   baseBrakingForce: 2
   baseDrag: 1
   coastLowDecelPerSecond: 1.88
@@ -1561,13 +1561,13 @@ MonoBehaviour:
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 2
-  maxDriftSteerMultiplier: 2.9
-  driftSteeringInputBuildupMultiplier: 0.43
-  driftBuildRate: 0.4
+  maxDriftSteerMultiplier: 3.2
+  driftSteeringInputBuildupMultiplier: 0.46
+  driftBuildRate: 0.37
   driftReleaseRate: 8.75
   driftSideForce: 0.47
-  driftSideForceWhileAccelerating: 0.35
-  driftSideForceThrottleBlendRate: 4
+  driftSideForceWhileAccelerating: 0.5
+  driftSideForceThrottleBlendRate: 3
   driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0
   driftForwardAccelMultiplier: 0
@@ -1630,10 +1630,10 @@ MonoBehaviour:
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
   driftBoostMinHoldSeconds: 0.8
-  driftBoostMaxHoldSeconds: 2.5
-  driftBoostForceRange: {x: 0.5, y: 0.5}
-  driftBoostDurationRange: {x: 0.4, y: 0.7}
-  driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.25}
+  driftBoostMaxHoldSeconds: 1.5
+  driftBoostForceRange: {x: 0.5, y: 0.9}
+  driftBoostDurationRange: {x: 0.4, y: 0.9}
+  driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.4}
   driftBoostFuelCost: 0
   driftBoostCooldown: 3.3
 --- !u!114 &8275495873616421884
@@ -1798,6 +1798,15 @@ MonoBehaviour:
   maxCrashFlingSpeed: 12
   crashDragMultiplier: 1
   crashAngularDrag: 1
+  enableDriveOnObstacleTops: 1
+  obstacleTopNormalDotMin: 0.72
+  obstacleTopCarUpDotMin: 0.55
+  driveableObstacleLayers:
+    serializedVersion: 2
+    m_Bits: 1312768
+  obstacleTopLandingCoinReward: 0
+  obstacleTopLandingFuelReward: 0
+  obstacleTopLandingRewardCooldown: 2
   enablePopupText: 1
   popupVerticalOffset: 0.25
   minHPDamageForPopup: 0.1
@@ -1979,6 +1988,9 @@ MonoBehaviour:
   airTurnSpeedMultiplier: 1.1
   airYawRate: 30
   airYawInputDeadzone: 0.12
+  airVelocityFollowNose: 0.45
+  airVelocityFollowRate: 3.5
+  airVelocityFollowReturnSeconds: 0.48
   airTrajectorySteerRate: 73.1
   airSteerInputSmoothRate: 3.5
   airSteerInputReleaseRate: 4.5

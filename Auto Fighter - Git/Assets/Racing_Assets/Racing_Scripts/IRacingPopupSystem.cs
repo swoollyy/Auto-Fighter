@@ -159,6 +159,13 @@ public static class RacingPopups
     public static void IcePath(Vector3 position)
         => Spawn(RacingPopupType.IcePath, 0f, position);
 
+    /// <summary>Landed / driving on top of an obstacle.</summary>
+    public static void ObstacleTop(Vector3 position)
+        => Spawn(RacingPopupType.ObstacleTop, "ROOF RIDE!", position);
+
+    public static void ObstacleTop(string text, Vector3 position)
+        => Spawn(RacingPopupType.ObstacleTop, text, position);
+
     public static void Generic(string text, Vector3 position)
         => Spawn(RacingPopupType.Generic, text, position);
 
