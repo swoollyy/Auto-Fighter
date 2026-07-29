@@ -1445,9 +1445,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   testAlwaysAccelerate: 0
-  baseAcceleration: 4.1
-  baseMaxSpeed: 13
-  baseBrakingForce: 2
+  baseAcceleration: 4.3
+  baseMaxSpeed: 12
+  baseBrakingForce: 5
   baseDrag: 1
   coastLowDecelPerSecond: 1.88
   coastHighDecelPerSecond: 2.05
@@ -1533,7 +1533,8 @@ MonoBehaviour:
   landingLateralBleedPerSecond: 14
   landingLateralBleedDuration: 0.45
   enableLandingSlipStraighten: 1
-  landingSlipStraightenDuration: 0.18
+  landingSlipStraightenDuration: 0.6
+  landingSlipCarryFraction: 0.6
   landingSlipMaxAlignDegrees: 28
   landingSlipLateralKeep: 0.7
   enableBadLandingCrash: 1
@@ -1566,7 +1567,7 @@ MonoBehaviour:
   driftBuildRate: 0.37
   driftReleaseRate: 8.75
   driftSideForce: 0.47
-  driftSideForceWhileAccelerating: 0.5
+  driftSideForceWhileAccelerating: 0.25
   driftSideForceThrottleBlendRate: 3
   driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0

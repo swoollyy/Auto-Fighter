@@ -34,6 +34,8 @@ public class CarLandingConfig : MonoBehaviour
     [SerializeField] private bool enableLandingSlipStraighten = true;
     [Tooltip("How long the soft straighten runs after touchdown.")]
     [SerializeField, Min(0.01f)] private float landingSlipStraightenDuration = 0.18f;
+    [Tooltip("Portion of the straighten window spent honoring landing travel direction before blending back toward car facing.")]
+    [SerializeField, Range(0f, 0.95f)] private float landingSlipCarryFraction = 0.35f;
     [Tooltip("Max total degrees to rotate travel toward the nose over the full straighten window.")]
     [SerializeField, Range(0f, 90f)] private float landingSlipMaxAlignDegrees = 28f;
     [Tooltip("Fraction of sideways speed kept by the end of the window (1 = keep all, 0 = kill all).")]
@@ -71,6 +73,7 @@ public class CarLandingConfig : MonoBehaviour
     public float LandingLateralBleedDuration => landingLateralBleedDuration;
     public bool EnableLandingSlipStraighten => enableLandingSlipStraighten;
     public float LandingSlipStraightenDuration => landingSlipStraightenDuration;
+    public float LandingSlipCarryFraction => landingSlipCarryFraction;
     public float LandingSlipMaxAlignDegrees => landingSlipMaxAlignDegrees;
     public float LandingSlipLateralKeep => landingSlipLateralKeep;
     public bool EnableBadLandingCrash => enableBadLandingCrash;

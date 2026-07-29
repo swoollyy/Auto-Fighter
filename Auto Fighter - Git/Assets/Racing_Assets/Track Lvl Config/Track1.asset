@@ -87,7 +87,7 @@ MonoBehaviour:
     useRandomSeed: 1
     fixedSeed: 12345
     generateRoadMesh: 1
-    roadWidth: 6
+    roadWidth: 7
     roadMaterial: {fileID: 2100000, guid: 99e3eb38076101f41ad5d0f37f41add5, type: 2}
     uvTiling: 0.08
     useSmoothing: 1
@@ -161,14 +161,14 @@ MonoBehaviour:
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacing: 10
-    maxActiveObstacles: 200
+    obstacleSpacing: 16
+    maxActiveObstacles: 100
     minSpawnDistanceAhead: 80
-    maxSpawnDistanceAhead: 150
+    maxSpawnDistanceAhead: 100
     initialPreSpawnDistance: 80
-    despawnBehindDistance: 20
-    distanceJitter: 2.4
-    spawnChancePerSlot: 0.9
+    despawnBehindDistance: 40
+    distanceJitter: 1.5
+    spawnChancePerSlot: 0.85
     globalSpawnChanceByDistance:
       serializedVersion: 2
       m_Curve:
@@ -533,15 +533,15 @@ MonoBehaviour:
     - id: NPCCar
       prefab: {fileID: 8123480379425158355, guid: f237c6ce6f175d64e90b970c9c2969b9, type: 3}
       weight: 1
-      startAtNormalizedDist: 0.007
-      fullWeightNormalizedDist: 0.05
+      startAtNormalizedDist: 0.25
+      fullWeightNormalizedDist: 0.9
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     carSpacing: 10
     maxActiveCars: 3
-    minSpawnDistanceAhead: 10
-    maxSpawnDistanceAhead: 30.3
+    minSpawnDistanceAhead: 25
+    maxSpawnDistanceAhead: 70
     allowSpawnBehind: 0
     minSpawnDistanceBehind: 3
     maxSpawnDistanceBehind: 7
@@ -556,15 +556,15 @@ MonoBehaviour:
       - serializedVersion: 3
         time: 0
         value: 0
-        inSlope: 0
-        outSlope: 0
+        inSlope: 0.05231574
+        outSlope: 0.05231574
         tangentMode: 34
         weightedMode: 0
         inWeight: 0
         outWeight: 0.33333334
       - serializedVersion: 3
-        time: 0.5
-        value: 0
+        time: 0.49583435
+        value: 0.025939941
         inSlope: -0.00810442
         outSlope: -0.00810442
         tangentMode: 0
@@ -574,8 +574,8 @@ MonoBehaviour:
       - serializedVersion: 3
         time: 1
         value: 1
-        inSlope: 2
-        outSlope: 2
+        inSlope: 1.9320239
+        outSlope: 1.9320239
         tangentMode: 34
         weightedMode: 0
         inWeight: 0.33333334

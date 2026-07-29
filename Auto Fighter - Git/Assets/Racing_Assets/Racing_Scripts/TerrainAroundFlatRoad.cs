@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// After a procedural track is built, reshapes terrain: hills via additive noise on a captured baseline,
-/// while forcing height under the road corridor (XZ distance to centerline) to stay below a flat road plane (default Y=0).
+/// After a procedural track is built, reshapes terrain: smooth macro hills via low-frequency noise
+/// on a captured baseline, while forcing height under the road corridor (XZ distance to centerline)
+/// to stay below a flat road plane (default Y=0).
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class TerrainAroundFlatRoad : MonoBehaviour
@@ -26,8 +27,8 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     [Tooltip("Added to half road width for the fully carved zone.")]
     [SerializeField] private float extraHalfWidthMeters = 1.5f;
 
-    [Tooltip("Beyond the carved zone, blend from carved heights up to full noisy hills over this distance.")]
-    [SerializeField] private float blendDistanceMeters = 14f;
+    [Tooltip("Beyond the carved zone, blend from carved heights up to full hills over this distance. Short values make steep, wonky road-facing slopes.")]
+    [SerializeField] private float blendDistanceMeters = 22f;
 
     [Tooltip("Extra safety band outside the carved zone that is still clamped below road to prevent tiny terrain triangles from poking through.")]
     [SerializeField, Min(0f)] private float seamGuardBandMeters = 1.25f;
@@ -37,23 +38,39 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
     [Header("Hills (additive on baseline heightmap)")]
     [Tooltip("Vertical strength of hills. Does not change how sharp they look by itself.")]
-    [SerializeField] private float noiseAmplitudeMeters = 5f;
+    [SerializeField] private float noiseAmplitudeMeters = 14f;
 
-    [Tooltip("Noise frequency in world space. Lower = broad rolling shapes; higher = smaller, busier bumps (often reads sharper).")]
-    [SerializeField] private float noiseWorldScale = 0.035f;
+    [Tooltip("Noise frequency in world space. Lower = broad rolling shapes; higher = smaller, busier bumps.")]
+    [SerializeField] private float noiseWorldScale = 0.012f;
 
-    [Tooltip("Extra octaves add small-scale detail. Values above ~3 often look spiky unless persistence is low or smoothing is used.")]
-    [SerializeField, Range(1, 6)] private int noiseOctaves = 3;
+    [Tooltip("Macro shape octaves only. Keep at 1–2 for drivably smooth slopes; 3+ adds speed-bump ripples.")]
+    [SerializeField, Range(1, 6)] private int noiseOctaves = 2;
 
-    [Tooltip("How strong each finer octave is. Lower ≈ smoother (try 0.4–0.55 for rolling hills). High values keep rough, pointy detail.")]
-    [SerializeField, Range(0.15f, 1f)] private float noisePersistence = 0.52f;
+    [Tooltip("How strong each finer octave is. Lower ≈ smoother (try 0.3–0.45 for rolling hills).")]
+    [SerializeField, Range(0.15f, 1f)] private float noisePersistence = 0.38f;
 
-    [Tooltip("Averages noise over this radius in meters (cross pattern). 0 = off. Try 4–10 to soften sharp peaks without changing amplitude much.")]
-    [SerializeField, Min(0f)] private float noiseSpatialSmoothingMeters;
+    [Tooltip("0 = signed rolling (peaks + dug valleys). 1 = hills only (no indented ditches on slopes). Try 0.7–0.9.")]
+    [SerializeField, Range(0f, 1f)] private float hillBias = 0.8f;
+
+    [Tooltip("Averages noise over this radius in meters. Softens sharp peaks without changing amplitude much.")]
+    [SerializeField, Min(0f)] private float noiseSpatialSmoothingMeters = 10f;
+
+    [Tooltip("Optional fine ripples on top of macro hills. Keep near 0 for smooth driving.")]
+    [SerializeField, Min(0f)] private float microDetailAmplitudeMeters = 0.25f;
+
+    [Tooltip("World-space frequency for micro detail (ignored when micro amplitude is 0).")]
+    [SerializeField] private float microDetailWorldScale = 0.04f;
 
     [SerializeField] private bool randomizeNoiseSeedPerApply = true;
 
     [SerializeField] private Vector2 fixedNoiseSeedOffset;
+
+    [Header("Heightmap smoothing")]
+    [Tooltip("Box-blur passes after sculpt. Kills residual speed-bump frequencies on slopes.")]
+    [SerializeField, Range(0, 4)] private int heightmapBlurPasses = 2;
+
+    [Tooltip("Blur radius in heightmap samples (cells). 2–3 is usually enough.")]
+    [SerializeField, Range(1, 6)] private int heightmapBlurRadiusSamples = 2;
 
     [Header("Performance")]
     [SerializeField] private bool spreadWorkAcrossFrames = true;
@@ -80,6 +97,8 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
     private bool _clonedAny;
     private Vector2 _noiseSeed;
+    private float[] _blurRowScratch;
+    private float[] _blurColScratch;
 
     public bool SpreadWorkAcrossFrames => spreadWorkAcrossFrames;
 
@@ -277,15 +296,81 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
                     float hill = Mathf.Clamp01(b + noiseM / ts.y);
 
                     float carved = Mathf.Min(hill, hMaxNorm);
-                    float wBlend = Smooth01((d - inner) / Mathf.Max(0.001f, outer - inner));
+                    // Quintic smootherstep: C2-continuous at carve/hill boundaries (avoids kink "speed bumps").
+                    float wBlend = Smoother01((d - inner) / Mathf.Max(0.001f, outer - inner));
                     float outH = Mathf.Lerp(carved, hill, wBlend);
 
-                    // Keep a narrow guard band below road around the seam so terrain triangles
-                    // can't poke through/overlap the road edge during hill blend.
-                    if (d <= inner + seamGuardBandMeters)
-                        outH = Mathf.Min(outH, hSeamGuardNorm);
+                    // Feather seam guard instead of a hard Min clamp (hard edges create ledge bumps).
+                    float guardOuter = inner + seamGuardBandMeters;
+                    if (d < guardOuter && seamGuardBandMeters > 1e-4f)
+                    {
+                        float gT = Smoother01((d - inner) / seamGuardBandMeters);
+                        float capped = Mathf.Min(outH, hSeamGuardNorm);
+                        outH = Mathf.Lerp(capped, outH, gT);
+                    }
 
                     dst[y, x] = outH;
+                }
+            }
+
+            if (heightmapBlurPasses > 0)
+            {
+                for (int pass = 0; pass < heightmapBlurPasses; pass++)
+                {
+                    if (spreadWorkAcrossFrames)
+                    {
+                        yield return null;
+                        lastYieldRealtime = Time.realtimeSinceStartup;
+                    }
+
+                    BoxBlurHeightmapInPlace(dst, res, heightmapBlurRadiusSamples);
+                }
+
+                // Re-enforce road corridor after blur so smoothed hills can't creep back under the road.
+                for (int y = 0; y < res; y++)
+                {
+                    if (spreadWorkAcrossFrames && y > 0 && (y % heightmapRowsPerYield) == 0)
+                    {
+                        yield return null;
+                        lastYieldRealtime = Time.realtimeSinceStartup;
+                    }
+
+                    float nz = y / (float)Mathf.Max(1, res - 1);
+                    float worldZ = tp.z + nz * ts.z;
+
+                    for (int x = 0; x < res; x++)
+                    {
+                        float nx = x / (float)Mathf.Max(1, res - 1);
+                        float worldX = tp.x + nx * ts.x;
+
+                        if (worldX < pMinX || worldX > pMaxX || worldZ < pMinZ || worldZ > pMaxZ)
+                            continue;
+
+                        float d = DistancePointToPolylineXZ(new Vector2(worldX, worldZ), _polyScratch);
+                        if (d > outer)
+                            continue;
+
+                        float h = dst[y, x];
+                        if (d <= inner)
+                        {
+                            dst[y, x] = Mathf.Min(h, hMaxNorm);
+                            continue;
+                        }
+
+                        float wBlend = Smoother01((d - inner) / Mathf.Max(0.001f, outer - inner));
+                        float carved = Mathf.Min(h, hMaxNorm);
+                        h = Mathf.Lerp(carved, h, wBlend);
+
+                        float guardOuter = inner + seamGuardBandMeters;
+                        if (d < guardOuter && seamGuardBandMeters > 1e-4f)
+                        {
+                            float gT = Smoother01((d - inner) / seamGuardBandMeters);
+                            float capped = Mathf.Min(h, hSeamGuardNorm);
+                            h = Mathf.Lerp(capped, h, gT);
+                        }
+
+                        dst[y, x] = h;
+                    }
                 }
             }
 
@@ -294,6 +379,56 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         }
 
         Physics.SyncTransforms();
+    }
+
+    private void BoxBlurHeightmapInPlace(float[,] map, int res, int radius)
+    {
+        radius = Mathf.Clamp(radius, 1, 6);
+        int diam = radius * 2 + 1;
+        float inv = 1f / diam;
+
+        if (_blurRowScratch == null || _blurRowScratch.Length < res)
+            _blurRowScratch = new float[res];
+        if (_blurColScratch == null || _blurColScratch.Length < res)
+            _blurColScratch = new float[res];
+
+        // Horizontal pass
+        for (int y = 0; y < res; y++)
+        {
+            float sum = 0f;
+            for (int i = -radius; i <= radius; i++)
+                sum += map[y, Mathf.Clamp(i, 0, res - 1)];
+
+            for (int x = 0; x < res; x++)
+            {
+                _blurRowScratch[x] = sum * inv;
+                float remove = map[y, Mathf.Clamp(x - radius, 0, res - 1)];
+                float add = map[y, Mathf.Clamp(x + radius + 1, 0, res - 1)];
+                sum += add - remove;
+            }
+
+            for (int x = 0; x < res; x++)
+                map[y, x] = _blurRowScratch[x];
+        }
+
+        // Vertical pass
+        for (int x = 0; x < res; x++)
+        {
+            float sum = 0f;
+            for (int i = -radius; i <= radius; i++)
+                sum += map[Mathf.Clamp(i, 0, res - 1), x];
+
+            for (int y = 0; y < res; y++)
+            {
+                _blurColScratch[y] = sum * inv;
+                float remove = map[Mathf.Clamp(y - radius, 0, res - 1), x];
+                float add = map[Mathf.Clamp(y + radius + 1, 0, res - 1), x];
+                sum += add - remove;
+            }
+
+            for (int y = 0; y < res; y++)
+                map[y, x] = _blurColScratch[y];
+        }
     }
 
     private static void RefreshTerrainCollider(Terrain terrain, TerrainData td)
@@ -438,13 +573,19 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         if (noiseSpatialSmoothingMeters < 1e-4f)
             return SampleNoiseMetersRaw(worldX, worldZ);
 
+        // 3x3 weighted cross (center + cardinals + diagonals) for smoother macro shapes.
         float r = noiseSpatialSmoothingMeters;
-        float s = SampleNoiseMetersRaw(worldX, worldZ);
-        s += SampleNoiseMetersRaw(worldX + r, worldZ);
-        s += SampleNoiseMetersRaw(worldX - r, worldZ);
-        s += SampleNoiseMetersRaw(worldX, worldZ + r);
-        s += SampleNoiseMetersRaw(worldX, worldZ - r);
-        return s * (1f / 5f);
+        float rDiag = r * 0.70710678f;
+        float s = SampleNoiseMetersRaw(worldX, worldZ) * 4f;
+        s += SampleNoiseMetersRaw(worldX + r, worldZ) * 2f;
+        s += SampleNoiseMetersRaw(worldX - r, worldZ) * 2f;
+        s += SampleNoiseMetersRaw(worldX, worldZ + r) * 2f;
+        s += SampleNoiseMetersRaw(worldX, worldZ - r) * 2f;
+        s += SampleNoiseMetersRaw(worldX + rDiag, worldZ + rDiag);
+        s += SampleNoiseMetersRaw(worldX + rDiag, worldZ - rDiag);
+        s += SampleNoiseMetersRaw(worldX - rDiag, worldZ + rDiag);
+        s += SampleNoiseMetersRaw(worldX - rDiag, worldZ - rDiag);
+        return s * (1f / 16f);
     }
 
     private float SampleNoiseMetersRaw(float worldX, float worldZ)
@@ -462,12 +603,28 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             freq *= 2f;
         }
 
-        return sum * noiseAmplitudeMeters;
+        // Soft-rectify: squashes dug-out valleys that make one face of a hill look indented/wonky.
+        float pos = Mathf.Max(0f, sum);
+        float neg = Mathf.Min(0f, sum);
+        float shaped = pos + neg * (1f - hillBias);
+
+        float meters = shaped * noiseAmplitudeMeters;
+
+        if (microDetailAmplitudeMeters > 1e-4f)
+        {
+            float mx = worldX * microDetailWorldScale + _noiseSeed.x + 101.3f;
+            float mz = worldZ * microDetailWorldScale + _noiseSeed.y + 77.9f;
+            float micro = (Mathf.PerlinNoise(mx, mz) - 0.5f) * 2f;
+            meters += micro * microDetailAmplitudeMeters;
+        }
+
+        return meters;
     }
 
-    private static float Smooth01(float t)
+    /// <summary>Ken Perlin's smootherstep — zero 1st and 2nd derivatives at 0 and 1.</summary>
+    private static float Smoother01(float t)
     {
         t = Mathf.Clamp01(t);
-        return t * t * (3f - 2f * t);
+        return t * t * t * (t * (t * 6f - 15f) + 10f);
     }
 }

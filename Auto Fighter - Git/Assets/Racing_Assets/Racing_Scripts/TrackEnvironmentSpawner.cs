@@ -51,12 +51,19 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
     [Header("Spawn Settings")]
-    [SerializeField, Min(0.5f)] private float spacing = 22f;
-    [SerializeField, Min(1)] private int maxActive = 180;
+    [Tooltip("Along-track sample spacing. Keep large enough that targetCount does not crush many props onto the same slots.")]
+    [SerializeField, Min(0.5f)] private float spacing = 6f;
+    [SerializeField, Min(1)] private int maxActive = 400;
 
     [Header("Populate Once Settings")]
-    [SerializeField, Min(1)] private int targetCount = 160;
-    [SerializeField, Min(1)] private int maxAttemptsPerSlot = 6;
+    [SerializeField, Min(1)] private int targetCount = 280;
+    [SerializeField, Min(1)] private int maxAttemptsPerSlot = 10;
+
+    [Tooltip("Minimum XZ distance between any two environment props. Stops trees stacking inside each other.")]
+    [SerializeField, Min(0.5f)] private float minSeparationMeters = 5.5f;
+
+    [Tooltip("After the even pass, retry leftover empty slots to fill barren stretches.")]
+    [SerializeField] private bool fillEmptyGaps = true;
 
     [Header("Stream Settings (only if Spawn Mode = StreamAroundPlayer)")]
     [SerializeField] private bool streamSpawnDuringRun = true;
@@ -72,11 +79,11 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Tooltip("Maximum distance from the path centerline for environment placement. Prevents '500000 meters away'.")]
     [SerializeField, Min(1f)] private float maxDistanceFromCenterline = 28f;
 
-    [Tooltip("1 = mostly spawn on the sides (�90�), 0 = any direction around the point.")]
-    [SerializeField, Range(0f, 1f)] private float sideBias = 0.9f;
+    [Tooltip("1 = mostly spawn on the sides (±90°), 0 = any direction around the point.")]
+    [SerializeField, Range(0f, 1f)] private float sideBias = 0.85f;
 
     [Tooltip("How many random candidate points we try for a given slot before giving up.")]
-    [SerializeField, Min(1)] private int placementAttempts = 8;
+    [SerializeField, Min(1)] private int placementAttempts = 12;
 
     [Header("Grounding")]
     [SerializeField] private bool autoGroundUsingBounds = true;
@@ -123,6 +130,11 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
     // runtime spawned
     private readonly Dictionary<int, GameObject> _spawnedBySlot = new();
+
+    // World-space occupancy (XZ) so lateral picks can't stack props on top of each other.
+    private readonly List<Vector2> _occupiedXZ = new(512);
+    private readonly Dictionary<long, List<int>> _occupiedGrid = new(512);
+    private float _occCellSize = 5.5f;
 
     // streaming internals
     private float _updateTimer;
@@ -204,41 +216,98 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     {
         if (_totalLength <= 0f || !HasAnyValidType()) return;
 
-        // Make a stable spread across the full track length
-        int totalSlots = Mathf.Max(1, _maxSlotIndex + 1);
-        int want = Mathf.Clamp(targetCount, 1, Mathf.Max(1, maxActive));
+        ClearOccupancy();
 
-        float stride = totalSlots / (float)want;
-        float jitterFrac = 0.35f; // 0..0.5
+        int totalSlots = Mathf.Max(1, _maxSlotIndex + 1);
+        // Never request more props than unique along-track slots — that used to map many
+        // targets onto the same slot (via RoundToInt) and then "drift" into dense clumps.
+        int want = Mathf.Clamp(targetCount, 1, Mathf.Min(maxActive, totalSlots));
+
+        var usedSlots = new bool[totalSlots];
+        var slotOrder = new List<int>(want);
 
         for (int i = 0; i < want; i++)
         {
-            int baseSlot = Mathf.RoundToInt(i * stride);
-            int jitter = Mathf.RoundToInt((Random.value - 0.5f) * 2f * jitterFrac * stride);
-            int slot = Mathf.Clamp(baseSlot + jitter, 0, _maxSlotIndex);
+            // Center each target in its share of the track so coverage is even end-to-end.
+            int ideal = Mathf.Clamp(
+                Mathf.RoundToInt((i + 0.5f) * totalSlots / (float)want),
+                0,
+                totalSlots - 1);
 
+            // Tiny unique jitter so it doesn't look grid-locked, without colliding slots.
+            int jitterSpan = Mathf.Max(0, Mathf.FloorToInt(totalSlots / (float)(want * 4f)));
+            if (jitterSpan > 0)
+                ideal = Mathf.Clamp(ideal + Random.Range(-jitterSpan, jitterSpan + 1), 0, totalSlots - 1);
+
+            int slot = FindNearestFreeSlot(ideal, usedSlots);
+            if (slot < 0)
+                break;
+
+            usedSlots[slot] = true;
+            slotOrder.Add(slot);
+        }
+
+        for (int i = 0; i < slotOrder.Count; i++)
+        {
+            int slot = slotOrder[i];
             bool spawned = false;
 
-            // Try a few times per target so rejections don't leave big gaps
+            // Retry the SAME slot with new lateral candidates — do not hop to neighbor slots
+            // (that was a major source of 2–3 trees stacked in one patch).
             for (int a = 0; a < maxAttemptsPerSlot; a++)
             {
-                TrySpawnAtSlot(slot);
-                if (_spawnedBySlot.ContainsKey(slot))
+                if (TrySpawnAtSlot(slot))
                 {
                     spawned = true;
                     break;
                 }
-
-                // If rejected, drift to a nearby slot and retry
-                slot = Mathf.Clamp(slot + Random.Range(-2, 3), 0, _maxSlotIndex);
             }
 
             if (!spawned && verboseDebug)
-                Debug.Log($"[EnvSpawn] PopulateOnce failed near slot={baseSlot} after {maxAttemptsPerSlot} attempts.");
+                Debug.Log($"[EnvSpawn] PopulateOnce failed at slot={slot} after {maxAttemptsPerSlot} attempts.");
 
             if (_spawnedBySlot.Count >= maxActive)
                 break;
         }
+
+        // Second pass: fill barren stretches without breaking min-separation.
+        if (fillEmptyGaps && _spawnedBySlot.Count < want)
+        {
+            for (int slot = 0; slot < totalSlots && _spawnedBySlot.Count < want && _spawnedBySlot.Count < maxActive; slot++)
+            {
+                if (_spawnedBySlot.ContainsKey(slot))
+                    continue;
+
+                for (int a = 0; a < maxAttemptsPerSlot; a++)
+                {
+                    if (TrySpawnAtSlot(slot))
+                        break;
+                }
+            }
+        }
+
+        if (verboseDebug)
+            Debug.Log($"[EnvSpawn] PopulateOnce done: spawned={_spawnedBySlot.Count}/{want} slots={totalSlots} spacing={spacing:F2} minSep={minSeparationMeters:F2}");
+    }
+
+    private static int FindNearestFreeSlot(int ideal, bool[] used)
+    {
+        if (ideal >= 0 && ideal < used.Length && !used[ideal])
+            return ideal;
+
+        int maxRadius = used.Length;
+        for (int r = 1; r < maxRadius; r++)
+        {
+            int lo = ideal - r;
+            if (lo >= 0 && !used[lo])
+                return lo;
+
+            int hi = ideal + r;
+            if (hi < used.Length && !used[hi])
+                return hi;
+        }
+
+        return -1;
     }
 
     // =========================
@@ -360,17 +429,17 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         return false;
     }
 
-    private void TrySpawnAtSlot(int slot)
+    private bool TrySpawnAtSlot(int slot)
     {
-        if (_spawnedBySlot.ContainsKey(slot)) return;
-        if (_spawnedBySlot.Count >= maxActive) return;
-        if (_totalLength <= 0f) return;
+        if (_spawnedBySlot.ContainsKey(slot)) return false;
+        if (_spawnedBySlot.Count >= maxActive) return false;
+        if (_totalLength <= 0f) return false;
 
         float dist = slot * spacing;
-        if (dist < 0f || dist > _totalLength) return;
+        if (dist < 0f || dist > _totalLength) return false;
 
         var prefab = ChoosePrefab();
-        if (!prefab) return;
+        if (!prefab) return false;
 
         // Sample center + forward
         SampleAlongPath(dist, out Vector3 center, out Vector3 forward);
@@ -380,27 +449,32 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
         flatForward.Normalize();
 
-        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+        // Prefer alternating sides so left/right corridors fill evenly.
+        float preferredSide = (slot & 1) == 0 ? -1f : 1f;
 
         // Pick an off-road point in a corridor around the path (NOT using RoadWidth math)
-        if (!TryPickOffRoadPoint(center, flatForward, right, out Vector3 xz))
-            return;
+        if (!TryPickOffRoadPoint(center, flatForward, preferredSide, out Vector3 xz))
+            return false;
 
         // 1) HARD REJECT: if road is at/near this position
         if (Physics.CheckSphere(xz + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
-            return;
+            return false;
 
-        // 2) Place on ground (ray starts above local terrain height � path Y is often 0 while hills are tall)
+        // 2) Place on ground (ray starts above local terrain height — path Y is often 0 while hills are tall)
         ComputePlacementRayOrigin(xz, out Vector3 rayOrigin, out float maxRay);
 
         if (!TryResolveGroundBelow(xz, rayOrigin, maxRay, out Vector3 groundPoint, out Vector3 groundNormal))
-            return;
+            return false;
+
+        // Separation uses final ground XZ (ray may nudge slightly, but XZ is what matters for stacking).
+        if (IsTooCloseToOccupied(groundPoint.x, groundPoint.z))
+            return false;
 
         // 3) SECOND REJECT: if the ray also sees road right under it (belt + suspenders)
         if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit roadHit, maxRay, roadExcludeMask, QueryTriggerInteraction.Ignore))
         {
             if (Mathf.Abs(roadHit.point.y - groundPoint.y) < 0.25f && Vector3.Distance(roadHit.point, groundPoint) < 1.0f)
-                return;
+                return false;
         }
 
         Transform parent = environmentParent != null ? environmentParent : transform;
@@ -427,9 +501,12 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         ConfigureEnvironmentRigidbodies(go);
 
         _spawnedBySlot[slot] = go;
+        RegisterOccupied(go.transform.position.x, go.transform.position.z);
 
         if (verboseDebug)
             Debug.Log($"[EnvSpawn] slot={slot} dist={dist:F1} pos=({go.transform.position.x:F1},{go.transform.position.y:F1},{go.transform.position.z:F1}) prefab={prefab.name}");
+
+        return true;
     }
 
     private static void SetLayerRecursively(Transform root, int layer)
@@ -442,9 +519,14 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             SetLayerRecursively(root.GetChild(i), layer);
     }
 
-    private bool TryPickOffRoadPoint(Vector3 center, Vector3 fwd, Vector3 right, out Vector3 xz)
+    private bool TryPickOffRoadPoint(Vector3 center, Vector3 fwd, float preferredSide, out Vector3 xz)
     {
         xz = center;
+
+        float rMin = Mathf.Max(0f, minDistanceFromRoad);
+        float rMax = Mathf.Max(rMin + 0.5f, maxDistanceFromCenterline);
+        float rMinSq = rMin * rMin;
+        float rMaxSq = rMax * rMax;
 
         for (int i = 0; i < placementAttempts; i++)
         {
@@ -453,28 +535,29 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             // Bias to sides so it feels like "environment lining the road"
             if (Random.value < sideBias)
             {
-                float side = (Random.value < 0.5f) ? -1f : 1f;
-                angDeg = side * 90f + Random.Range(-25f, 25f);
+                // Alternate preferred side, with occasional flips so one bank isn't empty.
+                float side = preferredSide;
+                if (Random.value < 0.18f)
+                    side = -side;
+                angDeg = side * 90f + Random.Range(-32f, 32f);
             }
             else
             {
                 angDeg = Random.Range(-180f, 180f);
             }
 
-            float r = Random.Range(minDistanceFromRoad, maxDistanceFromCenterline);
+            // Area-uniform sample in the annulus (avoids over-clustering near the road edge).
+            float u = Random.value;
+            float r = Mathf.Sqrt(Mathf.Lerp(rMinSq, rMaxSq, u));
 
-            // Use forward as base axis so angle behaves consistently relative to track
             Vector3 dir = (Quaternion.Euler(0f, angDeg, 0f) * fwd).normalized;
-
-            // Optional per-type padding no longer shifts "road edge math"�
-            // it simply increases how far out we sample.
-            float extraPad = 0f;
-            // Note: we don't know prefab type here; keep simple and stable.
-
-            Vector3 candidate = center + dir * (r + extraPad);
+            Vector3 candidate = center + dir * r;
 
             // Reject if road nearby at candidate
             if (Physics.CheckSphere(candidate + Vector3.up * 0.5f, roadOverlapRejectRadius, roadExcludeMask, QueryTriggerInteraction.Ignore))
+                continue;
+
+            if (IsTooCloseToOccupied(candidate.x, candidate.z))
                 continue;
 
             xz = candidate;
@@ -482,6 +565,73 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         }
 
         return false;
+    }
+
+    // =========================
+    // Occupancy (anti-stacking)
+    // =========================
+    private void ClearOccupancy()
+    {
+        _occupiedXZ.Clear();
+        _occupiedGrid.Clear();
+        _occCellSize = Mathf.Max(0.5f, minSeparationMeters);
+    }
+
+    private void RegisterOccupied(float worldX, float worldZ)
+    {
+        int idx = _occupiedXZ.Count;
+        _occupiedXZ.Add(new Vector2(worldX, worldZ));
+
+        long key = OccupancyCellKey(worldX, worldZ);
+        if (!_occupiedGrid.TryGetValue(key, out List<int> list))
+        {
+            list = new List<int>(4);
+            _occupiedGrid[key] = list;
+        }
+        list.Add(idx);
+    }
+
+    private bool IsTooCloseToOccupied(float worldX, float worldZ)
+    {
+        if (_occupiedXZ.Count == 0)
+            return false;
+
+        float minSep = Mathf.Max(0.5f, minSeparationMeters);
+        float minSq = minSep * minSep;
+        float cell = Mathf.Max(0.5f, _occCellSize);
+
+        int gx = Mathf.FloorToInt(worldX / cell);
+        int gz = Mathf.FloorToInt(worldZ / cell);
+        Vector2 p = new Vector2(worldX, worldZ);
+
+        for (int dz = -1; dz <= 1; dz++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                long key = PackOccupancyKey(gx + dx, gz + dz);
+                if (!_occupiedGrid.TryGetValue(key, out List<int> list))
+                    continue;
+
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if ((p - _occupiedXZ[list[i]]).sqrMagnitude < minSq)
+                        return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private long OccupancyCellKey(float worldX, float worldZ)
+    {
+        float cell = Mathf.Max(0.5f, _occCellSize);
+        return PackOccupancyKey(Mathf.FloorToInt(worldX / cell), Mathf.FloorToInt(worldZ / cell));
+    }
+
+    private static long PackOccupancyKey(int gx, int gz)
+    {
+        return ((long)gx << 32) ^ (uint)gz;
     }
 
     // =========================
@@ -562,6 +712,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     private void SetupSlots()
     {
         _spawnedBySlot.Clear();
+        ClearOccupancy();
         _maxSlotIndex = (_totalLength <= 0f) ? 0 : Mathf.FloorToInt(_totalLength / spacing);
     }
 
@@ -570,6 +721,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         foreach (var kv in _spawnedBySlot)
             if (kv.Value) Destroy(kv.Value);
         _spawnedBySlot.Clear();
+        ClearOccupancy();
     }
 
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 forward)

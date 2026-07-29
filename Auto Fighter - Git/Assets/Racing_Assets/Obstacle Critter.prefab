@@ -67,7 +67,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
+  - {fileID: 2100000, guid: 6cb8f54d05d1a0a45b7a9e6717ffc991, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -134,6 +134,12 @@ MonoBehaviour:
   treeToppleImpulseMin: 3
   treeToppleImpulseMax: 25
   treeToppleForceHeight: 2
+  enableTreeToppleCrashPopup: 1
+  treeToppleCrashPopupHeight: 1.2
+  enablePropClashCrashPopup: 1
+  propClashPopupHeight: 1
+  propClashMinRelativeSpeed: 2.5
+  propClashPairCooldown: 0.2
   baseImpactVelocityThreshold: 8
   impactDamageCooldown: 0.25
 --- !u!114 &1741596697079727974
@@ -181,13 +187,10 @@ MonoBehaviour:
   enableRunOverPopup: 1
   runOverPopupType: 14
   runOverPopupHeight: 1.2
-  playCoinRewardSound: 1
-  coinRewardSoundsOverride: []
-  coinRewardSoundVolume: 0.638
-  coinRewardPitchVariance: 0.05
-  coinRewardBasePitch: 1
-  coinRewardMinDistance: 5
-  coinRewardMaxDistance: 40
+  enableBeastEatPopup: 1
+  enableCritterEatBugPopup: 1
+  beastEatPopupType: 15
+  beastEatPopupHeight: 1.1
   visualRoot: {fileID: 0}
   groundLayer:
     serializedVersion: 2
@@ -196,6 +199,9 @@ MonoBehaviour:
   movementAvoidanceLayers:
     serializedVersion: 2
     m_Bits: 1837057
+  rollingLogAvoidanceLayers:
+    serializedVersion: 2
+    m_Bits: 8388608
   avoidanceIncludeTriggers: 1
   avoidanceRadius: 0.3
   avoidanceLookAhead: 5.53
@@ -206,6 +212,9 @@ MonoBehaviour:
   avoidanceIdlePathNudgeSpeed: 5
   avoidanceSideBias: 0
   avoidanceResponse: 5
+  wanderStuckWindowSeconds: 1
+  wanderProgressRatioThreshold: 0.4
+  wanderPathClearFraction: 0.6
   aggressivePlayerPriorityRadius: 12
   creatureSenseLayers:
     serializedVersion: 2
@@ -218,6 +227,13 @@ MonoBehaviour:
   obstacleTags:
   - Creature
   aggressiveCrushMassThreshold: 9
+  obstacleLaunchCorpseMass: 85
+  obstacleLaunchBaseVelocityChange: 9
+  obstacleLaunchSpeedScale: 0.45
+  obstacleLaunchMaxVelocityChange: 34
+  obstacleLaunchUpVelocityChange: 6
+  obstacleLaunchTorque: 10
+  obstacleLaunchDeathDelay: 0.42
   groundRayHeight: 2
   groundRayDistance: 5
   groundOffset: 0.25

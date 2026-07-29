@@ -66,10 +66,13 @@ public class CarController : MonoBehaviour
     private float landingLateralBleedDuration;
     private bool enableLandingSlipStraighten;
     private float landingSlipStraightenDuration;
+    private float landingSlipCarryFraction;
     private float landingSlipMaxAlignDegrees;
     private float landingSlipLateralKeep;
     private float _landingSlipStraightenLeft;
     private float _landingSlipStraightenDuration;
+    private Vector3 _landingSlipStartDir = Vector3.forward;
+    private bool _landingSlipStartDirValid;
 
     [Header("Bad Landing Crash (from CarLandingConfig)")]
     private bool enableBadLandingCrash;
@@ -1088,6 +1091,13 @@ public class CarController : MonoBehaviour
     private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
     private float _nextBoostPadPopupTime;            // re-trigger guard for boost-pad popup
     private const float BOOST_PAD_POPUP_COOLDOWN = 0.5f;
+    /// <summary>Brief hold after last boost/ramp sample so edge flicker cannot slam the speed cap / kill climb.</summary>
+    private float _boostSurfaceHoldUntil;
+    private const float BoostSurfaceHoldSeconds = 0.18f;
+    private float _heldBoostAccel;
+    private float _heldBoostMaxSpeed;
+    private bool _heldBoostDuringCrash;
+    private float _heldBoostCrashMultiplier = 0.5f;
 
     private bool _wasAffectedByIce;                  // for ice-path popup edge detection
     private float _nextIcePathPopupTime;             // re-trigger guard for ice-path popup
@@ -1368,6 +1378,7 @@ public class CarController : MonoBehaviour
             landingLateralBleedDuration = _landingConfig.LandingLateralBleedDuration;
             enableLandingSlipStraighten = _landingConfig.EnableLandingSlipStraighten;
             landingSlipStraightenDuration = _landingConfig.LandingSlipStraightenDuration;
+            landingSlipCarryFraction = _landingConfig.LandingSlipCarryFraction;
             landingSlipMaxAlignDegrees = _landingConfig.LandingSlipMaxAlignDegrees;
             landingSlipLateralKeep = _landingConfig.LandingSlipLateralKeep;
             enableBadLandingCrash = _landingConfig.EnableBadLandingCrash;
@@ -1388,6 +1399,7 @@ public class CarController : MonoBehaviour
             enableLandingBoost = true; landingBoostStrength = 1f; landingBoostDuration = 1.2f; landingBoostFalloff = 1.5f;
             enableLandingLateralBleed = true; landingLateralBleedPerSecond = 14f; landingLateralBleedDuration = 0.45f;
             enableLandingSlipStraighten = true; landingSlipStraightenDuration = 0.18f;
+            landingSlipCarryFraction = 0.35f;
             landingSlipMaxAlignDegrees = 28f; landingSlipLateralKeep = 0.7f;
             enableBadLandingCrash = true;
             badLandingMinAirborneSeconds = 0.2f;
@@ -2586,33 +2598,26 @@ public class CarController : MonoBehaviour
 
         if (boostStrength <= 0f) return;
 
-        // Check max speed limit.
-        // boostMaxSpeed 0 = no pad-specific ceiling: use the raised surface/skill cap (and never
-        // treat current entry speed as already "at max" so the pad can still push).
         float currentSpeed = rb.velocity.magnitude;
-        float maxSpeed;
-        if (_currentBoostMaxSpeed > 0f)
-        {
-            maxSpeed = _currentBoostMaxSpeed;
-        }
-        else
-        {
-            maxSpeed = Mathf.Max(effectiveMaxSpeed, GetCurrentSpeedCap_NoLandingCarry());
-            // Soft ceiling so force keeps applying while surface multipliers catch up / while above road max.
-            maxSpeed = Mathf.Max(maxSpeed, currentSpeed + 1f);
-        }
 
-        if (currentSpeed >= maxSpeed) return;
+        // Hard pad/surface cap only. Never use (currentSpeed + epsilon) as the cap — that made
+        // forceMult≈0 at entry speed, so gravity alone stalled climbs on steep boost ramps.
+        // Also avoid GetCurrentSpeedCap's "floor at current speed" (that's for clamp safety only).
+        float hardCap = _currentBoostMaxSpeed > 0f
+            ? _currentBoostMaxSpeed
+            : Mathf.Max(effectiveMaxSpeed, currentMaxSpeed);
 
         // Apply acceleration along ground tangent when grounded (matches HandleMovement on ramps/hills).
         Vector3 forwardDir = transform.forward;
-        if (carCollider != null && CheckIfGrounded())
+        Vector3 groundN = Vector3.up;
+        bool groundedNow = carCollider != null && CheckIfGrounded();
+        if (groundedNow)
         {
             Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
             if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
             {
-                Vector3 n = hit.normal;
-                forwardDir = Vector3.ProjectOnPlane(transform.forward, n);
+                groundN = hit.normal;
+                forwardDir = Vector3.ProjectOnPlane(transform.forward, groundN);
                 if (forwardDir.sqrMagnitude < 1e-8f)
                 {
                     forwardDir = transform.forward;
@@ -2625,6 +2630,11 @@ public class CarController : MonoBehaviour
                 forwardDir.y = 0f;
                 forwardDir.Normalize();
             }
+
+            // Arcade boost pads/ramps: cancel slope gravity so incline can't eat pad momentum.
+            Vector3 gAlong = Vector3.ProjectOnPlane(Physics.gravity, groundN);
+            if (gAlong.sqrMagnitude > 1e-8f)
+                rb.AddForce(-gAlong, ForceMode.Acceleration);
         }
         else
         {
@@ -2632,11 +2642,19 @@ public class CarController : MonoBehaviour
             forwardDir.Normalize();
         }
 
-        // Scale force if approaching max speed
-        float speedRatio = currentSpeed / maxSpeed;
-        float forceMult = Mathf.Lerp(1f, 0f, Mathf.Pow(speedRatio, 2f));
+        // Taper near the real hard cap, but keep meaningful push so climbs don't stall.
+        float forceMult = 1f;
+        if (hardCap > 0.01f)
+        {
+            float speedRatio = Mathf.Clamp01(currentSpeed / hardCap);
+            if (speedRatio > 0.55f)
+                forceMult = Mathf.Lerp(1f, 0.35f, Mathf.Pow(Mathf.InverseLerp(0.55f, 1f, speedRatio), 2f));
+            if (currentSpeed >= hardCap * 1.02f)
+                forceMult = 0f;
+        }
 
-        rb.AddForce(forwardDir * boostStrength * forceMult, ForceMode.Acceleration);
+        if (forceMult > 1e-4f)
+            rb.AddForce(forwardDir * boostStrength * forceMult, ForceMode.Acceleration);
     }
 
     private void UpdateIcePhysicsTransitions()
@@ -3081,7 +3099,7 @@ public class CarController : MonoBehaviour
         }
 
         // Boost pads / ramps: raise the clamp to the pad limit (if set) and never cut below
-        // current planar speed. High entry speed used to get slammed to the lagging road cap.
+        // current travel speed on the surface. High entry speed used to get slammed to the lagging road cap.
         if (_onBoostSurface)
         {
             float padCap = _currentBoostMaxSpeed > 0f ? _currentBoostMaxSpeed : 0f;
@@ -3090,6 +3108,13 @@ public class CarController : MonoBehaviour
             {
                 Vector3 planar = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
                 result = Mathf.Max(result, planar.magnitude);
+
+                // Steep ramps carry speed in the tangent plane (not just horizontal) — don't clamp that away.
+                Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-6f
+                    ? _lastStableGroundNormal.normalized
+                    : Vector3.up;
+                float tanSpeed = Vector3.ProjectOnPlane(rb.velocity, n).magnitude;
+                result = Mathf.Max(result, tanSpeed);
             }
         }
 
@@ -3511,7 +3536,13 @@ public class CarController : MonoBehaviour
         }
         else
         {
-            bool canDriftThisFrame = driftButtonHeld && speed >= driftMinSpeed;
+            // Hysteresis: once charge/drift is live, tolerate a brief post-crash speed dip
+            // so isDrifting / the hold bar / camera don't stutter-reset while still holding.
+            float driftSpeedGate = driftMinSpeed;
+            if (driftButtonHeld && (wasDrifting || driftCharge > 0.01f))
+                driftSpeedGate = driftMinSpeed * 0.72f;
+
+            bool canDriftThisFrame = driftButtonHeld && speed >= driftSpeedGate;
 
             if (driftButtonHeld && !prevDriftKeyHeld)
             {
@@ -3610,7 +3641,7 @@ public class CarController : MonoBehaviour
 
             // Post–steer-flip rebuild: don't dump remaining drift charge at driftReleaseRate while
             // the player still holds drift (avoids isDrifting blipping off and speed clamps dipping).
-            if (Time.time < _driftFlipBlockUntil && driftButtonHeld && speed >= driftMinSpeed)
+            if (Time.time < _driftFlipBlockUntil && driftButtonHeld && speed >= driftSpeedGate)
                 targetDrift = Mathf.Max(targetDrift, driftCharge);
 
             float rate = targetDrift > driftCharge ? driftBuildRate : driftReleaseRate;
@@ -3676,11 +3707,20 @@ public class CarController : MonoBehaviour
                 driftClampSpeed = driftEntrySpeed;
                 driftPeakSpeed = driftEntrySpeed;
 
-                // Reset held boost timer on brand new drift start
+                // Only reset held-boost on a fresh press. Charge can blip to zero while the
+                // button stays held (post-crash accel, flip rebuild, neutral) — wiping the
+                // bar/timer there causes the stutter-step the camera also picks up.
                 if (enableDriftHeldBoost)
                 {
-                    ResetDriftHeldTimer();
-                    _driftHoldDirectionSign = _driftCurrentSteerSign;
+                    if (!prevDriftKeyHeld)
+                    {
+                        ResetDriftHeldTimer();
+                        _driftHoldDirectionSign = _driftCurrentSteerSign;
+                    }
+                    else if (_driftHoldDirectionSign == 0)
+                    {
+                        _driftHoldDirectionSign = _driftCurrentSteerSign;
+                    }
                 }
             }
             else if (!isDrifting && wasDrifting)
@@ -5522,10 +5562,32 @@ public class CarController : MonoBehaviour
             _currentBoostMaxSpeed = bestBoostMaxSpeed;
             _currentBoostDuringCrash = boostDuringCrash;
             _currentBoostCrashMultiplier = boostCrashMult;
+            _heldBoostAccel = bestBoostAccel;
+            _heldBoostMaxSpeed = bestBoostMaxSpeed;
+            _heldBoostDuringCrash = boostDuringCrash;
+            _heldBoostCrashMultiplier = boostCrashMult;
+            _boostSurfaceHoldUntil = Time.time + BoostSurfaceHoldSeconds;
         }
         else
         {
             CheckForBoostSurface();
+            if (_onBoostSurface)
+            {
+                _heldBoostAccel = _currentBoostAccel;
+                _heldBoostMaxSpeed = _currentBoostMaxSpeed;
+                _heldBoostDuringCrash = _currentBoostDuringCrash;
+                _heldBoostCrashMultiplier = _currentBoostCrashMultiplier;
+                _boostSurfaceHoldUntil = Time.time + BoostSurfaceHoldSeconds;
+            }
+            else if (Time.time < _boostSurfaceHoldUntil)
+            {
+                // Edge flicker on steep ramps: keep pad force + raised speed cap for a beat.
+                _onBoostSurface = true;
+                _currentBoostAccel = _heldBoostAccel;
+                _currentBoostMaxSpeed = _heldBoostMaxSpeed;
+                _currentBoostDuringCrash = _heldBoostDuringCrash;
+                _currentBoostCrashMultiplier = _heldBoostCrashMultiplier;
+            }
         }
     }
 
@@ -7590,6 +7652,7 @@ public class CarController : MonoBehaviour
             ResetAirTrickRotationState();
             _airUprightRecoverBlend = 0f;
             _landingSlipStraightenLeft = 0f;
+            _landingSlipStartDirValid = false;
             _driftGroundFeel01 = 0f;
             Vector3 v = rb.velocity;
             Vector3 horiz = Vector3.ProjectOnPlane(v, Vector3.up);
@@ -7634,6 +7697,7 @@ public class CarController : MonoBehaviour
                 {
                     _landingSlipStraightenDuration = landingSlipStraightenDuration;
                     _landingSlipStraightenLeft = landingSlipStraightenDuration;
+                    CaptureLandingSlipStartDirection();
                 }
 
                 if (enableLandingBoost && _takeoffHorizSpeed > 0.1f)
@@ -7737,13 +7801,21 @@ public class CarController : MonoBehaviour
         flatForward.Normalize();
 
         float windowT = Mathf.Clamp01(dt / _landingSlipStraightenDuration);
+        float progress01 = Mathf.Clamp01(1f - (_landingSlipStraightenLeft / _landingSlipStraightenDuration));
+        float carryFrac = Mathf.Clamp(landingSlipCarryFraction, 0f, 0.95f);
+        float steerIn01 = carryFrac >= 0.95f
+            ? 1f
+            : Smooth01(Mathf.Clamp01((progress01 - carryFrac) / Mathf.Max(1e-4f, 1f - carryFrac)));
 
         Vector3 travelDir = horiz / speed;
-        float angle = Vector3.Angle(travelDir, flatForward);
+        Vector3 startDir = _landingSlipStartDirValid ? _landingSlipStartDir : travelDir;
+        Vector3 targetDir = Vector3.Slerp(startDir, flatForward, steerIn01).normalized;
+
+        float angle = Vector3.Angle(travelDir, targetDir);
         if (angle > 0.25f && landingSlipMaxAlignDegrees > 0f)
         {
-            float step = Mathf.Min(angle, landingSlipMaxAlignDegrees * windowT);
-            Vector3 alignedDir = Vector3.Slerp(travelDir, flatForward, step / angle).normalized;
+            float step = Mathf.Min(angle, landingSlipMaxAlignDegrees * windowT * Mathf.Max(0.01f, steerIn01));
+            Vector3 alignedDir = Vector3.Slerp(travelDir, targetDir, step / angle).normalized;
             horiz = alignedDir * speed;
         }
 
@@ -7753,13 +7825,50 @@ public class CarController : MonoBehaviour
         if (latMag > 0.05f)
         {
             float keep = Mathf.Clamp01(landingSlipLateralKeep);
-            // Ease lateral toward keep-fraction of current leftover (relative to this step's share).
-            float targetLat = latMag * Mathf.Lerp(1f, keep, windowT);
-            float newLatMag = Mathf.MoveTowards(latMag, targetLat, latMag * windowT);
+            // Keep the landing vector first, then progressively reduce side-slip.
+            float lateralReduceT = windowT * steerIn01;
+            float targetLat = latMag * Mathf.Lerp(1f, keep, lateralReduceT);
+            float newLatMag = Mathf.MoveTowards(latMag, targetLat, latMag * lateralReduceT);
             horiz = flatForward * forwardSpeed + lateral * (newLatMag / latMag);
         }
 
         rb.velocity = new Vector3(horiz.x, vel.y, horiz.z);
+    }
+
+    private void CaptureLandingSlipStartDirection()
+    {
+        _landingSlipStartDirValid = false;
+
+        if (rb == null)
+            return;
+
+        Vector3 horiz = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
+        if (horiz.sqrMagnitude > 0.05f * 0.05f)
+        {
+            _landingSlipStartDir = horiz.normalized;
+            _landingSlipStartDirValid = true;
+            return;
+        }
+
+        if (_takeoffHorizDir.sqrMagnitude > 1e-6f)
+        {
+            _landingSlipStartDir = Vector3.ProjectOnPlane(_takeoffHorizDir, Vector3.up).normalized;
+            _landingSlipStartDirValid = _landingSlipStartDir.sqrMagnitude > 1e-6f;
+            return;
+        }
+
+        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (flatForward.sqrMagnitude > 1e-6f)
+        {
+            _landingSlipStartDir = flatForward.normalized;
+            _landingSlipStartDirValid = true;
+        }
+    }
+
+    private static float Smooth01(float t)
+    {
+        t = Mathf.Clamp01(t);
+        return t * t * (3f - 2f * t);
     }
 
     /// <summary>
@@ -9381,23 +9490,41 @@ public class CarController : MonoBehaviour
     public bool IsDrifting => isDrifting && !_inCrash && !_isReorienting;
 
     /// <summary>
-    /// How hard the player is currently steering into the drift (0–1). Falls when the stick
-    /// returns to neutral even if <see cref="DriftCharge"/> keeps building for held-boost.
-    /// </summary>
-    /// <summary>
     /// Current left/right steer strength 0–1 (smoothed gameplay steer). Used by camera lag tightening.
     /// </summary>
     public float SteerIntensity => (_inCrash || _isReorienting) ? 0f : Mathf.Clamp01(Mathf.Abs(steeringInput));
 
-    public float DriftSteerIntensity => IsDrifting
-        ? Mathf.Clamp01(Mathf.Abs(steeringInput)) * GetDriftGroundFeelEased()
-        : 0f;
+    /// <summary>
+    /// How hard the player is currently steering into the drift (0–1). Falls when the stick
+    /// returns to neutral even if <see cref="DriftCharge"/> keeps building for held-boost.
+    /// Airborne drift uses full intensity so camera tilt/shake still work in the air.
+    /// </summary>
+    public float DriftSteerIntensity
+    {
+        get
+        {
+            if (!IsDrifting) return 0f;
+            float steer = Mathf.Clamp01(Mathf.Abs(steeringInput));
+            if (_airborneForTricks || !CheckIfGrounded())
+                return steer;
+            return steer * GetDriftGroundFeelEased();
+        }
+    }
 
     /// <summary>
-    /// 0–1 how fully ground-drift presentation/physics feel is applied. Eases up after
-    /// landing while still holding a mid-air drift so camera/handling don't snap on.
+    /// 0–1 drift presentation feel for camera (FOV / lag / tremor). Full while airborne drifting;
+    /// on ground eases after landing from a mid-air drift hold.
     /// </summary>
-    public float DriftGroundFeel => (_inCrash || _isReorienting) ? 0f : GetDriftGroundFeelEased();
+    public float DriftGroundFeel
+    {
+        get
+        {
+            if (_inCrash || _isReorienting) return 0f;
+            if (_airborneForTricks || !CheckIfGrounded())
+                return IsDrifting ? 1f : 0f;
+            return GetDriftGroundFeelEased();
+        }
+    }
 
     /// <summary>
     /// Last non-zero left/right while drifting (+1 / -1). Kept when the stick returns to neutral
@@ -9436,7 +9563,6 @@ public class CarController : MonoBehaviour
         !_externalInputLocked &&
         !_inCrash &&
         !_isReorienting &&
-        !IsPostCrashRecoveryDriving &&
         _driftBoostCooldownTimer <= 0f &&
         (RacingSkillTreeManager.Instance == null || RacingSkillTreeManager.Instance.IsDriftHeldBoostUnlocked());
 

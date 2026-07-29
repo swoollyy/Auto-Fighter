@@ -215,7 +215,12 @@ public class DialogueManager : MonoBehaviour
         _currentLineIndex = 0;
 
         if (!string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
+        {
             NarrativeDirector.SetStoryFlag(completed.setStoryFlagOnComplete);
+            Debug.Log(
+                $"[DialogueManager] Sequence '{completed.name}' complete — story flag " +
+                $"'{completed.setStoryFlagOnComplete}' set.");
+        }
 
         // Restore game canvas only if this sequence hid it.
         if (_hidGameCanvasForCurrentSequence)

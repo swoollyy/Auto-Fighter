@@ -127,11 +127,11 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Min(0)] private int coinFriendBaseValueBonus = 0;
 
     [Header("Crash Penalties")]
-    [Tooltip("Enable currency loss when crashing.")]
+    [Tooltip("Enable currency loss when crashing mid-run. Skipped once the car is out of fuel/HP (run ending).")]
     [SerializeField] private bool enableCurrencyLossOnCrash = true;
-    [Tooltip("At max severity (1.0) crash, remove this fraction (0..1) of current currency.")]
+    [Tooltip("At max severity (1.0) crash, remove this fraction (0..1) of this run's collected coins.")]
     [SerializeField, Range(0f, 1f)] private float currencyLossPercentAtSeverity1 = 0.05f;
-    [Tooltip("Minimum coins to remove on any crash when you have currency.")]
+    [Tooltip("Minimum coins to remove on any mid-run crash when you have run coins.")]
     [SerializeField] private int minCurrencyLossPerCrash = 2;
 
     [Header("Explosion Proximity FX")]
@@ -291,7 +291,11 @@ public class GameManager_Racing : MonoBehaviour
 
         WireNarrativeEvents();
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
-            SetProgressState(GameProgressState.InitIntro);
+        {
+            // Dialogue may already be running (NarrativeDirector.Start can beat this Start).
+            // Treat it as Dialogue so completion reliably returns to the skill tree / canvas.
+            SetProgressState(GameProgressState.Dialogue);
+        }
         else
             SetProgressState(GameProgressState.SkillTree);
 
@@ -683,9 +687,12 @@ public class GameManager_Racing : MonoBehaviour
             StartCrashSlowMo(sev);
         }
 
-        // Currency penalties — only deduct from this run's collected coins, never the pre-run wallet.
-        if (enableCurrencyLossOnCrash && !_currencyAwarded)
+        // Mid-run crash coin penalty only — not after fuel/HP are gone (run ending / settle).
+        if (enableCurrencyLossOnCrash && !_currencyAwarded && !_finalizePending)
         {
+            if (carController != null && (carController.IsOutOfFuel || carController.IsOutOfHP))
+                return;
+
             int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
             if (runCoins > 0)
             {
@@ -1392,11 +1399,18 @@ public class GameManager_Racing : MonoBehaviour
 
         // Gate first-skill-tree narrative until init intro has explicitly finished.
         if (!NarrativeDirector.HasStoryFlag(initFinishedStoryFlag))
+        {
+            Debug.Log(
+                $"[GameManager] Skipping first skill-tree narrative — missing flag '{initFinishedStoryFlag}'.");
             return;
+        }
 
         if (NarrativeDirector.HasStoryFlag(firstSkillTreeEntryStoryFlag))
             return;
 
+        Debug.Log(
+            $"[GameManager] '{initFinishedStoryFlag}' present — raising '{firstSkillTreeEntryStoryFlag}' " +
+            "and checking narrative triggers.");
         NarrativeDirector.SetStoryFlag(firstSkillTreeEntryStoryFlag);
         NarrativeDirector.Instance?.CheckTriggers();
     }
@@ -1430,24 +1444,54 @@ public class GameManager_Racing : MonoBehaviour
         }
     }
 
-    private void HandleDialogueSequenceCompleted(DialogueSequenceSO _)
+    private void HandleDialogueSequenceCompleted(DialogueSequenceSO completed)
     {
         // Centralized flow ownership: GameManager decides where to go after dialogue.
-        // Init intro and run-end narrative both currently return to SkillTree.
-        if (_progressState == GameProgressState.Dialogue && runEnded)
+        // Accept Dialogue or InitIntro — init can finish while still marked InitIntro if
+        // OnSequenceStarted was missed due to Start() ordering.
+        bool inDialogueFlow =
+            _progressState == GameProgressState.Dialogue ||
+            _progressState == GameProgressState.InitIntro;
+
+        if (!inDialogueFlow)
+            return;
+
+        if (runEnded)
         {
             ReturnToSkillTree();
             return;
         }
 
-        if (_progressState == GameProgressState.Dialogue &&
-            !runEnded &&
-            (NarrativeDirector.HasStoryFlag(initFinishedStoryFlag) || DialogueManager.Instance == null))
+        // Init_Dialogue writes setStoryFlagOnComplete (init_finish) in DialogueManager.EndSequence
+        // BEFORE this event fires. That flag is the gate for skill tree + gameplay UI.
+        bool initFinished =
+            NarrativeDirector.HasStoryFlag(initFinishedStoryFlag) ||
+            SequenceCompletesWithFlag(completed, initFinishedStoryFlag);
+
+        if (initFinished)
         {
-            // Finished intro / non-run dialogue, go to front-end (SkillTree/MainMenu view).
-            SetProgressState(GameProgressState.SkillTree);
+            Debug.Log(
+                $"[GameManager] Story flag '{initFinishedStoryFlag}' is set after dialogue " +
+                $"'{completed?.name}'. Enabling skill tree / gameplay UI.");
+            ReturnToSkillTree();
             return;
         }
+
+        // Non-init dialogue that kept the skill tree visible (e.g. Init_SkillTree overlay):
+        // return to SkillTree state without requiring init_finish again.
+        SetProgressState(GameProgressState.SkillTree);
+        uiManager?.SetGameCanvasVisible(true);
+        uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
+    }
+
+    private static bool SequenceCompletesWithFlag(DialogueSequenceSO sequence, string flag)
+    {
+        if (sequence == null || string.IsNullOrWhiteSpace(flag))
+            return false;
+        return string.Equals(
+            sequence.setStoryFlagOnComplete?.Trim(),
+            flag.Trim(),
+            System.StringComparison.OrdinalIgnoreCase);
     }
 
     private void SyncFlowStateFromUISection()

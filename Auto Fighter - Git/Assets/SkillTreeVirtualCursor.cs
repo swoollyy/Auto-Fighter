@@ -3,6 +3,9 @@ using AutoFighter.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 /// <summary>
 /// Runs before <see cref="EventSystem"/> so gamepad Submit cannot fire on the still-selected skill node
@@ -88,8 +91,10 @@ public class SkillTreeVirtualCursor : MonoBehaviour
     void OnEnable()
     {
         // Start in mouse mode (so desktop feels natural), but we can switch instantly on controller input.
-        _lastMousePos = Input.mousePosition;
-        _screenPos = ClampToArea(Input.mousePosition);
+        _screenPos = ClampToArea(CoreVirtualCursor.GetTrackedScreenPositionOrCenter());
+        _lastMousePos = _screenPos;
+        SaveTrackedCursorPosition(_screenPos);
+        WarpSystemMouseToScreenPosition(_screenPos);
         ApplyScreenPosToCursor(_screenPos);
         SetMode(ControlMode.Mouse, snapVirtualToMouse: false);
     }
@@ -115,6 +120,8 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         {
             // Let Unity's normal mouse pointer + EventSystem do its thing.
             // We keep our virtual cursor hidden in this mode.
+            _screenPos = ClampToArea(Input.mousePosition);
+            SaveTrackedCursorPosition(_screenPos);
             return;
         }
 
@@ -136,6 +143,7 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         {
             _screenPos += stick * (cursorSpeedPixelsPerSecond * dt);
             _screenPos = ClampToArea(_screenPos);
+            SaveTrackedCursorPosition(_screenPos);
             ApplyScreenPosToCursor(_screenPos);
             RefreshHover();
         }
@@ -188,7 +196,7 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         if (_lastControllerActivityTime > _lastMouseActivityTime)
         {
             if (_mode != ControlMode.Virtual)
-                SetMode(ControlMode.Virtual, snapVirtualToMouse: true); // <- your requirement
+                SetMode(ControlMode.Virtual, snapVirtualToMouse: false);
         }
         else
         {
@@ -204,6 +212,10 @@ public class SkillTreeVirtualCursor : MonoBehaviour
         if (_mode == ControlMode.Mouse)
         {
             // Show real cursor, hide virtual cursor image.
+            _screenPos = ClampToArea(CoreVirtualCursor.GetTrackedScreenPositionOrCenter());
+            SaveTrackedCursorPosition(_screenPos);
+            WarpSystemMouseToScreenPosition(_screenPos);
+            _lastMousePos = _screenPos;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             if (cursorRect) cursorRect.gameObject.SetActive(false);
@@ -220,13 +232,14 @@ public class SkillTreeVirtualCursor : MonoBehaviour
             if (snapVirtualToMouse)
             {
                 _screenPos = ClampToArea(Input.mousePosition); // snap to mouse position on switch
-                ApplyScreenPosToCursor(_screenPos);
             }
             else
             {
-                _screenPos = ClampToArea(_screenPos);
-                ApplyScreenPosToCursor(_screenPos);
+                _screenPos = ClampToArea(CoreVirtualCursor.GetTrackedScreenPositionOrCenter());
             }
+
+            SaveTrackedCursorPosition(_screenPos);
+            ApplyScreenPosToCursor(_screenPos);
 
             RefreshHover();
         }
@@ -412,5 +425,18 @@ public class SkillTreeVirtualCursor : MonoBehaviour
 
         if (!Mathf.Approximately(cursorSpeedPixelsPerSecond, saved))
             cursorSpeedPixelsPerSecond = saved;
+    }
+
+    private void SaveTrackedCursorPosition(Vector2 screenPos)
+    {
+        CoreVirtualCursor.TrackScreenPosition(screenPos);
+    }
+
+    private static void WarpSystemMouseToScreenPosition(Vector2 screenPos)
+    {
+#if ENABLE_INPUT_SYSTEM
+        if (Mouse.current != null)
+            Mouse.current.WarpCursorPosition(screenPos);
+#endif
     }
 }

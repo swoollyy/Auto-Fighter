@@ -44,7 +44,7 @@ namespace AutoFighter.Core
         [Tooltip("Optional value label for cursor speed (e.g. '1300').")]
         [SerializeField] private TMP_Text cursorSpeedValueLabel;
         [SerializeField] private float cursorSpeedSliderMin = 300f;
-        [SerializeField] private float cursorSpeedSliderMax = 900f;
+        [SerializeField] private float cursorSpeedSliderMax = 1200f;
         [Header("Cursor Speed Display Mapping")]
         [Tooltip("Displayed value when slider is at cursorSpeedSliderMin.")]
         [SerializeField] private float cursorSpeedDisplayMin = 1f;
@@ -303,7 +303,10 @@ namespace AutoFighter.Core
 
             if (resetSaveConfirmPanel != null)
             {
+                // Confirm UI must not live under OptionsPanel — that parent is inactive
+                // until Options opens, which hid this dialog previously.
                 resetSaveConfirmPanel.SetActive(true);
+                UpdateModalInputState();
                 return;
             }
 

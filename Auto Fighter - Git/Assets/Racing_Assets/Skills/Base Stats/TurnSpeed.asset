@@ -20,7 +20,7 @@ MonoBehaviour:
   costPerLevel: 2
   mode: 0
   baseValue: 0
-  perLevelAdd: 8
+  perLevelAdd: 6
   uiPosition: {x: 75, y: 75}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

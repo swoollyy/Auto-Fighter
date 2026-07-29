@@ -56,9 +56,14 @@ Modifiers:
 <link="jitter:amp=2,spd=0.5">text</link>
 ```
 
-### `wave` — vertical sine wave
+### `wave` — traveling sine ripple across the span
+Letters in one `<link="wave">…</link>` share a single wave that moves across the word (not independent bobbing).
 Modifiers:
 - `amp` — wave height (positional shorthand)
+
+Component knobs (on `TMPParabolaWaveEffect`):
+- `Cycles Across Span` — how many humps fit across the linked text (default `1`)
+- `Wavelength` — leave `0` to use cycles mode; set > 0 only for old world-unit mode
 
 ```
 <link="wave">text</link>

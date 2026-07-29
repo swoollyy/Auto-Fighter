@@ -647,15 +647,15 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 228220873}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.58823526, y: 0.58823526, z: 0.58823526}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 474751211}
   - {fileID: 662618501}
   - {fileID: 1232775692}
-  m_Father: {fileID: 704400382}
+  m_Father: {fileID: 1857478601}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -2480,6 +2480,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key_Backspace
       objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Backspace
+      objectReference: {fileID: 0}
     - target: {fileID: 8314677962004776454, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
       propertyPath: m_PreferredWidth
       value: 200
@@ -3309,6 +3313,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key_Shift
       objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Shift
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -4060,7 +4068,6 @@ RectTransform:
   m_LocalScale: {x: 0.85, y: 0.85, z: 0.85}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 228220874}
   - {fileID: 1329227821}
   - {fileID: 80110500}
   m_Father: {fileID: 1857478601}
@@ -4889,6 +4896,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key_Tab
       objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Tab
+      objectReference: {fileID: 0}
     - target: {fileID: 8314677962004776454, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
       propertyPath: m_PreferredWidth
       value: 140
@@ -5481,6 +5492,10 @@ PrefabInstance:
     - target: {fileID: 4606215573539564332, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
       propertyPath: m_Name
       value: Key_Enter
+      objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Enter
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -6509,6 +6524,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key_Caps
       objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Caps Lock
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -7010,7 +7029,7 @@ MonoBehaviour:
   cursorSpeedSlider: {fileID: 8970050334634791200}
   cursorSpeedValueLabel: {fileID: 1763004550}
   cursorSpeedSliderMin: 300
-  cursorSpeedSliderMax: 900
+  cursorSpeedSliderMax: 1200
   cursorSpeedDisplayMin: 1
   cursorSpeedDisplayMax: 10
   cursorSpeedDisplayDecimals: 2
@@ -8270,6 +8289,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key_Shift
       objectReference: {fileID: 0}
+    - target: {fileID: 6262538429135216389, guid: 0fabac6bf8e866a4aa5b01b13e0bddc3, type: 3}
+      propertyPath: m_text
+      value: Shift
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -8815,6 +8838,7 @@ RectTransform:
   - {fileID: 1983635964}
   - {fileID: 1019741592}
   - {fileID: 704400382}
+  - {fileID: 228220874}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}

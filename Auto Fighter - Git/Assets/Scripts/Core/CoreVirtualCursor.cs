@@ -24,8 +24,34 @@ namespace AutoFighter.Core
         }
 
         private static CoreVirtualCursor _instance;
+        private static bool _hasTrackedScreenPosition;
+        private static Vector2 _trackedScreenPosition;
 
         public static CoreVirtualCursor Instance => _instance;
+
+        public static bool TryGetTrackedScreenPosition(out Vector2 screenPos)
+        {
+            if (_hasTrackedScreenPosition)
+            {
+                screenPos = _trackedScreenPosition;
+                return true;
+            }
+
+            screenPos = default;
+            return false;
+        }
+
+        public static Vector2 GetTrackedScreenPositionOrCenter()
+        {
+            return _hasTrackedScreenPosition
+                ? ClampToScreen(_trackedScreenPosition)
+                : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        }
+
+        public static void TrackScreenPosition(Vector2 screenPos)
+        {
+            SaveTrackedScreenPosition(screenPos);
+        }
 
         public static bool IsManagingVisibility =>
             _instance != null &&
@@ -68,6 +94,7 @@ namespace AutoFighter.Core
         [Header("Mode Switching")]
         [SerializeField] private float mouseMovePixelsThreshold = 2.5f;
         [SerializeField] private float stickActivateThreshold = 0.25f;
+        [SerializeField, Min(0f)] private float mousePrioritySecondsAfterActivity = 0.35f;
 
         [Header("Legacy Input fallback")]
         [SerializeField] private string legacyAxisX = "Horizontal";
@@ -106,6 +133,7 @@ namespace AutoFighter.Core
         private float _lastControllerActivityTime;
         private float _nextAllowedControllerClickTime;
         private ControlMode _mode = ControlMode.Mouse;
+        private bool _wasCursorAllowedLastFrame;
         private readonly List<RaycastResult> _raycastResults = new List<RaycastResult>(32);
         private PointerEventData _activePointerData;
         private GameObject _pressedTarget;
@@ -147,6 +175,8 @@ namespace AutoFighter.Core
             CacheEventSystemAndCamera();
             EnsureCursorVisual();
             SyncCursorSpeedFromSave();
+            _screenPos = GetTrackedScreenPositionOrCenter();
+            SaveTrackedScreenPosition(_screenPos);
             float now = Time.unscaledTime;
             _lastMouseActivityTime = now;
             _lastMouseKeyboardActivityTime = now;
@@ -165,7 +195,8 @@ namespace AutoFighter.Core
             EnsureCursorVisual();
             SyncCursorSpeedFromSave();
 
-            _screenPos = ClampToScreen(Input.mousePosition);
+            _screenPos = GetTrackedScreenPositionOrCenter();
+            SaveTrackedScreenPosition(_screenPos);
             ApplyScreenPosToCursor(_screenPos);
             SyncUIInputModuleForMode();
         }
@@ -193,8 +224,9 @@ namespace AutoFighter.Core
 
         private void OnEnable()
         {
-            _lastMousePos = Input.mousePosition;
-            _screenPos = ClampToScreen(_lastMousePos);
+            _screenPos = GetTrackedScreenPositionOrCenter();
+            _lastMousePos = _screenPos;
+            WarpSystemMouseToScreenPosition(_screenPos);
             ApplyCursorVisibility(IsCursorAllowedForCurrentGameState());
         }
 
@@ -205,7 +237,21 @@ namespace AutoFighter.Core
             if (_eventSystem == null) return;
             SyncCursorSpeedFromSave();
 
-            if (!IsCursorAllowedForCurrentGameState())
+            bool cursorAllowed = IsCursorAllowedForCurrentGameState();
+            if (cursorAllowed && !_wasCursorAllowedLastFrame)
+            {
+                // Returning from a run / loading: prefer OS mouse so clicks work immediately.
+                // Stick-drift from a connected pad must not keep controller mode (UI module off).
+                Vector2 stickNow = ReadControllerMoveVector();
+                bool stickActiveNow = stickNow.magnitude >= Mathf.Max(deadZone, stickActivateThreshold);
+                if (!stickActiveNow && !ReadControllerSubmitDown())
+                    SetMode(ControlMode.Mouse, false);
+                else
+                    SyncUIInputModuleForMode();
+            }
+            _wasCursorAllowedLastFrame = cursorAllowed;
+
+            if (!cursorAllowed)
             {
                 ReleaseActivePointerIfAny();
                 if (autoSwitchInputMode)
@@ -222,8 +268,12 @@ namespace AutoFighter.Core
             {
                 ReleaseActivePointerIfAny();
                 _screenPos = ClampToScreen(Input.mousePosition);
+                SaveTrackedScreenPosition(_screenPos);
                 ApplyScreenPosToCursor(_screenPos);
                 ApplyCursorVisibility(mechanicActive: true);
+                // Must re-enable UI Input Module here — controller mode disables it, and this
+                // early return used to leave mouse clicks dead after returning from a run.
+                SyncUIInputModuleForMode();
                 return;
             }
 
@@ -240,6 +290,7 @@ namespace AutoFighter.Core
             {
                 _screenPos += stick * (cursorSpeedPixelsPerSecond * dt);
                 _screenPos = ClampToScreen(_screenPos);
+                SaveTrackedScreenPosition(_screenPos);
                 ApplyScreenPosToCursor(_screenPos);
             }
 
@@ -260,7 +311,8 @@ namespace AutoFighter.Core
             if (mouseMoved || mouseClicked || mouseScrolled || mouseHeld)
                 _lastMouseActivityTime = Time.unscaledTime;
 
-            if (ReadKeyboardActivity())
+            bool keyboardActive = ReadKeyboardActivity();
+            if (keyboardActive)
                 _lastMouseKeyboardActivityTime = Time.unscaledTime;
 
             Vector2 stick = ReadControllerMoveVector();
@@ -270,10 +322,23 @@ namespace AutoFighter.Core
                 _lastControllerActivityTime = Time.unscaledTime;
 
             float lastMouseKeyboardActivity = Mathf.Max(_lastMouseActivityTime, _lastMouseKeyboardActivityTime);
+            bool mouseRecentlyActive =
+                (mouseMoved || mouseClicked || mouseScrolled || mouseHeld || keyboardActive) &&
+                (Time.unscaledTime - lastMouseKeyboardActivity) <= mousePrioritySecondsAfterActivity;
+
+            // Mouse/keyboard must win briefly after activity so tiny stick drift cannot
+            // instantly steal mode and make click feel broken in menus.
+            if (mouseRecentlyActive)
+            {
+                if (_mode != ControlMode.Mouse)
+                    SetMode(ControlMode.Mouse, false);
+                return;
+            }
+
             if (_lastControllerActivityTime > lastMouseKeyboardActivity)
             {
                 if (_mode != ControlMode.Controller)
-                    SetMode(ControlMode.Controller, true);
+                    SetMode(ControlMode.Controller, false);
             }
             else
             {
@@ -286,13 +351,25 @@ namespace AutoFighter.Core
         {
             _mode = nextMode;
 
-            if (snapVirtualToMouse || _mode == ControlMode.Mouse)
+            if (snapVirtualToMouse)
+            {
                 _screenPos = ClampToScreen(Input.mousePosition);
+                SaveTrackedScreenPosition(_screenPos);
+            }
             else
-                _screenPos = ClampToScreen(_screenPos);
+            {
+                _screenPos = GetTrackedScreenPositionOrCenter();
+            }
+
+            if (_mode == ControlMode.Mouse)
+            {
+                WarpSystemMouseToScreenPosition(_screenPos);
+                _lastMousePos = _screenPos;
+            }
 
             ApplyScreenPosToCursor(_screenPos);
             ApplyCursorVisibility(IsCursorAllowedForCurrentGameState());
+            SyncUIInputModuleForMode();
         }
 
         /// <summary>
@@ -598,6 +675,20 @@ namespace AutoFighter.Core
             value.x = Mathf.Clamp(value.x, 0f, Screen.width);
             value.y = Mathf.Clamp(value.y, 0f, Screen.height);
             return value;
+        }
+
+        private static void SaveTrackedScreenPosition(Vector2 value)
+        {
+            _trackedScreenPosition = ClampToScreen(value);
+            _hasTrackedScreenPosition = true;
+        }
+
+        private static void WarpSystemMouseToScreenPosition(Vector2 value)
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (Mouse.current != null)
+                Mouse.current.WarpCursorPosition(ClampToScreen(value));
+#endif
         }
 
         private void ApplyScreenPosToCursor(Vector2 screenPos)

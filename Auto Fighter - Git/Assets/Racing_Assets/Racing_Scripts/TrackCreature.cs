@@ -238,6 +238,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     private Vector3 _lastStableFacingDir;
     private const float IntendedDirMinSqr = 1e-6f;
     private const float ChargeCloseRangeWorldPursuitRadius = 6f; // meters; prevents orbiting when very close (non-bull-rush charging)
+    private const float HuntWorldPursuitRadius = 12f; // keeps beast/critter from orbiting prey/NPC at medium range
+    private const float HuntContactFallbackRadius = 1.8f; // backup hit/eat when trigger timing misses
     /// <summary>Offset-space distance at which an idle wiggle target counts as reached (no micro-corrections).</summary>
     private const float IdleArriveEpsilon = 0.22f;
     private const float IdleStuckWindowSeconds = 0.65f;
@@ -301,6 +303,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     protected float bullRushActiveTimer = 0f;       // Timer for rush duration
     protected float bullRushCooldownTimer = 0f;    // Cooldown between rushes
     protected Vector3 bullRushDirection;            // Rush heading (XZ); steered slightly toward player, not obstacle-avoidance
+
+    /// <summary>Tracks player enter/exit of bull-rush engage range so CD never blocks the first contact.</summary>
+    private bool _playerWasInBullRushEngageRange;
 
     /// <summary>World position when the active rush phase began (for overshoot timeout).</summary>
     private Vector3 _bullRushLaunchStartWorld;
@@ -923,20 +928,28 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (bullRushCooldownTimer > 0f)
             bullRushCooldownTimer -= dt;
 
+        // Rising edge: player just entered engage range — bull rush must be ready.
+        // (Hunting critters/NPCs used to arm cooldown via EndBullRush aborts.)
+        bool playerInBullRushRange = playerTransform != null && playerDetected && config != null &&
+            playerDistance <= config.aggressiveDetectionRadius;
+        if (playerInBullRushRange && !_playerWasInBullRushEngageRange)
+            bullRushCooldownTimer = 0f;
+        _playerWasInBullRushEngageRange = playerInBullRushRange;
+
         switch (currentState)
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                // Reset bull rush state when idle
+                // Reset bull rush state when idle (do not touch cooldown — rising-edge clear handles readiness)
                 isBullRushCharging = false;
                 isBullRushActive = false;
                 bullRushChargeTimer = 0f;
                 bullRushActiveTimer = 0f;
 
-                bool canStartNewRush = bullRushCooldownTimer <= 0f;
                 ResolveAggressiveChargeTarget(out Transform chargeTarget, out _);
 
-                if (canStartNewRush && chargeTarget != null)
+                // Player is only engaged via bull rush. Otherwise idle or hunt critters/NPCs.
+                if (chargeTarget != null)
                 {
                     SetState(CreatureState.Charging);
                     UpdateCharging(dt);
@@ -1542,7 +1555,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (target == null)
         {
-            EndBullRush();
+            ClearBullRushState(applyCooldown: false);
             SetState(CreatureState.Idle);
             currentSpeed = 0f;
             return;
@@ -1553,7 +1566,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             chaseTargetTransform = null;
             _currentChargeTarget = null;
-            EndBullRush();
+            ClearBullRushState(applyCooldown: false);
             SetState(CreatureState.Idle);
             currentSpeed = 0f;
             return;
@@ -1565,21 +1578,53 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             chaseTargetTransform = null;
             _currentChargeTarget = null;
-            EndBullRush();
+            ClearBullRushState(applyCooldown: false);
             SetState(CreatureState.Idle);
             currentSpeed = 0f;
             return;
         }
 
-        bool useBullRush = config.useBullRush && !huntingCreature;
-        if (useBullRush)
-            UpdateBullRush(dt, target);
-        else
-            UpdateStandardCharging(dt, target, huntingCreature);
+        // Bull rush is the only player-hunting attack. Critters / NPC traffic use standard charge.
+        // Never fall back to running at the player while bull rush is cooling down.
+        bool targetingPlayer = playerTransform != null && target == playerTransform;
+        bool bullRushInProgress = isBullRushCharging || isBullRushActive;
+
+        if (bullRushInProgress && !targetingPlayer)
+            ClearBullRushState(applyCooldown: false);
+
+        if (targetingPlayer)
+        {
+            bool canBullRush = config.useBullRush && (bullRushInProgress || bullRushCooldownTimer <= 0f);
+            if (canBullRush)
+            {
+                UpdateBullRush(dt, target);
+                return;
+            }
+
+            // Bull rush unavailable: drop player target and idle / let next resolve pick prey.
+            ClearBullRushState(applyCooldown: false);
+            _currentChargeTarget = null;
+            SetState(CreatureState.Idle);
+            currentSpeed = 0f;
+            return;
+        }
+
+        UpdateStandardCharging(dt, target, huntingCreature: true);
     }
 
     /// <summary>
-    /// Pick closest valid target: player (priority bubble first), else among player / critter / NPC in range.
+    /// True when bull rush can start or is already underway. Player is only hunted in that case.
+    /// </summary>
+    private bool CanEngagePlayerWithBullRush()
+    {
+        if (config == null || !config.useBullRush) return false;
+        if (isBullRushCharging || isBullRushActive) return true;
+        return bullRushCooldownTimer <= 0f;
+    }
+
+    /// <summary>
+    /// Pick a charge target. Player is only eligible when bull rush is ready/in progress;
+    /// otherwise prefer critters / NPC traffic, or none (idle).
     /// </summary>
     private void ResolveAggressiveChargeTarget(out Transform target, out bool huntingCreature)
     {
@@ -1588,7 +1633,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (config == null) return;
 
-        if (playerTransform != null && playerDetected &&
+        bool canBullRushPlayer = CanEngagePlayerWithBullRush() &&
+            playerTransform != null &&
+            playerDetected;
+
+        // Priority bubble: only when bull rush can actually be used on the player.
+        if (canBullRushPlayer &&
             playerDistance <= Mathf.Max(0f, aggressivePlayerPriorityRadius))
         {
             target = playerTransform;
@@ -1599,7 +1649,8 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float bestD = float.MaxValue;
         Transform best = null;
 
-        if (playerTransform != null && playerDetected && playerDistance <= config.aggressiveDetectionRadius &&
+        if (canBullRushPlayer &&
+            playerDistance <= config.aggressiveDetectionRadius &&
             playerDistance < bestD)
         {
             bestD = playerDistance;
@@ -1636,11 +1687,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// Bull rush mechanic: Charge up -> Rush in locked direction -> Return to Idle
-    /// NO chasing - only bull rush attacks against the player.
+    /// Bull rush mechanic: Charge up -> Rush in locked direction -> Return to Idle.
+    /// Player car only — never used on critters or NPC traffic.
     /// </summary>
     protected virtual void UpdateBullRush(float dt, Transform target)
     {
+        if (target == null || playerTransform == null || target != playerTransform)
+        {
+            ClearBullRushState(applyCooldown: false);
+            return;
+        }
+
         // ===== PHASE 1: CHARGE UP (wind up, rotate toward target, don't move) =====
         if (!isBullRushActive && !isBullRushCharging && bullRushCooldownTimer <= 0f)
         {
@@ -1733,16 +1790,28 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     }
 
     /// <summary>
-    /// End the bull rush and start cooldown.
+    /// End a real bull rush and start cooldown (player hit / completed rush).
     /// </summary>
     protected void EndBullRush()
     {
+        ClearBullRushState(applyCooldown: true);
+    }
+
+    /// <summary>
+    /// Clears wind-up/active flags. Cooldown only if a rush was actually in progress —
+    /// aborting hunts / idle transitions must not soft-lock bull rush before the player arrives.
+    /// </summary>
+    protected void ClearBullRushState(bool applyCooldown)
+    {
+        bool wasRushing = isBullRushCharging || isBullRushActive;
         isBullRushCharging = false;
         isBullRushActive = false;
         bullRushChargeTimer = 0f;
         bullRushActiveTimer = 0f;
-        bullRushCooldownTimer = config.bullRushCooldown;
         currentSpeed = 0f;
+
+        if (applyCooldown && wasRushing && config != null)
+            bullRushCooldownTimer = config.bullRushCooldown;
     }
 
     /// <summary>
@@ -1872,13 +1941,10 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         toTarget.y = 0f;
         float distToTarget = toTarget.magnitude;
 
-        // Close enough: stop re-steering around the target (contact/trigger handles the kill).
-        const float chargeArriveRadius = 2.2f;
-        if (huntingCreature && distToTarget <= chargeArriveRadius)
-        {
-            currentSpeed = Mathf.MoveTowards(currentSpeed, 0f, 12f * dt);
+        // Contact fallback for kinematic-vs-trigger edge cases:
+        // if we are basically on top of prey/NPC, force the interaction once.
+        if (distToTarget <= HuntContactFallbackRadius && TryResolveChargingTargetContactFallback(target))
             return;
-        }
 
         float baseCharge = behaviorType == CreatureBehaviorType.Scared
             ? config.scaredBugHuntSpeed * Mathf.Max(0.01f, config.scaredBugHuntSpeedMultiplier)
@@ -1890,7 +1956,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         currentSpeed = Mathf.Max(0f, baseCharge) * speedMult;
 
-        // Move in "track space" toward the target's distance-along-track
+        // Keep speed up while hunting so we don't "park" on top of targets.
+        if (huntingCreature)
+            currentSpeed = Mathf.Max(currentSpeed, baseCharge * 0.92f);
+
+        // Move in "track space" toward the target's distance-along-track (far range).
+        // Near range uses world pursuit in UpdateMovement to avoid orbit/spin.
         float targetDistAlong = spawner.GetDistanceAlongPath(target.position);
 
         float moveStep = currentSpeed * dt;
@@ -1918,6 +1989,48 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         float lateralStep = moveStep * 1.5f;
         targetLateralOffset = Mathf.MoveTowards(targetLateralOffset, desiredLateral, lateralStep);
         currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, lateralStep);
+    }
+
+    private bool TryResolveChargingTargetContactFallback(Transform target)
+    {
+        if (target == null || isDead) return false;
+        if (currentState != CreatureState.Charging) return false;
+
+        // Beast -> NPC car crash
+        if (behaviorType == CreatureBehaviorType.Aggressive &&
+            config != null && config.aggressiveHuntNpcTraffic &&
+            target.GetComponentInParent<NPCTrafficCar>() is NPCTrafficCar npc &&
+            !npc.HasCrashed)
+        {
+            OnHitByNpcTraffic(hitCollider, npc);
+            return true;
+        }
+
+        // Beast -> Scared, Critter -> Passive eats
+        if (target.GetComponentInParent<TrackCreature>() is TrackCreature prey &&
+            prey != this && !prey.isDead)
+        {
+            if (behaviorType == CreatureBehaviorType.Aggressive && prey.behaviorType == CreatureBehaviorType.Scared)
+            {
+                if (enableBeastEatPopup) SpawnEatStylePopupOnPrey(prey);
+                prey.killSource = CreatureKillSource.Other;
+                prey.Die();
+                chaseTargetTransform = null;
+                SetState(CreatureState.Idle);
+                return true;
+            }
+
+            if (behaviorType == CreatureBehaviorType.Scared && prey.behaviorType == CreatureBehaviorType.Passive)
+            {
+                if (enableCritterEatBugPopup) SpawnEatStylePopupOnPrey(prey);
+                prey.killSource = CreatureKillSource.Other;
+                prey.Die();
+                chaseTargetTransform = null;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #endregion
@@ -1959,18 +2072,17 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         }
         else
         {
-            // Close-range charging: only for non-hunt player-style charges. Hunt charges orbit if they hard-lock onto moving targets.
+            // Close-range charging: world-space pursuit prevents spline overshoot/orbit near moving targets.
             Transform closeChargeTarget = (currentState == CreatureState.Charging) ? _currentChargeTarget : null;
-            bool huntingCreatureCharge = behaviorType == CreatureBehaviorType.Aggressive &&
-                                         closeChargeTarget != null &&
-                                         playerTransform != null &&
-                                         closeChargeTarget != playerTransform;
-            if (closeChargeTarget != null && !huntingCreatureCharge)
+            bool huntLikeTarget = closeChargeTarget != null && playerTransform != null && closeChargeTarget != playerTransform;
+            float pursueRadius = huntLikeTarget ? HuntWorldPursuitRadius : ChargeCloseRangeWorldPursuitRadius;
+
+            if (closeChargeTarget != null)
             {
                 Vector3 toT = closeChargeTarget.position - transform.position;
                 toT.y = 0f;
                 float d = toT.magnitude;
-                if (d > 0.0001f && d <= ChargeCloseRangeWorldPursuitRadius)
+                if (d > 0.0001f && d <= pursueRadius)
                 {
                     moveDir = toT / d;
                     desiredDist = d;

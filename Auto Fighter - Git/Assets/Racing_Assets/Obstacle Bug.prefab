@@ -65,7 +65,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ae526628dc1f0c94d8982071099877ab, type: 2}
+  - {fileID: 2100000, guid: 81f1f47d6c6672442856f0361b6b28d7, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -153,13 +153,10 @@ MonoBehaviour:
   enableRunOverPopup: 1
   runOverPopupType: 14
   runOverPopupHeight: 1.2
-  playCoinRewardSound: 1
-  coinRewardSoundsOverride: []
-  coinRewardSoundVolume: 0.633
-  coinRewardPitchVariance: 0.05
-  coinRewardBasePitch: 1
-  coinRewardMinDistance: 5
-  coinRewardMaxDistance: 40
+  enableBeastEatPopup: 1
+  enableCritterEatBugPopup: 1
+  beastEatPopupType: 15
+  beastEatPopupHeight: 1.1
   visualRoot: {fileID: 0}
   groundLayer:
     serializedVersion: 2
@@ -168,6 +165,9 @@ MonoBehaviour:
   movementAvoidanceLayers:
     serializedVersion: 2
     m_Bits: 7079937
+  rollingLogAvoidanceLayers:
+    serializedVersion: 2
+    m_Bits: 8388608
   avoidanceIncludeTriggers: 1
   avoidanceRadius: 0.1
   avoidanceLookAhead: 3.84
@@ -178,6 +178,9 @@ MonoBehaviour:
   avoidanceIdlePathNudgeSpeed: 5
   avoidanceSideBias: 0.09
   avoidanceResponse: 3.3
+  wanderStuckWindowSeconds: 1
+  wanderProgressRatioThreshold: 0.4
+  wanderPathClearFraction: 0.6
   aggressivePlayerPriorityRadius: 12
   creatureSenseLayers:
     serializedVersion: 2
@@ -190,6 +193,13 @@ MonoBehaviour:
   obstacleTags:
   - Creature
   aggressiveCrushMassThreshold: 9
+  obstacleLaunchCorpseMass: 85
+  obstacleLaunchBaseVelocityChange: 9
+  obstacleLaunchSpeedScale: 0.45
+  obstacleLaunchMaxVelocityChange: 34
+  obstacleLaunchUpVelocityChange: 6
+  obstacleLaunchTorque: 10
+  obstacleLaunchDeathDelay: 0.42
   groundRayHeight: 2
   groundRayDistance: 5
   groundOffset: 0.15

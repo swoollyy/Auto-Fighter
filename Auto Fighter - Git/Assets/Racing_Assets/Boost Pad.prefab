@@ -120,8 +120,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 4
-  maxSpeedMultiplier: 7
-  accelerationMultiplier: 10
+  maxSpeedMultiplier: 4
+  accelerationMultiplier: 6
   turnSpeedMultiplier: 1
   dragMultiplier: 0.01
   iceDynamicFrictionMultiplier: 0.15
