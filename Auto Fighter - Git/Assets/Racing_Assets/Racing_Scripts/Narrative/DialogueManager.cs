@@ -129,8 +129,17 @@ public class DialogueManager : MonoBehaviour
         }
         else if (uiManagerRacing != null)
         {
-            // Skill tree / HUD visible: block buttons & controller Submit; mouse still moves; dialogue handles advance.
+            // Skill tree / HUD dialogue overlay (e.g. Init_SkillTree right after the intro): make sure the
+            // game canvas (= skill tree) is actually shown behind the dialogue so it's visible while this
+            // sequence talks about it, instead of relying on an earlier caller having already enabled it.
+            uiManagerRacing.SetGameCanvasVisible(true);
+            // Then block buttons & controller Submit; mouse still moves; dialogue handles advance.
             uiManagerRacing.SetGameplayCanvasInputLocked(true);
+        }
+        else if (gameCanvasToEnableWhenSequenceEnds != null)
+        {
+            // Fallback (no UIManager_Racing): ensure the game canvas is visible behind the overlay dialogue.
+            gameCanvasToEnableWhenSequenceEnds.SetActive(true);
         }
 
         _playRoutine = StartCoroutine(PlaySequenceRoutine());

@@ -2353,7 +2353,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   dialogueCanvas: {fileID: 302604729}
-  gameCanvas: {fileID: 663395613}
+  gameCanvas: {fileID: 863292878}
   fuelFillImage: {fileID: 1236887647}
   fuelText: {fileID: 1944056501}
   showFuelAsPercent: 0
@@ -13361,13 +13361,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   triggerEntries:
-  - sequence: {fileID: 11400000, guid: f9a133a75330ef949aa913e1524fd521, type: 2}
-    condition:
-      type: 1
-      runCountValue: 0
-      storyFlag: 
-    playOnce: 1
-    flagWhenPlayed: init_shown
   - sequence: {fileID: 11400000, guid: 2e1a9b70e9e85d94abef112f98ca041b, type: 2}
     condition:
       type: 5
@@ -13375,6 +13368,13 @@ MonoBehaviour:
       storyFlag: skilltree_first_entry
     playOnce: 1
     flagWhenPlayed: skilltree_first_shown
+  - sequence: {fileID: 11400000, guid: f9a133a75330ef949aa913e1524fd521, type: 2}
+    condition:
+      type: 1
+      runCountValue: 0
+      storyFlag: 
+    playOnce: 1
+    flagWhenPlayed: init_shown
   logTriggerChecks: 1
 --- !u!4 &1428109225
 Transform:
@@ -17291,15 +17291,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1764de1de43cc4d19af52679d3eaae06, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  version: 1073741824
-  desiredSimulationFPS: 20
-  workerThreads: 2
-  doubleBuffering: 0
-  hardCollisions: 1
-  symmetryBreakingBias: 0.1
-  movementPlane: 0
-  useNavmeshAsObstacle: 0
-  drawQuadtree: 0
 --- !u!114 &1966057592
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17312,82 +17303,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 78396926cbbfc4ac3b48fc5fc34a87d1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  version: 1073741824
-  data:
-    dataString: UEsDBBQAAAgIAACYn+sc99biNAAAAD0AAAAJACQAbWV0YS5qc29uCgAgAAAAAAABABgAAIA+1d6xnQEAgD7V3rGdAQCAPtXesZ0Bq1YqSy0qzszPU7JSMNUz0TPVUVBKL0osyCgGChiAOKWZKSB2dCyQU1JZkOqXmJsKEagFAFBLAQItABQAAAgIAACYn+sc99biNAAAAD0AAAAJACQAAAAAAAAAAAAAAAAAAABtZXRhLmpzb24KACAAAAAAAAEAGAAAgD7V3rGdAQCAPtXesZ0BAIA+1d6xnQFQSwUGAAAAAAEAAQBbAAAAfwAAAAAA
-    file_cachedStartup: {fileID: 0}
-    cacheStartup: 0
-  showNavGraphs: 1
-  showUnwalkableNodes: 1
-  debugMode: 0
-  graphUpdateDebugMode: 0
-  debugFloor: 0
-  debugRoof: 1
-  manualDebugFloorRoof: 0
-  showSearchTree: 0
-  unwalkableNodeDebugSize: 0.3
-  logPathResults: 1
-  maxNearestNodeDistance: 100
-  scanOnStartup: 1
-  fullGetNearestSearch: 0
-  prioritizeGraphs: 0
-  prioritizeGraphsLimit: 1
-  colorSettings:
-    _SolidColor: {r: 0.11764706, g: 0.4, b: 0.7882353, a: 0.9}
-    _UnwalkableNode: {r: 1, g: 0, b: 0, a: 0.5}
-    _BoundsHandles: {r: 0.29, g: 0.454, b: 0.741, a: 0.9}
-    _ConnectionLowLerp: {r: 0, g: 1, b: 0, a: 0.5}
-    _ConnectionHighLerp: {r: 1, g: 0, b: 0, a: 0.5}
-    _MeshEdgeColor: {r: 0, g: 0, b: 0, a: 0.5}
-    _AreaColors: []
-  tagNames:
-  - Basic Ground
-  - 1
-  - 2
-  - 3
-  - 4
-  - 5
-  - 6
-  - 7
-  - 8
-  - 9
-  - 10
-  - 11
-  - 12
-  - 13
-  - 14
-  - 15
-  - 16
-  - 17
-  - 18
-  - 19
-  - 20
-  - 21
-  - 22
-  - 23
-  - 24
-  - 25
-  - 26
-  - 27
-  - 28
-  - 29
-  - 30
-  - 31
-  heuristic: 2
-  heuristicScale: 1
-  threadCount: 1
-  maxFrameTime: 10
-  batchGraphUpdates: 0
-  graphUpdateBatchingInterval: 0.2
-  navmeshUpdates:
-    updateInterval: 0
-  euclideanEmbedding:
-    mode: 0
-    seed: 0
-    pivotPointRoot: {fileID: 0}
-    spreadOutCount: 10
-  showGraphs: 1
-  showGraphsInStandalonePlayer: 0
 --- !u!4 &1966057593
 Transform:
   m_ObjectHideFlags: 0
