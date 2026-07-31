@@ -37,8 +37,8 @@ Material:
     - _DetailScale: 11.5
     - _DetailSpeed: 3.25
     - _EdgeSoftness: 0.002
-    - _Inset: 0.061
-    - _NoiseScale: 1.82
+    - _Inset: 0.148
+    - _NoiseScale: 7.33
     - _NoiseSpeed: 4.17
     - _RimStrength: 0.96
     - _RimWidth: 0.147
@@ -48,7 +48,7 @@ Material:
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
     - _UseUIAlphaClip: 0
-    - _WarpAmount: 0.421
+    - _WarpAmount: 0.45
     - _WarpDepth: 0.85
     m_Colors:
     - _Color: {r: 0.066037714, g: 0.066037714, b: 0.066037714, a: 1}

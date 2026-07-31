@@ -198,6 +198,15 @@ public class RacingSkillUI : MonoBehaviour
 
     private void ProceedToRunFromPlay()
     {
+        // Very first run: show the controls explainer once; the run starts when it's dismissed.
+        if (FirstRunControlsOverlay.TryShow(StartRunNow))
+            return;
+
+        StartRunNow();
+    }
+
+    private void StartRunNow()
+    {
         if (!gameManager)
             gameManager = FindObjectOfType<GameManager_Racing>();
         gameManager?.BeginRun();
