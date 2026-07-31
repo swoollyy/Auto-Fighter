@@ -189,6 +189,7 @@ public class RacingInputReader : MonoBehaviour
         drift.AddBinding("<Gamepad>/buttonEast");
         var restart = _racingMap.AddAction("Restart", InputActionType.Button);
         restart.AddBinding("<Keyboard>/r");
+        restart.AddBinding("<Gamepad>/buttonSouth");
         restart.AddBinding("<Gamepad>/start");
 
         var mashSouth = _racingMap.AddAction("MashSouth", InputActionType.Button);

@@ -82,6 +82,7 @@ public class RacingSkillUI : MonoBehaviour
     private RacingSkillUIEntry selectedEntry;
     private bool buildSucceeded;
     private int _lastPanelToggleFrame = -9999;
+    private bool _tutorialInputLocked;
 
     void Awake()
     {
@@ -108,7 +109,8 @@ public class RacingSkillUI : MonoBehaviour
 
     void Update()
     {
-        if (!GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+        bool blockNav = GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked;
+        if (!blockNav)
         {
             HandleTreePan();
             HandleTreeZoom();
@@ -123,6 +125,38 @@ public class RacingSkillUI : MonoBehaviour
     }
 
     public void BindGameManager(GameManager_Racing gm) => gameManager = gm;
+
+    /// <summary>Find a built skill node by type (e.g. for tutorial spotlights).</summary>
+    public bool TryGetEntry(SkillType type, out RacingSkillUIEntry entry)
+    {
+        entry = null;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            if (e == null) continue;
+            var def = e.GetDefinition();
+            if (def != null && def.type == type)
+            {
+                entry = e;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// While a tutorial spotlight is up, disable pan/zoom and toolbar buttons so only the hole target is usable.
+    /// </summary>
+    public void SetTutorialInputLock(bool locked)
+    {
+        _tutorialInputLocked = locked;
+        if (locked)
+            _isPanning = false;
+
+        if (playButton) playButton.interactable = !locked;
+        if (questButton) questButton.interactable = !locked;
+        if (inventoryButton) inventoryButton.interactable = !locked;
+    }
 
     private void BindPlayButton()
     {
@@ -147,7 +181,7 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnPlayClicked()
     {
-        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+        if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
 
         ClearSelection();
         detailPanel?.HideImmediate();
@@ -171,7 +205,7 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnQuestClicked()
     {
-        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+        if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
         if (Time.frameCount == _lastPanelToggleFrame) return;
         _lastPanelToggleFrame = Time.frameCount;
 
@@ -188,7 +222,7 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnInventoryClicked()
     {
-        if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi) return;
+        if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
         if (Time.frameCount == _lastPanelToggleFrame) return;
         _lastPanelToggleFrame = Time.frameCount;
 
@@ -226,6 +260,29 @@ public class RacingSkillUI : MonoBehaviour
     /// </summary>
     private void SyncToolbarButtons(bool anyPanelOpen)
     {
+        if (_tutorialInputLocked)
+        {
+            if (playButton != null)
+            {
+                playButton.interactable = false;
+                if (playButton.targetGraphic != null)
+                    playButton.targetGraphic.raycastTarget = false;
+            }
+            if (questButton != null)
+            {
+                questButton.interactable = false;
+                if (questButton.targetGraphic != null)
+                    questButton.targetGraphic.raycastTarget = false;
+            }
+            if (inventoryButton != null)
+            {
+                inventoryButton.interactable = false;
+                if (inventoryButton.targetGraphic != null)
+                    inventoryButton.targetGraphic.raycastTarget = false;
+            }
+            return;
+        }
+
         if (playButton != null)
         {
             bool allowPlay = !anyPanelOpen;

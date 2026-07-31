@@ -146,8 +146,12 @@ public class UIManager_Racing : MonoBehaviour
 
     private void Start()
     {
-        // During init_dialogue only the dialogue canvas should show; game canvas is enabled when dialogue ends (DialogueManager).
-        SetGameCanvasVisible(false);
+        // Only hide the game canvas when intro/dialogue is actually covering the screen.
+        // After a run restart (scene reload) or when narrative is skipped, no dialogue plays —
+        // leaving the canvas off would blank the skill tree forever.
+        bool dialogueCoveringScreen =
+            DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying;
+        SetGameCanvasVisible(!dialogueCoveringScreen);
 
         HideRunComplete();
         HideRunCoins();
@@ -310,8 +314,8 @@ public class UIManager_Racing : MonoBehaviour
             runTotalSprocketsText.text = $"Sprockets This Run: {sprocketsThisRun}";
         }
 
-        if (runRestartHintText && string.IsNullOrEmpty(runRestartHintText.text))
-            runRestartHintText.text = "Press R to restart";
+        if (runRestartHintText)
+            runRestartHintText.text = "X: Skill Tree    V / Triangle: Play Again";
 
         if (runCompleteTitle && string.IsNullOrEmpty(runCompleteTitle.text))
             runCompleteTitle.text = "Run Complete";

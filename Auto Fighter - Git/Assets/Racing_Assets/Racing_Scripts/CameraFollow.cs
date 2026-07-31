@@ -774,6 +774,11 @@ public class CameraFollow : MonoBehaviour
 
     public void SetTarget(Transform t)
     {
+        SetTarget(t, snapImmediate: false);
+    }
+
+    public void SetTarget(Transform t, bool snapImmediate)
+    {
         target = t;
         smoothedForward = Vector3.zero;
         _trickCameraBlend = 0f;
@@ -784,6 +789,49 @@ public class CameraFollow : MonoBehaviour
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
 
         SubscribeToCarBoosts();
+
+        if (snapImmediate)
+            SnapToTargetImmediate();
+    }
+
+    /// <summary>
+    /// Instantly place the camera in its normal follow pose (no lerp from the previous run location).
+    /// Used when quick-replaying so gameplay never opens mid-transition.
+    /// </summary>
+    public void SnapToTargetImmediate()
+    {
+        if (target == null) return;
+
+        Vector3 flat = FlattenForward(target.forward, Vector3.forward);
+        smoothedForward = flat;
+        _prevTargetForwardFlat = flat;
+
+        Quaternion yawOnly = Quaternion.LookRotation(smoothedForward, Vector3.up);
+        Vector3 desiredPos = target.position + yawOnly * offset;
+
+        Vector3 e = yawOnly.eulerAngles;
+        e.x = cameraPitch;
+        e.z = 0f;
+        Quaternion desiredRot = Quaternion.Euler(e);
+
+        transform.position = desiredPos;
+        transform.rotation = desiredRot;
+
+        // Clear residual motion / FX state from the previous run end.
+        shakeTimer = 0f;
+        shakeDuration = 0f;
+        _currentZRoll = 0f;
+        _driftRollSigned = 0f;
+        _driftLagSharpnessBlend = 0f;
+        _turnLagSharpnessBlend = 0f;
+        _driftTremorBlend = 0f;
+        _trickCameraBlend = 0f;
+        _wasInAirTrickMode = false;
+        _holdTrickCameraUntilLand = false;
+        _postTrickReleaseActive = false;
+
+        if (car == null)
+            car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();
     }
 
     public void StartShake(float duration, float strength, int vibrato, float randomness)

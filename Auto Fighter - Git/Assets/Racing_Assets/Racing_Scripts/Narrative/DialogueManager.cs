@@ -40,6 +40,13 @@ public class DialogueManager : MonoBehaviour
 
     /// <summary>Fired when a sequence finishes (with the sequence that finished).</summary>
     public event Action<DialogueSequenceSO> OnSequenceCompleted;
+
+    /// <summary>
+    /// Fired at the start of teardown, <b>before</b> the dialogue UI is hidden.
+    /// Use this to put up a follow-up overlay (tutorial dim) so the skill tree never flashes undimmed.
+    /// </summary>
+    public event Action<DialogueSequenceSO> OnSequenceCompleting;
+
     /// <summary>Fired when a sequence begins (with the sequence that started).</summary>
     public event Action<DialogueSequenceSO> OnSequenceStarted;
 
@@ -217,13 +224,18 @@ public class DialogueManager : MonoBehaviour
         if (_currentSequence != null && _currentSequence.pauseGameWhilePlaying)
             Time.timeScale = _savedTimeScale;
 
-        dialogueUI?.Hide();
-
         DialogueSequenceSO completed = _currentSequence;
         _currentSequence = null;
         _currentLineIndex = 0;
 
-        if (!string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
+        // Let tutorial / overlays mount dim WHILE dialogue panel is still visible,
+        // then hide dialogue so the handoff never flashes the undimmed skill tree.
+        if (completed != null)
+            OnSequenceCompleting?.Invoke(completed);
+
+        dialogueUI?.Hide();
+
+        if (completed != null && !string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
         {
             NarrativeDirector.SetStoryFlag(completed.setStoryFlagOnComplete);
             Debug.Log(
@@ -243,7 +255,8 @@ public class DialogueManager : MonoBehaviour
 
         uiManagerRacing?.SetGameplayCanvasInputLocked(false);
 
-        OnSequenceCompleted?.Invoke(completed);
+        if (completed != null)
+            OnSequenceCompleted?.Invoke(completed);
     }
 
     private void NotifyComplete(DialogueSequenceSO sequence)

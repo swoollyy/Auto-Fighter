@@ -29,7 +29,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _AnimTime: 6.8966217
+    - _AnimTime: 0
     - _Aspect: 5.15
     - _ColorMask: 15
     - _CornerRadius: 0.291
@@ -37,9 +37,9 @@ Material:
     - _DetailScale: 11.5
     - _DetailSpeed: 3.25
     - _EdgeSoftness: 0.002
-    - _Inset: 0
-    - _NoiseScale: 4.28
-    - _NoiseSpeed: 3.9
+    - _Inset: 0.061
+    - _NoiseScale: 1.82
+    - _NoiseSpeed: 4.17
     - _RimStrength: 0.96
     - _RimWidth: 0.147
     - _Stencil: 0
@@ -48,9 +48,9 @@ Material:
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
     - _UseUIAlphaClip: 0
-    - _WarpAmount: 0.419
-    - _WarpDepth: 0.5
+    - _WarpAmount: 0.421
+    - _WarpDepth: 0.85
     m_Colors:
-    - _Color: {r: 0.028301895, g: 0.028301895, b: 0.028301895, a: 1}
-    - _RimColor: {r: 0.05660379, g: 0.05660379, b: 0.05660379, a: 1}
+    - _Color: {r: 0.066037714, g: 0.066037714, b: 0.066037714, a: 1}
+    - _RimColor: {r: 0.16981131, g: 0.16981131, b: 0.16981131, a: 1}
   m_BuildTextureStacks: []

@@ -15,7 +15,7 @@ Shader "UI/GooSlimePanel"
         [Header(Glorp Motion)]
         _AnimTime ("Anim Time (auto)", Float) = 0
         _WarpAmount ("Edge Warp", Range(0, 0.45)) = 0.16
-        _WarpDepth ("Warp Edge Depth", Range(0.02, 0.5)) = 0.22
+        _WarpDepth ("Warp Edge Depth", Range(0.02, 0.85)) = 0.22
         _NoiseScale ("Blob Size Scale", Range(0.5, 18)) = 3.2
         _NoiseSpeed ("Blob Speed", Range(0, 5)) = 1.35
         _DetailScale ("Detail Scale", Range(1, 24)) = 9

@@ -98,6 +98,8 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private AnimationCurve crashSlowMoCurve = AnimationCurve.Linear(0, 0.4f, 1, 1f);
 
     private const KeyCode PAD_X = KeyCode.JoystickButton1; // PS5 Cross (X)
+    private const KeyCode PAD_TRIANGLE = KeyCode.JoystickButton3; // PS Triangle / Xbox Y
+    private const KeyCode QUICK_RESTART_KEY = KeyCode.V;
 
     [Header("TEST - Remove when done testing")]
     [Tooltip("Press Start (Options) on PS5 controller to spawn one NPC traffic car ahead.")]
@@ -297,8 +299,36 @@ public class GameManager_Racing : MonoBehaviour
             SetProgressState(GameProgressState.Dialogue);
         }
         else
-            SetProgressState(GameProgressState.SkillTree);
+        {
+            // No intro this boot (skipped narrative, or already seen this session after a run restart).
+            // UIManager used to leave the game canvas off waiting for dialogue end — show skill tree now.
+            ReturnToSkillTree();
+        }
 
+        // Safety: if another Start() order still left us without dialogue and without a canvas,
+        // recover on the next frame.
+        StartCoroutine(CoEnsureSkillTreeVisibleIfNoDialogue());
+    }
+
+    private System.Collections.IEnumerator CoEnsureSkillTreeVisibleIfNoDialogue()
+    {
+        yield return null;
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
+            yield break;
+        if (_progressState == GameProgressState.InRun ||
+            _progressState == GameProgressState.LoadingRun ||
+            _progressState == GameProgressState.RunEnd)
+            yield break;
+
+        uiManager?.SetGameCanvasVisible(true);
+        uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
+        if (_progressState != GameProgressState.SkillTree &&
+            _progressState != GameProgressState.MainMenu &&
+            _progressState != GameProgressState.Paused)
+        {
+            SetProgressState(GameProgressState.SkillTree);
+            _flowState = RunFlowState.SkillTree;
+        }
     }
 
     private void SyncCoinFriendDefaultsFromCarPrefab()
@@ -376,32 +406,38 @@ public class GameManager_Racing : MonoBehaviour
             }
         }
 
-        // Restart can be pressed after run has ended even if car was destroyed; handle it without requiring carController.
+        // Run-end results panel:
+        // - Triangle / V  → quick replay (same as pressing Play; skip skill tree)
+        // - Cross / X     → return to skill tree
         bool uiIsRunEnd = uiManager != null && uiManager.CurrentSection == UIManager_Racing.UISection.RunEnd;
-        bool canCheckRestart =
+        bool canCheckRunEndInput =
             _flowState == RunFlowState.RunEnd &&
             uiIsRunEnd &&
             _acceptRunEndContinueInput &&
             (_finalizePending || runEnded) &&
             !runStarted &&
             !_loadingGameplayGateActive;
-        if (canCheckRestart)
+        if (canCheckRunEndInput)
         {
             bool notInFlipMash = carController == null || !carController.IsFlipMashActive;
-            if (notInFlipMash)
+            if (notInFlipMash && RestartAllowedNow())
             {
-                bool restartPressed =
-                    Input.GetKeyDown(KeyCode.R) ||
-                    (RestartAllowedNow() && (
-                        (RacingInputReader.Instance != null && RacingInputReader.Instance.RestartDown) ||
-                        Input.GetKeyDown(PAD_X)
-                    ));
-
-                if (restartPressed)
+                if (WasQuickReplayPressed())
                 {
                     if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
                     _finalizeRunCR = null;
                     _finalizePending = false;
+                    QuickReplayFromRunEnd();
+                    return;
+                }
+
+                if (WasReturnToSkillTreePressed())
+                {
+                    if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
+                    _finalizeRunCR = null;
+                    _finalizePending = false;
+                    // Full scene reload — same as before: leaves the run world and boots the
+                    // normal skill-tree screen (not an overlay on top of the live track).
                     TryPlayDepositSoundOnReset();
                     RestartRun();
                     return;
@@ -519,6 +555,53 @@ public class GameManager_Racing : MonoBehaviour
         SceneManager.LoadScene(current.buildIndex);
     }
 
+    /// <summary>
+    /// Results panel Triangle / V → same as skill-tree Play: loading, new track, new day.
+    /// Does not open the skill tree.
+    /// </summary>
+    private void QuickReplayFromRunEnd()
+    {
+        Debug.Log("[GameManager_Racing] Quick replay from run-end (Play again, skip skill tree).");
+
+        PlayDepositSoundImmediateIfNeeded();
+
+        CancelAllTransientSlowMo();
+        TimeScaleHub.ForceClearAll();
+        TimeScaleHub.ForceClearAllPauses();
+        Time.timeScale = 1f;
+
+        _acceptRunEndContinueInput = false;
+        runEnded = false;
+        uiManager?.HideRunComplete();
+
+        // Dead/out-of-fuel car must not be reused — BeginRun respawns a fresh one.
+        if (carInstance != null)
+        {
+            cameraFollow?.SetTarget(null);
+            Destroy(carInstance);
+            carInstance = null;
+            carController = null;
+            _carRb = null;
+        }
+
+        BeginRun();
+    }
+
+    private void PlayDepositSoundImmediateIfNeeded()
+    {
+        if (_depositSoundPlayed) return;
+        if (!_currencyAwarded) return;
+
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return;
+
+        int deposited = mgr.Currency - _startingCurrency;
+        if (deposited <= 0) return;
+
+        PlayDepositCoinsSound();
+        _depositSoundPlayed = true;
+    }
+
     private void FinalizeRun()
     {
         if (_currencyAwarded) return;
@@ -584,7 +667,7 @@ public class GameManager_Racing : MonoBehaviour
             $"PickupCoins={_pickupCoinsThisRun}, " +
             $"ObstacleCoins={_obstacleCoinsThisRun}, " +
             $"TotalThisRun={totalCoinsThisRun}, " +
-            $"FinalTotalCurrency={finalTotalCurrency}. Press R to restart.");
+            $"FinalTotalCurrency={finalTotalCurrency}. X=skill tree, V/Triangle=play again.");
 
         // Day / Trial progression: this completed run counts as one day. Pass/advance, tick a day,
         // or (on the last allowed day without reaching the target) fail and revert to the trial baseline.
@@ -1147,6 +1230,9 @@ public class GameManager_Racing : MonoBehaviour
     {
         // Ensure game canvas is on so player can see skill tree and interact (fixes canvas staying off after run/dialogue).
         uiManager?.SetGameCanvasVisible(true);
+        uiManager?.SetGameplayCanvasInputLocked(false);
+        // Static flag can survive scene reload if a tutorial spotlight was active.
+        GameplayUIInputGuard.IsTutorialHighlightActive = false;
 
         // Show the skill tree root (same as existing flow)
         if (skillTreeRoot != null)
@@ -1316,7 +1402,7 @@ public class GameManager_Racing : MonoBehaviour
             distanceSystem.Configure(trackGenerator, carInstance.transform);
 
         if (cameraFollow != null)
-            cameraFollow.SetTarget(carInstance.transform);
+            cameraFollow.SetTarget(carInstance.transform, snapImmediate: true);
 
         if (uiManager != null && carController != null)
             uiManager.BindCar(carController);
@@ -1331,7 +1417,7 @@ public class GameManager_Racing : MonoBehaviour
     private bool RestartAllowedNow()
     {
         // Once the run-end freeze has actually kicked in (results are up and gameplay is frozen),
-        // ALWAYS allow "Press X to continue" so the player can never get trapped by a lingering
+        // ALWAYS allow run-end input so the player can never get trapped by a lingering
         // slow-mo owner. This is the safety net behind the hub purge / freeze cleanup.
         if (runEnded && Time.timeScale <= 0.0001f)
             return true;
@@ -1342,10 +1428,51 @@ public class GameManager_Racing : MonoBehaviour
             && !TimeScaleHub.IsAnyActive;
     }
 
+    /// <summary>Triangle (pad North/Y) or V — quick replay into a new run.</summary>
+    private static bool WasQuickReplayPressed()
+    {
+        if (Input.GetKeyDown(QUICK_RESTART_KEY))
+            return true;
+
+        if (Input.GetKeyDown(PAD_TRIANGLE))
+            return true;
+
+        var reader = RacingInputReader.Instance;
+        if (reader != null && reader.MashNorthDown)
+            return true;
+
+        if (Gamepad.current != null && Gamepad.current.buttonNorth.wasPressedThisFrame)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>Cross (pad South/X) or R — back to skill tree.</summary>
+    private static bool WasReturnToSkillTreePressed()
+    {
+        if (Input.GetKeyDown(KeyCode.R))
+            return true;
+
+        if (Input.GetKeyDown(PAD_X))
+            return true;
+
+        var reader = RacingInputReader.Instance;
+        if (reader != null && reader.MashSouthDown)
+            return true;
+
+        if (Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame)
+            return true;
+
+        return false;
+    }
+
     private IEnumerator CoHideLoadingNextFrame()
     {
         // let instantiates + layout rebuilds finish
         yield return null;
+        // Guarantee the follow cam is already on the car before the loading overlay drops
+        // (quick-replay used to reveal the world while still lerping from the previous death spot).
+        cameraFollow?.SnapToTargetImmediate();
         uiManager?.HideLoading();
         ExitLoadingGameplayGate();
         uiManager?.SetSection(UIManager_Racing.UISection.InGameDefault);

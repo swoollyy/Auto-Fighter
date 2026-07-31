@@ -66,19 +66,15 @@ namespace AutoFighter.Core
             if (_instance == null || !_instance.enableVirtualCursor)
                 return true;
 
-            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
-                return false;
-
             var gm = global::GameManager_Racing.Instance;
             if (gm == null)
-                return false;
-
-            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue)
                 return false;
 
             if (gm.ProgressState == global::GameManager_Racing.GameProgressState.LoadingRun)
                 return false;
 
+            // Only during the driving loop should RacingInputReader own cursor hide/show.
+            // Dialogue, skill tree, pause, etc. stay under CoreVirtualCursor.
             return gm.ProgressState == global::GameManager_Racing.GameProgressState.InRun;
         }
 
@@ -240,14 +236,30 @@ namespace AutoFighter.Core
             bool cursorAllowed = IsCursorAllowedForCurrentGameState();
             if (cursorAllowed && !_wasCursorAllowedLastFrame)
             {
-                // Returning from a run / loading: prefer OS mouse so clicks work immediately.
-                // Stick-drift from a connected pad must not keep controller mode (UI module off).
+                // Resume UI cursor without snapping to screen center.
+                // Prefer controller if it was the last active device (don't force OS mouse).
+                _screenPos = GetTrackedScreenPositionOrCenter();
                 Vector2 stickNow = ReadControllerMoveVector();
                 bool stickActiveNow = stickNow.magnitude >= Mathf.Max(deadZone, stickActivateThreshold);
-                if (!stickActiveNow && !ReadControllerSubmitDown())
-                    SetMode(ControlMode.Mouse, false);
+                bool preferController =
+                    stickActiveNow ||
+                    ReadControllerSubmitDown() ||
+                    _lastControllerActivityTime > Mathf.Max(_lastMouseActivityTime, _lastMouseKeyboardActivityTime);
+
+                if (preferController)
+                {
+                    _mode = ControlMode.Controller;
+                }
                 else
-                    SyncUIInputModuleForMode();
+                {
+                    _mode = ControlMode.Mouse;
+                    WarpSystemMouseToScreenPosition(_screenPos);
+                    _lastMousePos = _screenPos;
+                }
+
+                ApplyScreenPosToCursor(_screenPos);
+                ApplyCursorVisibility(mechanicActive: true);
+                SyncUIInputModuleForMode();
             }
             _wasCursorAllowedLastFrame = cursorAllowed;
 
@@ -256,6 +268,14 @@ namespace AutoFighter.Core
                 ReleaseActivePointerIfAny();
                 if (autoSwitchInputMode)
                     DetectAndSwitchMode();
+
+                // Keep remembering pointer position while the HUD cursor is suppressed
+                // (in-run / loading) so returning to menus doesn't snap to center.
+                if (_mode == ControlMode.Mouse)
+                    SaveTrackedScreenPosition(Input.mousePosition);
+                else
+                    SaveTrackedScreenPosition(_screenPos);
+
                 ApplyCursorVisibility(mechanicActive: false);
                 SyncUIInputModuleForMode();
                 return;
@@ -319,7 +339,11 @@ namespace AutoFighter.Core
             bool stickActive = stick.magnitude >= Mathf.Max(deadZone, stickActivateThreshold);
             bool controllerClicked = ReadControllerSubmitDown();
             if (stickActive || controllerClicked)
+            {
                 _lastControllerActivityTime = Time.unscaledTime;
+                // As soon as the virtual cursor is driven, hide the OS mouse so both don't show.
+                Cursor.visible = false;
+            }
 
             float lastMouseKeyboardActivity = Mathf.Max(_lastMouseActivityTime, _lastMouseKeyboardActivityTime);
             bool mouseRecentlyActive =
@@ -328,6 +352,16 @@ namespace AutoFighter.Core
 
             // Mouse/keyboard must win briefly after activity so tiny stick drift cannot
             // instantly steal mode and make click feel broken in menus.
+            // Active stick / submit always wins over that grace window.
+            if (stickActive || controllerClicked)
+            {
+                if (_mode != ControlMode.Controller)
+                    SetMode(ControlMode.Controller, false);
+                else
+                    ApplyCursorVisibility(IsCursorAllowedForCurrentGameState());
+                return;
+            }
+
             if (mouseRecentlyActive)
             {
                 if (_mode != ControlMode.Mouse)
@@ -356,9 +390,15 @@ namespace AutoFighter.Core
                 _screenPos = ClampToScreen(Input.mousePosition);
                 SaveTrackedScreenPosition(_screenPos);
             }
+            else if (_hasTrackedScreenPosition)
+            {
+                // Always resume last known pointer — never invent screen-center.
+                _screenPos = ClampToScreen(_trackedScreenPosition);
+            }
             else
             {
-                _screenPos = GetTrackedScreenPositionOrCenter();
+                _screenPos = ClampToScreen(Input.mousePosition);
+                SaveTrackedScreenPosition(_screenPos);
             }
 
             if (_mode == ControlMode.Mouse)
@@ -374,7 +414,7 @@ namespace AutoFighter.Core
 
         /// <summary>
         /// Single place that decides OS vs virtual cursor visibility.
-        /// Mouse/keyboard: OS cursor on. Controller: virtual cursor on (when mechanic is active).
+        /// Mouse/keyboard: OS cursor on. Controller: virtual cursor on, OS mouse always hidden.
         /// </summary>
         private void ApplyCursorVisibility(bool mechanicActive)
         {
@@ -383,33 +423,27 @@ namespace AutoFighter.Core
             if (!mechanicActive)
             {
                 HideCustomCursor();
-                // Dialogue: stable OS cursor for mouse/keyboard; no cursor during loading/in-run.
-                Cursor.visible = IsDialogueOrCutsceneBlocked() && _mode == ControlMode.Mouse;
+                Cursor.visible = false;
                 return;
             }
 
-            if (_mode == ControlMode.Mouse)
+            if (_mode == ControlMode.Controller)
             {
-                HideCustomCursor();
-                Cursor.visible = true;
+                // Virtual cursor owns the pointer — never leave the OS mouse visible on top.
+                Cursor.visible = false;
+                ShowCustomCursor();
                 return;
             }
 
-            Cursor.visible = false;
-            ShowCustomCursor();
-        }
-
-        private static bool IsDialogueOrCutsceneBlocked()
-        {
-            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
-                return true;
-
-            var gm = global::GameManager_Racing.Instance;
-            return gm != null && gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue;
+            HideCustomCursor();
+            Cursor.visible = true;
         }
 
         private void ClickUnderCursor()
         {
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return;
+
             var pointer = new PointerEventData(_eventSystem)
             {
                 position = _screenPos,
@@ -451,6 +485,10 @@ namespace AutoFighter.Core
 
         private void BeginPointerPress()
         {
+            // Dialogue owns advance input; don't synthesize UI clicks under the virtual cursor.
+            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
+                return;
+
             _activePointerData = new PointerEventData(_eventSystem)
             {
                 position = _screenPos,
@@ -827,19 +865,14 @@ namespace AutoFighter.Core
 
         private static bool IsCursorAllowedForCurrentGameState()
         {
-            if (GameplayUIInputGuard.IsDialogueBlockingGameplayUi)
-                return false;
-
             var gm = global::GameManager_Racing.Instance;
             if (gm == null) return true;
-
-            if (gm.ProgressState == global::GameManager_Racing.GameProgressState.Dialogue)
-                return false;
 
             if (gm.ProgressState == global::GameManager_Racing.GameProgressState.LoadingRun)
                 return false;
 
-            // Hide cursor during active driving loop; menus (pause, skill tree, options, etc.) remain cursor-enabled.
+            // Hide cursor during active driving only.
+            // Dialogue keeps the cursor so position carries into skill tree / menus.
             return gm.ProgressState != global::GameManager_Racing.GameProgressState.InRun;
         }
     }
