@@ -45,6 +45,14 @@ public class DialogueUI : MonoBehaviour
     [Tooltip("If null, we use this GameObject. Used to show/hide the whole dialogue box.")]
     [SerializeField] private CanvasGroup canvasGroup;
 
+    [Header("Dialogue Box Blob FX")]
+    [Tooltip("First layered goo panel (Dialogue Box FX 1). Leave empty to auto-find children in hierarchy order.")]
+    [SerializeField] private UIGooSlimeAnimator gooSlimePanel1;
+    [Tooltip("Second layered goo panel (Dialogue Box FX 2). Leave empty to auto-find children in hierarchy order.")]
+    [SerializeField] private UIGooSlimeAnimator gooSlimePanel2;
+    [Tooltip("Seconds to blend blob colors when the speaker tag changes within a sequence (unscaled). First line of a sequence snaps.")]
+    [SerializeField, Min(0f)] private float blobColorBlendSeconds = 0.45f;
+
     [Header("Advance hint (optional)")]
     [SerializeField] private GameObject advanceHintObject;
     [SerializeField] private TMP_Text advanceHintText;
@@ -63,6 +71,8 @@ public class DialogueUI : MonoBehaviour
     /// <summary>Per-character extra hold (seconds) applied BEFORE revealing that character. Built from <link="hold:X"> tags.</summary>
     private float[] _charHoldSeconds;
     private float _lineSetAtUnscaledTime;
+    /// <summary>False until the first blob colors of the current sequence are applied (that apply snaps; later ones blend).</summary>
+    private bool _blobColorsAppliedThisSequence;
 
     /// <summary>True when the current line is fully revealed (or when typewriter is disabled).</summary>
     public bool IsTypewriterComplete => !useTypewriterEffect || _typewriterComplete;
@@ -77,6 +87,7 @@ public class DialogueUI : MonoBehaviour
             panelRoot = gameObject;
         if (advanceHintText != null && !string.IsNullOrEmpty(advanceHintString))
             advanceHintText.text = advanceHintString;
+        EnsureGooSlimePanels();
         // Hide in Awake so we don't run after NarrativeDirector.Start() has already called Show().
         Hide();
     }
@@ -105,6 +116,10 @@ public class DialogueUI : MonoBehaviour
             _typewriterRoutine = null;
         }
         _typewriterComplete = true;
+        _blobColorsAppliedThisSequence = false;
+        EnsureGooSlimePanels();
+        gooSlimePanel1?.ResetBlobColorState();
+        gooSlimePanel2?.ResetBlobColorState();
         if (panelRoot != null)
             panelRoot.SetActive(false);
         if (canvasGroup != null)
@@ -117,6 +132,22 @@ public class DialogueUI : MonoBehaviour
 
     /// <summary>Set the current line content (speaker, text, optional portrait). Text supports TMP rich text tags.</summary>
     public void SetLine(string speakerName, string text, Sprite portrait = null)
+    {
+        SetLine(speakerName, text, portrait, null, null, null, null);
+    }
+
+    /// <summary>
+    /// Set the current line content and recolor both layered Dialogue Box FX goo panels.
+    /// Pass null for a color pair to leave that panel's current tint unchanged.
+    /// </summary>
+    public void SetLine(
+        string speakerName,
+        string text,
+        Sprite portrait,
+        Color? blob1FillColor,
+        Color? blob1RimColor,
+        Color? blob2FillColor,
+        Color? blob2RimColor)
     {
         if (speakerText != null)
             speakerText.text = string.IsNullOrEmpty(speakerName) ? "" : speakerName;
@@ -155,6 +186,42 @@ public class DialogueUI : MonoBehaviour
             if (s != null)
                 portraitImage.sprite = s;
         }
+
+        if ((blob1FillColor.HasValue && blob1RimColor.HasValue) || (blob2FillColor.HasValue && blob2RimColor.HasValue))
+            ApplyBlobColors(blob1FillColor, blob1RimColor, blob2FillColor, blob2RimColor);
+    }
+
+    /// <summary>
+    /// Push fill + rim colors to Dialogue Box FX 1 and FX 2.
+    /// First apply in a sequence snaps; later applies blend over <see cref="blobColorBlendSeconds"/>.
+    /// </summary>
+    public void ApplyBlobColors(Color? fill1, Color? rim1, Color? fill2, Color? rim2)
+    {
+        EnsureGooSlimePanels();
+
+        bool immediate = !_blobColorsAppliedThisSequence;
+        _blobColorsAppliedThisSequence = true;
+        float duration = blobColorBlendSeconds;
+
+        if (gooSlimePanel1 != null && fill1.HasValue && rim1.HasValue)
+            gooSlimePanel1.SetBlobColors(fill1.Value, rim1.Value, immediate, duration);
+        if (gooSlimePanel2 != null && fill2.HasValue && rim2.HasValue)
+            gooSlimePanel2.SetBlobColors(fill2.Value, rim2.Value, immediate, duration);
+    }
+
+    private void EnsureGooSlimePanels()
+    {
+        if (gooSlimePanel1 != null && gooSlimePanel2 != null)
+            return;
+
+        UIGooSlimeAnimator[] found = GetComponentsInChildren<UIGooSlimeAnimator>(true);
+        if (found == null || found.Length == 0)
+            return;
+
+        if (gooSlimePanel1 == null && found.Length > 0)
+            gooSlimePanel1 = found[0];
+        if (gooSlimePanel2 == null && found.Length > 1)
+            gooSlimePanel2 = found[1];
     }
 
     /// <summary>If typewriter is still revealing, reveal all immediately. Call from DialogueManager when player advances.</summary>

@@ -24,9 +24,41 @@ public class DialogueSequenceSO : ScriptableObject
     [Tooltip("If true, keep the game canvas visible while this dialogue plays (use for skill-tree/tutorial dialogue overlays).")]
     public bool keepGameCanvasVisibleWhilePlaying = false;
 
+    [Header("Dialogue Box Blob Colors By Tag")]
+    [Tooltip("Blob FX colors when a line uses Speaker Tag = Overseer (also used for ??? before the name reveal).")]
+    public DialogueBlobColorSet overseerColors = DialogueBlobColorSet.DefaultOverseer();
+
+    [Tooltip("Blob FX colors when a line uses Speaker Tag = Player.")]
+    public DialogueBlobColorSet playerColors = DialogueBlobColorSet.DefaultPlayer();
+
+    [Tooltip("Blob FX colors when a line uses Speaker Tag = Mechanic.")]
+    public DialogueBlobColorSet mechanicColors = DialogueBlobColorSet.DefaultMechanic();
+
     /// <summary>True if the sequence has at least one line.</summary>
     public bool HasLines => lines != null && lines.Length > 0;
 
     /// <summary>Number of lines.</summary>
     public int LineCount => lines?.Length ?? 0;
+
+    /// <summary>Returns the 4 blob colors configured for the given speaker tag on this sequence.</summary>
+    public DialogueBlobColorSet GetBlobColors(DialogueSpeakerTag tag)
+    {
+        switch (tag)
+        {
+            case DialogueSpeakerTag.Overseer:
+                return overseerColors ?? DialogueBlobColorSet.DefaultOverseer();
+            case DialogueSpeakerTag.Mechanic:
+                return mechanicColors ?? DialogueBlobColorSet.DefaultMechanic();
+            case DialogueSpeakerTag.Player:
+            default:
+                return playerColors ?? DialogueBlobColorSet.DefaultPlayer();
+        }
+    }
+
+    private void Reset()
+    {
+        overseerColors = DialogueBlobColorSet.DefaultOverseer();
+        playerColors = DialogueBlobColorSet.DefaultPlayer();
+        mechanicColors = DialogueBlobColorSet.DefaultMechanic();
+    }
 }

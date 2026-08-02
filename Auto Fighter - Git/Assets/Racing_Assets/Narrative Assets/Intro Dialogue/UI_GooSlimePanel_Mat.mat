@@ -29,17 +29,17 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _AnimTime: 0
+    - _AnimTime: 5.828614
     - _Aspect: 5.15
     - _ColorMask: 15
     - _CornerRadius: 0.291
     - _DetailAmount: 0.186
-    - _DetailScale: 11.5
-    - _DetailSpeed: 3.25
+    - _DetailScale: 20.54
+    - _DetailSpeed: 1.54
     - _EdgeSoftness: 0.002
     - _Inset: 0.148
     - _NoiseScale: 7.33
-    - _NoiseSpeed: 4.17
+    - _NoiseSpeed: 1.14
     - _RimStrength: 0.96
     - _RimWidth: 0.147
     - _Stencil: 0
@@ -51,6 +51,6 @@ Material:
     - _WarpAmount: 0.45
     - _WarpDepth: 0.85
     m_Colors:
-    - _Color: {r: 0.066037714, g: 0.066037714, b: 0.066037714, a: 1}
-    - _RimColor: {r: 0.16981131, g: 0.16981131, b: 0.16981131, a: 1}
+    - _Color: {r: 0.08, g: 0.14, b: 0.18, a: 0.85}
+    - _RimColor: {r: 0.45, g: 0.75, b: 0.95, a: 1}
   m_BuildTextureStacks: []

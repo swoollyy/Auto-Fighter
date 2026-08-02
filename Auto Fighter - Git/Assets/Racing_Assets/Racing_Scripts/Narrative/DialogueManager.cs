@@ -169,7 +169,15 @@ public class DialogueManager : MonoBehaviour
 
             string resolvedSpeaker = NarrativeTokens.Resolve(line.speakerName);
             string resolvedText = NarrativeTokens.Resolve(line.text);
-            dialogueUI?.SetLine(resolvedSpeaker, resolvedText, line.portrait);
+            DialogueBlobColorSet blob = _currentSequence.GetBlobColors(line.speakerTag);
+            dialogueUI?.SetLine(
+                resolvedSpeaker,
+                resolvedText,
+                line.portrait,
+                blob.blob1FillColor,
+                blob.blob1RimColor,
+                blob.blob2FillColor,
+                blob.blob2RimColor);
 
             if (line.autoAdvance)
             {

@@ -14,19 +14,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   authoringColorReference: {r: 0, g: 0, b: 0, a: 1}
   lines:
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
     text: <link="jitter:amp=1.3, spd=16"><color=#9EFF3B><size=84>{player_name}.</color></link></size>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
+  - speakerTag: 1
+    speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
     text: <link="jitter:amp=1, spd=12"><color=#202020>...</color></link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
     text: <link="jitter:amp=1.3, spd=16"><color=#000000>You are next to challenge...
       </link><size=92><link="hold:1"><link="jitter:amp=3, spd=14"><color=#FFF100>The
       Asphalt Gauntlet.</size></color></link></link>
@@ -34,13 +37,15 @@ MonoBehaviour:
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
+  - speakerTag: 1
+    speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
     text: <link="jitter:amp=1, spd=12"><color=#202020>...</color></link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: </link><link="jitter:amp=1.3, spd=16"><color=#000000>I am</link></color>
       <link="jitter:1.5, spd=12"><size=86><color=#9A0000>The Overseer. </link></size></color><link=hold:1><link="jitter:amp=1.3,
       spd=16"><color=#000000>You are</link></color></link> <link="wave:1.4"><size=86><color=#9EFF3B>The
@@ -49,13 +54,15 @@ MonoBehaviour:
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
+  - speakerTag: 1
+    speakerName: <color=#9EFF3B><link="wave:.5">{player_name}</link>
     text: <link="jitter:amp=1, spd=12"><color=#202020>...</color></link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: </link><link="jitter:amp=1.3, spd=16"><color=#000000>Throughout this trial,
       you will be given assistance from</link></color> <color=#ECB400><link=wave:1.4><size=72>The
       Help.</link></color></size><link="jitter:amp=1.3, spd=16"><color=#000000> They
@@ -66,14 +73,16 @@ MonoBehaviour:
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: </link><link=wave:1.4><color=#4F88A4><size=72>The Mechanic </link></color></size><link="jitter:amp=1.3,
       spd=16"><color=#000000>will help you start your journey. </link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
-  - speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
+  - speakerTag: 0
+    speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: <link="jitter:amp=1.3, spd=16"><color=#000000>You must complete the first
       trial. Get to the end. </link><size=64><link="jitter:amp=1.6, spd=20"><b>BEGIN.</b></color></link>
     portrait: {fileID: 0}
@@ -83,3 +92,18 @@ MonoBehaviour:
   setStoryFlagOnComplete: init_finish
   pauseGameWhilePlaying: 1
   keepGameCanvasVisibleWhilePlaying: 0
+  overseerColors:
+    blob1FillColor: {r: 0.25490198, g: 0, b: 0.015, a: 1}
+    blob1RimColor: {r: 1, g: 0, b: 0, a: 1}
+    blob2FillColor: {r: 0.011764706, g: 0.011764706, b: 0.011764706, a: 1}
+    blob2RimColor: {r: 0, g: 0, b: 0, a: 1}
+  playerColors:
+    blob1FillColor: {r: 0.011764706, g: 0.019607844, b: 0.003921569, a: 1}
+    blob1RimColor: {r: 0.5529412, g: 0.7058824, b: 0.39607844, a: 1}
+    blob2FillColor: {r: 0.19607843, g: 0.28235295, b: 0.07450981, a: 1}
+    blob2RimColor: {r: 0.5529412, g: 0.8392157, b: 0.15294118, a: 1}
+  mechanicColors:
+    blob1FillColor: {r: 0.05, g: 0.09, b: 0.12, a: 1}
+    blob1RimColor: {r: 0.30980393, g: 0.53333336, b: 0.6431373, a: 1}
+    blob2FillColor: {r: 0.08, g: 0.14, b: 0.18, a: 0.85}
+    blob2RimColor: {r: 0.45, g: 0.75, b: 0.95, a: 1}
