@@ -1250,6 +1250,8 @@ public class GameManager_Racing : MonoBehaviour
         _flowState = RunFlowState.SkillTree;
         SetProgressState(GameProgressState.SkillTree);
         TryRaiseFirstSkillTreeEntryNarrativeFlag();
+        // Post-run garage dialogue (e.g. after first completed run) — not during results.
+        NarrativeDirector.NotifyReturnedToSkillTree();
 
         // Hide run UI if present
         uiManager?.HideRunComplete();

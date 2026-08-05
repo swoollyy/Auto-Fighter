@@ -256,6 +256,7 @@ public class RacingSkillTreeManager : MonoBehaviour
             RacingQuestUnlockManager.Instance?.NotifyUnlockNodePurchased(type);
             OnCurrencyChanged?.Invoke(playerCurrency);
             OnLevelChanged?.Invoke(type, newLvl);
+            NarrativeDirector.NotifySkillPurchased(type, newLvl);
             EvaluateProgressiveUnlocks(def, newLvl);
             return true;
         }
@@ -609,6 +610,7 @@ public class RacingSkillTreeManager : MonoBehaviour
             RacingQuestUnlockManager.Instance?.NotifyUnlockNodePurchased(type);
             OnSprocketsChanged?.Invoke(playerSprockets);
             OnLevelChanged?.Invoke(type, newLvl);
+            NarrativeDirector.NotifySkillPurchased(type, newLvl);
             EvaluateProgressiveUnlocks(def, newLvl);
             return true;
         }

@@ -1,3 +1,4 @@
+// Touch for Unity recompile (2)
 public enum SkillType
 {
     // ---- Existing core car stats ----

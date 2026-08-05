@@ -13525,6 +13525,16 @@ MonoBehaviour:
       storyFlag: 
     playOnce: 1
     flagWhenPlayed: init_shown
+  - sequence: {fileID: 11400000, guid: 7c4e91a2f0b84d3e9a5c1d8e2f6b0a47, type: 2}
+    condition:
+      type: 2
+      runCountValue: 1
+      storyFlag: 
+    playOnce: 1
+    flagWhenPlayed: post_first_run_shown
+  maxFuelPurchasedDialogue: {fileID: 11400000, guid: 3e8f2a91c5d647b0a4e9f1c2d7b83560, type: 2}
+  maxFuelPurchasedFlag: tutorial_maxfuel_purchased
+  firstUpgradeSkill: 21
   logTriggerChecks: 1
 --- !u!4 &1428109225
 Transform:

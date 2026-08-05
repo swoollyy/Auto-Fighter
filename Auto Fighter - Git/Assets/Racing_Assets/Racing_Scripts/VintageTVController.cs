@@ -613,10 +613,21 @@ public class VintageTVController : MonoBehaviour
     }
 
     /// <summary>
-    /// Longer color-flip pulse for the final death explosion VFX. Always fades out.
+    /// Final death-explosion punch: same CRT burst as a crash, plus the longer color flip.
+    /// Always fades out (CRT held through the color-flip hold, then eases).
     /// </summary>
     public void TriggerDeathExplosionColorFlip()
     {
+        // Match non-fatal crash CRT spike so the eruption has the full vintage-TV burst.
+        float peak = Mathf.Max(0.01f, nonFatalBurstSeverity);
+        if (crashVisualSeverityFloor > 0f)
+            peak = Mathf.Max(peak, Mathf.Clamp01(crashVisualSeverityFloor));
+        _crash01 = Mathf.Max(_crash01, peak);
+        _crashHoldUntil = Time.unscaledTime + Mathf.Max(0f, deathExplosionColorFlipHoldSeconds);
+        _crashEaseOutSpeedOverride = deathExplosionColorFlipEaseOutSpeed > 0f
+            ? deathExplosionColorFlipEaseOutSpeed
+            : crashEaseOutSpeed;
+
         PulseColorFlip(
             crashColorFlip,
             deathExplosionColorFlipEaseOutSpeed,

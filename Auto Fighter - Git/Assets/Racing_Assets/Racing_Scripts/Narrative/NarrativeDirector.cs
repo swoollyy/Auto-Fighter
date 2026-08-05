@@ -15,11 +15,23 @@ public class NarrativeDirector : MonoBehaviour
     [Tooltip("Dialogue to play when a condition is first met. Add entries in order of priority (first match wins).")]
     [SerializeField] private NarrativeTriggerEntry[] triggerEntries = new NarrativeTriggerEntry[0];
 
+    [Header("First Max Fuel purchase")]
+    [Tooltip("Played once the first time the player buys Max Fuel (level 1).")]
+    [SerializeField] private DialogueSequenceSO maxFuelPurchasedDialogue;
+
+    [Tooltip("Story flag set when the Max Fuel purchase dialogue starts (prevents re-play).")]
+    [SerializeField] private string maxFuelPurchasedFlag = "tutorial_maxfuel_purchased";
+
+    [Tooltip("Skill that counts as the 'first upgrade' for the purchase dialogue.")]
+    [SerializeField] private SkillType firstUpgradeSkill = SkillType.MaxFuel_Add;
+
     [Header("Debug")]
     [SerializeField] private bool logTriggerChecks;
 
     private static readonly HashSet<string> StoryFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private static int _totalRunsCompleted;
+    private bool _pendingMaxFuelPurchaseDialogue;
+    private bool _subscribedToDialogue;
 
     private void Awake()
     {
@@ -33,13 +45,44 @@ public class NarrativeDirector : MonoBehaviour
 
     private void OnDestroy()
     {
+        UnsubscribeDialogue();
         if (Instance == this)
             Instance = null;
     }
 
     private void Start()
     {
+        SubscribeDialogue();
         CheckTriggers();
+    }
+
+    private void Update()
+    {
+        if (!_subscribedToDialogue)
+            SubscribeDialogue();
+    }
+
+    private void SubscribeDialogue()
+    {
+        if (_subscribedToDialogue) return;
+        if (DialogueManager.Instance == null) return;
+        DialogueManager.Instance.OnSequenceCompleted += HandleDialogueSequenceCompleted;
+        _subscribedToDialogue = true;
+    }
+
+    private void UnsubscribeDialogue()
+    {
+        if (!_subscribedToDialogue) return;
+        if (DialogueManager.Instance != null)
+            DialogueManager.Instance.OnSequenceCompleted -= HandleDialogueSequenceCompleted;
+        _subscribedToDialogue = false;
+    }
+
+    private void HandleDialogueSequenceCompleted(DialogueSequenceSO _)
+    {
+        if (!_pendingMaxFuelPurchaseDialogue) return;
+        _pendingMaxFuelPurchaseDialogue = false;
+        TryPlayFirstUpgradePurchasedDialogue(firstUpgradeSkill, 1);
     }
 
     /// <summary>Set a story flag (e.g. "intro_done", "met_mechanic"). Persists for session only unless you save it.</summary>
@@ -56,11 +99,32 @@ public class NarrativeDirector : MonoBehaviour
         return StoryFlags.Contains(flag.Trim());
     }
 
-    /// <summary>Call when the player completes a run (e.g. from GameManager_Racing). Used for "after first run" style triggers.</summary>
+    /// <summary>
+    /// Call when the player completes a run (e.g. from GameManager_Racing).
+    /// Increments run count only — post-run skill-tree dialogue is evaluated on
+    /// <see cref="NotifyReturnedToSkillTree"/> so it does not play over the results screen.
+    /// </summary>
     public static void NotifyRunCompleted()
     {
         _totalRunsCompleted++;
+    }
+
+    /// <summary>
+    /// Call when the flow returns to the skill tree (after results, or boot).
+    /// Evaluates AfterFirstRun / run-count triggers that should overlay the garage.
+    /// </summary>
+    public static void NotifyReturnedToSkillTree()
+    {
         Instance?.CheckTriggers();
+    }
+
+    /// <summary>
+    /// Call after a successful skill purchase. Plays the Max Fuel purchase dialogue once
+    /// when the configured first-upgrade skill reaches level 1.
+    /// </summary>
+    public static void NotifySkillPurchased(SkillType type, int newLevel)
+    {
+        Instance?.TryPlayFirstUpgradePurchasedDialogue(type, newLevel);
     }
 
     /// <summary>Get the number of runs completed this session (for conditions).</summary>
@@ -92,6 +156,27 @@ public class NarrativeDirector : MonoBehaviour
 
         SetStoryFlag(flagWhenDone);
         DialogueManager.Instance.PlaySequence(sequence);
+    }
+
+    private void TryPlayFirstUpgradePurchasedDialogue(SkillType type, int newLevel)
+    {
+        if (maxFuelPurchasedDialogue == null) return;
+        if (type != firstUpgradeSkill || newLevel != 1) return;
+        if (string.IsNullOrEmpty(maxFuelPurchasedFlag)) return;
+        if (HasStoryFlag(maxFuelPurchasedFlag)) return;
+
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
+        {
+            _pendingMaxFuelPurchaseDialogue = true;
+            if (logTriggerChecks)
+                Debug.Log("[NarrativeDirector] Deferring Max Fuel purchase dialogue — another sequence is playing.");
+            return;
+        }
+
+        if (logTriggerChecks)
+            Debug.Log("[NarrativeDirector] First upgrade purchased — " + maxFuelPurchasedDialogue.name);
+
+        PlayDialogueOnce(maxFuelPurchasedDialogue, maxFuelPurchasedFlag);
     }
 
     /// <summary>Evaluate trigger entries and play the first matching sequence (once per condition).</summary>
