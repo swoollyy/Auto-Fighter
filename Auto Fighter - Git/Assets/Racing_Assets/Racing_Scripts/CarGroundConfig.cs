@@ -29,6 +29,12 @@ public class CarGroundConfig : MonoBehaviour
     [Tooltip("grassFraction must be inside [min,max] to count as mixed surface for normal smoothing.")]
     [SerializeField, Range(0f, 0.45f)] private float groundNormalMixedGrassMin = 0.06f;
     [SerializeField, Range(0.55f, 1f)] private float groundNormalMixedGrassMax = 0.94f;
+    [Tooltip("Extra blend rate when the measured normal differs a lot from the smoothed one (ramps / elevation lips).")]
+    [SerializeField, Min(0f)] private float steepGroundNormalBlendRate = 36f;
+    [Tooltip("Dot(smoothed, measured) below this uses steep blend rate (~0.97 ≈ 14°).")]
+    [SerializeField, Range(0.5f, 0.999f)] private float steepGroundNormalDotThreshold = 0.97f;
+    [Tooltip("Minimum blend rate while on a boost pad/ramp so climb normals catch up quickly.")]
+    [SerializeField, Min(0f)] private float boostSurfaceNormalBlendRate = 28f;
 
     [Tooltip("Small upward velocity (m/s, VelocityChange) applied once when surface sampling crosses between mostly-road and mostly-grass. 0 = off.")]
     [SerializeField, Min(0f)] private float roadGrassTransitionLiftSpeed = 0.35f;
@@ -79,6 +85,9 @@ public class CarGroundConfig : MonoBehaviour
     public float GroundNormalMixedSurfaceBlendScale => groundNormalMixedSurfaceBlendScale;
     public float GroundNormalMixedGrassMin => groundNormalMixedGrassMin;
     public float GroundNormalMixedGrassMax => groundNormalMixedGrassMax;
+    public float SteepGroundNormalBlendRate => steepGroundNormalBlendRate;
+    public float SteepGroundNormalDotThreshold => steepGroundNormalDotThreshold;
+    public float BoostSurfaceNormalBlendRate => boostSurfaceNormalBlendRate;
     public float RoadGrassTransitionLiftSpeed => roadGrassTransitionLiftSpeed;
     public float RoadGrassTransitionMinSpeed => roadGrassTransitionMinSpeed;
     public float RoadGrassTransitionLiftCooldown => roadGrassTransitionLiftCooldown;

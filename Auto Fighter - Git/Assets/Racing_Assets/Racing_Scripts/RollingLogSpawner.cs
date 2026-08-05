@@ -54,6 +54,69 @@ public class RollingLogSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Tooltip("Do not spawn until player has progressed at least this fraction along the track.")]
     [SerializeField, Range(0f, 0.95f)] private float minNormalizedProgressToSpawn = 0.02f;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). Apply BEFORE InitializeForRun.
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.RollingLogSettings s)
+    {
+        if (s == null || !s.overrideRollingLogs) return;
+
+        if (s.rollingLogPrefab != null) rollingLogPrefab = s.rollingLogPrefab;
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        enableSpawning = s.enableSpawning;
+        minSpawnIntervalSeconds = s.minSpawnIntervalSeconds;
+        maxSpawnIntervalSeconds = s.maxSpawnIntervalSeconds;
+        maxActiveLogs = s.maxActiveLogs;
+
+        allowBothTravelDirections = s.allowBothTravelDirections;
+        towardPlayerDirectionWeight = s.towardPlayerDirectionWeight;
+
+        towardPlayerSpawnMinAhead = s.towardPlayerSpawnMinAhead;
+        towardPlayerSpawnMaxAhead = s.towardPlayerSpawnMaxAhead;
+        withPlayerSpawnMinBehind = s.withPlayerSpawnMinBehind;
+        withPlayerSpawnMaxBehind = s.withPlayerSpawnMaxBehind;
+
+        speedRange = s.speedRange;
+        lateralFraction = s.lateralFraction;
+        edgeInnerMargin = s.edgeInnerMargin;
+
+        roadLayer = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        minNormalizedProgressToSpawn = s.minNormalizedProgressToSpawn;
+    }
+
+    public TrialConfig.RollingLogSettings CaptureConfig()
+    {
+        return new TrialConfig.RollingLogSettings
+        {
+            overrideRollingLogs = true,
+            rollingLogPrefab = rollingLogPrefab,
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            enableSpawning = enableSpawning,
+            minSpawnIntervalSeconds = minSpawnIntervalSeconds,
+            maxSpawnIntervalSeconds = maxSpawnIntervalSeconds,
+            maxActiveLogs = maxActiveLogs,
+            allowBothTravelDirections = allowBothTravelDirections,
+            towardPlayerDirectionWeight = towardPlayerDirectionWeight,
+            towardPlayerSpawnMinAhead = towardPlayerSpawnMinAhead,
+            towardPlayerSpawnMaxAhead = towardPlayerSpawnMaxAhead,
+            withPlayerSpawnMinBehind = withPlayerSpawnMinBehind,
+            withPlayerSpawnMaxBehind = withPlayerSpawnMaxBehind,
+            speedRange = speedRange,
+            lateralFraction = lateralFraction,
+            edgeInnerMargin = edgeInnerMargin,
+            roadLayer = roadLayer,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            minNormalizedProgressToSpawn = minNormalizedProgressToSpawn,
+        };
+    }
+
     private readonly List<Vector3> _path = new();
     private float[] _cumLengths;
     private float _totalLength;

@@ -15,12 +15,12 @@ MonoBehaviour:
   type: 43
   displayName: Double Value
   description: Chance to give double value of a coin!
-  maxLevel: 10
+  maxLevel: 5
   baseCost: 5
   costPerLevel: 10
   mode: 0
   baseValue: 0.01
-  perLevelAdd: 0.04
+  perLevelAdd: 0.06
   uiPosition: {x: 0, y: 150}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

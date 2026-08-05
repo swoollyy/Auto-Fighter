@@ -1466,7 +1466,7 @@ MonoBehaviour:
   slopeDriveAssistMaxAngle: 52
   slopeDriveAssistRiseSpeed: 32
   slopeDriveAssistFallSpeed: 48
-  slopeDriveAssistDisableOnBoost: 1
+  slopeDriveAssistDisableOnBoost: 0
   slopeDriveAssistDisableOnIce: 1
 --- !u!114 &4457387338141855682
 MonoBehaviour:

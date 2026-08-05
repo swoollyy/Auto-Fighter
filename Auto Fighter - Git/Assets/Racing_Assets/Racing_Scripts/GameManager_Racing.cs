@@ -44,6 +44,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private ProceduralTrackGenerator trackGenerator;
     [SerializeField] private GameObject carPrefab;
     [SerializeField] private UIManager_Racing uiManager;
+    [SerializeField] private RunStartIntroUI runStartIntro;
     [SerializeField] private TrackDistanceMeter distanceSystem;
     [SerializeField] private TrackCoinSpawner trackCoinSpawner;
     [SerializeField] private TrackObstacleSpawner trackObstacleSpawner;
@@ -546,6 +547,8 @@ public class GameManager_Racing : MonoBehaviour
     private void RestartRun()
     {
         Debug.Log("[GameManager_Racing] Restarting run...");
+        // Do NOT reset Vintage TV here — results are still on screen. Scene reload +
+        // VintageTVController.Awake restores defaults once the skill tree is up.
         // Drop any slow-mo/pause owners before reloading so a mid-slow-mo restart can't carry a stale
         // owner (and a stuck sub-1 timescale) into the next run.
         TimeScaleHub.ForceClearAll();
@@ -573,6 +576,8 @@ public class GameManager_Racing : MonoBehaviour
         _acceptRunEndContinueInput = false;
         runEnded = false;
         uiManager?.HideRunComplete();
+
+        FindObjectOfType<VintageTVController>(true)?.ResetVisualToDefaults();
 
         // Dead/out-of-fuel car must not be reused — BeginRun respawns a fresh one.
         if (carInstance != null)
@@ -1145,6 +1150,7 @@ public class GameManager_Racing : MonoBehaviour
         _deathStopBurstPlayed = true;
 
         carController?.PlayDeathVFXExtra();
+        FindObjectOfType<VintageTVController>(true)?.TriggerDeathExplosionColorFlip();
 
         if (enableCrashScreenShake && cameraFollow != null)
         {
@@ -1248,6 +1254,8 @@ public class GameManager_Racing : MonoBehaviour
         // Hide run UI if present
         uiManager?.HideRunComplete();
 
+        FindObjectOfType<VintageTVController>(true)?.ResetVisualToDefaults();
+
         // Only play deposit sound if run awarded currency and we haven't played it yet for this run
         if (_depositSoundPlayed) return;
         if (!_currencyAwarded) return; // nothing was awarded this run
@@ -1342,7 +1350,13 @@ public class GameManager_Racing : MonoBehaviour
 
         // Apply the active trial's spawner settings before each spawner initializes for this run.
         DayTrialManager.Instance?.ApplyCurrentTrialToSpawners(
-            trackObstacleSpawner, creatureSpawner, npcCarSpawner, trackCoinSpawner);
+            trackObstacleSpawner,
+            creatureSpawner,
+            npcCarSpawner,
+            trackCoinSpawner,
+            thrownObstacleDirector,
+            rollingLogSpawner,
+            crossObstacleDirector);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
@@ -1480,10 +1494,20 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.ShowRunCoins();
         uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
         uiManager?.UpdateRunSprockets(_sprocketsThisRun);
-        carController?.SetExternalInputLock(false);
-        _acceptRunEndContinueInput = false;
+
+        // Keep input locked through the run-start card + max TV static.
+        carController?.SetExternalInputLock(true);
         _flowState = RunFlowState.InRun;
         SetProgressState(GameProgressState.InRun);
+
+        RunStartIntroUI intro = runStartIntro;
+        if (intro == null)
+            intro = FindObjectOfType<RunStartIntroUI>(true);
+        if (intro != null && intro.isActiveAndEnabled)
+            yield return intro.PlayIntro();
+
+        carController?.SetExternalInputLock(false);
+        _acceptRunEndContinueInput = false;
     }
 
     private void SetProgressState(GameProgressState state)

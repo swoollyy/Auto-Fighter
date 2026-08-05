@@ -9,6 +9,8 @@ Shader "Hidden/VintageTV"
         _Vignette("Vignette", Range(0,1)) = 0.35
         _Chromatic("Chromatic", Range(0,1)) = 0.15
         _TimeScale("Time Scale", Range(0,5)) = 1
+        _ColorFlip("Color Flip", Range(0,1)) = 0
+        _ColorFlipGain("Color Flip Gain", Range(0.05, 1)) = 0.45
     }
 
     SubShader
@@ -36,6 +38,8 @@ Shader "Hidden/VintageTV"
             float _Vignette;
             float _Chromatic;
             float _TimeScale;
+            float _ColorFlip;
+            float _ColorFlipGain;
 
             struct Attributes
             {
@@ -99,12 +103,27 @@ Shader "Hidden/VintageTV"
 
                 col *= scanMul;
 
-                // Vignette
+                // Vignette (idle CRT only — crash bursts drive this to 0 from script)
                 float2 d = uv * 2.0 - 1.0;
                 float vig = saturate(1.0 - dot(d, d) * 0.7);
-                col *= lerp(1.0, vig, _Vignette * _Intensity);
+                col *= lerp(1.0, vig, saturate(_Vignette) * saturate(min(_Intensity, 1.0)));
 
                 col = lerp(baseCol, col, saturate(_Intensity));
+
+                // Full-screen color flip without blowing dark scenes to white:
+                // invert, rematch source luminance, then apply a gain dim.
+                float flip = saturate(_ColorFlip);
+                if (flip > 0.0001)
+                {
+                    float3 src = saturate(col);
+                    float3 inv = 1.0 - src;
+                    float srcLum = dot(src, float3(0.299, 0.587, 0.114));
+                    float invLum = dot(inv, float3(0.299, 0.587, 0.114));
+                    inv *= (srcLum + 0.03) / (invLum + 0.03);
+                    inv *= saturate(_ColorFlipGain);
+                    col = lerp(col, saturate(inv), flip);
+                }
+
                 return half4(col, 1);
             }
             ENDHLSL

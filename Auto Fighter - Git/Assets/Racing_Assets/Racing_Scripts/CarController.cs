@@ -520,6 +520,9 @@ public class CarController : MonoBehaviour
     private float groundNormalMixedSurfaceBlendScale;
     private float groundNormalMixedGrassMin;
     private float groundNormalMixedGrassMax;
+    private float steepGroundNormalBlendRate = 36f;
+    private float steepGroundNormalDotThreshold = 0.97f;
+    private float boostSurfaceNormalBlendRate = 28f;
     private float roadGrassTransitionLiftSpeed;
     private float roadGrassTransitionMinSpeed;
     private float roadGrassTransitionLiftCooldown;
@@ -696,6 +699,10 @@ public class CarController : MonoBehaviour
     private float groundNormalCheckDistance;
     private float landingPredictDistance;
     private float landingAlignStartDistance;
+    private float steepAlignSpeedMultiplier = 2.1f;
+    private float steepAlignMinAngle = 12f;
+    private float rampVelocityRemapStrength = 0.72f;
+    private float rampVelocityRemapMinAngle = 3.5f;
 
     [Header("Airborne Tricks (from CarAirTrickConfig)")]
     private bool enableAirTricks;
@@ -920,6 +927,8 @@ public class CarController : MonoBehaviour
     private Vector3 _lastStableGroundNormal = Vector3.up;
     /// <summary>Latest spherecast normal; blended into <see cref="_lastStableGroundNormal"/> for driving math.</summary>
     private Vector3 _groundNormalMeasured = Vector3.up;
+    /// <summary>Previous-frame smoothed normal — used to detect ramp/elevation steepening for velocity remap.</summary>
+    private Vector3 _prevSmoothedGroundNormal = Vector3.up;
     private bool _deathVfxPlayed = false;
 
     public event Action OnBoostStarted;
@@ -1312,7 +1321,8 @@ public class CarController : MonoBehaviour
             slopeDriveAssistMaxAngle = 52f;
             slopeDriveAssistRiseSpeed = 32f;
             slopeDriveAssistFallSpeed = 48f;
-            slopeDriveAssistDisableOnBoost = true;
+            // Prefer climb assist on steep boost/ramps; flat pads already fail the min-angle check.
+            slopeDriveAssistDisableOnBoost = false;
             slopeDriveAssistDisableOnIce = true;
         }
 
@@ -1587,6 +1597,9 @@ public class CarController : MonoBehaviour
             groundNormalMixedSurfaceBlendScale = _groundConfig.GroundNormalMixedSurfaceBlendScale;
             groundNormalMixedGrassMin = _groundConfig.GroundNormalMixedGrassMin;
             groundNormalMixedGrassMax = _groundConfig.GroundNormalMixedGrassMax;
+            steepGroundNormalBlendRate = _groundConfig.SteepGroundNormalBlendRate;
+            steepGroundNormalDotThreshold = _groundConfig.SteepGroundNormalDotThreshold;
+            boostSurfaceNormalBlendRate = _groundConfig.BoostSurfaceNormalBlendRate;
             roadGrassTransitionLiftSpeed = _groundConfig.RoadGrassTransitionLiftSpeed;
             roadGrassTransitionMinSpeed = _groundConfig.RoadGrassTransitionMinSpeed;
             roadGrassTransitionLiftCooldown = _groundConfig.RoadGrassTransitionLiftCooldown;
@@ -1610,6 +1623,9 @@ public class CarController : MonoBehaviour
             groundNormalMixedSurfaceBlendScale = 0.42f;
             groundNormalMixedGrassMin = 0.06f;
             groundNormalMixedGrassMax = 0.94f;
+            steepGroundNormalBlendRate = 36f;
+            steepGroundNormalDotThreshold = 0.97f;
+            boostSurfaceNormalBlendRate = 28f;
             roadGrassTransitionLiftSpeed = 0f;
             roadGrassTransitionMinSpeed = 2.5f;
             roadGrassTransitionLiftCooldown = 0.25f;
@@ -1633,12 +1649,20 @@ public class CarController : MonoBehaviour
             groundNormalCheckDistance = _rampConfig.GroundNormalCheckDistance;
             landingPredictDistance = _rampConfig.LandingPredictDistance;
             landingAlignStartDistance = _rampConfig.LandingAlignStartDistance;
+            steepAlignSpeedMultiplier = _rampConfig.SteepAlignSpeedMultiplier;
+            steepAlignMinAngle = _rampConfig.SteepAlignMinAngle;
+            rampVelocityRemapStrength = _rampConfig.RampVelocityRemapStrength;
+            rampVelocityRemapMinAngle = _rampConfig.RampVelocityRemapMinAngle;
         }
         else
         {
             enableRampAlignment = true; groundAlignSpeed = 10f; airAlignSpeed = 6f;
             groundNormalCastRadius = 0.35f; groundNormalCheckDistance = 1.23f;
             landingPredictDistance = 2.75f; landingAlignStartDistance = 1.97f;
+            steepAlignSpeedMultiplier = 2.1f;
+            steepAlignMinAngle = 12f;
+            rampVelocityRemapStrength = 0.72f;
+            rampVelocityRemapMinAngle = 3.5f;
         }
 
         if (_airTrickConfig != null)
@@ -2340,7 +2364,12 @@ public class CarController : MonoBehaviour
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateSteeringInputFixed();
+        // Sample normal before blending so this frame's drive/align uses fresh ramp contact.
+        RefreshGroundNormalForDriving(carCollider != null && CheckIfGrounded());
         SmoothDrivingGroundNormal();
+        RemapVelocityOntoSteepeningGround(Time.fixedDeltaTime);
+        // Pitch onto the ramp before throttle/boost so forces aren't fighting a flat body.
+        ApplyDrivingOrientation(Time.fixedDeltaTime);
         _airborneForTricks = CanUseAirborneControls();
         HandleSteering();
         // Push left-stick air yaw onto the rigidbody before trick spins compose on top.
@@ -2361,7 +2390,6 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         HandleIcePathPopup();             // ice path popup when ice handling kicks in
-        ApplyDrivingOrientation(Time.fixedDeltaTime);
         ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
 
@@ -2613,22 +2641,33 @@ public class CarController : MonoBehaviour
         bool groundedNow = carCollider != null && CheckIfGrounded();
         if (groundedNow)
         {
-            Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
-            if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
-            {
-                groundN = hit.normal;
-                forwardDir = Vector3.ProjectOnPlane(transform.forward, groundN);
-                if (forwardDir.sqrMagnitude < 1e-8f)
-                {
-                    forwardDir = transform.forward;
-                    forwardDir.y = 0f;
-                }
-                forwardDir.Normalize();
-            }
+            // Prefer the smoothed driving normal (already refreshed this frame) so pad push
+            // matches throttle; fall back to a fresh cast if needed.
+            if (_lastStableGroundNormal.sqrMagnitude > 1e-8f)
+                groundN = _lastStableGroundNormal.normalized;
             else
             {
+                Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
+                if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
+                    groundN = hit.normal;
+            }
+
+            forwardDir = Vector3.ProjectOnPlane(transform.forward, groundN);
+            if (forwardDir.sqrMagnitude < 1e-8f)
+            {
+                forwardDir = transform.forward;
                 forwardDir.y = 0f;
-                forwardDir.Normalize();
+            }
+            forwardDir.Normalize();
+
+            // If the nose is still catching up, bias pad push toward travel-along-ramp so we
+            // don't keep shoving horizontally into the face of the incline.
+            Vector3 velTan = Vector3.ProjectOnPlane(rb.velocity, groundN);
+            if (velTan.sqrMagnitude > 1f)
+            {
+                Vector3 climbDir = velTan.normalized;
+                if (Vector3.Dot(forwardDir, climbDir) > 0.15f)
+                    forwardDir = Vector3.Slerp(forwardDir, climbDir, 0.45f).normalized;
             }
 
             // Arcade boost pads/ramps: cancel slope gravity so incline can't eat pad momentum.
@@ -3999,6 +4038,17 @@ public class CarController : MonoBehaviour
         try { OnCrash?.Invoke(sev); } catch { /* ignore listener errors */ }
     }
 
+    /// <summary>
+    /// First empty tank: stretch the Vintage TV crash flare longer than a normal hit.
+    /// </summary>
+    private void NotifyOutOfFuelTvFlare()
+    {
+        var tv = FindObjectOfType<VintageTVController>(true);
+        tv?.TriggerOutOfFuelFlare();
+        // Keep other OnCrash listeners (camera boost VFX, etc.).
+        NotifyCrashFeedbackOnly(0.9f);
+    }
+
     private void TriggerCrash(
         Vector3 hitDirection,
         float crashDuration,
@@ -5272,7 +5322,7 @@ public class CarController : MonoBehaviour
             isOutOfFuel = true;
             Debug.Log("[CarController] Fuel depleted.");
             if (firstEmpty)
-                NotifyCrashFeedbackOnly(0.72f);
+                NotifyOutOfFuelTvFlare();
         }
         else
         {
@@ -5723,7 +5773,8 @@ public class CarController : MonoBehaviour
         Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
         if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
         {
-            if (IsMixedGrassRoadSurface() && hit.normal.y < MixedSurfaceLipNormalMinY)
+            // Lip filter is for grass/road chatter only — don't reject steep boost/ramp contacts.
+            if (!_onBoostSurface && IsMixedGrassRoadSurface() && hit.normal.y < MixedSurfaceLipNormalMinY)
                 return;
             _groundNormalMeasured = hit.normal;
         }
@@ -5731,24 +5782,86 @@ public class CarController : MonoBehaviour
 
     /// <summary>
     /// Blends <see cref="_lastStableGroundNormal"/> toward the raycast normal so grass/road lip hits do not snap
-    /// tangent projections and speed caps frame-to-frame.
+    /// tangent projections and speed caps frame-to-frame. Steep / boost contacts blend faster so climb doesn't lag.
     /// </summary>
     private void SmoothDrivingGroundNormal()
     {
         if (rb == null || carCollider == null) return;
         if (!CheckIfGrounded()) return;
 
+        _prevSmoothedGroundNormal = _lastStableGroundNormal.sqrMagnitude > 1e-8f
+            ? _lastStableGroundNormal.normalized
+            : Vector3.up;
+
         float dt = Time.fixedDeltaTime;
-        float t = Mathf.Clamp01(groundNormalBlendRate * dt);
+        float rate = groundNormalBlendRate;
         float g = grassFraction;
         if (g > groundNormalMixedGrassMin && g < groundNormalMixedGrassMax)
-            t *= groundNormalMixedSurfaceBlendScale;
+            rate *= groundNormalMixedSurfaceBlendScale;
 
-        _lastStableGroundNormal = Vector3.Slerp(_lastStableGroundNormal, _groundNormalMeasured, t);
+        Vector3 measured = _groundNormalMeasured.sqrMagnitude > 1e-8f
+            ? _groundNormalMeasured.normalized
+            : Vector3.up;
+        float dot = Vector3.Dot(_prevSmoothedGroundNormal, measured);
+        // Fast catch-up for real elevation / pads — not every grass-road lip twitch.
+        bool steepContact = measured.y < 0.92f || _prevSmoothedGroundNormal.y - measured.y > 0.04f;
+        if (steepContact && dot < steepGroundNormalDotThreshold)
+            rate = Mathf.Max(rate, steepGroundNormalBlendRate);
+        if (_onBoostSurface)
+            rate = Mathf.Max(rate, boostSurfaceNormalBlendRate);
+
+        float t = Mathf.Clamp01(rate * dt);
+        _lastStableGroundNormal = Vector3.Slerp(_lastStableGroundNormal, measured, t);
         if (_lastStableGroundNormal.sqrMagnitude < 1e-10f)
             _lastStableGroundNormal = Vector3.up;
         else
             _lastStableGroundNormal.Normalize();
+    }
+
+    /// <summary>
+    /// When the surface steepens under the car, fold planar speed onto the new tangent so momentum
+    /// becomes climb speed instead of digging into the ramp face until pitch catches up.
+    /// </summary>
+    private void RemapVelocityOntoSteepeningGround(float dt)
+    {
+        if (rb == null || rampVelocityRemapStrength <= 1e-4f) return;
+        if (!CheckIfGrounded()) return;
+        if (isDrifting || _driftGlideActive) return;
+
+        Vector3 oldN = _prevSmoothedGroundNormal.sqrMagnitude > 1e-8f
+            ? _prevSmoothedGroundNormal.normalized
+            : Vector3.up;
+        Vector3 newN = _lastStableGroundNormal.sqrMagnitude > 1e-8f
+            ? _lastStableGroundNormal.normalized
+            : Vector3.up;
+
+        // Only when getting steeper (normal tilts away from world up).
+        if (newN.y >= oldN.y - 0.0005f) return;
+
+        float deltaDeg = Vector3.Angle(oldN, newN);
+        if (deltaDeg < rampVelocityRemapMinAngle) return;
+
+        Vector3 v = rb.velocity;
+        float speed = v.magnitude;
+        if (speed < 1f) return;
+
+        Vector3 vTan = Vector3.ProjectOnPlane(v, newN);
+        if (vTan.sqrMagnitude < 1e-6f) return;
+
+        // Prefer remapping along the climb direction of current travel, not opposite the nose.
+        Vector3 remapped = vTan.normalized * speed;
+        Vector3 noseTan = Vector3.ProjectOnPlane(transform.forward, newN);
+        if (noseTan.sqrMagnitude > 1e-6f && Vector3.Dot(remapped, noseTan) < 0f)
+            return;
+
+        float angleT = Mathf.InverseLerp(rampVelocityRemapMinAngle, 28f, deltaDeg);
+        float blend = Mathf.Clamp01(rampVelocityRemapStrength * Mathf.SmoothStep(0f, 1f, angleT));
+        if (_onBoostSurface)
+            blend = Mathf.Max(blend, Mathf.Clamp01(rampVelocityRemapStrength * 0.85f));
+
+        // dt-scale lightly so very high fixed rates don't over-apply; still effective at 50Hz.
+        blend = 1f - Mathf.Pow(1f - blend, Mathf.Clamp(dt * 50f, 0.5f, 2f));
+        rb.velocity = Vector3.Lerp(v, remapped, blend);
     }
 
     /// <summary>
@@ -5965,13 +6078,17 @@ public class CarController : MonoBehaviour
         surfaceForward = transform.forward;
         accelExtra = 0f;
         if (!enableSlopeDriveAssist || rb == null) return false;
-        if (slopeDriveAssistDisableOnBoost && _onBoostSurface) return false;
         if (slopeDriveAssistDisableOnIce && _onIceSurface) return false;
 
         Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-6f ? _lastStableGroundNormal.normalized : Vector3.up;
 
         float cosTilt = Mathf.Clamp(Vector3.Dot(n, Vector3.up), -1f, 1f);
         float tiltDeg = Mathf.Acos(cosTilt) * Mathf.Rad2Deg;
+
+        // Flat boost pads: optional skip. Steep boost/ramps keep climb assist (pad push alone
+        // still fights laggy pitch / gravity cancel timing on elevation).
+        if (slopeDriveAssistDisableOnBoost && _onBoostSurface && tiltDeg < slopeDriveAssistMinAngle + 1f)
+            return false;
 
         float minAng = Mathf.Min(slopeDriveAssistMinAngle, slopeDriveAssistMaxAngle);
         float maxAng = Mathf.Max(slopeDriveAssistMinAngle, slopeDriveAssistMaxAngle);
@@ -6041,6 +6158,7 @@ public class CarController : MonoBehaviour
     /// </summary>
     private void ApplyDrivingOrientation(float dt)
     {
+        // no-op touch for editor remapping
         if (BlocksDrivingOrientation()) return;
 
         Vector3 castOrigin = GetGroundCastOrigin();
@@ -6053,7 +6171,11 @@ public class CarController : MonoBehaviour
             // (left-stick tricks previously set _trickStickActive while steering and froze pitch on ramps).
 
             Vector3 groundUp = ResolveGroundUp(castOrigin, groundNormalCheckDistance, out _);
-            AlignToUpVectorPreserveYaw(groundUp, groundAlignSpeed, dt);
+            float groundAlignRate = groundAlignSpeed;
+            float tiltDeg = Vector3.Angle(groundUp, Vector3.up);
+            if (tiltDeg >= steepAlignMinAngle || _onBoostSurface)
+                groundAlignRate *= Mathf.Max(1f, steepAlignSpeedMultiplier);
+            AlignToUpVectorPreserveYaw(groundUp, groundAlignRate, dt);
             return;
         }
 
@@ -6114,7 +6236,10 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, blend);
+        Quaternion newRot = Quaternion.Slerp(transform.rotation, targetRot, blend);
+        transform.rotation = newRot;
+        if (rb != null)
+            rb.MoveRotation(newRot);
     }
 
     private void EvaluateSurface(
@@ -6330,7 +6455,7 @@ public class CarController : MonoBehaviour
         if (currentFuel <= 0f && !isOutOfFuel)
         {
             isOutOfFuel = true;
-            NotifyCrashFeedbackOnly(0.72f);
+            NotifyOutOfFuelTvFlare();
         }
     }
 
@@ -8938,7 +9063,7 @@ public class CarController : MonoBehaviour
                     bool firstEmpty = !isOutOfFuel;
                     isOutOfFuel = true;
                     if (firstEmpty)
-                        NotifyCrashFeedbackOnly(0.72f);
+                        NotifyOutOfFuelTvFlare();
                 }
             }
         }

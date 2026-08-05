@@ -48,6 +48,8 @@ public class RacingSkillTreeManager : MonoBehaviour
     public event Action<SkillType, int> OnLevelChanged;
     public event Action OnSkillsReset;
     public event Action<SkillDefinition> OnSkillRevealed;
+    /// <summary>Fired when which skills are available may have changed (e.g. trial advanced). UI should rebuild.</summary>
+    public event Action OnSkillAvailabilityChanged;
 
     private SkillTreeState _state;
     private readonly Dictionary<SkillType, SkillDefinition> _map = new();
@@ -110,22 +112,76 @@ public class RacingSkillTreeManager : MonoBehaviour
 
         HookQuestRevealEvents();
         SyncQuestUnlockReveals();
+        // DayTrialManager Awake runs after us (-50 vs -100); hook trials in Start.
+    }
+
+    private void Start()
+    {
+        HookTrialEvents();
+        // Rebuild listeners in case the first trial's allowlist differs from "everything revealed".
+        NotifySkillAvailabilityChanged();
     }
 
     private void OnDestroy()
     {
         UnhookQuestRevealEvents();
+        UnhookTrialEvents();
+    }
+
+    private void HookTrialEvents()
+    {
+        var day = DayTrialManager.Instance;
+        if (day == null) return;
+        day.OnTrialAdvanced += HandleTrialAvailabilityChanged;
+        day.OnTrialFailed += HandleTrialAvailabilityChanged;
+        day.OnStateChanged += NotifySkillAvailabilityChanged;
+    }
+
+    private void UnhookTrialEvents()
+    {
+        var day = DayTrialManager.Instance;
+        if (day == null) return;
+        day.OnTrialAdvanced -= HandleTrialAvailabilityChanged;
+        day.OnTrialFailed -= HandleTrialAvailabilityChanged;
+        day.OnStateChanged -= NotifySkillAvailabilityChanged;
+    }
+
+    private void HandleTrialAvailabilityChanged(int _) => NotifySkillAvailabilityChanged();
+
+    private void NotifySkillAvailabilityChanged()
+    {
+        OnSkillAvailabilityChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Whether the active trial/track allowlist permits this skill.
+    /// When no DayTrialManager / config is present, or the trial does not restrict, returns true.
+    /// </summary>
+    public bool IsSkillAllowedOnCurrentTrial(SkillType type)
+    {
+        var day = DayTrialManager.Instance;
+        if (day == null) return true;
+        var cfg = day.CurrentConfig;
+        if (cfg == null) return true;
+        return cfg.IsSkillAllowed(type);
     }
 
     private void RevealSkill(SkillDefinition def)
     {
         if (!def) return;
-        if (_revealedSkills.Add(def.type))
+        if (!_revealedSkills.Add(def.type))
+            return;
+
+        // Still remember the reveal for later trials, but only notify UI if this trial allows it.
+        if (IsSkillAllowedOnCurrentTrial(def.type))
             OnSkillRevealed?.Invoke(def);
     }
 
     public bool IsSkillRevealed(SkillType type)
     {
+        if (!IsSkillAllowedOnCurrentTrial(type))
+            return false;
+
         if (_revealedSkills.Contains(type))
             return true;
 
@@ -184,6 +240,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     public bool TryPurchase(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def)) return false;
+        if (!IsSkillAllowedOnCurrentTrial(type)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
         if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;
@@ -534,6 +591,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     public bool TryPurchaseWithSprockets(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def)) return false;
+        if (!IsSkillAllowedOnCurrentTrial(type)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
         if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;
@@ -591,6 +649,7 @@ public class RacingSkillTreeManager : MonoBehaviour
     public bool CanAffordNextLevel(SkillType type)
     {
         if (!_map.TryGetValue(type, out var def)) return false;
+        if (!IsSkillAllowedOnCurrentTrial(type)) return false;
         int nextLevel = GetLevel(type) + 1;
         if (nextLevel > def.maxLevel) return false;
         if (!MeetsQuestGateForPurchase(type, nextLevel)) return false;

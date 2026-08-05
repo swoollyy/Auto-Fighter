@@ -14,10 +14,10 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 9
-  m_Fog: 0
+  m_Fog: 1
   m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.01
+  m_FogDensity: 0.03
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3579,7 +3579,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: 0, y: -162.65}
+  m_AnchoredPosition: {x: 0, y: -253.93}
   m_SizeDelta: {x: 1920, y: 1080}
   m_Pivot: {x: 0.5, y: 0}
 --- !u!114 &416782511
@@ -3595,7 +3595,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 2100000, guid: eddbe9fff30fc794cad2225879d243eb, type: 2}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.08627451}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.03529412}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -4811,6 +4811,7 @@ GameObject:
   - component: {fileID: 661794730}
   - component: {fileID: 661794731}
   - component: {fileID: 661794732}
+  - component: {fileID: 661794733}
   m_Layer: 6
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -4836,7 +4837,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
-  m_BackGroundColor: {r: 0.4764151, g: 0.6800314, b: 1, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -4958,8 +4959,8 @@ MonoBehaviour:
   zRollYawRateDivisor: 86
   driftInfluence: 3
   maxRollDegrees: 2
-  driftRollMultiplier: 15
-  maxDriftRollDegrees: 15
+  driftRollMultiplier: 12
+  maxDriftRollDegrees: 10
   driftTiltChangeSpeed: 5
   driftTiltNeutralSpeed: 0.79
   driftTiltCrossfadeSpeedMult: 0.35
@@ -5024,35 +5025,41 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   followTarget: {fileID: 0}
-  focusWorldOffset: {x: 0, y: 0.18, z: 0}
-  shieldRadius: 0.12
-  sweepProbeRadius: 0.4
-  castPastFocus: 0.25
-  coneRadialSlop: 0.06
-  useSampledLineOfSight: 1
-  losSampleCastRadius: 0.16
-  targetSampleHalfWidth: 0.23
-  targetSampleHalfHeight: 0.41
-  includeDiagonalSamples: 1
-  useVolumetricOverlap: 1
-  collectFromOccluderRoot: 0
-  useRendererBoundsFallback: 1
-  includeTriggerColliders: 1
-  losAxisRingSamples: 2
-  drawDebugGizmos: 1
-  gizmosOnlyInPlayMode: 1
+  focusWorldOffset: {x: 0, y: 0, z: 0}
+  rayRadius: 0.1
+  useEdgeRays: 1
+  edgeRayOffset: 0.28
+  fadePropGroup: 1
   occluderLayers:
     serializedVersion: 2
     m_Bits: 16554112
   excludeFromOccluders:
     serializedVersion: 2
     m_Bits: 1
-  occludedAlphaMultiplier: 0.1
-  occludedRgbDim: 0.55
-  fadeSpeed: 10
+  includeTriggers: 1
+  occludedVisibility: 0.3
+  fadeSpeed: 12
   enableShield: 1
   skipParticleRenderers: 1
+  skipCoinPickups: 1
   maxHits: 48
+  drawDebugRays: 1
+--- !u!114 &661794733
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 661794726}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f5b02d3c9a15e7fb4d26a01e3f9c552, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  skyboxMaterial: {fileID: 2100000, guid: 9a6c13e4d0b26f8ac5e37b12f4a0d663, type: 2}
+  targetCamera: {fileID: 661794728}
+  fogPulseDriver: {fileID: 804777576}
+  applyOnAwake: 1
 --- !u!1 &663395613
 GameObject:
   m_ObjectHideFlags: 0
@@ -5314,7 +5321,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &736786466
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7110,19 +7117,19 @@ MonoBehaviour:
   environmentTypes:
   - id: Tree
     prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
-    baseWeight: 1.18
+    baseWeight: 4
     extraHeightOffset: -0.25
     extraLateralPadding: 0
     alignToGroundNormal: 0
-  - id: BIg Rock
+  - id: Big Rock
     prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
-    baseWeight: 0.64
+    baseWeight: 2
     extraHeightOffset: 0
     extraLateralPadding: 0
     alignToGroundNormal: 1
   - id: Rock
     prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
-    baseWeight: 0.97
+    baseWeight: 7
     extraHeightOffset: 0
     extraLateralPadding: 0
     alignToGroundNormal: 1
@@ -7130,19 +7137,19 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   spacing: 3
-  maxActive: 2500
-  targetCount: 2500
+  maxActive: 3500
+  targetCount: 3500
   maxAttemptsPerSlot: 37
   minSeparationMeters: 1.5
-  fillEmptyGaps: 1
+  fillEmptyGaps: 0
   streamSpawnDuringRun: 0
   updateInterval: 0.38
   maxSpawnDistanceAhead: 18.8
   maxSpawnDistanceBehind: 6.3
   despawnBehindDistance: 10.9
-  minDistanceFromRoad: 4
-  maxDistanceFromCenterline: 30
-  sideBias: 0.938
+  minDistanceFromRoad: 2
+  maxDistanceFromCenterline: 35
+  sideBias: 0.3
   placementAttempts: 14
   autoGroundUsingBounds: 1
   extraGroundPadding: 0
@@ -7294,6 +7301,7 @@ GameObject:
   - component: {fileID: 804777578}
   - component: {fileID: 804777579}
   - component: {fileID: 804777580}
+  - component: {fileID: 804777581}
   m_Layer: 0
   m_Name: GameController
   m_TagString: Untagged
@@ -7316,6 +7324,7 @@ MonoBehaviour:
   trackGenerator: {fileID: 796779767}
   carPrefab: {fileID: 5657100606639614825, guid: de383ed4deee06749be7a9934d6d5c1a, type: 3}
   uiManager: {fileID: 277147483}
+  runStartIntro: {fileID: 804777581}
   distanceSystem: {fileID: 796779772}
   trackCoinSpawner: {fileID: 796779773}
   trackObstacleSpawner: {fileID: 796779774}
@@ -7516,12 +7525,12 @@ MonoBehaviour:
   effectEnabled: 1
   allowKeyboardToggles: 1
   toggleKey: 287
-  baseIntensity: 0.206
-  scanlineStrength: 0.45
-  scanlineDensity: 520
+  baseIntensity: 0.506
+  scanlineStrength: 0.535
+  scanlineDensity: 152
   jitter: 0.12
   noise: 0.057
-  vignette: 0.25
+  vignette: 0.782
   chromatic: 0.08
   scaleWithSpeed: 0
   speedMin: 6
@@ -7530,14 +7539,23 @@ MonoBehaviour:
   boostPulse: 0
   boostIntensityAdd: 0.673
   boostEaseOutSpeed: 4
-  timeScale: 1
+  timeScale: 0.05
   crashVisualSeverityFloor: 0.9
   crashIntensityAdd: 3.65
   crashEaseOutSpeed: 0.58
+  nonFatalBurstSeverity: 2
   lethalCrashMultiplier: 1.607
   maxShaderIntensity: 8
   maxShaderNoise: 8
   maxShaderChromatic: 4
+  crashColorFlip: 1
+  crashColorFlipGain: 1
+  crashColorFlipEaseOutSpeed: 1.1
+  deathExplosionColorFlipEaseOutSpeed: 0.28
+  deathExplosionColorFlipHoldSeconds: 0.4
+  outOfFuelFlareSeverity: 0.5
+  outOfFuelFlareHoldSeconds: 1.5
+  outOfFuelFlareEaseOutSpeed: 0.35
 --- !u!114 &804777580
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7600,6 +7618,44 @@ MonoBehaviour:
   minNormalizedProgress: 0
   trackGenerator: {fileID: 796779767}
   logQueueEvents: 1
+--- !u!114 &804777581
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 804777573}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4d8e1a29f7b4c6e8a1d3f5b7c9e0a12, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  holdDuration: 1
+  fadeInSeconds: 0.2
+  fadeOutSeconds: 1
+  countSource: 0
+  titleFormat: RUN {0}
+  subtitleWhenLimitKnown: 
+  showSubtitleWithDayLimit: 1
+  canvas: {fileID: 0}
+  canvasGroup: {fileID: 0}
+  titleText: {fileID: 0}
+  subtitleText: {fileID: 0}
+  titleColor: {r: 1, g: 0.87043226, b: 0.30196083, a: 1}
+  subtitleColor: {r: 1, g: 1, b: 1, a: 0.75}
+  titleFontSize: 258
+  subtitleFontSize: 36
+  introTvLook:
+    intensity: 0.4
+    noise: 4
+    scanlineStrength: 0.295
+    scanlineDensity: 420
+    jitter: 0.35
+    vignette: 0.93
+    chromatic: 0.45
+    timeScale: 2.5
+  vintageTv: {fileID: 804777579}
+  playOnEveryRun: 1
 --- !u!1 &828558039
 GameObject:
   m_ObjectHideFlags: 0
@@ -8944,12 +9000,12 @@ Light:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 863897852}
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 10
   m_Type: 1
   m_Shape: 0
   m_Color: {r: 0.9755594, g: 0.6933962, b: 1, a: 1}
-  m_Intensity: 0.3
+  m_Intensity: 8
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -16679,15 +16735,23 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   flashImage: {fileID: 1083425327}
   edgeGlowMaterial: {fileID: 2100000, guid: b299c8168a390b546a26c82431e266b6, type: 2}
-  defaultOuterRadius: 1.2
+  defaultOuterRadius: 2.7
   defaultSoftness: 0.3
+  intensityStackMultiplier: 1.25
+  maxStackedIntensity: 4
+  sizeStackStrength: 0.85
+  durationExtendOnStack: 1
+  riseFraction: 0.3
+  minRiseSeconds: 0.1
+  edgeAppearSoftness: 0.85
+  edgeAppearInnerRadius: 0.78
   mashColor: {r: 1, g: 1, b: 1, a: 1}
   mashIntensity: 2.22
   mashDuration: 0.15
   mashInnerRadius: 0.41
   damageColor: {r: 1, g: 0.2, b: 0.1, a: 1}
   damageIntensity: 1.5
-  damageDuration: 0.35
+  damageDuration: 1.7
   damageInnerRadius: 0.2
   healColor: {r: 0.3, g: 1, b: 0.4, a: 1}
   healIntensity: 1
@@ -16700,7 +16764,7 @@ MonoBehaviour:
   boostColor: {r: 0.6084906, g: 0.8315853, b: 1, a: 0.5529412}
   boostIntensity: 1.3
   boostDuration: 0.9
-  boostInnerRadius: 0.35
+  boostInnerRadius: 0.23
   levelUpColor: {r: 1, g: 1, b: 1, a: 1}
   levelUpIntensity: 2
   levelUpDuration: 0.5

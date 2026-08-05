@@ -25,12 +25,32 @@ public class TrialConfig : ScriptableObject
     [Tooltip("Road progress (0 = start, 1 = end) the player must reach on any run within the day limit to advance.")]
     [Range(0f, 1f)] public float targetProgress = 0.5f;
 
+    [Header("Skill Tree (this trial)")]
+    [Tooltip("If enabled, only skills listed in Allowed Skills can appear in the tree and be purchased during this trial. Progressive unlocks for later skills are still remembered, but stay hidden until a trial that allows them.")]
+    public bool restrictSkillsToAllowlist = false;
+
+    [Tooltip("Skills available on this track/trial (e.g. Max Fuel, Drift). Ignored when Restrict Skills To Allowlist is off.")]
+    public List<SkillType> allowedSkills = new();
+
+    /// <summary>True if this skill may be shown / purchased while this trial is active.</summary>
+    public bool IsSkillAllowed(SkillType type)
+    {
+        if (!restrictSkillsToAllowlist)
+            return true;
+        if (allowedSkills == null || allowedSkills.Count == 0)
+            return false;
+        return allowedSkills.Contains(type);
+    }
+
     [Header("Per-Section Settings")]
     public TrackSettings track = new();
     public ObstacleSettings obstacles = new();
     public CreatureSettings creatures = new();
     public NpcTrafficSettings npcTraffic = new();
     public CoinSettings coins = new();
+    public ThrownSettings thrown = new();
+    public RollingLogSettings rollingLogs = new();
+    public CrossObstacleSettings crossObstacles = new();
 
     // =====================================================================
     // TRACK — mirrors ProceduralTrackGenerator
@@ -344,5 +364,185 @@ public class TrialConfig : ScriptableObject
 
         [Header("Debug")]
         public bool verboseDebug = false;
+    }
+
+    // =====================================================================
+    // THROWN — mirrors ThrownObstacleDirector
+    // =====================================================================
+    [System.Serializable]
+    public class ThrownSettings
+    {
+        [Tooltip("Uncheck to use the scene ThrownObstacleDirector's own values for this trial.")]
+        public bool overrideThrown = false;
+
+        [Header("Prefabs")]
+        public GameObject projectilePrefabPlain;
+        public GameObject projectilePrefabExplosive;
+        public GameObject groundRingPrefab;
+
+        [Header("Spawn Control")]
+        public bool enabledSpawning = true;
+        [Min(0f)] public float spawnCooldownBase = 3.5f;
+        public Vector2 leadDistanceRange = new Vector2(12f, 36f);
+        [Range(1, 6)] public int maxConcurrent = 2;
+        [Range(0f, 3f)] public float concurrentScaleByProgress = 1.5f;
+
+        [Header("Spawn Gate")]
+        [Range(0f, 0.5f)] public float spawnEnableProgress = 0.10f;
+
+        [Header("Spawn Cooldown Scaling")]
+        [Min(0.05f)] public float minSpawnCooldown = 0.6f;
+        public Vector2 spawnCooldownRandomRange = new Vector2(0.85f, 1.15f);
+
+        [Header("Meteor Flight")]
+        public float baseProjectileSpeed = 18f;
+        public Vector2 flightTimeClamp = new Vector2(0.55f, 3.25f);
+        [Min(2f)] public float meteorSpawnHeight = 22f;
+        [Min(1f)] public float meteorHorizontalOffset = 14f;
+        [Min(0f)] public float minLeadDistance = 6.0f;
+        [Min(0f)] public float minLandingDistanceFromPlayer = 4.0f;
+        public bool allowCloseLandings = true;
+        public LayerMask hitLayers = ~0;
+        public bool explosiveByDefault = false;
+        public float explosionRadius = 6f;
+        public float explosionKnockback = 12f;
+
+        [Header("Projectile Size Variation")]
+        public Vector2 projectileSizeRange = new Vector2(0.92f, 1.12f);
+        [Range(0f, 1f)] public float sizeGainOverDistance = 0.25f;
+
+        [Header("Spawn Variance")]
+        [Range(0f, 3f)] public float lateralJitter = 1.0f;
+        [Range(0f, 5f)] public float forwardJitter = 1.8f;
+
+        [Header("Rewards")]
+        public int destroyReward = 12;
+
+        [Header("Accuracy / Misses")]
+        [Range(0f, 1f)] public float baseAccuracy = 0.10f;
+        public AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
+        [Min(0f)] public float maxMissLateral = 4f;
+        [Min(0f)] public float maxMissForward = 6f;
+
+        [Header("Explosion Frequency")]
+        [Range(0f, 1f)] public float explosionBaseChance = 0.06f;
+        public AnimationCurve explosionChanceByDistance = AnimationCurve.Linear(0, 0.5f, 1, 1.5f);
+
+        [Header("Debug")]
+        public bool debugDraw = false;
+    }
+
+    // =====================================================================
+    // ROLLING LOGS — mirrors RollingLogSpawner
+    // =====================================================================
+    [System.Serializable]
+    public class RollingLogSettings
+    {
+        [Tooltip("Uncheck to use the scene RollingLogSpawner's own values for this trial.")]
+        public bool overrideRollingLogs = false;
+
+        [Header("Prefab")]
+        public GameObject rollingLogPrefab;
+
+        [Header("Path sampling")]
+        public bool useSmoothing = true;
+        [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
+
+        [Header("Spawn timing")]
+        public bool enableSpawning = true;
+        [Min(0.5f)] public float minSpawnIntervalSeconds = 4f;
+        [Min(0.5f)] public float maxSpawnIntervalSeconds = 11f;
+        [Min(1)] public int maxActiveLogs = 4;
+
+        [Header("Direction")]
+        public bool allowBothTravelDirections = false;
+        [Range(0f, 1f)] public float towardPlayerDirectionWeight = 0.65f;
+
+        [Header("Toward player (spawn ahead, roll backward)")]
+        [Min(5f)] public float towardPlayerSpawnMinAhead = 35f;
+        [Min(5f)] public float towardPlayerSpawnMaxAhead = 95f;
+
+        [Header("With player (spawn behind, roll forward)")]
+        [Min(5f)] public float withPlayerSpawnMinBehind = 25f;
+        [Min(5f)] public float withPlayerSpawnMaxBehind = 80f;
+
+        [Header("Speed along path (m/s magnitude)")]
+        public Vector2 speedRange = new Vector2(6f, 14f);
+
+        [Header("Lateral placement")]
+        [Range(0f, 1f)] public float lateralFraction = 0.92f;
+        public float edgeInnerMargin = 0.12f;
+
+        [Header("Raycast (spawn snap)")]
+        public LayerMask roadLayer = ~0;
+        public float raycastStartHeight = 6f;
+        public float raycastDownDistance = 24f;
+
+        [Header("Progress gate")]
+        [Range(0f, 0.95f)] public float minNormalizedProgressToSpawn = 0.02f;
+    }
+
+    // =====================================================================
+    // CROSS OBSTACLES — mirrors CrossObstacleDirector
+    // =====================================================================
+    [System.Serializable]
+    public class CrossObstacleSettings
+    {
+        [Tooltip("Uncheck to use the scene CrossObstacleDirector's own values for this trial.")]
+        public bool overrideCrossObstacles = false;
+
+        [Header("Prefab")]
+        public GameObject crossObstaclePrefab;
+
+        [Header("Spawn Control")]
+        public bool enabledSpawning = true;
+        public float minPlayerSpeed = 4f;
+        public float spawnCooldownSeconds = 5f;
+        public float minLeadDistance = 15f;
+        public float maxLeadDistance = 80f;
+        public float maxCurvatureHorizonScale = 0.65f;
+
+        [Header("Cross Speed")]
+        public Vector2 crossSpeedRange = new Vector2(5f, 11f);
+        public AnimationCurve crossSpeedMultiplierCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+        [Header("Size Scaling")]
+        public Vector2 obstacleScaleRange = new Vector2(0.8f, 1.35f);
+        public AnimationCurve sizeCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+        [Header("Yaw / Accuracy")]
+        public AnimationCurve yawErrorDegreesCurve = AnimationCurve.Linear(0, 22, 1, 4);
+        public AnimationCurve accuracyCurve = AnimationCurve.Linear(0, 0.6f, 1, 0.05f);
+
+        [Header("Spawn Interval Scaling")]
+        public AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
+
+        [Header("Spawn Cooldown Randomness")]
+        public Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
+
+        [Header("Spawn Randomness")]
+        public Vector2 initialSpawnDelayRange = new Vector2(1.5f, 4.5f);
+        public bool useActualPathLengthForPrediction = true;
+
+        [Header("Cross Path Length")]
+        public float offRoadPadding = 12f;
+
+        [Header("Ramp Avoidance")]
+        [Min(0f)] public float avoidRampRadius = 4f;
+        public LayerMask rampCheckLayers = ~0;
+
+        [Header("Curvature Sampling")]
+        public float curvatureSampleLength = 12f;
+        public float highCurvatureThreshold = 0.35f;
+
+        [Header("Yaw Impact (Weighted Miss Variety)")]
+        public bool enableYawWeightedMisses = true;
+        public float yawSpeedImpactMax = 0.4f;
+        public float yawDistanceImpactMax = 12f;
+        public float yawAngleAmplifyMax = 0.6f;
+
+        [Header("Debug")]
+        public bool debugGizmos = false;
+        public bool verboseLog = false;
     }
 }

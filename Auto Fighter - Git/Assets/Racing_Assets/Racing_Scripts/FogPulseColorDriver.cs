@@ -38,6 +38,18 @@ public class FogPulseColorDriver : MonoBehaviour
     private int _propId;
     private float _smoothed01;
 
+    /// <summary>Ambient / resting fog colour (before beacon pulse).</summary>
+    public Color BaseHDR
+    {
+        get => baseHDR;
+        set => baseHDR = value;
+    }
+
+    public void SetBaseColor(Color color)
+    {
+        baseHDR = color;
+    }
+
     private void Awake()
     {
         _propId = Shader.PropertyToID(fogColorProperty);

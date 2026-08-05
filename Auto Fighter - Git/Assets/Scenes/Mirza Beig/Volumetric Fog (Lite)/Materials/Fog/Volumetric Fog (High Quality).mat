@@ -179,7 +179,7 @@ Material:
     - _Main_Light_Anisotropic_Blend: 0.8
     - _Main_Light_Anisotropy: 0.204
     - _Main_Light_Anisotropy_Blend: 0.687
-    - _Main_Light_Intensity: 0.222
+    - _Main_Light_Intensity: 0
     - _Main_Light_Self_Shadow_Absorption_Coefficient: 0.5
     - _Main_Light_Self_Shadow_Raymarch_Distance: 5
     - _Main_Light_Self_Shadow_Raymarch_Steps: 8
@@ -207,7 +207,7 @@ Material:
     - _Raymarch_Max_Depth: 0
     - _Raymarch_Noise: 0.076
     - _Raymarch_Self_Shadow_Steps: 4
-    - _Raymarch_Steps: 44.9
+    - _Raymarch_Steps: 35
     - _ReceiveShadows: 1
     - _Remap_Max: 0.925
     - _Remap_Min: 0
@@ -249,7 +249,7 @@ Material:
     - _Cloud_Noise_Voronoi_Animation: {r: 0, g: 0, b: 0.5, a: 0.5}
     - _Cloud_Noise_Voronoi_Offset: {r: 0, g: 0, b: 0, a: 0}
     - _Color: {r: 1, g: 0.36933854, b: 0, a: 1}
-    - _Colour: {r: 0, g: 0, b: 0, a: 1}
+    - _Colour: {r: 0.45237663, g: 0.4174528, b: 0.5, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Offset: {r: 0, g: 0, b: 0, a: 45}
     - _Raymarch_Vertical_Range: {r: 0, g: 0.1, b: 0, a: 0}

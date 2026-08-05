@@ -381,6 +381,7 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSprocketsChanged += HandleSprocketsChanged;
         mgr.OnLevelChanged += HandleLevelChanged;
         mgr.OnSkillRevealed += HandleSkillRevealed;
+        mgr.OnSkillAvailabilityChanged += HandleSkillAvailabilityChanged;
         if (questMgr != null)
             questMgr.OnQuestUnlocked += HandleQuestUnlocked;
     }
@@ -392,6 +393,7 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSprocketsChanged -= HandleSprocketsChanged;
         mgr.OnLevelChanged -= HandleLevelChanged;
         mgr.OnSkillRevealed -= HandleSkillRevealed;
+        mgr.OnSkillAvailabilityChanged -= HandleSkillAvailabilityChanged;
         if (questMgr != null)
             questMgr.OnQuestUnlocked -= HandleQuestUnlocked;
     }
@@ -399,6 +401,15 @@ public class RacingSkillUI : MonoBehaviour
     private void HandleCurrencyChanged(int _) => RefreshAll();
     private void HandleSprocketsChanged(int _) => RefreshAll();
     private void HandleLevelChanged(SkillType _, int __) => RefreshAll();
+
+    private void HandleSkillAvailabilityChanged()
+    {
+        SkillDefinition previouslySelected = selectedEntry != null ? selectedEntry.GetDefinition() : null;
+        AttemptBuild();
+        RefreshAll();
+        if (!TryRestoreSelectionAfterRebuild(previouslySelected))
+            AutoOpenFirstIfNeeded();
+    }
 
     private void HandleSkillRevealed(SkillDefinition def)
     {

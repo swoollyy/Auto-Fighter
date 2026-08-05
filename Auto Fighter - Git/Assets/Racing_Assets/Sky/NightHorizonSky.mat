@@ -7,8 +7,8 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: VintageTVMat
-  m_Shader: {fileID: 4800000, guid: 64a2d636738aee142add1c6a39e0e5ce, type: 3}
+  m_Name: NightHorizonSky
+  m_Shader: {fileID: 4800000, guid: 7e4a91c2b8f04d6ea3c15f90d2e8b441, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -25,15 +25,11 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Chromatic: 0.08
-    - _ColorFlip: 0
-    - _ColorFlipGain: 1
-    - _Intensity: 0.506
-    - _Jitter: 0.12
-    - _Noise: 0.057
-    - _ScanlineDensity: 152
-    - _ScanlineStrength: 0.535
-    - _TimeScale: 0.05
-    - _Vignette: 0.782
-    m_Colors: []
+    - _HorizonBlendWidth: 0.367
+    - _HorizonExponent: 1.62
+    - _HorizonLift: -0.061
+    m_Colors:
+    - _GroundColor: {r: 0.09433961, g: 0.09433961, b: 0.09433961, a: 1}
+    - _HorizonColor: {r: 0.45237663, g: 0.4174528, b: 0.5, a: 1}
+    - _ZenithColor: {r: 0.23006095, g: 0.059273757, b: 0.33962262, a: 1}
   m_BuildTextureStacks: []

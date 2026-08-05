@@ -21,7 +21,7 @@ MonoBehaviour:
   enableScreenFlash: 1
   flashIntensity: 0.68
   flashDuration: 0.35
-  flashInnerRadius: 0.37
+  flashInnerRadius: 0.35
   enableScreenShake: 0
   shakeDuration: 0.15
   shakeStrength: 0.1

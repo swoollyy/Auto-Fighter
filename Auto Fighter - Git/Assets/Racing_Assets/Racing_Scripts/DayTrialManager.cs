@@ -84,7 +84,10 @@ public class DayTrialManager : MonoBehaviour
         TrackObstacleSpawner obstacle,
         TrackCreatureSpawner creature,
         NPCTrafficCarSpawner npc,
-        TrackCoinSpawner coins = null)
+        TrackCoinSpawner coins = null,
+        ThrownObstacleDirector thrown = null,
+        RollingLogSpawner rollingLogs = null,
+        CrossObstacleDirector crossObstacles = null)
     {
         var cfg = CurrentConfig;
         if (cfg == null) return;
@@ -92,6 +95,9 @@ public class DayTrialManager : MonoBehaviour
         if (creature != null) creature.ApplyConfig(cfg.creatures);
         if (npc != null) npc.ApplyConfig(cfg.npcTraffic);
         if (coins != null) coins.ApplyConfig(cfg.coins);
+        if (thrown != null) thrown.ApplyConfig(cfg.thrown);
+        if (rollingLogs != null) rollingLogs.ApplyConfig(cfg.rollingLogs);
+        if (crossObstacles != null) crossObstacles.ApplyConfig(cfg.crossObstacles);
     }
 
     private void Awake()

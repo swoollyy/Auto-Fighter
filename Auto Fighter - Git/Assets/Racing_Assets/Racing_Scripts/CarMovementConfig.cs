@@ -46,8 +46,8 @@ public class CarMovementConfig : MonoBehaviour
     [SerializeField] private float slopeDriveAssistRiseSpeed = 32f;
     [Tooltip("How fast assist falls off when you crest or release throttle (higher = less lingering).")]
     [SerializeField] private float slopeDriveAssistFallSpeed = 48f;
-    [Tooltip("If true, no slope assist on boost pads (they already add forward push).")]
-    [SerializeField] private bool slopeDriveAssistDisableOnBoost = true;
+    [Tooltip("If true, skip slope assist on flat boost pads only. Steep boost/ramps still get climb assist (flat pads already fail the min-angle check).")]
+    [SerializeField] private bool slopeDriveAssistDisableOnBoost = false;
     [Tooltip("If true, no slope assist on ice.")]
     [SerializeField] private bool slopeDriveAssistDisableOnIce = true;
 

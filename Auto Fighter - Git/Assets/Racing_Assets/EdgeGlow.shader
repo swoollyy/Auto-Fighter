@@ -96,12 +96,12 @@ Shader "UI/EdgeGlow"
                 
                 float dist = length(uv);
                 
-                // Create ring/edge glow (bright at edges, transparent at center)
-                float glow = smoothstep(_InnerRadius, _InnerRadius + _Softness, dist);
-                glow *= smoothstep(_OuterRadius + _Softness, _OuterRadius, dist);
-                
-                // Alternative: Just edge glow (no outer falloff)
-                // float glow = smoothstep(_InnerRadius, _InnerRadius + _Softness, dist);
+                // Softer edge falloff (wider smoothstep) so the glow doesn't look like a hard band.
+                float soft = max(_Softness, 0.05);
+                float glow = smoothstep(_InnerRadius, _InnerRadius + soft, dist);
+                glow *= smoothstep(_OuterRadius + soft, _OuterRadius, dist);
+                // Slight extra ease so the leading edge is less harsh.
+                glow = glow * glow * (3.0 - 2.0 * glow);
                 
                 fixed4 col = _Color * i.color * glow * _Intensity;
                 col.a = glow * _Color.a * i.color.a * _Intensity;

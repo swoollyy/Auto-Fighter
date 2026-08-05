@@ -87,6 +87,99 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField, HideInInspector] private Vector2 speedRandomMultiplierRange = new Vector2(0.5f, 2.2f);
 #pragma warning restore 0414
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). ApplyConfig copies a trial's ThrownSettings
+    // into these fields (call BEFORE run spawners init). CaptureConfig snapshots
+    // current values for the editor baker.
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.ThrownSettings s)
+    {
+        if (s == null || !s.overrideThrown) return;
+
+        if (s.projectilePrefabPlain != null) projectilePrefabPlain = s.projectilePrefabPlain;
+        if (s.projectilePrefabExplosive != null) projectilePrefabExplosive = s.projectilePrefabExplosive;
+        if (s.groundRingPrefab != null) groundRingPrefab = s.groundRingPrefab;
+
+        enabledSpawning = s.enabledSpawning;
+        spawnCooldownBase = s.spawnCooldownBase;
+        leadDistanceRange = s.leadDistanceRange;
+        maxConcurrent = s.maxConcurrent;
+        concurrentScaleByProgress = s.concurrentScaleByProgress;
+
+        spawnEnableProgress = s.spawnEnableProgress;
+        minSpawnCooldown = s.minSpawnCooldown;
+        spawnCooldownRandomRange = s.spawnCooldownRandomRange;
+
+        baseProjectileSpeed = s.baseProjectileSpeed;
+        flightTimeClamp = s.flightTimeClamp;
+        meteorSpawnHeight = s.meteorSpawnHeight;
+        meteorHorizontalOffset = s.meteorHorizontalOffset;
+        minLeadDistance = s.minLeadDistance;
+        minLandingDistanceFromPlayer = s.minLandingDistanceFromPlayer;
+        allowCloseLandings = s.allowCloseLandings;
+        hitLayers = s.hitLayers;
+        explosiveByDefault = s.explosiveByDefault;
+        explosionRadius = s.explosionRadius;
+        explosionKnockback = s.explosionKnockback;
+
+        projectileSizeRange = s.projectileSizeRange;
+        sizeGainOverDistance = s.sizeGainOverDistance;
+        lateralJitter = s.lateralJitter;
+        forwardJitter = s.forwardJitter;
+        destroyReward = s.destroyReward;
+
+        baseAccuracy = s.baseAccuracy;
+        accuracyByDistance = s.accuracyByDistance;
+        maxMissLateral = s.maxMissLateral;
+        maxMissForward = s.maxMissForward;
+
+        explosionBaseChance = s.explosionBaseChance;
+        explosionChanceByDistance = s.explosionChanceByDistance;
+        debugDraw = s.debugDraw;
+    }
+
+    public TrialConfig.ThrownSettings CaptureConfig()
+    {
+        return new TrialConfig.ThrownSettings
+        {
+            overrideThrown = true,
+            projectilePrefabPlain = projectilePrefabPlain,
+            projectilePrefabExplosive = projectilePrefabExplosive,
+            groundRingPrefab = groundRingPrefab,
+            enabledSpawning = enabledSpawning,
+            spawnCooldownBase = spawnCooldownBase,
+            leadDistanceRange = leadDistanceRange,
+            maxConcurrent = maxConcurrent,
+            concurrentScaleByProgress = concurrentScaleByProgress,
+            spawnEnableProgress = spawnEnableProgress,
+            minSpawnCooldown = minSpawnCooldown,
+            spawnCooldownRandomRange = spawnCooldownRandomRange,
+            baseProjectileSpeed = baseProjectileSpeed,
+            flightTimeClamp = flightTimeClamp,
+            meteorSpawnHeight = meteorSpawnHeight,
+            meteorHorizontalOffset = meteorHorizontalOffset,
+            minLeadDistance = minLeadDistance,
+            minLandingDistanceFromPlayer = minLandingDistanceFromPlayer,
+            allowCloseLandings = allowCloseLandings,
+            hitLayers = hitLayers,
+            explosiveByDefault = explosiveByDefault,
+            explosionRadius = explosionRadius,
+            explosionKnockback = explosionKnockback,
+            projectileSizeRange = projectileSizeRange,
+            sizeGainOverDistance = sizeGainOverDistance,
+            lateralJitter = lateralJitter,
+            forwardJitter = forwardJitter,
+            destroyReward = destroyReward,
+            baseAccuracy = baseAccuracy,
+            accuracyByDistance = accuracyByDistance,
+            maxMissLateral = maxMissLateral,
+            maxMissForward = maxMissForward,
+            explosionBaseChance = explosionBaseChance,
+            explosionChanceByDistance = explosionChanceByDistance,
+            debugDraw = debugDraw,
+        };
+    }
+
     private float _cooldown;
     private readonly List<ThrownObstacle> _active = new();
     private readonly TrackSpawnQueuePendingState _queueState = new();

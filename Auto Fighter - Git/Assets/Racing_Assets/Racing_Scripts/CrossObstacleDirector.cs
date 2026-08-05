@@ -71,6 +71,84 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
     [SerializeField] private bool debugGizmos = false;
     [SerializeField] private bool verboseLog = false;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). Apply before run start / SetCar.
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.CrossObstacleSettings s)
+    {
+        if (s == null || !s.overrideCrossObstacles) return;
+
+        if (s.crossObstaclePrefab != null) crossObstaclePrefab = s.crossObstaclePrefab;
+
+        enabledSpawning = s.enabledSpawning;
+        minPlayerSpeed = s.minPlayerSpeed;
+        spawnCooldownSeconds = s.spawnCooldownSeconds;
+        minLeadDistance = s.minLeadDistance;
+        maxLeadDistance = s.maxLeadDistance;
+        maxCurvatureHorizonScale = s.maxCurvatureHorizonScale;
+
+        crossSpeedRange = s.crossSpeedRange;
+        crossSpeedMultiplierCurve = s.crossSpeedMultiplierCurve;
+        obstacleScaleRange = s.obstacleScaleRange;
+        sizeCurve = s.sizeCurve;
+        yawErrorDegreesCurve = s.yawErrorDegreesCurve;
+        accuracyCurve = s.accuracyCurve;
+        spawnIntervalCurve = s.spawnIntervalCurve;
+        spawnCooldownRandomRange = s.spawnCooldownRandomRange;
+        initialSpawnDelayRange = s.initialSpawnDelayRange;
+        useActualPathLengthForPrediction = s.useActualPathLengthForPrediction;
+        offRoadPadding = s.offRoadPadding;
+
+        avoidRampRadius = s.avoidRampRadius;
+        rampCheckLayers = s.rampCheckLayers;
+        curvatureSampleLength = s.curvatureSampleLength;
+        highCurvatureThreshold = s.highCurvatureThreshold;
+
+        enableYawWeightedMisses = s.enableYawWeightedMisses;
+        yawSpeedImpactMax = s.yawSpeedImpactMax;
+        yawDistanceImpactMax = s.yawDistanceImpactMax;
+        yawAngleAmplifyMax = s.yawAngleAmplifyMax;
+
+        debugGizmos = s.debugGizmos;
+        verboseLog = s.verboseLog;
+    }
+
+    public TrialConfig.CrossObstacleSettings CaptureConfig()
+    {
+        return new TrialConfig.CrossObstacleSettings
+        {
+            overrideCrossObstacles = true,
+            crossObstaclePrefab = crossObstaclePrefab,
+            enabledSpawning = enabledSpawning,
+            minPlayerSpeed = minPlayerSpeed,
+            spawnCooldownSeconds = spawnCooldownSeconds,
+            minLeadDistance = minLeadDistance,
+            maxLeadDistance = maxLeadDistance,
+            maxCurvatureHorizonScale = maxCurvatureHorizonScale,
+            crossSpeedRange = crossSpeedRange,
+            crossSpeedMultiplierCurve = crossSpeedMultiplierCurve,
+            obstacleScaleRange = obstacleScaleRange,
+            sizeCurve = sizeCurve,
+            yawErrorDegreesCurve = yawErrorDegreesCurve,
+            accuracyCurve = accuracyCurve,
+            spawnIntervalCurve = spawnIntervalCurve,
+            spawnCooldownRandomRange = spawnCooldownRandomRange,
+            initialSpawnDelayRange = initialSpawnDelayRange,
+            useActualPathLengthForPrediction = useActualPathLengthForPrediction,
+            offRoadPadding = offRoadPadding,
+            avoidRampRadius = avoidRampRadius,
+            rampCheckLayers = rampCheckLayers,
+            curvatureSampleLength = curvatureSampleLength,
+            highCurvatureThreshold = highCurvatureThreshold,
+            enableYawWeightedMisses = enableYawWeightedMisses,
+            yawSpeedImpactMax = yawSpeedImpactMax,
+            yawDistanceImpactMax = yawDistanceImpactMax,
+            yawAngleAmplifyMax = yawAngleAmplifyMax,
+            debugGizmos = debugGizmos,
+            verboseLog = verboseLog,
+        };
+    }
+
     private float _cooldownRemain;
     private float _trackTotalLength;
     private List<Vector3> _path = new();

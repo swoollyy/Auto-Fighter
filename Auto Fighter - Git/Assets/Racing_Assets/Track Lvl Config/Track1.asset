@@ -16,6 +16,8 @@ MonoBehaviour:
   designerNotes: 
   dayLimit: 50
   targetProgress: 1
+  restrictSkillsToAllowlist: 1
+  allowedSkills: 1500000011000000130000001b000000050000002b000000cc100000
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
@@ -483,8 +485,8 @@ MonoBehaviour:
       despawnDelay: 0.7
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    creatureSpacing: 15
-    maxActiveCreatures: 15
+    creatureSpacing: 0
+    maxActiveCreatures: 0
     minSpawnDistanceAhead: 5
     maxSpawnDistanceAhead: 70
     initialPreSpawnDistance: 70
@@ -855,3 +857,249 @@ MonoBehaviour:
     smoothingSubdivisionsPerSegment: 6
     updateInterval: 0.2
     verboseDebug: 1
+  thrown:
+    overrideThrown: 1
+    projectilePrefabPlain: {fileID: 3874382558013832276, guid: 2cbd9749ef64f374ba50adc8bd426f30, type: 3}
+    projectilePrefabExplosive: {fileID: 3874382558013832276, guid: 9da423cd4d7a2b54e975aab5b7d06cb2, type: 3}
+    groundRingPrefab: {fileID: 4108758772899792739, guid: b33c2f1ca85c9b94ba4f4fff69aa0a86, type: 3}
+    enabledSpawning: 0
+    spawnCooldownBase: 4
+    leadDistanceRange: {x: 8, y: 25}
+    maxConcurrent: 6
+    concurrentScaleByProgress: 1.5
+    spawnEnableProgress: 0.25
+    minSpawnCooldown: 5
+    spawnCooldownRandomRange: {x: 0.85, y: 1.15}
+    baseProjectileSpeed: 5
+    flightTimeClamp: {x: 0.55, y: 3.25}
+    meteorSpawnHeight: 22
+    meteorHorizontalOffset: 14
+    minLeadDistance: 12.5
+    minLandingDistanceFromPlayer: 0
+    allowCloseLandings: 0
+    hitLayers:
+      serializedVersion: 2
+      m_Bits: 12322817
+    explosiveByDefault: 0
+    explosionRadius: 3
+    explosionKnockback: 8
+    projectileSizeRange: {x: 1.1, y: 1.7}
+    sizeGainOverDistance: 0.2
+    lateralJitter: 2.63
+    forwardJitter: 0
+    destroyReward: 12
+    baseAccuracy: 0.5
+    accuracyByDistance:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: -0.0041656494
+        value: 0.35
+        inSlope: 1.5983123
+        outSlope: 1.5983123
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0.070246
+      - serializedVersion: 3
+        time: 1
+        value: 0.9764151
+        inSlope: 0.0761923
+        outSlope: 0.0761923
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.21488732
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    maxMissLateral: 6
+    maxMissForward: 5
+    explosionBaseChance: 0.15
+    explosionChanceByDistance:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0.15
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 0.6
+        inSlope: 1
+        outSlope: 1
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    debugDraw: 1
+  rollingLogs:
+    overrideRollingLogs: 1
+    rollingLogPrefab: {fileID: 5195131032568342935, guid: 2ebf02c668ee05645b310d7b75a039b3, type: 3}
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    enableSpawning: 1
+    minSpawnIntervalSeconds: 10
+    maxSpawnIntervalSeconds: 20
+    maxActiveLogs: 2
+    allowBothTravelDirections: 1
+    towardPlayerDirectionWeight: 0.9
+    towardPlayerSpawnMinAhead: 20
+    towardPlayerSpawnMaxAhead: 35
+    withPlayerSpawnMinBehind: 15
+    withPlayerSpawnMaxBehind: 35
+    speedRange: {x: 4, y: 9}
+    lateralFraction: 0.8
+    edgeInnerMargin: 0.1
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 8192
+    raycastStartHeight: 6
+    raycastDownDistance: 24
+    minNormalizedProgressToSpawn: 0.25
+  crossObstacles:
+    overrideCrossObstacles: 1
+    crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
+    enabledSpawning: 1
+    minPlayerSpeed: -0.1
+    spawnCooldownSeconds: 45
+    minLeadDistance: 5
+    maxLeadDistance: 29
+    maxCurvatureHorizonScale: 0.65
+    crossSpeedRange: {x: 3, y: 8}
+    crossSpeedMultiplierCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 2
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    obstacleScaleRange: {x: 2, y: 2.7}
+    sizeCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    yawErrorDegreesCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    accuracyCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    spawnIntervalCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    spawnCooldownRandomRange: {x: 2.37, y: 5.84}
+    initialSpawnDelayRange: {x: 6.19, y: 15}
+    useActualPathLengthForPrediction: 1
+    offRoadPadding: 7
+    avoidRampRadius: 4
+    rampCheckLayers:
+      serializedVersion: 2
+      m_Bits: 8192
+    curvatureSampleLength: 12
+    highCurvatureThreshold: 0.35
+    enableYawWeightedMisses: 1
+    yawSpeedImpactMax: 0.4
+    yawDistanceImpactMax: 19.4
+    yawAngleAmplifyMax: 0.6
+    debugGizmos: 1
+    verboseLog: 0
