@@ -215,6 +215,7 @@ public class GameManager_Racing : MonoBehaviour
     private bool _depositSoundPlayed = false;
     private bool _loadingGameplayGateActive = false;
     private bool _audioPausedByLoadingGate = false;
+    private bool _finishPortalSequenceActive = false;
     private GameProgressState _progressState = GameProgressState.InitIntro;
     [Header("Loading Audio Gate")]
     [Tooltip("Music/audio sources allowed to keep playing while loading gate is active (these get ignoreListenerPause enabled during loading).")]
@@ -287,6 +288,7 @@ public class GameManager_Racing : MonoBehaviour
 
         EnsureRefs();            // ensure camera/ui/distanceSystem exist
         EnsureTrackCallbacksWired();
+        EnsureFinishPortalDirector();
 
         if (skillTreeRoot != null) skillTreeRoot.SetActive(true);
         if (skillTreeUI == null) skillTreeUI = FindObjectOfType<RacingSkillUI>();
@@ -452,7 +454,10 @@ public class GameManager_Racing : MonoBehaviour
         Debug.Log($"FPS ~ {1f / Mathf.Max(0.0001f, Time.unscaledDeltaTime):F0}");
 
         // Finalize run only when out of fuel/HP AND planar linear speed is tiny (rotation alone does not block results).
-        if (!_currencyAwarded && (carController.IsOutOfFuel || carController.IsOutOfHP))
+        // Finish-portal sequence owns run-end when the player reaches the track end.
+        if (!_currencyAwarded
+            && !_finishPortalSequenceActive
+            && (carController.IsOutOfFuel || carController.IsOutOfHP))
         {
             bool stopped = carController.IsStoppedForRunEnd;
 
@@ -507,6 +512,7 @@ public class GameManager_Racing : MonoBehaviour
         // Reset end-state flags immediately so loading cannot be interrupted by stale restart logic.
         runEnded = false;
         _finalizePending = false;
+        _finishPortalSequenceActive = false;
         _acceptRunEndContinueInput = false;
         _flowState = RunFlowState.Loading;
         SetProgressState(GameProgressState.LoadingRun);
@@ -517,6 +523,7 @@ public class GameManager_Racing : MonoBehaviour
         }
         runStarted = true;
         EnterLoadingGameplayGate();
+        EnsureFinishPortalDirector();
         uiManager?.SetSection(UIManager_Racing.UISection.Loading);
         uiManager?.ShowLoading("Generating track...");
 
@@ -577,6 +584,7 @@ public class GameManager_Racing : MonoBehaviour
         runEnded = false;
         uiManager?.HideRunComplete();
 
+        EndFinishPortalPresentation();
         FindObjectOfType<VintageTVController>(true)?.ResetVisualToDefaults();
 
         // Dead/out-of-fuel car must not be reused — BeginRun respawns a fresh one.
@@ -607,9 +615,75 @@ public class GameManager_Racing : MonoBehaviour
         _depositSoundPlayed = true;
     }
 
+    /// <summary>
+    /// Called by <see cref="FinishPortalDirector"/> when the player enters the end portal / hits ~100%.
+    /// Prevents the fuel/HP finalize path from racing the cinematic.
+    /// </summary>
+    public bool TryBeginFinishPortalSequence()
+    {
+        if (_currencyAwarded || runEnded || _finishPortalSequenceActive)
+            return false;
+        if (!runStarted || _loadingGameplayGateActive)
+            return false;
+
+        _finishPortalSequenceActive = true;
+        _finalizePending = false;
+        if (_finalizeRunCR != null)
+        {
+            StopCoroutine(_finalizeRunCR);
+            _finalizeRunCR = null;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Ends the run after the finish-portal hyper-tunnel intro (counts as full track progress).
+    /// Win path: same stats / run-complete UI as a normal end — no vintage TV death burst or color flip.
+    /// </summary>
+    /// <param name="keepTunnelPresentation">If true, leave hyper-tunnel + forced FOV running under the results UI.</param>
+    public void CompleteRunFromFinishPortal(bool keepTunnelPresentation = true)
+    {
+        _maxRunNormalizedProgress = Mathf.Max(_maxRunNormalizedProgress, 1f);
+        _finishPortalSequenceActive = false;
+
+        // Results UI owns the canvas again (stats panel).
+        if (uiManager != null)
+            uiManager.SetGameCanvasVisible(true);
+
+        if (!keepTunnelPresentation)
+        {
+            FinishPortalDirector.Instance?.StopPresentation();
+        }
+        else
+        {
+            // Keep tunnel FOV/shake; do not call EndForcedFov here.
+        }
+
+        // Intentionally skip PlayDeathStopBurst / VintageTV color flip — this is a win, not a death.
+        FinalizeRun();
+    }
+
+    public void EndFinishPortalPresentation()
+    {
+        FinishPortalDirector.Instance?.StopPresentation();
+    }
+
+    private void EnsureFinishPortalDirector()
+    {
+        if (FinishPortalDirector.Instance != null)
+            return;
+        if (FindObjectOfType<FinishPortalDirector>(true) != null)
+            return;
+
+        Debug.LogWarning(
+            "[GameManager_Racing] No FinishPortalDirector in the scene. " +
+            "Run Racing → Setup Finish Portal System In Open Scene (do not create at runtime).");
+    }
+
     private void FinalizeRun()
     {
         if (_currencyAwarded) return;
+        _finishPortalSequenceActive = false;
 
         // Forcefield quest progression: count this run only if the player did NOT die from HP.
         // Fuel death / normal completion still counts.
@@ -1250,12 +1324,13 @@ public class GameManager_Racing : MonoBehaviour
         _flowState = RunFlowState.SkillTree;
         SetProgressState(GameProgressState.SkillTree);
         TryRaiseFirstSkillTreeEntryNarrativeFlag();
-        // Post-run garage dialogue (e.g. after first completed run) — not during results.
+        // Post-run garage dialogue (e.g. can-afford Max Fuel) — not during results.
         NarrativeDirector.NotifyReturnedToSkillTree();
 
         // Hide run UI if present
         uiManager?.HideRunComplete();
 
+        EndFinishPortalPresentation();
         FindObjectOfType<VintageTVController>(true)?.ResetVisualToDefaults();
 
         // Only play deposit sound if run awarded currency and we haven't played it yet for this run

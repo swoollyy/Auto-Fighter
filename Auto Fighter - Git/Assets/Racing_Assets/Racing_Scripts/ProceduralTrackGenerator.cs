@@ -136,6 +136,21 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("How many of the most recent segments to ignore in the capsule-distance check (to allow tight consecutive turns).")]
     [SerializeField] private int recentIgnoreCount = 0;   // stricter by default
 
+    [Header("Start / End Separation")]
+    [Tooltip("Reject tracks whose finish sits too close to the start (XZ), so players can't cut offroad to the end.")]
+    [SerializeField] private bool enforceMinStartEndSeparation = true;
+
+    [Tooltip("Absolute minimum planar (XZ) distance between start and end. Combined with the path-fraction rule below (whichever is larger).")]
+    [SerializeField] private float minStartEndDistance = 120f;
+
+    [Tooltip("Also require end at least this fraction of total path length (segmentCount × segmentLength) away from start on XZ.")]
+    [Range(0.05f, 0.75f)]
+    [SerializeField] private float minStartEndDistancePathFraction = 0.28f;
+
+    [Tooltip("Once this fraction of segments is built, reject yaws that would bring the path back inside the min start distance.")]
+    [Range(0.05f, 0.95f)]
+    [SerializeField] private float startSeparationEnforceAfterNormalized = 0.3f;
+
     // Expose raw path centers
     public List<Vector3> PathPoints => _pathPoints;
 
@@ -197,6 +212,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
         collisionPadding = s.collisionPadding;
         trackRadiusMultiplier = s.trackRadiusMultiplier;
         recentIgnoreCount = s.recentIgnoreCount;
+
+        enforceMinStartEndSeparation = s.enforceMinStartEndSeparation;
+        minStartEndDistance = s.minStartEndDistance;
+        minStartEndDistancePathFraction = s.minStartEndDistancePathFraction;
+        startSeparationEnforceAfterNormalized = s.startSeparationEnforceAfterNormalized;
     }
 
     public TrialConfig.TrackSettings CaptureConfig()
@@ -237,6 +257,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
             collisionPadding = collisionPadding,
             trackRadiusMultiplier = trackRadiusMultiplier,
             recentIgnoreCount = recentIgnoreCount,
+            enforceMinStartEndSeparation = enforceMinStartEndSeparation,
+            minStartEndDistance = minStartEndDistance,
+            minStartEndDistancePathFraction = minStartEndDistancePathFraction,
+            startSeparationEnforceAfterNormalized = startSeparationEnforceAfterNormalized,
         };
     }
 
@@ -385,7 +409,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
                 if (attempt <= maxRetries)
                 {
                     Debug.LogWarning(
-                        $"[ProceduralTrackGenerator] Track generation failed due to self-intersection. Retrying ({attempt}/{maxRetries})...");
+                        $"[ProceduralTrackGenerator] Track generation failed (self-intersection or start/end too close). Retrying ({attempt}/{maxRetries})...");
                 }
                 else
                 {
@@ -462,18 +486,25 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
             float chosenYaw = preferredYaw;
 
-            if (preventSelfIntersections)
+            if (preventSelfIntersections || enforceMinStartEndSeparation)
             {
                 if (!TryFindCollisionFreeYaw(preferredYaw, maxTurnAngle, effLength, out chosenYaw))
                 {
                     Debug.LogWarning(
-                        "[ProceduralTrackGenerator] Aborting generation attempt: no valid non-intersecting segment could be found.");
+                        "[ProceduralTrackGenerator] Aborting generation attempt: no valid segment yaw (intersection or start proximity).");
                     _abortedGeneration = true;
                     break;
                 }
             }
 
             CommitSegment(chosenYaw, effLength);
+        }
+
+        if (!_abortedGeneration && !PassesStartEndSeparationCheck(effLength))
+        {
+            Debug.LogWarning(
+                "[ProceduralTrackGenerator] Aborting generation attempt: finish is too close to start (offroad shortcut risk).");
+            _abortedGeneration = true;
         }
 
         if (!_abortedGeneration && generateRoadMesh)
@@ -694,9 +725,6 @@ public class ProceduralTrackGenerator : MonoBehaviour
                 return false;
         }
 
-        if (!preventSelfIntersections)
-            return true;
-
         Quaternion testRot = _currentRotation * Quaternion.Euler(0f, yawDeg, 0f);
         Vector3 forward3D = testRot * Vector3.forward;
 
@@ -706,29 +734,91 @@ public class ProceduralTrackGenerator : MonoBehaviour
         Vector2 a = new Vector2(start3D.x, start3D.z);
         Vector2 b = new Vector2(end3D.x, end3D.z);
 
-        float halfWidth = roadWidth * 0.5f * trackRadiusMultiplier;
-        float capsuleRadius = halfWidth + collisionPadding;
-        float capsuleRadiusSq = capsuleRadius * capsuleRadius;
-
-        int count = _segments2D.Count;
-        int maxIndex = Mathf.Max(0, count - recentIgnoreCount);
-
-        for (int i = 0; i < count; i++)
+        if (preventSelfIntersections)
         {
-            if (i >= maxIndex)
-                continue;
+            float halfWidth = roadWidth * 0.5f * trackRadiusMultiplier;
+            float capsuleRadius = halfWidth + collisionPadding;
+            float capsuleRadiusSq = capsuleRadius * capsuleRadius;
 
-            Segment2D s = _segments2D[i];
+            int count = _segments2D.Count;
+            int maxIndex = Mathf.Max(0, count - recentIgnoreCount);
 
-            if (SegmentsProperlyIntersect(a, b, s.a, s.b))
-                return false;
+            for (int i = 0; i < count; i++)
+            {
+                if (i >= maxIndex)
+                    continue;
 
-            float distSq = SegmentSegmentDistanceSq(a, b, s.a, s.b);
-            if (distSq < capsuleRadiusSq)
-                return false;
+                Segment2D s = _segments2D[i];
+
+                if (SegmentsProperlyIntersect(a, b, s.a, s.b))
+                    return false;
+
+                float distSq = SegmentSegmentDistanceSq(a, b, s.a, s.b);
+                if (distSq < capsuleRadiusSq)
+                    return false;
+            }
+        }
+
+        // Late path must stay outside a start exclusion bubble so the finish can't curl back for a grass cut.
+        // Uses the absolute min distance (not the full path-fraction) so generation stays solvable.
+        if (enforceMinStartEndSeparation && minStartEndDistance > 0.01f && segmentCount > 1)
+        {
+            float builtNorm = (float)_segments2D.Count / (segmentCount - 1);
+            if (builtNorm >= startSeparationEnforceAfterNormalized)
+            {
+                Vector2 startXZ = new Vector2(transform.position.x, transform.position.z);
+                float minSepSq = minStartEndDistance * minStartEndDistance;
+                if ((a - startXZ).sqrMagnitude < minSepSq
+                    || (b - startXZ).sqrMagnitude < minSepSq
+                    || PointSegmentDistanceSq(startXZ, a, b) < minSepSq)
+                {
+                    return false;
+                }
+            }
         }
 
         return true;
+    }
+
+    private float GetEffectiveMinStartEndDistance(float segLength)
+    {
+        float pathLen = Mathf.Max(1, segmentCount) * Mathf.Max(0.001f, segLength);
+        float fromFraction = pathLen * Mathf.Clamp01(minStartEndDistancePathFraction);
+        return Mathf.Max(0f, minStartEndDistance, fromFraction);
+    }
+
+    private bool PassesStartEndSeparationCheck(float segLength)
+    {
+        if (!enforceMinStartEndSeparation)
+            return true;
+
+        float minSep = GetEffectiveMinStartEndDistance(segLength);
+        if (minSep <= 0.01f)
+            return true;
+
+        Vector3 start = transform.position;
+        Vector3 end = _currentEndPosition;
+        if (_junctionPathPoints.Count > 0)
+        {
+            start = _junctionPathPoints[0];
+            end = _junctionPathPoints[_junctionPathPoints.Count - 1];
+        }
+
+        Vector2 s = new Vector2(start.x, start.z);
+        Vector2 e = new Vector2(end.x, end.z);
+        return (e - s).sqrMagnitude >= minSep * minSep;
+    }
+
+    private static float PointSegmentDistanceSq(Vector2 p, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float abLenSq = ab.sqrMagnitude;
+        if (abLenSq < 1e-8f)
+            return (p - a).sqrMagnitude;
+
+        float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / abLenSq);
+        Vector2 closest = a + ab * t;
+        return (p - closest).sqrMagnitude;
     }
 
     // ================================================================
@@ -1094,6 +1184,28 @@ public class ProceduralTrackGenerator : MonoBehaviour
         forward.y = 0f;
         if (forward.sqrMagnitude < 1e-6f)
             forward = (pts[1] - pts[0]).normalized;
+        forward.Normalize();
+    }
+
+    /// <summary>Last centerline point + travel forward (same source as the road mesh / distance meter).</summary>
+    public void GetEndPoint(out Vector3 pos, out Vector3 forward)
+    {
+        var pts = new List<Vector3>();
+        FillRoadMeshCenterPath(pts);
+
+        if (pts.Count < 2)
+        {
+            pos = transform.position;
+            forward = transform.forward;
+            return;
+        }
+
+        int last = pts.Count - 1;
+        pos = pts[last];
+        forward = TrackPathSampling.ComputeMiteredForward(pts, last);
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 1e-6f)
+            forward = (pts[last] - pts[last - 1]).normalized;
         forward.Normalize();
     }
 

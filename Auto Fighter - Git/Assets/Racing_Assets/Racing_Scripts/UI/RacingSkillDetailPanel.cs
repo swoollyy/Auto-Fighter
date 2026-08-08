@@ -38,6 +38,15 @@ public class RacingSkillDetailPanel : MonoBehaviour
     public bool IsInfoVisible => infoContainer != null && infoContainer.activeSelf;
     public GameObject InfoContainer => infoContainer != null ? infoContainer : null;
 
+    /// <summary>Rect used by tutorial cost spotlights (Cost_Text). Requires the detail card to be open.</summary>
+    public bool TryGetCostHighlightRect(out RectTransform rect)
+    {
+        rect = null;
+        if (!IsInfoVisible || costText == null) return false;
+        rect = costText.rectTransform;
+        return rect != null;
+    }
+
     /// <summary>True if this raycast hit is part of the detail UX (card, Buy row, dimmed backdrop, optional extra roots).</summary>
     public bool IsHitInsideDetailUi(GameObject hitObject)
     {

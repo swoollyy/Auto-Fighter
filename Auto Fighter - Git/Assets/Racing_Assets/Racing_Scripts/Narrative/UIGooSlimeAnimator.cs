@@ -110,6 +110,17 @@ public class UIGooSlimeAnimator : MonoBehaviour
         _blending = false;
     }
 
+    /// <summary>If a color blend is in progress, snap to the target colors immediately.</summary>
+    public void CompleteColorBlendImmediate()
+    {
+        if (!_blending) return;
+        _currentFill = _toFill;
+        _currentRim = _toRim;
+        _blending = false;
+        EnsureRuntimeMaterial();
+        PushColors(_currentFill, _currentRim);
+    }
+
     private void TickColorBlend(float dt)
     {
         _blendElapsed += dt;

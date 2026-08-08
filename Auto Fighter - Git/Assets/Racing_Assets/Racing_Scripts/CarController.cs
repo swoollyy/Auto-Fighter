@@ -531,7 +531,14 @@ public class CarController : MonoBehaviour
     private float _planarSpeedLastFixedUpdate;
     private float _lastGrassToRoadSpeedPreserveTime = -999f;
     private readonly RaycastHit[] _surfaceRayBuffer = new RaycastHit[8];
-    private const float MixedSurfaceLipNormalMinY = 0.65f;
+    private readonly RaycastHit[] _groundNormalHitBuffer = new RaycastHit[12];
+    private const float MixedSurfaceLipNormalMinY = 0.88f;
+    /// <summary>Flat boost pads below this normal.y are treated as near-horizontal (ignore for drive normals).</summary>
+    private const float FlatBoostNormalMinY = 0.92f;
+    /// <summary>Contact points within this height are “same deck” when choosing a mountable plane.</summary>
+    private const float GroundNormalHeightTieBand = 0.08f;
+    /// <summary>Only strip into-face dig on surfaces steeper than this (normal.y below).</summary>
+    private const float MountAssistMaxNormalY = 0.90f;
 
     /// <summary>True when HP-death tumble uses grass-like slowdown (global ray or heavy grass sample fallback).</summary>
     private bool _hpDeathGrassEffectActive;
@@ -973,6 +980,9 @@ public class CarController : MonoBehaviour
     private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
     private bool _driftWasActiveLastFrame;
+    /// <summary>Banked hold time when release was blocked (crash lockout / post-crash) — retry until applied or cleared.</summary>
+    private float _pendingDriftHeldBoostSeconds;
+    private bool _hasPendingDriftHeldBoost;
 
     // Overrides for *next* boost activation (drift-held boost)
     private bool _boostOverrideActive;
@@ -1097,6 +1107,9 @@ public class CarController : MonoBehaviour
         _inCrash || _isReorienting || _flipMashActive;
 
     private bool _onBoostSurface;
+    /// <summary>True when the active boost surface is a Ramp (inclined). False for flat Boost pads.</summary>
+    private bool _onBoostRamp;
+    private bool _heldOnBoostRamp;
     private bool _wasOnBoostSurface;                 // for boost-pad popup edge detection
     private float _nextBoostPadPopupTime;            // re-trigger guard for boost-pad popup
     private const float BOOST_PAD_POPUP_COOLDOWN = 0.5f;
@@ -1107,6 +1120,13 @@ public class CarController : MonoBehaviour
     private float _heldBoostMaxSpeed;
     private bool _heldBoostDuringCrash;
     private float _heldBoostCrashMultiplier = 0.5f;
+    /// <summary>Last solid ramp drive normal while on a boost ramp (used when briefly ungrounded mid-climb).</summary>
+    private Vector3 _heldBoostDriveNormal = Vector3.up;
+    private bool _hasHeldBoostDriveNormal;
+    /// <summary>Used so ramp pad force can survive a 1–2 frame ground flicker without launching after lip exit.</summary>
+    private float _lastBoostRampGroundedTime = -999f;
+    /// <summary>Set during surface sampling when any hit is SurfaceType.Ramp.</summary>
+    private bool _sampledBoostIsRamp;
 
     private bool _wasAffectedByIce;                  // for ice-path popup edge detection
     private float _nextIcePathPopupTime;             // re-trigger guard for ice-path popup
@@ -1240,7 +1260,10 @@ public class CarController : MonoBehaviour
 
     private float _smoothedSurfaceMaxSpeed = -1f;
 
-    /// <summary>After mash recovery, ignore boost/surface speed for this long so we resume at run-start stats, not boosted.</summary>
+    /// <summary>
+    /// After any crash recovery (mash or upright), ignore boost-pad/ramp surface for this long so
+    /// we resume at road stats — not leftover pad accel / inflated smoothed max speed.
+    /// </summary>
     private float _postMashRecoveryIgnoreBoostUntil = 0f;
 
     // "Dead" for mash = no minigame if out of fuel OR out of HP
@@ -2094,8 +2117,12 @@ public class CarController : MonoBehaviour
 
         if (IsDrivingGameplayLockedByCrash)
         {
-            _boostRequested = false;
-            ClearBoostOverride();
+            // Don't wipe a queued drift-held boost during tumble/reorient — it retries after control returns.
+            if (!_overrideIsDriftBoost)
+            {
+                _boostRequested = false;
+                ClearBoostOverride();
+            }
         }
         else if (GetBoostDown() && Time.time >= _boostBlockedUntil && !isOutOfFuel && !isOutOfHP)
         {
@@ -2122,9 +2149,11 @@ public class CarController : MonoBehaviour
         bool brakeHeldNow = GetBrakeKeyOrTrigger();
         if (brakeHeldNow)
         {
-            // Kills active/queued boost + locks out boosts (your existing behavior).
-            // Do NOT wipe drift-held boost charge — braking while drifting should keep charging.
-            if (_boostRequested || _isBoosting || _isPostBoost || _boostOverrideActive)
+            // Kills button / pad-style boost. Drift-held boost is earned on release and must not
+            // be cancelled by LT/S feathering (common in air while still on throttle).
+            bool driftBoostArmedOrActive = _overrideIsDriftBoost || _activeBoostIsDrift;
+            if (!driftBoostArmedOrActive
+                && (_boostRequested || _isBoosting || _isPostBoost || _boostOverrideActive))
                 CancelAllBoostState(0f);
         }
 
@@ -2318,9 +2347,10 @@ public class CarController : MonoBehaviour
                 _closeCallBoosting = false;
                 _currentBoostMaxSpeed = 0f;
                 _closeCallBoosting = false;
-                _landingExcessSpeed = 0f;
-                _landingBoostTimeLeft = 0f;
-                _landingBoostTargetMagnitude = 0f;
+
+                // Pad/ramp state + smoothed surface max are frozen while _inCrash (no SampleGround).
+                // Clear now so upright reorient / first throttle frame cannot stack stale pad force.
+                ClearPostCrashBoostAndSurfaceState();
 
                 if (IsDeadForAutoUpright)
                 {
@@ -2359,16 +2389,15 @@ public class CarController : MonoBehaviour
             return;
 
         SampleGroundAndUpdateMultipliers();
-        ApplyGrassToRoadTransitionSpeedPreserve();
         HandleBoostSurfacePopup();        // boost pad / ramp popup on entry
         RefreshSkillEffects();
         ApplySkillEffects();
         UpdateSteeringInputFixed();
-        // Sample normal before blending so this frame's drive/align uses fresh ramp contact.
+        // Sample + soft-blend once per FixedUpdate. HandleMovement must not re-sample
+        // (that desynced measured vs smoothed and fed curb lips into drive/orient).
         RefreshGroundNormalForDriving(carCollider != null && CheckIfGrounded());
         SmoothDrivingGroundNormal();
-        RemapVelocityOntoSteepeningGround(Time.fixedDeltaTime);
-        // Pitch onto the ramp before throttle/boost so forces aren't fighting a flat body.
+        AssistOntoDrivePlane();
         ApplyDrivingOrientation(Time.fixedDeltaTime);
         _airborneForTricks = CanUseAirborneControls();
         HandleSteering();
@@ -2390,8 +2419,9 @@ public class CarController : MonoBehaviour
         ApplyBoostSurfaceForce(false);    // Apply boost pad acceleration
         UpdateIcePhysicsTransitions();
         HandleIcePathPopup();             // ice path popup when ice handling kicks in
-        ApplyRoadGrassTransitionLift();
         ApplyGroundAwareSpeedCapClamp();
+        // After all velocity writes — restore planar speed lost on grass→road / lip contacts.
+        ApplyGrassToRoadTransitionSpeedPreserve();
 
         if (rb != null)
         {
@@ -2500,8 +2530,70 @@ public class CarController : MonoBehaviour
         _lastStableGroundNormal = groundUp;
 
         ArmCrashDrivingInputGates();
-        CancelAllBoostState(0.35f);
+        // Match pad-ignore + post-crash recovery so X / drift boost cannot fire in the gap.
+        CancelAllBoostState(PostCrashRecoverySeconds);
         _postCrashRecoveryUntil = Time.time + PostCrashRecoverySeconds;
+        ClearPostCrashBoostAndSurfaceState();
+
+        // Re-sample at road stats immediately so held throttle does not use stale pad caps.
+        SampleGroundAndUpdateMultipliers();
+        ApplySkillEffects();
+
+        SoftClampPlanarSpeedToRoadCapAfterCrash();
+    }
+
+    /// <summary>
+    /// Wipe every transient speed source that can survive a crash tumble:
+    /// boost pads/ramps, landing carry/boost, slope-assist residual, and smoothed surface max.
+    /// Button boost / drift boost / close-call are cleared via <see cref="CancelAllBoostState"/>.
+    /// </summary>
+    private void ClearPostCrashBoostAndSurfaceState(float ignoreBoostSeconds = -1f)
+    {
+        if (ignoreBoostSeconds < 0f)
+            ignoreBoostSeconds = PostCrashRecoverySeconds;
+
+        _postMashRecoveryIgnoreBoostUntil = Time.time + Mathf.Max(0f, ignoreBoostSeconds);
+
+        _onBoostSurface = false;
+        _onBoostRamp = false;
+        _hasHeldBoostDriveNormal = false;
+        _currentBoostAccel = 0f;
+        _currentBoostMaxSpeed = 0f;
+        _currentBoostDuringCrash = false;
+        _currentBoostCrashMultiplier = 0.5f;
+        _boostSurfaceHoldUntil = 0f;
+        _heldBoostAccel = 0f;
+        _heldBoostMaxSpeed = 0f;
+        _heldBoostDuringCrash = false;
+        _heldBoostCrashMultiplier = 0.5f;
+        _heldOnBoostRamp = false;
+        _wasOnBoostSurface = false;
+
+        _smoothedSurfaceMaxSpeed = -1f;
+        _slopeAssistSmoothed = 0f;
+
+        _landingExcessSpeed = 0f;
+        _landingBoostTimeLeft = 0f;
+        _landingBoostTargetMagnitude = 0f;
+        _takeoffHorizSpeed = 0f;
+    }
+
+    /// <summary>
+    /// Safety net: if anything injected planar speed between settle and first drive frame,
+    /// snap back to the non-boosted road cap (ignore window already forces road surface stats).
+    /// </summary>
+    private void SoftClampPlanarSpeedToRoadCapAfterCrash()
+    {
+        if (rb == null) return;
+
+        float cap = Mathf.Max(0.5f, effectiveMaxSpeed);
+        Vector3 v = rb.velocity;
+        Vector3 planar = Vector3.ProjectOnPlane(v, Vector3.up);
+        float speed = planar.magnitude;
+        if (speed <= cap + 0.05f) return;
+
+        planar *= cap / speed;
+        rb.velocity = new Vector3(planar.x, v.y, planar.z);
     }
 
     private Vector3 SampleGroundUpForReorient()
@@ -2614,6 +2706,17 @@ public class CarController : MonoBehaviour
         if (!_onBoostSurface) return;
         if (rb == null) return;
 
+        // Upright / post-crash ignore: never apply leftover pad force while the player can't steer it.
+        if (_isReorienting) return;
+        if (IsPostCrashRecoveryDriving) return;
+        if (_postMashRecoveryIgnoreBoostUntil > 0f && Time.time < _postMashRecoveryIgnoreBoostUntil)
+            return;
+
+        // Brake/reverse must win — pad accel used to keep shoving while the player tried to decelerate
+        // (especially right after crash recovery onto/near a pad).
+        if (!duringCrashOrRecovery && GetBrakeKeyOrTrigger())
+            return;
+
         // Check if boost works during crash/recovery
         if (duringCrashOrRecovery && !_currentBoostDuringCrash) return;
 
@@ -2635,23 +2738,73 @@ public class CarController : MonoBehaviour
             ? _currentBoostMaxSpeed
             : Mathf.Max(effectiveMaxSpeed, currentMaxSpeed);
 
-        // Apply acceleration along ground tangent when grounded (matches HandleMovement on ramps/hills).
         Vector3 forwardDir = transform.forward;
         Vector3 groundN = Vector3.up;
         bool groundedNow = carCollider != null && CheckIfGrounded();
-        if (groundedNow)
+
+        if (_onBoostRamp)
         {
-            // Prefer the smoothed driving normal (already refreshed this frame) so pad push
-            // matches throttle; fall back to a fresh cast if needed.
-            if (_lastStableGroundNormal.sqrMagnitude > 1e-8f)
-                groundN = _lastStableGroundNormal.normalized;
-            else
+            if (groundedNow)
+                _lastBoostRampGroundedTime = Time.time;
+
+            // Only push while planted (or a tiny mid-climb contact flicker). Surface-hold after
+            // leaving the lip must NOT keep canceling gravity / shoving uphill — that was the
+            // oversized launch. Cap hold still uses BoostSurfaceHoldSeconds separately.
+            const float rampForceGroundGrace = 0.06f;
+            bool rampForceActive = groundedNow
+                || (Time.time - _lastBoostRampGroundedTime) <= rampForceGroundGrace;
+            if (!rampForceActive)
+                return;
+
+            if (groundedNow && _lastStableGroundNormal.sqrMagnitude > 1e-8f)
             {
-                Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
-                if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
-                    groundN = hit.normal;
+                groundN = _lastStableGroundNormal.normalized;
+                if (groundN.y < FlatBoostNormalMinY)
+                {
+                    _heldBoostDriveNormal = groundN;
+                    _hasHeldBoostDriveNormal = true;
+                }
+            }
+            else if (_hasHeldBoostDriveNormal)
+            {
+                groundN = _heldBoostDriveNormal.normalized;
+            }
+            else if (_lastStableGroundNormal.sqrMagnitude > 1e-8f)
+            {
+                groundN = _lastStableGroundNormal.normalized;
             }
 
+            forwardDir = Vector3.ProjectOnPlane(transform.forward, groundN);
+            Vector3 downAlong = Vector3.ProjectOnPlane(Physics.gravity, groundN);
+            Vector3 uphill = downAlong.sqrMagnitude > 1e-8f ? -downAlong.normalized : Vector3.zero;
+
+            if (forwardDir.sqrMagnitude < 1e-8f)
+            {
+                forwardDir = uphill.sqrMagnitude > 1e-8f ? uphill : transform.forward;
+            }
+            else
+            {
+                forwardDir.Normalize();
+                // Light uphill bias only — heavy blend + air push was launching off the lip.
+                if (uphill.sqrMagnitude > 1e-8f && Vector3.Dot(forwardDir, uphill) < 0.15f)
+                    forwardDir = Vector3.Slerp(forwardDir, uphill, 0.35f).normalized;
+            }
+
+            // Gravity cancel / dig fold only while actually grounded (not the grace air frames).
+            if (groundedNow)
+            {
+                if (downAlong.sqrMagnitude > 1e-8f)
+                    rb.AddForce(-downAlong, ForceMode.Acceleration);
+
+                float into = Vector3.Dot(rb.velocity, groundN);
+                if (into < -0.35f)
+                    rb.velocity -= groundN * into;
+            }
+        }
+        else if (groundedNow)
+        {
+            // Flat boost pad: keep push in the horizontal plane.
+            groundN = Vector3.up;
             forwardDir = Vector3.ProjectOnPlane(transform.forward, groundN);
             if (forwardDir.sqrMagnitude < 1e-8f)
             {
@@ -2659,21 +2812,6 @@ public class CarController : MonoBehaviour
                 forwardDir.y = 0f;
             }
             forwardDir.Normalize();
-
-            // If the nose is still catching up, bias pad push toward travel-along-ramp so we
-            // don't keep shoving horizontally into the face of the incline.
-            Vector3 velTan = Vector3.ProjectOnPlane(rb.velocity, groundN);
-            if (velTan.sqrMagnitude > 1f)
-            {
-                Vector3 climbDir = velTan.normalized;
-                if (Vector3.Dot(forwardDir, climbDir) > 0.15f)
-                    forwardDir = Vector3.Slerp(forwardDir, climbDir, 0.45f).normalized;
-            }
-
-            // Arcade boost pads/ramps: cancel slope gravity so incline can't eat pad momentum.
-            Vector3 gAlong = Vector3.ProjectOnPlane(Physics.gravity, groundN);
-            if (gAlong.sqrMagnitude > 1e-8f)
-                rb.AddForce(-gAlong, ForceMode.Acceleration);
         }
         else
         {
@@ -2681,15 +2819,26 @@ public class CarController : MonoBehaviour
             forwardDir.Normalize();
         }
 
-        // Taper near the real hard cap, but keep meaningful push so climbs don't stall.
+        // Taper near the real hard cap. Ramps keep a gentler taper so climbs don't stall,
+        // without inflating the cap (that stacked exit speed into huge air time).
         float forceMult = 1f;
         if (hardCap > 0.01f)
         {
             float speedRatio = Mathf.Clamp01(currentSpeed / hardCap);
-            if (speedRatio > 0.55f)
-                forceMult = Mathf.Lerp(1f, 0.35f, Mathf.Pow(Mathf.InverseLerp(0.55f, 1f, speedRatio), 2f));
-            if (currentSpeed >= hardCap * 1.02f)
-                forceMult = 0f;
+            if (_onBoostRamp)
+            {
+                if (speedRatio > 0.7f)
+                    forceMult = Mathf.Lerp(1f, 0.4f, Mathf.Pow(Mathf.InverseLerp(0.7f, 1f, speedRatio), 2f));
+                if (currentSpeed >= hardCap * 1.05f)
+                    forceMult = 0f;
+            }
+            else
+            {
+                if (speedRatio > 0.55f)
+                    forceMult = Mathf.Lerp(1f, 0.35f, Mathf.Pow(Mathf.InverseLerp(0.55f, 1f, speedRatio), 2f));
+                if (currentSpeed >= hardCap * 1.02f)
+                    forceMult = 0f;
+            }
         }
 
         if (forceMult > 1e-4f)
@@ -2892,10 +3041,34 @@ public class CarController : MonoBehaviour
     private void HandleBoost()
     {
 
-        if (IsDrivingGameplayLockedByCrash || IsCrashInvulnerable || Time.time < _boostBlockedUntil)
+        if (IsDrivingGameplayLockedByCrash || IsCrashInvulnerable || IsPostCrashRecoveryDriving
+            || Time.time < _boostBlockedUntil)
         {
+            // Keep a queued drift-held boost armed through brief lockouts; retry next FixedUpdate.
+            if (_overrideIsDriftBoost || _activeBoostIsDrift)
+            {
+                if ((_isBoosting || _isPostBoost) && !_activeBoostIsDrift && !_overrideIsDriftBoost)
+                    CancelAllBoostState(0f);
+                return;
+            }
+
             _boostRequested = false;
             ClearBoostOverride();
+            // Kill any leftover sustain immediately — crash can clear flags, but never leave
+            // a mid-boost frame applying impulse/sustain after recovery.
+            if (_isBoosting || _isPostBoost || _boostOverrideActive)
+                CancelAllBoostState(0f);
+            return;
+        }
+
+        // Decelerating: cancel button boost sustain so brake isn't fighting a rocket.
+        // Drift-held boost is earned on release — do not cancel it with brake/LT.
+        if (GetBrakeKeyOrTrigger()
+            && !_overrideIsDriftBoost
+            && !_activeBoostIsDrift
+            && (_isBoosting || _boostRequested || _boostOverrideActive || _isPostBoost))
+        {
+            CancelAllBoostState(0f);
             return;
         }
 
@@ -2912,7 +3085,7 @@ public class CarController : MonoBehaviour
                 _driftBoostCooldownTimer = 0f;
             // Cooldown just ended: wipe any hold built while waiting so charge starts at 0.
             if (prevDriftCd > 0f && _driftBoostCooldownTimer <= 0f)
-                ResetDriftHeldTimer();
+                ClearDriftHeldBoostCharge();
         }
 
         // Active boost sustain
@@ -3139,7 +3312,11 @@ public class CarController : MonoBehaviour
 
         // Boost pads / ramps: raise the clamp to the pad limit (if set) and never cut below
         // current travel speed on the surface. High entry speed used to get slammed to the lagging road cap.
-        if (_onBoostSurface)
+        // Skip during post-crash ignore — a leftover high planar/tangent reading must not re-inflate the cap.
+        bool ignoreBoostSurfaceCap =
+            IsPostCrashRecoveryDriving
+            || (_postMashRecoveryIgnoreBoostUntil > 0f && Time.time < _postMashRecoveryIgnoreBoostUntil);
+        if (_onBoostSurface && !ignoreBoostSurfaceCap)
         {
             float padCap = _currentBoostMaxSpeed > 0f ? _currentBoostMaxSpeed : 0f;
             result = Mathf.Max(result, normalCap, padCap);
@@ -3272,6 +3449,7 @@ public class CarController : MonoBehaviour
         void ClearBoostIceDefaults()
         {
             _onBoostSurface = false;
+            _onBoostRamp = false;
             _currentBoostAccel = 0f;
             _currentBoostMaxSpeed = 0f;
             _currentBoostDuringCrash = false;
@@ -3318,6 +3496,7 @@ public class CarController : MonoBehaviour
                 if (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp)
                 {
                     _onBoostSurface = true;
+                    _onBoostRamp = surface.surfaceType == SurfaceType.Ramp;
                     _currentBoostAccel = surface.boostAcceleration;
                     _currentBoostMaxSpeed = surface.boostMaxSpeed;
                     _currentBoostDuringCrash = surface.boostDuringCrash;
@@ -3698,12 +3877,12 @@ public class CarController : MonoBehaviour
             {
                 if (_inCrash || isOutOfHP || isOutOfFuel)
                 {
-                    ResetDriftHeldTimer();
+                    ClearDriftHeldBoostCharge();
                 }
                 else if (_driftBoostCooldownTimer > 0f)
                 {
                     // On cooldown: never bank hold time — bar must rebuild from 0 after CD ends.
-                    ResetDriftHeldTimer();
+                    ClearDriftHeldBoostCharge();
                 }
                 else
                 {
@@ -3724,14 +3903,17 @@ public class CarController : MonoBehaviour
                         _driftHoldTimeSeconds += Time.deltaTime;
                     }
 
-                    // Trigger boost ONLY on drift key release (still blocked while brake held in TryTrigger).
+                    // Trigger boost ONLY on drift key release. Also retry a banked pending boost.
                     if (!driftButtonHeld && prevDriftKeyHeld)
                     {
                         TryTriggerDriftHeldBoost();
-                        ResetDriftHeldTimer();
+                    }
+                    else if (_hasPendingDriftHeldBoost && !driftButtonHeld)
+                    {
+                        TryTriggerDriftHeldBoost();
                     }
 
-                    // Hard reset if not holding drift at all
+                    // Hard reset direction tracker if not holding drift at all
                     if (!driftButtonHeld)
                     {
                         _driftHoldDirectionSign = 0;
@@ -3859,26 +4041,60 @@ public class CarController : MonoBehaviour
 
     private void TryTriggerDriftHeldBoost()
     {
-        if (_inCrash || _isReorienting || IsPostCrashRecoveryDriving) return;
-        if (Time.time < _boostBlockedUntil) return;
         if (!enableDriftHeldBoost) return;
-        // Still cooling down — discard any hold so a later release cannot use pre-CD charge.
+
+        float held = Mathf.Max(_driftHoldTimeSeconds, _pendingDriftHeldBoostSeconds);
+
+        // Crash wiped charge — require a fresh drift press before release can boost.
+        if (_crashKilledDriftHeldBoost)
+        {
+            ClearDriftHeldBoostCharge();
+            return;
+        }
+
+        // Still cooling down — discard so a later release cannot use pre-CD charge.
         if (_driftBoostCooldownTimer > 0f)
         {
+            ClearDriftHeldBoostCharge();
+            return;
+        }
+
+        if (isOutOfHP || isOutOfFuel)
+        {
+            ClearDriftHeldBoostCharge();
+            return;
+        }
+
+        // Temporary lockouts: bank earned charge and retry when control returns.
+        // Do NOT treat brake/LT as a deny — release must reward a filled meter.
+        if (_inCrash || _isReorienting || IsPostCrashRecoveryDriving || Time.time < _boostBlockedUntil)
+        {
+            if (held >= driftBoostMinHoldSeconds)
+            {
+                _pendingDriftHeldBoostSeconds = held;
+                _hasPendingDriftHeldBoost = true;
+            }
             ResetDriftHeldTimer();
             return;
         }
 
-        bool brakeHeld = GetBrakeKeyOrTrigger();
-        if (brakeHeld) return;
-        if (isOutOfHP || isOutOfFuel) return;
-        if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame) return;
+        if (_inputsSuppressedThisFrame || _suppressThrottleBrakeThisFrame)
+        {
+            if (held >= driftBoostMinHoldSeconds)
+            {
+                _pendingDriftHeldBoostSeconds = held;
+                _hasPendingDriftHeldBoost = true;
+            }
+            ResetDriftHeldTimer();
+            return;
+        }
 
-        float held = _driftHoldTimeSeconds;
         ResetDriftHeldTimer();
 
         if (held < driftBoostMinHoldSeconds)
         {
+            _pendingDriftHeldBoostSeconds = 0f;
+            _hasPendingDriftHeldBoost = false;
             Debug.Log($"[CarController] Drift-held boost: held {held:F2}s < min {driftBoostMinHoldSeconds:F2}s -> NO BOOST");
             return; // below minimum threshold
         }
@@ -3900,6 +4116,8 @@ public class CarController : MonoBehaviour
         {
             // Skill exists and is locked -> do not trigger drift-held boost
             Debug.Log("[CarController] Drift-held boost aborted: skill locked.");
+            _pendingDriftHeldBoostSeconds = 0f;
+            _hasPendingDriftHeldBoost = false;
             return;
         }
 
@@ -3909,6 +4127,9 @@ public class CarController : MonoBehaviour
             duration = mgr.GetDriftHeldBoostDurationScaled(duration);
             maxMult = mgr.GetDriftHeldBoostMaxSpeedMultScaled(maxMult);
         }
+
+        _pendingDriftHeldBoostSeconds = 0f;
+        _hasPendingDriftHeldBoost = false;
 
         _boostOverrideActive = true;
         _overrideIsDriftBoost = true;
@@ -3925,6 +4146,13 @@ public class CarController : MonoBehaviour
     {
         _driftHoldTimeSeconds = 0f;
         _driftHoldDirectionSign = 0;
+    }
+
+    private void ClearDriftHeldBoostCharge()
+    {
+        ResetDriftHeldTimer();
+        _pendingDriftHeldBoostSeconds = 0f;
+        _hasPendingDriftHeldBoost = false;
     }
 
     /// <summary>
@@ -3944,7 +4172,7 @@ public class CarController : MonoBehaviour
         driftPeakSpeed = 0f;
         _driftGroundFeel01 = 1f;
         _driftSideForceThrottle01 = 1f;
-        ResetDriftHeldTimer();
+        ClearDriftHeldBoostCharge();
     }
 
     /// <summary>
@@ -4097,6 +4325,8 @@ public class CarController : MonoBehaviour
         _currentBoostMaxSpeed = 0f;
 
         CancelAllBoostState(crashDuration + reorientDuration + 0.1f);
+        // Pads / landing carry / smoothed max speed — same wipe mash recovery always did.
+        ClearPostCrashBoostAndSurfaceState(0f);
         _crashKilledDriftHeldBoost = true;
         // NEW: also prevent drift-held boost from “arming” during crash sequences
         ClearDriftStateForCrashOrReorient();
@@ -4995,7 +5225,6 @@ public class CarController : MonoBehaviour
 
         // Grounded check early so we can use it anywhere in this method.
         bool groundedNow = CheckIfGrounded();
-        RefreshGroundNormalForDriving(groundedNow);
 
         // Trick stick still blocks brake/reverse in air (barrel-roll modifier). Thrust stays on the
         // ballistic heading (see GetAirborneThrustDirection) so flips do not redirect flight.
@@ -5160,10 +5389,19 @@ public class CarController : MonoBehaviour
         }
 
         float assistDt = Time.fixedDeltaTime;
-        float assistStep = assistTarget > _slopeAssistSmoothed
-            ? slopeDriveAssistRiseSpeed * assistDt
-            : slopeDriveAssistFallSpeed * assistDt;
-        _slopeAssistSmoothed = Mathf.MoveTowards(_slopeAssistSmoothed, assistTarget, assistStep);
+        // While braking or in post-crash recovery, kill residual assist immediately — it was a
+        // forward shove even when the player was trying to decelerate.
+        if (reverseKey || IsPostCrashRecoveryDriving)
+        {
+            _slopeAssistSmoothed = 0f;
+        }
+        else
+        {
+            float assistStep = assistTarget > _slopeAssistSmoothed
+                ? slopeDriveAssistRiseSpeed * assistDt
+                : slopeDriveAssistFallSpeed * assistDt;
+            _slopeAssistSmoothed = Mathf.MoveTowards(_slopeAssistSmoothed, assistTarget, assistStep);
+        }
         if (_slopeAssistSmoothed > 1e-4f)
             rb.AddForce(assistDir * (_slopeAssistSmoothed * _currentMalfunctionMultiplier), ForceMode.Acceleration);
 
@@ -5405,11 +5643,13 @@ public class CarController : MonoBehaviour
     {
         if (carCollider == null) return;
 
-        // After mash recovery, force default (non-boost) surface so we don't keep boosted speed/accel from before crash.
+        // After crash recovery, force default (non-boost) surface so we don't keep boosted speed/accel from before crash.
         if (_postMashRecoveryIgnoreBoostUntil > 0f && Time.time < _postMashRecoveryIgnoreBoostUntil)
         {
             ApplySurfaceMultipliers(1f, 1f, 1f, 1f);
             _onBoostSurface = false;
+            _onBoostRamp = false;
+            _hasHeldBoostDriveNormal = false;
             _currentBoostAccel = 0f;
             _currentBoostMaxSpeed = 0f;
             _currentBoostDuringCrash = false;
@@ -5459,6 +5699,7 @@ public class CarController : MonoBehaviour
         float bestBoostMaxSpeedMul = 1f;
         bool boostDuringCrash = false;
         float boostCrashMult = 0.5f;
+        _sampledBoostIsRamp = false;
 
         // NEW: Ice tracking
         int iceSamples = 0;
@@ -5549,6 +5790,7 @@ public class CarController : MonoBehaviour
         }
 
         _onBoostSurface = false;
+        _onBoostRamp = false;
         _currentBoostAccel = 0f;
         _currentBoostMaxSpeed = 0f;
         _currentBoostDuringCrash = false;
@@ -5608,6 +5850,7 @@ public class CarController : MonoBehaviour
         if (anyBoostRamp)
         {
             _onBoostSurface = true;
+            _onBoostRamp = _sampledBoostIsRamp;
             _currentBoostAccel = bestBoostAccel;
             _currentBoostMaxSpeed = bestBoostMaxSpeed;
             _currentBoostDuringCrash = boostDuringCrash;
@@ -5616,6 +5859,7 @@ public class CarController : MonoBehaviour
             _heldBoostMaxSpeed = bestBoostMaxSpeed;
             _heldBoostDuringCrash = boostDuringCrash;
             _heldBoostCrashMultiplier = boostCrashMult;
+            _heldOnBoostRamp = _onBoostRamp;
             _boostSurfaceHoldUntil = Time.time + BoostSurfaceHoldSeconds;
         }
         else
@@ -5627,16 +5871,23 @@ public class CarController : MonoBehaviour
                 _heldBoostMaxSpeed = _currentBoostMaxSpeed;
                 _heldBoostDuringCrash = _currentBoostDuringCrash;
                 _heldBoostCrashMultiplier = _currentBoostCrashMultiplier;
+                _heldOnBoostRamp = _onBoostRamp;
                 _boostSurfaceHoldUntil = Time.time + BoostSurfaceHoldSeconds;
             }
             else if (Time.time < _boostSurfaceHoldUntil)
             {
                 // Edge flicker on steep ramps: keep pad force + raised speed cap for a beat.
                 _onBoostSurface = true;
+                _onBoostRamp = _heldOnBoostRamp;
                 _currentBoostAccel = _heldBoostAccel;
                 _currentBoostMaxSpeed = _heldBoostMaxSpeed;
                 _currentBoostDuringCrash = _heldBoostDuringCrash;
                 _currentBoostCrashMultiplier = _heldBoostCrashMultiplier;
+            }
+            else
+            {
+                _hasHeldBoostDriveNormal = false;
+                _onBoostRamp = false;
             }
         }
     }
@@ -5654,6 +5905,7 @@ public class CarController : MonoBehaviour
             if (surface != null && (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp))
             {
                 _onBoostSurface = true;
+                _onBoostRamp = surface.surfaceType == SurfaceType.Ramp;
                 _currentBoostAccel = surface.boostAcceleration;
                 _currentBoostMaxSpeed = surface.boostMaxSpeed;
                 _currentBoostDuringCrash = surface.boostDuringCrash;
@@ -5664,16 +5916,118 @@ public class CarController : MonoBehaviour
 
     private bool TryGetGroundNormal(Vector3 origin, float distance, out RaycastHit hit)
     {
-        // SphereCast is much more stable than a single ray on ramps/edges.
-        return Physics.SphereCast(
+        // SphereCastAll: ignore flat boost-pad triggers. Prefer the highest mountable deck
+        // (raised road / ramp top) — steep-prefer scoring chased curb lips and killed speed.
+        hit = default;
+        float radius = Mathf.Max(0.01f, groundNormalCastRadius);
+        float castDist = Mathf.Max(0.01f, distance);
+        int count = Physics.SphereCastNonAlloc(
             origin,
-            Mathf.Max(0.01f, groundNormalCastRadius),
+            radius,
             Vector3.down,
-            out hit,
-            Mathf.Max(0.01f, distance),
+            _groundNormalHitBuffer,
+            castDist,
             groundLayers,
-            QueryTriggerInteraction.Collide
-        );
+            QueryTriggerInteraction.Collide);
+
+        if (count <= 0)
+            return false;
+
+        int fallbackIdx = -1;
+        float fallbackDist = float.MaxValue;
+        float closestValidDist = float.MaxValue;
+
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit candidate = _groundNormalHitBuffer[i];
+            if (candidate.collider == null) continue;
+
+            float d = candidate.distance;
+            if (d < fallbackDist)
+            {
+                fallbackDist = d;
+                fallbackIdx = i;
+            }
+
+            if (IsFlatBoostPadHit(candidate))
+                continue;
+
+            if (d < closestValidDist)
+                closestValidDist = d;
+        }
+
+        int bestIdx = -1;
+        float bestHeight = float.MinValue;
+        float bestFlatness = -1f;
+        bool bestIsRamp = false;
+        float bestDist = float.MaxValue;
+        const float nearBand = 0.45f;
+
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit candidate = _groundNormalHitBuffer[i];
+            if (candidate.collider == null) continue;
+            if (IsFlatBoostPadHit(candidate)) continue;
+            if (candidate.distance > closestValidDist + nearBand) continue;
+
+            bool isRamp = IsRampSurfaceHit(candidate);
+            float height = candidate.point.y;
+            float flatness = candidate.normal.y;
+            float d = candidate.distance;
+
+            bool better = false;
+            if (bestIdx < 0)
+                better = true;
+            else if (height > bestHeight + GroundNormalHeightTieBand)
+                better = true;
+            else if (height >= bestHeight - GroundNormalHeightTieBand)
+            {
+                if (isRamp && !bestIsRamp)
+                    better = true;
+                else if (isRamp == bestIsRamp && flatness > bestFlatness + 0.02f)
+                    better = true;
+                else if (isRamp == bestIsRamp && flatness >= bestFlatness - 0.02f && d < bestDist)
+                    better = true;
+            }
+
+            if (!better) continue;
+            bestIdx = i;
+            bestHeight = height;
+            bestFlatness = flatness;
+            bestIsRamp = isRamp;
+            bestDist = d;
+        }
+
+        int useIdx = bestIdx >= 0 ? bestIdx : fallbackIdx;
+        if (useIdx < 0)
+            return false;
+
+        hit = _groundNormalHitBuffer[useIdx];
+        if (bestIdx < 0 && IsFlatBoostPadHit(hit))
+            hit.normal = Vector3.up;
+        return true;
+    }
+
+    private static bool IsRampSurfaceHit(RaycastHit hit)
+    {
+        if (hit.collider == null) return false;
+        GroundSurface surface = hit.collider.GetComponent<GroundSurface>()
+                             ?? hit.collider.GetComponentInParent<GroundSurface>();
+        return surface != null && surface.surfaceType == SurfaceType.Ramp;
+    }
+
+    /// <summary>
+    /// Flat boost pads are trigger meshes; their edge normals are unreliable for driving.
+    /// Real boost ramps are solid MeshColliders with SurfaceType.Ramp — keep those.
+    /// </summary>
+    private static bool IsFlatBoostPadHit(RaycastHit hit)
+    {
+        if (hit.collider == null) return false;
+        GroundSurface surface = hit.collider.GetComponent<GroundSurface>()
+                             ?? hit.collider.GetComponentInParent<GroundSurface>();
+        if (surface == null || surface.surfaceType != SurfaceType.Boost)
+            return false;
+        return hit.collider.isTrigger || hit.normal.y >= FlatBoostNormalMinY;
     }
 
     private bool IsMixedGrassRoadSurface()
@@ -5725,7 +6079,8 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// One-shot planar speed restore when leaving grass for road — no position or velocity-Y changes.
+    /// Restore planar speed lost when mounting road from grass / hitting lips.
+    /// Runs at end of FixedUpdate after movement, boost, and clamps.
     /// </summary>
     private void ApplyGrassToRoadTransitionSpeedPreserve()
     {
@@ -5735,19 +6090,21 @@ public class CarController : MonoBehaviour
         float prev = _grassFractionPrevFrame;
         if (prev < 0f) return;
 
-        bool enteringRoad = prev >= 0.42f && g <= 0.38f;
-        if (!enteringRoad) return;
-
-        float now = Time.time;
-        if (now - _lastGrassToRoadSpeedPreserveTime < roadGrassTransitionLiftCooldown) return;
-
         float referenceSpeed = _planarSpeedLastFixedUpdate;
         if (referenceSpeed < roadGrassTransitionMinSpeed) return;
 
         Vector3 v = rb.velocity;
         Vector3 horiz = new Vector3(v.x, 0f, v.z);
         float currentSpeed = horiz.magnitude;
-        if (currentSpeed >= referenceSpeed * 0.85f) return;
+        if (currentSpeed >= referenceSpeed * 0.88f) return;
+
+        // Trigger when leaving grass for road, or when still mixed but planar speed just dumped.
+        bool enteringRoad = prev >= 0.42f && g <= 0.38f;
+        bool mixedSpeedDump = IsMixedGrassRoadSurface() && currentSpeed < referenceSpeed * 0.7f;
+        if (!enteringRoad && !mixedSpeedDump) return;
+
+        float now = Time.time;
+        if (now - _lastGrassToRoadSpeedPreserveTime < roadGrassTransitionLiftCooldown) return;
 
         if (currentSpeed > 0.05f)
             horiz = horiz.normalized * referenceSpeed;
@@ -5764,8 +6121,7 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Updates <see cref="_lastStableGroundNormal"/> before movement forces so throttle/brake use the same frame's surface.
-    /// (Ramp alignment still runs later for rotation smoothing.)
+    /// Updates measured ground normal before soft blend. Rejects curb-lip normals while mixed grass/road.
     /// </summary>
     private void RefreshGroundNormalForDriving(bool groundedNow)
     {
@@ -5773,16 +6129,15 @@ public class CarController : MonoBehaviour
         Vector3 castOrigin = carCollider.bounds.center + Vector3.up * 0.25f;
         if (TryGetGroundNormal(castOrigin, groundNormalCheckDistance, out RaycastHit hit))
         {
-            // Lip filter is for grass/road chatter only — don't reject steep boost/ramp contacts.
-            if (!_onBoostSurface && IsMixedGrassRoadSurface() && hit.normal.y < MixedSurfaceLipNormalMinY)
+            // Mixed grass/road: ignore steep curb faces — keep previous measured normal.
+            if (!_onBoostRamp && IsMixedGrassRoadSurface() && hit.normal.y < MixedSurfaceLipNormalMinY)
                 return;
             _groundNormalMeasured = hit.normal;
         }
     }
 
     /// <summary>
-    /// Blends <see cref="_lastStableGroundNormal"/> toward the raycast normal so grass/road lip hits do not snap
-    /// tangent projections and speed caps frame-to-frame. Steep / boost contacts blend faster so climb doesn't lag.
+    /// Soft blend toward measured normal. No steep/boost snap rates — those chased lips and twisted the car.
     /// </summary>
     private void SmoothDrivingGroundNormal()
     {
@@ -5795,20 +6150,14 @@ public class CarController : MonoBehaviour
 
         float dt = Time.fixedDeltaTime;
         float rate = groundNormalBlendRate;
-        float g = grassFraction;
-        if (g > groundNormalMixedGrassMin && g < groundNormalMixedGrassMax)
+        if (IsMixedGrassRoadSurface())
             rate *= groundNormalMixedSurfaceBlendScale;
+        else if (_onBoostRamp)
+            rate = Mathf.Max(rate, groundNormalBlendRate * 1.2f);
 
         Vector3 measured = _groundNormalMeasured.sqrMagnitude > 1e-8f
             ? _groundNormalMeasured.normalized
             : Vector3.up;
-        float dot = Vector3.Dot(_prevSmoothedGroundNormal, measured);
-        // Fast catch-up for real elevation / pads — not every grass-road lip twitch.
-        bool steepContact = measured.y < 0.92f || _prevSmoothedGroundNormal.y - measured.y > 0.04f;
-        if (steepContact && dot < steepGroundNormalDotThreshold)
-            rate = Mathf.Max(rate, steepGroundNormalBlendRate);
-        if (_onBoostSurface)
-            rate = Mathf.Max(rate, boostSurfaceNormalBlendRate);
 
         float t = Mathf.Clamp01(rate * dt);
         _lastStableGroundNormal = Vector3.Slerp(_lastStableGroundNormal, measured, t);
@@ -5819,78 +6168,30 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// When the surface steepens under the car, fold planar speed onto the new tangent so momentum
-    /// becomes climb speed instead of digging into the ramp face until pitch catches up.
+    /// Soft help mounting raised road / ramps without rewriting travel onto curb lips.
+    /// Cancels hard into-face dig only — does not remap full speed onto a new tangent.
     /// </summary>
-    private void RemapVelocityOntoSteepeningGround(float dt)
+    private void AssistOntoDrivePlane()
     {
-        if (rb == null || rampVelocityRemapStrength <= 1e-4f) return;
-        if (!CheckIfGrounded()) return;
+        if (rb == null) return;
         if (isDrifting || _driftGlideActive) return;
+        if (_onBoostSurface && !_onBoostRamp) return;
+        // Grass/road lips: leave PhysX alone — remapping here dumped speed and pitched the car.
+        if (IsMixedGrassRoadSurface()) return;
+        if (!CheckIfGrounded()) return;
 
-        Vector3 oldN = _prevSmoothedGroundNormal.sqrMagnitude > 1e-8f
-            ? _prevSmoothedGroundNormal.normalized
-            : Vector3.up;
-        Vector3 newN = _lastStableGroundNormal.sqrMagnitude > 1e-8f
+        Vector3 n = _lastStableGroundNormal.sqrMagnitude > 1e-8f
             ? _lastStableGroundNormal.normalized
             : Vector3.up;
 
-        // Only when getting steeper (normal tilts away from world up).
-        if (newN.y >= oldN.y - 0.0005f) return;
-
-        float deltaDeg = Vector3.Angle(oldN, newN);
-        if (deltaDeg < rampVelocityRemapMinAngle) return;
+        if (n.y >= MountAssistMaxNormalY) return;
 
         Vector3 v = rb.velocity;
-        float speed = v.magnitude;
-        if (speed < 1f) return;
-
-        Vector3 vTan = Vector3.ProjectOnPlane(v, newN);
-        if (vTan.sqrMagnitude < 1e-6f) return;
-
-        // Prefer remapping along the climb direction of current travel, not opposite the nose.
-        Vector3 remapped = vTan.normalized * speed;
-        Vector3 noseTan = Vector3.ProjectOnPlane(transform.forward, newN);
-        if (noseTan.sqrMagnitude > 1e-6f && Vector3.Dot(remapped, noseTan) < 0f)
-            return;
-
-        float angleT = Mathf.InverseLerp(rampVelocityRemapMinAngle, 28f, deltaDeg);
-        float blend = Mathf.Clamp01(rampVelocityRemapStrength * Mathf.SmoothStep(0f, 1f, angleT));
-        if (_onBoostSurface)
-            blend = Mathf.Max(blend, Mathf.Clamp01(rampVelocityRemapStrength * 0.85f));
-
-        // dt-scale lightly so very high fixed rates don't over-apply; still effective at 50Hz.
-        blend = 1f - Mathf.Pow(1f - blend, Mathf.Clamp(dt * 50f, 0.5f, 2f));
-        rb.velocity = Vector3.Lerp(v, remapped, blend);
-    }
-
-    /// <summary>
-    /// Tiny upward nudge when grass sampling crosses between mostly-road and mostly-grass (replaces old forward accel assist).
-    /// </summary>
-    private void ApplyRoadGrassTransitionLift()
-    {
-        if (roadGrassTransitionLiftSpeed <= 0f || rb == null) return;
-        if (_onIceSurface) return;
-        if (isDrifting || _driftGlideActive) return;
-        if (!CheckIfGrounded()) return;
-
-        float g = grassFraction;
-        float prev = _grassFractionPrevFrame;
-        if (prev < 0f) return;
-
-        bool crossedMid =
-            (prev < 0.5f && g >= 0.5f) ||
-            (prev > 0.5f && g < 0.5f);
-        if (!crossedMid) return;
-
-        float now = Time.time;
-        if (now - _lastRoadGrassTransitionLiftTime < roadGrassTransitionLiftCooldown) return;
-
-        Vector3 flatV = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
-        if (flatV.magnitude < roadGrassTransitionMinSpeed) return;
-
-        rb.AddForce(Vector3.up * roadGrassTransitionLiftSpeed, ForceMode.VelocityChange);
-        _lastRoadGrassTransitionLiftTime = now;
+        float into = Vector3.Dot(v, n);
+        // Digging into the plane — cancel into-face only (no full-speed remormalize).
+        float digThreshold = _onBoostRamp ? -0.4f : -0.55f;
+        if (into < digThreshold)
+            rb.velocity = v - n * into;
     }
 
     /// <summary>World forward projected onto the ground plane when grounded; full <paramref name="worldForward"/> in air.</summary>
@@ -6167,14 +6468,20 @@ public class CarController : MonoBehaviour
         if (groundedNow)
         {
             if (!enableRampAlignment) return;
-            // Ramp align must always run on the ground. Trick-stick suppression is air-only —
-            // (left-stick tricks previously set _trickStickActive while steering and froze pitch on ramps).
 
-            Vector3 groundUp = ResolveGroundUp(castOrigin, groundNormalCheckDistance, out _);
+            Vector3 groundUp = _lastStableGroundNormal.sqrMagnitude > 1e-8f
+                ? _lastStableGroundNormal.normalized
+                : ResolveGroundUp(castOrigin, groundNormalCheckDistance, out _);
+
+            // While mounting road from grass, don't pitch into curb lips.
+            if (IsMixedGrassRoadSurface() && groundUp.y < MixedSurfaceLipNormalMinY)
+                groundUp = Vector3.up;
+
             float groundAlignRate = groundAlignSpeed;
             float tiltDeg = Vector3.Angle(groundUp, Vector3.up);
-            if (tiltDeg >= steepAlignMinAngle || _onBoostSurface)
+            if (tiltDeg >= steepAlignMinAngle)
                 groundAlignRate *= Mathf.Max(1f, steepAlignSpeedMultiplier);
+
             AlignToUpVectorPreserveYaw(groundUp, groundAlignRate, dt);
             return;
         }
@@ -6364,6 +6671,8 @@ public class CarController : MonoBehaviour
                 if (surface.surfaceType == SurfaceType.Boost || surface.surfaceType == SurfaceType.Ramp)
                 {
                     anyBoostRamp = true;
+                    if (surface.surfaceType == SurfaceType.Ramp)
+                        _sampledBoostIsRamp = true;
                     if (surface.boostAcceleration > bestBoostAccel) bestBoostAccel = surface.boostAcceleration;
                     if (surface.boostMaxSpeed > bestBoostMaxSpeed) bestBoostMaxSpeed = surface.boostMaxSpeed;
                     if (surface.maxSpeedMultiplier > bestBoostMaxSpeedMul) bestBoostMaxSpeedMul = surface.maxSpeedMultiplier;
@@ -7549,29 +7858,15 @@ public class CarController : MonoBehaviour
 
         _flipMashActive = false;
 
-        CancelAllBoostState(0.35f);   // small lockout prevents instant re-trigger
+        CancelAllBoostState(PostCrashRecoverySeconds);   // lockout covers full post-crash recovery
         ArmCrashDrivingInputGates();
         _postCrashRecoveryUntil = Time.time + PostCrashRecoverySeconds;
-
-        // Also kill any leftover landing carry allowance so you can't "keep" boosted cap as excess speed
-        _landingExcessSpeed = 0f;
-        _landingBoostTimeLeft = 0f;
-        _landingBoostTargetMagnitude = 0f;
-
-        // Force surface max speed to re-sample cleanly next tick (prevents stale smoothed value)
-        _smoothedSurfaceMaxSpeed = -1f;
-
-        // For a short period after recovery, ignore boost surface so we resume at run-start max speed/accel, not boosted.
-        _postMashRecoveryIgnoreBoostUntil = Time.time + 0.5f;
-
-        // Clear boost surface state so we don't use ramp/boost pad stats until the ignore window ends
-        _onBoostSurface = false;
-        _currentBoostAccel = 0f;
-        _currentBoostMaxSpeed = 0f;
+        ClearPostCrashBoostAndSurfaceState();
 
         // Re-evaluate currentMaxSpeed -> effectiveMaxSpeed right now (will use default surface due to ignore window)
         SampleGroundAndUpdateMultipliers();
         ApplySkillEffects();
+        SoftClampPlanarSpeedToRoadCapAfterCrash();
 
         // Only do upright reorientation if we were actually flipped
         if (_isFlippedDuringRecovery)
@@ -7729,6 +8024,9 @@ public class CarController : MonoBehaviour
         if (!enableBadLandingCrash || rb == null) return false;
         if (_inCrash || _flipMashActive || IsPostCrashRecoveryDriving) return false;
         if (airTimeAtLanding < badLandingMinAirborneSeconds) return false;
+        // Don't soft-crash mid boost-ramp climb — that retains ~32% speed and feels like a full stop.
+        if (_onBoostSurface || Time.time < _boostSurfaceHoldUntil)
+            return false;
         return !IsOrientationAcceptableForLanding(groundNormal, carUp, carForward);
     }
 

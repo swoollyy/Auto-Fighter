@@ -118,6 +118,16 @@ public class TrialConfig : ScriptableObject
         public float collisionPadding = 0.5f;
         public float trackRadiusMultiplier = 1.3f;
         public int recentIgnoreCount = 0;
+
+        [Header("Start / End Separation")]
+        [Tooltip("Reject tracks whose finish sits too close to the start (XZ), so players can't cut offroad to the end.")]
+        public bool enforceMinStartEndSeparation = true;
+        [Tooltip("Absolute minimum planar (XZ) distance between start and end.")]
+        public float minStartEndDistance = 120f;
+        [Tooltip("Also require end at least this fraction of total path length away from start on XZ.")]
+        [Range(0.05f, 0.75f)] public float minStartEndDistancePathFraction = 0.28f;
+        [Tooltip("Once this fraction of segments is built, reject yaws that would bring the path back inside the min start distance.")]
+        [Range(0.05f, 0.95f)] public float startSeparationEnforceAfterNormalized = 0.3f;
     }
 
     // =====================================================================

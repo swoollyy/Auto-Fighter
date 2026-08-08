@@ -16,7 +16,7 @@ MonoBehaviour:
   lines:
   - speakerTag: 0
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
-    text: <link="jitter:amp=1.3, spd=16"><color=#9EFF3B><size=84>{player_name}.</color></link></size>
+    text: <link="jitter:amp=1.3, spd=16"><color=#9EFF3B><size=84>{player_name}</color></link></size><color=#000000>.</color>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -32,7 +32,7 @@ MonoBehaviour:
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">???</link>
     text: <link="jitter:amp=1.3, spd=16"><color=#000000>You are next to challenge...
       </link><size=92><link="hold:1"><link="jitter:amp=3, spd=14"><color=#FFF100>The
-      Asphalt Gauntlet.</size></color></link></link>
+      Asphalt Gauntlet</size></color></link></link>.
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -47,9 +47,9 @@ MonoBehaviour:
   - speakerTag: 0
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: </link><link="jitter:amp=1.3, spd=16"><color=#000000>I am</link></color>
-      <link="jitter:1.5, spd=12"><size=86><color=#9A0000>The Overseer. </link></size></color><link=hold:1><link="jitter:amp=1.3,
-      spd=16"><color=#000000>You are</link></color></link> <link="wave:1.4"><size=86><color=#9EFF3B>The
-      Overseen. </link></size></color>
+      <link="jitter:1.5, spd=12"><size=86><color=#9A0000>The Overseer</color></size><color=#000000>.</link><link=hold:1><link="jitter:amp=1.3,
+      spd=16"><color=#000000> You are</link></color></link> <link="wave:1.4"><size=86><color=#9EFF3B>The
+      Overseen</size></color></link><link="jitter:amp=1.3, spd=16">. </link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -63,20 +63,21 @@ MonoBehaviour:
     autoAdvanceSeconds: 0
   - speakerTag: 0
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
-    text: </link><link="jitter:amp=1.3, spd=16"><color=#000000>Throughout this trial,
-      you will be given assistance from</link></color> <color=#ECB400><link=wave:1.4><size=72>The
-      Help.</link></color></size><link="jitter:amp=1.3, spd=16"><color=#000000> They
-      will make </link><link="jitter:amp=3, spd=14"><size=84><color=#FFF100>The Asphalt
-      Gauntlet</size></link> <link="jitter:amp=1.3, spd=16"><color=#000000> less
-      daunting.</link>
+    text: <link="jitter:amp=1.3, spd=16"><color=#000000>Throughout this trial,<link="hold:1">
+      you will be given assistance from</link></link></color> <color=#ECB400><link=wave:1.4><size=72>The
+      Help</link></color></size><color=#000000><link="jitter:amp=1.3, spd=16">.<link="hold:1">
+      They will make </link></link><link="jitter:amp=3, spd=14"><size=84><color=#FFF100>The
+      Asphalt Gauntlet</size></link> <link="jitter:amp=1.3, spd=16"><color=#000000>
+      less daunting.</link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
     autoAdvanceSeconds: 0
   - speakerTag: 0
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
-    text: </link><link=wave:1.4><color=#4F88A4><size=72>The Mechanic </link></color></size><link="jitter:amp=1.3,
-      spd=16"><color=#000000>will help you start your journey. </link>
+    text: </link><link=wave:1.4><color=#4F88A4><size=72>The Mechanic<link="hold:.5"></link>
+      </link></color></size><link="jitter:amp=1.3, spd=16"><color=#000000>will help
+      start your journey. </link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0
@@ -84,7 +85,8 @@ MonoBehaviour:
   - speakerTag: 0
     speakerName: <color=#9A0000><link="jitter:1.5, spd=12">The Overseer</link>
     text: <link="jitter:amp=1.3, spd=16"><color=#000000>You must complete the first
-      trial. Get to the end. </link><size=64><link="jitter:amp=1.6, spd=20"><b>BEGIN.</b></color></link>
+      trial. <link="hold:1">Get to the end.</link> </link><size=64><link="jitter:amp=1.6,
+      spd=20"><b><link="hold:1">BEGIN.</link></b></color></link>
     portrait: {fileID: 0}
     delayBeforeShow: 0
     autoAdvance: 0

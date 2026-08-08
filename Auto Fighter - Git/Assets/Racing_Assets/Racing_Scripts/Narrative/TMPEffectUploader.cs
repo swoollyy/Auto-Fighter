@@ -25,6 +25,9 @@ public class TMPEffectUploader : MonoBehaviour
         TMP_TextInfo textInfo = _text.textInfo;
         if (textInfo.meshInfo == null || textInfo.meshInfo.Length == 0) return;
 
+        // Belt-and-suspenders: never upload stale capacity verts as visible glyphs.
+        TMPEffectCoordinator.ClearUnusedMeshVertices(textInfo);
+
         for (int i = 0; i < textInfo.meshInfo.Length; i++)
         {
             TMP_MeshInfo mi = textInfo.meshInfo[i];

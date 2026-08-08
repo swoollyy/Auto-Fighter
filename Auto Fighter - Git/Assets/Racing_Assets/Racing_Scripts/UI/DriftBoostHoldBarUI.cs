@@ -27,16 +27,17 @@ public class DriftBoostHoldBarUI : MonoBehaviour
     [SerializeField] private RectTransform minHoldMarker;
 
     [Header("Charge tint")]
-    [Tooltip("If set, this graphic gets the red→yellow→green tint. Otherwise uses Fill Image, else Slider fill rect.")]
+    [Tooltip("If set, this graphic gets the red→green tint. Otherwise uses Fill Image, else Slider fill rect.")]
     [SerializeField] private Graphic chargeColorGraphic;
 
     [SerializeField] private Color notEnoughColor = new Color(0.92f, 0.2f, 0.18f, 1f);
 
+    [Tooltip("Unused legacy field (kept so existing scene/prefab serialization stays stable).")]
     [SerializeField] private Color minBoostColor = new Color(1f, 0.85f, 0.15f, 1f);
 
     [SerializeField] private Color maxBoostColor = new Color(0.25f, 0.85f, 0.35f, 1f);
 
-    [Tooltip("Smoother transitions at band boundaries (smoothstep).")]
+    [Tooltip("Unused legacy field (kept so existing scene/prefab serialization stays stable).")]
     [SerializeField] private bool smoothColorBlend = true;
 
     [Header("Visibility")]
@@ -183,31 +184,13 @@ public class DriftBoostHoldBarUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Red below min boost, yellow at min, green at full max hold; smooth blend between bands.
+    /// Hard red below min boost threshold, hard green once earnable (no yellow blend).
     /// </summary>
     private Color ChargeTintRgb(float fill, float minMarker01)
     {
         if (minMarker01 < 0.001f)
-            return Color.Lerp(notEnoughColor, maxBoostColor, T(fill));
+            return fill > 0.001f ? maxBoostColor : notEnoughColor;
 
-        if (fill <= minMarker01)
-        {
-            float t = minMarker01 > 1e-6f ? fill / minMarker01 : 1f;
-            return Color.Lerp(notEnoughColor, minBoostColor, T(t));
-        }
-
-        {
-            float denom = Mathf.Max(1e-6f, 1f - minMarker01);
-            float t = (fill - minMarker01) / denom;
-            return Color.Lerp(minBoostColor, maxBoostColor, T(t));
-        }
-    }
-
-    private float T(float t)
-    {
-        t = Mathf.Clamp01(t);
-        if (!smoothColorBlend)
-            return t;
-        return t * t * (3f - 2f * t);
+        return fill >= minMarker01 ? maxBoostColor : notEnoughColor;
     }
 }

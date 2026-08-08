@@ -111,7 +111,7 @@ public class NarrativeDirector : MonoBehaviour
 
     /// <summary>
     /// Call when the flow returns to the skill tree (after results, or boot).
-    /// Evaluates AfterFirstRun / run-count triggers that should overlay the garage.
+    /// Evaluates garage overlay triggers (e.g. can-afford Max Fuel, run-count).
     /// </summary>
     public static void NotifyReturnedToSkillTree()
     {
@@ -235,11 +235,11 @@ public class NarrativeTriggerCondition
     public enum TriggerType
     {
         Always,
-        FirstRunOnly,       // total runs completed == 0 before this run
-        AfterFirstRun,      // total runs completed >= 1
-        RunCountEquals,     // total runs == value
-        RunCountAtLeast,    // total runs >= value
-        HasStoryFlag,       // a flag is set
+        FirstRunOnly,              // total runs completed == 0
+        CanAffordFirstMaxFuel,     // can buy Max Fuel level 1 (still at level 0)
+        RunCountEquals,            // total runs == value
+        RunCountAtLeast,           // total runs >= value
+        HasStoryFlag,              // a flag is set
         DoesNotHaveStoryFlag
     }
 
@@ -258,8 +258,8 @@ public class NarrativeTriggerCondition
                 return true;
             case TriggerType.FirstRunOnly:
                 return runs == 0;
-            case TriggerType.AfterFirstRun:
-                return runs >= 1;
+            case TriggerType.CanAffordFirstMaxFuel:
+                return CanAffordFirstMaxFuelUpgrade();
             case TriggerType.RunCountEquals:
                 return runs == runCountValue;
             case TriggerType.RunCountAtLeast:
@@ -271,5 +271,16 @@ public class NarrativeTriggerCondition
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// True when Max Fuel is still unpurchased and the player can afford its first level.
+    /// </summary>
+    private static bool CanAffordFirstMaxFuelUpgrade()
+    {
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr == null) return false;
+        if (mgr.GetLevel(SkillType.MaxFuel_Add) != 0) return false;
+        return mgr.CanAffordNextLevel(SkillType.MaxFuel_Add);
     }
 }

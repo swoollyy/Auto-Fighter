@@ -29,7 +29,7 @@ public class CarVelocityAndPitch : MonoBehaviour
     [Tooltip("Pitch at or above SpeedForMaxPitch")]
     public float driveMaxPitch = 1.6f;
     public float idlePitch = 1f;
-
+   
     [Header("Speed → Pitch")]
     [Tooltip("Speed (m/s) mapped to max pitch. Use CarController.EffectiveMaxSpeed or your desired top speed.")]
     public float speedForMaxPitch = 30f;

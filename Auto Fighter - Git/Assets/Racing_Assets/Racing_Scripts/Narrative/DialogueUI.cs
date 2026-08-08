@@ -44,6 +44,8 @@ public class DialogueUI : MonoBehaviour
     [SerializeField] private GameObject panelRoot;
     [Tooltip("If null, we use this GameObject. Used to show/hide the whole dialogue box.")]
     [SerializeField] private CanvasGroup canvasGroup;
+    [Tooltip("Full-screen dim Image on the dialogue canvas (Background Panel). Must stay on a GO that can keep the Dialogue Box as a child — we only toggle the Image.")]
+    [SerializeField] private Image screenDimImage;
 
     [Header("Dialogue Box Blob FX")]
     [Tooltip("First layered goo panel (Dialogue Box FX 1). Leave empty to auto-find children in hierarchy order.")]
@@ -52,18 +54,29 @@ public class DialogueUI : MonoBehaviour
     [SerializeField] private UIGooSlimeAnimator gooSlimePanel2;
     [Tooltip("Seconds to blend blob colors when the speaker tag changes within a sequence (unscaled). First line of a sequence snaps.")]
     [SerializeField, Min(0f)] private float blobColorBlendSeconds = 0.45f;
+    [Tooltip("After a speaker color snap (first line), wait this long before typewriter so the new box color reads first.")]
+    [SerializeField, Min(0f)] private float blobColorSnapLeadInSeconds = 0.12f;
+    [Tooltip("When speaker colors blend, wait for the blend to finish before dialogue text starts rolling.")]
+    [SerializeField] private bool waitForBlobColorBeforeTypewriter = true;
 
     [Header("Advance hint (optional)")]
+    // Touch: remount inspector mapping for advance hint root / text refs.
+    [Tooltip("Root to show/hide when the line is ready to advance. If empty, advanceHintText's GameObject is used.")]
     [SerializeField] private GameObject advanceHintObject;
     [SerializeField] private TMP_Text advanceHintText;
     [Tooltip("e.g. \"Space to continue\"")]
     [SerializeField] private string advanceHintString = "Space to continue";
+    [Tooltip("Seconds to wait after the typewriter finishes before showing the advance hint (unscaled).")]
+    [SerializeField, Min(0f)] private float advanceHintAppearDelaySeconds = 0.35f;
     [Header("Input safety")]
     [Tooltip("Ignore skip/advance input for a short time right after setting a line. Helps prevent first-line auto-skip from startup clicks/keypresses.")]
     [SerializeField, Min(0f)] private float inputGraceSecondsAfterSetLine = 0.1f;
 
     private Coroutine _typewriterRoutine;
+    private Coroutine _blobColorLeadInRoutine;
+    private Coroutine _advanceHintRoutine;
     private bool _typewriterComplete;
+    private bool _waitingForBlobColorLeadIn;
     /// <summary>When using typewriter, we reveal by vertex alpha; this is the number of characters currently visible. Mesh is built once (full text) so link effects don't restart.</summary>
     private int _visibleCharacterCount;
     /// <summary>Per-character speed multiplier (1.0 = base rate). Built from <link> tags each time a line is set.</summary>
@@ -73,11 +86,61 @@ public class DialogueUI : MonoBehaviour
     private float _lineSetAtUnscaledTime;
     /// <summary>False until the first blob colors of the current sequence are applied (that apply snaps; later ones blend).</summary>
     private bool _blobColorsAppliedThisSequence;
+    private Color _lastBlob1Fill;
+    private Color _lastBlob1Rim;
+    private Color _lastBlob2Fill;
+    private Color _lastBlob2Rim;
+    private bool _hasLastBlobColors;
 
     /// <summary>True when the current line is fully revealed (or when typewriter is disabled).</summary>
-    public bool IsTypewriterComplete => !useTypewriterEffect || _typewriterComplete;
+    public bool IsTypewriterComplete =>
+        !_waitingForBlobColorLeadIn && (!useTypewriterEffect || _typewriterComplete);
     /// <summary>True once the per-line input grace window has elapsed.</summary>
     public bool CanAcceptAdvanceInput => Time.unscaledTime >= _lineSetAtUnscaledTime + inputGraceSecondsAfterSetLine;
+
+    /// <summary>Root used to host tutorial cutouts above the screen dim but under dialogue text.</summary>
+    public RectTransform OverlayHost
+    {
+        get
+        {
+            GameObject root = panelRoot != null ? panelRoot : gameObject;
+            return root != null ? root.transform as RectTransform : null;
+        }
+    }
+
+    /// <summary>Dialogue canvas (sort order / parenting for tutorial pierce-through).</summary>
+    public Canvas HostCanvas => GetComponent<Canvas>();
+
+    /// <summary>
+    /// Toggle only the full-screen dim Image. Never deactivates the GameObject —
+    /// the Dialogue Box goo lives as a child of that same object.
+    /// </summary>
+    public void SetScreenDimVisible(bool visible)
+    {
+        EnsureScreenDimImage();
+        if (screenDimImage == null) return;
+
+        screenDimImage.enabled = visible;
+        if (visible)
+        {
+            // Guarantee the curtain reads as a dim again if something cleared alpha while hidden.
+            Color c = screenDimImage.color;
+            if (c.a < 0.5f)
+            {
+                c.a = 0.95686275f;
+                screenDimImage.color = c;
+            }
+        }
+    }
+
+    private void EnsureScreenDimImage()
+    {
+        if (screenDimImage != null) return;
+        Transform root = panelRoot != null ? panelRoot.transform : transform;
+        Transform bg = root.Find("Background Panel");
+        if (bg != null)
+            screenDimImage = bg.GetComponent<Image>();
+    }
 
     private void Awake()
     {
@@ -85,6 +148,7 @@ public class DialogueUI : MonoBehaviour
             canvasGroup = GetComponent<CanvasGroup>();
         if (panelRoot == null)
             panelRoot = gameObject;
+        EnsureScreenDimImage();
         if (advanceHintText != null && !string.IsNullOrEmpty(advanceHintString))
             advanceHintText.text = advanceHintString;
         EnsureGooSlimePanels();
@@ -103,23 +167,32 @@ public class DialogueUI : MonoBehaviour
             canvasGroup.interactable = true;
             canvasGroup.blocksRaycasts = true;
         }
-        if (advanceHintObject != null)
-            advanceHintObject.SetActive(true);
+        // Default: full-screen dim on. Tutorial view-only highlights may hide it temporarily.
+        if (!TutorialUIHighlightCoach.ShouldSuppressDialogueScreenDim)
+            SetScreenDimVisible(true);
+        else
+            SetScreenDimVisible(false);
+        // Hint stays hidden until the current line finishes typewriter reveal.
+        HideAdvanceHint();
     }
 
     /// <summary>Hide the dialogue panel.</summary>
     public void Hide()
     {
+        StopBlobColorLeadIn();
         if (_typewriterRoutine != null)
         {
             StopCoroutine(_typewriterRoutine);
             _typewriterRoutine = null;
         }
         _typewriterComplete = true;
+        _waitingForBlobColorLeadIn = false;
         _blobColorsAppliedThisSequence = false;
+        _hasLastBlobColors = false;
         EnsureGooSlimePanels();
         gooSlimePanel1?.ResetBlobColorState();
         gooSlimePanel2?.ResetBlobColorState();
+        HideAdvanceHint();
         if (panelRoot != null)
             panelRoot.SetActive(false);
         if (canvasGroup != null)
@@ -139,6 +212,7 @@ public class DialogueUI : MonoBehaviour
     /// <summary>
     /// Set the current line content and recolor both layered Dialogue Box FX goo panels.
     /// Pass null for a color pair to leave that panel's current tint unchanged.
+    /// Speaker colors apply first; typewriter waits until the color lead-in finishes.
     /// </summary>
     public void SetLine(
         string speakerName,
@@ -149,35 +223,24 @@ public class DialogueUI : MonoBehaviour
         Color? blob2FillColor,
         Color? blob2RimColor)
     {
+        StopBlobColorLeadIn();
+        if (_typewriterRoutine != null)
+        {
+            StopCoroutine(_typewriterRoutine);
+            _typewriterRoutine = null;
+        }
+
         if (speakerText != null)
             speakerText.text = string.IsNullOrEmpty(speakerName) ? "" : speakerName;
 
-        if (dialogueText != null)
-        {
-            dialogueText.text = text ?? "";
-            dialogueText.maxVisibleCharacters = int.MaxValue; // Full mesh once so link/effect layout is stable
-            dialogueText.ForceMeshUpdate(true, true);
+        bool hasBlobColors =
+            (blob1FillColor.HasValue && blob1RimColor.HasValue) ||
+            (blob2FillColor.HasValue && blob2RimColor.HasValue);
 
-            if (useTypewriterEffect)
-            {
-                _typewriterComplete = false;
-                _visibleCharacterCount = 0;
-                _lineSetAtUnscaledTime = Time.unscaledTime;
-                BuildPerCharacterTimingTables();
-                if (_typewriterRoutine != null)
-                    StopCoroutine(_typewriterRoutine);
-                _typewriterRoutine = StartCoroutine(TypewriterRevealRoutine());
-            }
-            else
-            {
-                _visibleCharacterCount = int.MaxValue;
-                _typewriterComplete = true;
-            }
-        }
-        else
-        {
-            _typewriterComplete = true;
-        }
+        float colorLeadInSeconds = 0f;
+        if (hasBlobColors)
+            colorLeadInSeconds = ApplyBlobColorsAndGetLeadIn(
+                blob1FillColor, blob1RimColor, blob2FillColor, blob2RimColor);
 
         if (portraitImage != null)
         {
@@ -187,8 +250,47 @@ public class DialogueUI : MonoBehaviour
                 portraitImage.sprite = s;
         }
 
-        if ((blob1FillColor.HasValue && blob1RimColor.HasValue) || (blob2FillColor.HasValue && blob2RimColor.HasValue))
-            ApplyBlobColors(blob1FillColor, blob1RimColor, blob2FillColor, blob2RimColor);
+        if (dialogueText != null)
+        {
+            dialogueText.text = text ?? "";
+            dialogueText.maxVisibleCharacters = int.MaxValue; // Full mesh once so link/effect layout is stable
+            dialogueText.ForceMeshUpdate(true, true);
+            // Kill leftover quads from a longer previous line (jittered '*' ghosts, etc.).
+            TMPEffectCoordinator.ClearUnusedMeshVertices(dialogueText.textInfo);
+
+            if (useTypewriterEffect)
+            {
+                _typewriterComplete = false;
+                _visibleCharacterCount = 0;
+                _lineSetAtUnscaledTime = Time.unscaledTime;
+                BuildPerCharacterTimingTables();
+                HideAdvanceHint();
+
+                if (waitForBlobColorBeforeTypewriter && colorLeadInSeconds > 0f)
+                {
+                    _waitingForBlobColorLeadIn = true;
+                    _blobColorLeadInRoutine = StartCoroutine(BlobColorLeadInThenTypewriter(colorLeadInSeconds));
+                }
+                else
+                {
+                    _waitingForBlobColorLeadIn = false;
+                    _typewriterRoutine = StartCoroutine(TypewriterRevealRoutine());
+                }
+            }
+            else
+            {
+                _visibleCharacterCount = int.MaxValue;
+                _typewriterComplete = true;
+                _waitingForBlobColorLeadIn = false;
+                ScheduleAdvanceHintAppear();
+            }
+        }
+        else
+        {
+            _typewriterComplete = true;
+            _waitingForBlobColorLeadIn = false;
+            ScheduleAdvanceHintAppear();
+        }
     }
 
     /// <summary>
@@ -197,16 +299,73 @@ public class DialogueUI : MonoBehaviour
     /// </summary>
     public void ApplyBlobColors(Color? fill1, Color? rim1, Color? fill2, Color? rim2)
     {
+        ApplyBlobColorsAndGetLeadIn(fill1, rim1, fill2, rim2);
+    }
+
+    private float ApplyBlobColorsAndGetLeadIn(Color? fill1, Color? rim1, Color? fill2, Color? rim2)
+    {
         EnsureGooSlimePanels();
+
+        bool colorsChanged = !_hasLastBlobColors ||
+            (fill1.HasValue && rim1.HasValue && !ApproximatelyColor(fill1.Value, _lastBlob1Fill)) ||
+            (fill1.HasValue && rim1.HasValue && !ApproximatelyColor(rim1.Value, _lastBlob1Rim)) ||
+            (fill2.HasValue && rim2.HasValue && !ApproximatelyColor(fill2.Value, _lastBlob2Fill)) ||
+            (fill2.HasValue && rim2.HasValue && !ApproximatelyColor(rim2.Value, _lastBlob2Rim));
 
         bool immediate = !_blobColorsAppliedThisSequence;
         _blobColorsAppliedThisSequence = true;
         float duration = blobColorBlendSeconds;
 
         if (gooSlimePanel1 != null && fill1.HasValue && rim1.HasValue)
+        {
             gooSlimePanel1.SetBlobColors(fill1.Value, rim1.Value, immediate, duration);
+            _lastBlob1Fill = fill1.Value;
+            _lastBlob1Rim = rim1.Value;
+        }
         if (gooSlimePanel2 != null && fill2.HasValue && rim2.HasValue)
+        {
             gooSlimePanel2.SetBlobColors(fill2.Value, rim2.Value, immediate, duration);
+            _lastBlob2Fill = fill2.Value;
+            _lastBlob2Rim = rim2.Value;
+        }
+        _hasLastBlobColors = true;
+
+        if (!waitForBlobColorBeforeTypewriter || !colorsChanged)
+            return 0f;
+        if (immediate)
+            return blobColorSnapLeadInSeconds;
+        return duration;
+    }
+
+    private static bool ApproximatelyColor(Color a, Color b)
+    {
+        return Mathf.Abs(a.r - b.r) < 0.002f
+            && Mathf.Abs(a.g - b.g) < 0.002f
+            && Mathf.Abs(a.b - b.b) < 0.002f
+            && Mathf.Abs(a.a - b.a) < 0.002f;
+    }
+
+    private IEnumerator BlobColorLeadInThenTypewriter(float seconds)
+    {
+        float t = 0f;
+        while (t < seconds)
+        {
+            t += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        _waitingForBlobColorLeadIn = false;
+        _blobColorLeadInRoutine = null;
+        if (useTypewriterEffect && !_typewriterComplete)
+            _typewriterRoutine = StartCoroutine(TypewriterRevealRoutine());
+    }
+
+    private void StopBlobColorLeadIn()
+    {
+        if (_blobColorLeadInRoutine == null) return;
+        StopCoroutine(_blobColorLeadInRoutine);
+        _blobColorLeadInRoutine = null;
+        _waitingForBlobColorLeadIn = false;
     }
 
     private void EnsureGooSlimePanels()
@@ -224,10 +383,17 @@ public class DialogueUI : MonoBehaviour
             gooSlimePanel2 = found[1];
     }
 
-    /// <summary>If typewriter is still revealing, reveal all immediately. Call from DialogueManager when player advances.</summary>
+    /// <summary>If typewriter is still revealing (or color lead-in is pending), reveal all immediately.</summary>
     public void SkipTypewriter()
     {
-        if (!useTypewriterEffect || _typewriterComplete) return;
+        if (!useTypewriterEffect && !_waitingForBlobColorLeadIn) return;
+        if (_typewriterComplete && !_waitingForBlobColorLeadIn) return;
+
+        StopBlobColorLeadIn();
+        EnsureGooSlimePanels();
+        gooSlimePanel1?.CompleteColorBlendImmediate();
+        gooSlimePanel2?.CompleteColorBlendImmediate();
+
         if (_typewriterRoutine != null)
         {
             StopCoroutine(_typewriterRoutine);
@@ -239,6 +405,67 @@ public class DialogueUI : MonoBehaviour
             dialogueText.ForceMeshUpdate(true, true); // Restore full mesh/alpha so link effects show on all text
         }
         _typewriterComplete = true;
+        ScheduleAdvanceHintAppear();
+    }
+
+    private void HideAdvanceHint()
+    {
+        if (_advanceHintRoutine != null)
+        {
+            StopCoroutine(_advanceHintRoutine);
+            _advanceHintRoutine = null;
+        }
+        SetAdvanceHintVisible(false);
+    }
+
+    private void ScheduleAdvanceHintAppear()
+    {
+        if (_advanceHintRoutine != null)
+        {
+            StopCoroutine(_advanceHintRoutine);
+            _advanceHintRoutine = null;
+        }
+
+        if (advanceHintAppearDelaySeconds <= 0f || !isActiveAndEnabled)
+        {
+            SetAdvanceHintVisible(true);
+            return;
+        }
+
+        SetAdvanceHintVisible(false);
+        _advanceHintRoutine = StartCoroutine(AdvanceHintAppearAfterDelay());
+    }
+
+    private IEnumerator AdvanceHintAppearAfterDelay()
+    {
+        float t = 0f;
+        float delay = advanceHintAppearDelaySeconds;
+        while (t < delay)
+        {
+            t += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        _advanceHintRoutine = null;
+        SetAdvanceHintVisible(true);
+    }
+
+    private void SetAdvanceHintVisible(bool visible)
+    {
+        // Prefer the dedicated root when assigned; otherwise toggle the hint text itself
+        // (scene often only wires advanceHintText).
+        if (advanceHintObject != null)
+            advanceHintObject.SetActive(visible);
+        else if (advanceHintText != null)
+            advanceHintText.gameObject.SetActive(visible);
+
+        // If both are assigned and the text is not under the root, keep them in sync.
+        if (advanceHintObject != null && advanceHintText != null
+            && advanceHintText.transform != advanceHintObject.transform
+            && !advanceHintText.transform.IsChildOf(advanceHintObject.transform))
+        {
+            advanceHintText.gameObject.SetActive(visible);
+        }
     }
 
     /// <summary>Set vertex alpha to 0 for characters >= _visibleCharacterCount so link effects see a stable mesh.</summary>
@@ -269,6 +496,7 @@ public class DialogueUI : MonoBehaviour
         if (!useTypewriterEffect || _typewriterComplete || dialogueText == null) return;
         // Do NOT ForceMeshUpdate here – it runs after link effects and would wipe their vertex changes.
         // Only mask unrevealed characters so effects stay visible on the revealed portion.
+        // Also keeps text hidden during the speaker color lead-in (_visibleCharacterCount stays 0).
         ApplyTypewriterAlphaMask();
     }
 
@@ -280,6 +508,7 @@ public class DialogueUI : MonoBehaviour
         {
             _typewriterComplete = true;
             _typewriterRoutine = null;
+            ScheduleAdvanceHintAppear();
             yield break;
         }
 
@@ -332,6 +561,7 @@ public class DialogueUI : MonoBehaviour
         _visibleCharacterCount = total;
         _typewriterComplete = true;
         _typewriterRoutine = null;
+        ScheduleAdvanceHintAppear();
     }
 
     private float GetMultiplier(int charIndex)

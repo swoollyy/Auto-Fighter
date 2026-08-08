@@ -50,6 +50,12 @@ public class DialogueManager : MonoBehaviour
     /// <summary>Fired when a sequence begins (with the sequence that started).</summary>
     public event Action<DialogueSequenceSO> OnSequenceStarted;
 
+    /// <summary>Fired when a line is presented (sequence + 0-based line index).</summary>
+    public event Action<DialogueSequenceSO, int> OnLinePresented;
+
+    /// <summary>0-based index of the line currently on screen while playing.</summary>
+    public int CurrentLineIndex => _currentLineIndex;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -115,7 +121,6 @@ public class DialogueManager : MonoBehaviour
         _currentLineIndex = 0;
         _isPlaying = true;
         _hidGameCanvasForCurrentSequence = false;
-        OnSequenceStarted?.Invoke(sequence);
 
         if (sequence.pauseGameWhilePlaying)
         {
@@ -149,6 +154,9 @@ public class DialogueManager : MonoBehaviour
             gameCanvasToEnableWhenSequenceEnds.SetActive(true);
         }
 
+        // After Show() so listeners (e.g. cost spotlight) can hide the dialogue dim without Show() restoring it.
+        OnSequenceStarted?.Invoke(sequence);
+
         _playRoutine = StartCoroutine(PlaySequenceRoutine());
     }
 
@@ -178,6 +186,9 @@ public class DialogueManager : MonoBehaviour
                 blob.blob1RimColor,
                 blob.blob2FillColor,
                 blob.blob2RimColor);
+
+            try { OnLinePresented?.Invoke(_currentSequence, _currentLineIndex); }
+            catch { /* ignore listener errors */ }
 
             if (line.autoAdvance)
             {

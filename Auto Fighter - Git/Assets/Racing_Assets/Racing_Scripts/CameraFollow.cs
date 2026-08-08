@@ -135,6 +135,8 @@ public class CameraFollow : MonoBehaviour
 
     // NEW: suppression flag so ZoomPulse can block auto speed-FOV while doing its realtime tween
     private bool _suppressAutoFov = false;
+    private bool _forcedFovActive = false;
+    private bool _persistentShake = false;
 
     // Boost VFX + zoom
     [Header("Boost VFX")]
@@ -719,34 +721,66 @@ public class CameraFollow : MonoBehaviour
     {
         if (shakeTimer <= 0f || shakeDuration <= 0f || shakeStrength <= 0f)
         {
-            shakeTimer = 0f;
+            if (!_persistentShake)
+                shakeTimer = 0f;
             return Vector3.zero;
         }
 
-        shakeTimer -= Time.deltaTime;
+        // Persistent finish-tunnel shake must keep moving while timeScale is 0 on the results screen.
+        float dt = _persistentShake ? Time.unscaledDeltaTime : Time.deltaTime;
+        if (dt < 0f) dt = 0f;
+
+        float amplitude;
+        if (_persistentShake)
+        {
+            // Hold full strength; advance a free-running clock for the oscillator.
+            shakeTimer += dt;
+            float elapsed = shakeTimer;
+            amplitude = 1f;
+
+            float frequency = Mathf.Max(1, shakeVibrato);
+            float angle = (elapsed + shakeSeed) * frequency * Mathf.PI * 2f;
+            Vector2 osc = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+
+            if (shakeRandomness > 0f)
+            {
+                float r1 = Mathf.PerlinNoise(shakeSeed, elapsed * 10f) * 2f - 1f;
+                float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsed * 10f) * 2f - 1f;
+                osc += new Vector2(r1, r2) * (shakeRandomness / 180f);
+            }
+
+            if (osc.sqrMagnitude > 0.0001f)
+                osc.Normalize();
+
+            Vector3 right = baseRot * Vector3.right;
+            Vector3 up = baseRot * Vector3.up;
+            return (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
+        }
+
+        shakeTimer -= dt;
         float remaining = Mathf.Max(0f, shakeTimer);
-        float elapsed = Mathf.Clamp(shakeDuration - remaining, 0f, shakeDuration);
-        float t = shakeDuration > 0f ? (elapsed / shakeDuration) : 1f;
-        float amplitude = 1f - t;
+        float elapsedFade = Mathf.Clamp(shakeDuration - remaining, 0f, shakeDuration);
+        float t = shakeDuration > 0f ? (elapsedFade / shakeDuration) : 1f;
+        amplitude = 1f - t;
         amplitude *= amplitude;
 
-        float frequency = Mathf.Max(1, shakeVibrato);
-        float angle = (elapsed + shakeSeed) * frequency * Mathf.PI * 2f;
-        Vector2 osc = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+        float frequencyFade = Mathf.Max(1, shakeVibrato);
+        float angleFade = (elapsedFade + shakeSeed) * frequencyFade * Mathf.PI * 2f;
+        Vector2 oscFade = new Vector2(Mathf.Cos(angleFade), Mathf.Sin(angleFade));
 
         if (shakeRandomness > 0f)
         {
-            float r1 = Mathf.PerlinNoise(shakeSeed, elapsed * 10f) * 2f - 1f;
-            float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsed * 10f) * 2f - 1f;
-            osc += new Vector2(r1, r2) * (shakeRandomness / 180f);
+            float r1 = Mathf.PerlinNoise(shakeSeed, elapsedFade * 10f) * 2f - 1f;
+            float r2 = Mathf.PerlinNoise(shakeSeed + 37.1f, elapsedFade * 10f) * 2f - 1f;
+            oscFade += new Vector2(r1, r2) * (shakeRandomness / 180f);
         }
 
-        if (osc.sqrMagnitude > 0.0001f)
-            osc.Normalize();
+        if (oscFade.sqrMagnitude > 0.0001f)
+            oscFade.Normalize();
 
-        Vector3 right = baseRot * Vector3.right;
-        Vector3 up = baseRot * Vector3.up;
-        return (right * osc.x + up * osc.y) * (shakeStrength * amplitude);
+        Vector3 rightFade = baseRot * Vector3.right;
+        Vector3 upFade = baseRot * Vector3.up;
+        return (rightFade * oscFade.x + upFade * oscFade.y) * (shakeStrength * amplitude);
     }
 
     private Vector3 ComputeDriftTremorOffset(Quaternion baseRot)
@@ -818,8 +852,10 @@ public class CameraFollow : MonoBehaviour
         transform.rotation = desiredRot;
 
         // Clear residual motion / FX state from the previous run end.
+        EndPersistentShake();
         shakeTimer = 0f;
         shakeDuration = 0f;
+        ClearForcedFovImmediate();
         _currentZRoll = 0f;
         _driftRollSigned = 0f;
         _driftLagSharpnessBlend = 0f;
@@ -836,12 +872,35 @@ public class CameraFollow : MonoBehaviour
 
     public void StartShake(float duration, float strength, int vibrato, float randomness)
     {
-        shakeDuration = Mathf.Max(0f, duration);
-        shakeTimer = shakeDuration;
+        if (!_persistentShake)
+        {
+            shakeDuration = Mathf.Max(0f, duration);
+            shakeTimer = shakeDuration;
+        }
         shakeStrength = Mathf.Max(0f, strength);
         shakeVibrato = Mathf.Max(1, vibrato);
         shakeRandomness = Mathf.Max(0f, randomness);
         shakeSeed = UnityEngine.Random.value * 1000f;
+    }
+
+    /// <summary>Non-fading shake that keeps going while timeScale is 0 (finish portal / results).</summary>
+    public void BeginPersistentShake(float strength, int vibrato = 18, float randomness = 90f)
+    {
+        _persistentShake = true;
+        shakeDuration = 99999f;
+        shakeTimer = 0f; // used as elapsed clock while persistent
+        shakeStrength = Mathf.Max(0f, strength);
+        shakeVibrato = Mathf.Max(1, vibrato);
+        shakeRandomness = Mathf.Max(0f, randomness);
+        shakeSeed = UnityEngine.Random.value * 1000f;
+    }
+
+    public void EndPersistentShake()
+    {
+        _persistentShake = false;
+        shakeTimer = 0f;
+        shakeDuration = 0f;
+        shakeStrength = 0f;
     }
 
     // FOV API
@@ -864,6 +923,52 @@ public class CameraFollow : MonoBehaviour
         _fovLerpT = 0f;
         _fovLerpDuration = duration;
         _fovAnimating = true;
+    }
+
+    /// <summary>Lock FOV (blocks speed/boost/peek auto FOV) for finish / cinematic sequences.</summary>
+    public void BeginForcedFov(float targetFOV, float rampDuration = 0.35f)
+    {
+        _forcedFovActive = true;
+        _suppressAutoFov = true;
+        if (_mapPeekCR != null)
+        {
+            StopCoroutine(_mapPeekCR);
+            _mapPeekCR = null;
+        }
+        _mapPeekHeld = false;
+        SetFieldOfView(targetFOV, rampDuration);
+    }
+
+    /// <summary>Release forced FOV lock and ease back toward the normal baseline.</summary>
+    public void EndForcedFov(float rampDuration = 0.45f)
+    {
+        if (!_forcedFovActive && !_suppressAutoFov)
+            return;
+
+        _forcedFovActive = false;
+        _suppressAutoFov = false;
+        ResetFieldOfView(rampDuration);
+    }
+
+    /// <summary>Hard-reset FOV for a new run — no ramp, no leftover tunnel zoom.</summary>
+    public void ClearForcedFovImmediate()
+    {
+        _forcedFovActive = false;
+        _suppressAutoFov = false;
+        _fovAnimating = false;
+        if (_mapPeekCR != null)
+        {
+            StopCoroutine(_mapPeekCR);
+            _mapPeekCR = null;
+        }
+        _mapPeekHeld = false;
+
+        float fov = defaultFOV > 1f ? defaultFOV : 60f;
+        if (cam != null)
+            cam.fieldOfView = fov;
+        _speedFovCurrent = fov;
+        _startFOV = fov;
+        _targetFOV = fov;
     }
 
     private void HandleMapPeekInput()

@@ -12,7 +12,8 @@ using UnityEngine;
 public static class TMPLinkEffectHelper
 {
     /// <summary>
-    /// Prefer this overload when you have TMP_Text: uses linkInfo first, then raw-text parsing for nested links.
+    /// Prefer this overload when you have TMP_Text: uses raw-text parsing for nested links,
+    /// then TMP linkInfo as a strict fallback.
     /// </summary>
     public static bool IsCharacterInLink(TMP_Text text, int characterIndex, string linkTag)
     {
@@ -20,20 +21,21 @@ public static class TMPLinkEffectHelper
         if (characterIndex < 0 || characterIndex >= text.textInfo.characterCount)
             return false;
 
+        // Empty component tag = apply to the whole line (intentional).
         if (string.IsNullOrEmpty(linkTag))
             return true;
 
-        // 1) Try TMP's linkInfo (works when TMP reports the link for this character).
-        if (IsCharacterInLink(text.textInfo, characterIndex, linkTag))
+        // Raw parse first: handles nesting and never treats empty/broken TMP ids as wildcards.
+        if (IsCharacterInLinkFromParsedText(text.text, characterIndex, linkTag))
             return true;
 
-        // 2) Nested-link fallback: TMP often only reports the innermost link. Parse raw text to find all link ranges.
-        return IsCharacterInLinkFromParsedText(text.text, characterIndex, linkTag);
+        return IsCharacterInLink(text.textInfo, characterIndex, linkTag);
     }
 
     /// <summary>
     /// Returns true if the character at index <paramref name="characterIndex"/> is inside a link
-    /// whose ID matches <paramref name="linkTag"/> (case-insensitive), using only TMP's linkInfo.
+    /// whose ID matches <paramref name="linkTag"/> as a base tag (e.g. "wave" matches "wave:1.3").
+    /// Empty / malformed TMP link IDs never match a specific effect tag.
     /// </summary>
     public static bool IsCharacterInLink(TMP_TextInfo textInfo, int characterIndex, string linkTag)
     {
@@ -59,18 +61,19 @@ public static class TMPLinkEffectHelper
                 continue;
 
             string id = NormalizeLinkId(link.GetLinkID() ?? "");
-            if (string.IsNullOrEmpty(id)) return true;
-            if (string.Equals(id, tagNormalized, StringComparison.OrdinalIgnoreCase)) return true;
-            if (id.IndexOf(tagNormalized, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            if (tagNormalized.IndexOf(id, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            if (link.hashCode == tagNormalized.GetHashCode()) return true;
+            // Broken / empty link ids (common when </link> tags are mismatched) must NOT
+            // activate every effect — that made text go rainbow without a rainbow tag.
+            if (string.IsNullOrEmpty(id))
+                continue;
+            if (MatchesBaseTag(id, tagNormalized))
+                return true;
         }
         return false;
     }
 
     /// <summary>
-    /// Parses raw text for &lt;link="id"&gt;...&lt;/link&gt; and returns whether characterIndex (visible index) is inside any link with the given tag.
-    /// Handles nested links so both outer and inner tags apply.
+    /// Parses raw text for &lt;link="id"&gt;...&lt;/link&gt; and returns whether characterIndex (visible index)
+    /// is inside any link whose base tag matches <paramref name="linkTag"/> (e.g. "wave" / "wave:1.3").
     /// </summary>
     private static bool IsCharacterInLinkFromParsedText(string rawText, int characterIndex, string linkTag)
     {
@@ -79,70 +82,28 @@ public static class TMPLinkEffectHelper
         string tagNormalized = NormalizeLinkId(linkTag);
         if (string.IsNullOrEmpty(tagNormalized)) return true;
 
-        List<(string id, int start, int end)> ranges = ParseLinkRanges(rawText);
+        List<LinkRange> ranges = GetParsedRangesCached(rawText);
         for (int i = 0; i < ranges.Count; i++)
         {
-            var r = ranges[i];
-            if (!string.Equals(r.id, tagNormalized, StringComparison.OrdinalIgnoreCase)) continue;
+            LinkRange r = ranges[i];
+            if (!MatchesBaseTag(r.id, tagNormalized)) continue;
             if (characterIndex >= r.start && characterIndex < r.end)
                 return true;
         }
         return false;
     }
 
-    /// <summary>
-    /// Parse raw rich text and return (linkId, startVisibleIndex, endVisibleIndex) for every link.
-    /// Nested links each get their own range; overlapping ranges share the same visible indices.
-    /// </summary>
-    private static List<(string id, int start, int end)> ParseLinkRanges(string raw)
+    private static string _cachedParseRaw;
+    private static readonly List<LinkRange> _cachedParseRanges = new List<LinkRange>(16);
+
+    private static List<LinkRange> GetParsedRangesCached(string rawText)
     {
-        var ranges = new List<(string id, int start, int end)>();
-        var stack = new Stack<(string id, int start)>();
-        int visibleIndex = 0;
-        int i = 0;
-
-        while (i < raw.Length)
+        if (!string.Equals(_cachedParseRaw, rawText, StringComparison.Ordinal))
         {
-            if (raw[i] == '<')
-            {
-                int tagStart = i;
-                i++;
-                while (i < raw.Length && raw[i] != '>') i++;
-                if (i >= raw.Length) break;
-                string tag = raw.Substring(tagStart, i - tagStart + 1);
-                i++;
-
-                if (tag.StartsWith("<link=", StringComparison.OrdinalIgnoreCase))
-                {
-                    string id = ParseLinkIdFromTag(tag);
-                    stack.Push((id, visibleIndex));
-                }
-                else if (tag.Equals("</link>", StringComparison.OrdinalIgnoreCase) && stack.Count > 0)
-                {
-                    var pop = stack.Pop();
-                    // Link content starts at first visible char after opening tag (start was index before tag)
-                    int start = pop.start + 1;
-                    if (visibleIndex > start)
-                        ranges.Add((pop.id, start, visibleIndex));
-                }
-                continue;
-            }
-
-            if (raw[i] == '&')
-            {
-                int entityStart = i;
-                i++;
-                while (i < raw.Length && raw[i] != ';') i++;
-                if (i < raw.Length) i++;
-                visibleIndex++;
-                continue;
-            }
-
-            visibleIndex++;
-            i++;
+            _cachedParseRaw = rawText;
+            ParseAllLinkRanges(rawText, _cachedParseRanges);
         }
-
-        return ranges;
+        return _cachedParseRanges;
     }
 
     private static string ParseLinkIdFromTag(string tag)

@@ -10,20 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d14a5359059444f5ad0bd823f46be14b, type: 3}
-  m_Name: Tutorial_Highlight_MaxFuel
+  m_Name: Tutorial_Highlight_MaxFuel_Cost
   m_EditorClassIdentifier: 
-  startAfterSequence: {fileID: 11400000, guid: 2e1a9b70e9e85d94abef112f98ca041b, type: 2}
-  startWhenSequenceStarts: {fileID: 0}
-  skipIfHasFlag: tutorial_maxfuel_clicked
-  targetKind: 0
+  startAfterSequence: {fileID: 0}
+  startWhenSequenceStarts: {fileID: 11400000, guid: 86c7a3a919d049cc954d3c84651511dd, type: 2}
+  skipIfHasFlag: tutorial_maxfuel_cost_shown
+  targetKind: 1
   skillTarget: 21
-  completionMode: 0
-  dismissAfterLineCount: 0
-  holePadding: 9
+  completionMode: 1
+  dismissAfterLineCount: 2
+  holePadding: 14
   dimColor: {r: 0.05, g: 0.05, b: 0.05, a: 0.92}
   outlineColor: {r: 1, g: 0.85, b: 0.15, a: 1}
-  outlineThickness: 0.75
-  bobAmplitude: 2.5
+  outlineThickness: 2
+  bobAmplitude: 3
   bobSpeed: 2.2
-  playOnClick: {fileID: 11400000, guid: 86c7a3a919d049cc954d3c84651511dd, type: 2}
-  setFlagOnComplete: tutorial_maxfuel_clicked
+  playOnClick: {fileID: 0}
+  setFlagOnComplete: tutorial_maxfuel_cost_shown

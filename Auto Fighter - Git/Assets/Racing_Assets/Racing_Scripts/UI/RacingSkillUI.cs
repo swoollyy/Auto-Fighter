@@ -70,7 +70,9 @@ public class RacingSkillUI : MonoBehaviour
 
     private bool _isPanning;
     private Vector2 _lastMouse;
-    private Vector3 _contentBaseScale = Vector3.one;
+
+    /// <summary>Current tree content uniform scale (zoom). 1 = authored size.</summary>
+    public float TreeZoom => treeContent != null ? treeContent.localScale.x : 1f;
 
     /// <summary>Where skill node instances are parented (tree or list). Used for hierarchy/debug; click logic uses <see cref="RacingSkillUIEntry"/> on nodes.</summary>
     public Transform SkillNodesParent => treeContent != null ? treeContent : contentParent;
@@ -98,8 +100,20 @@ public class RacingSkillUI : MonoBehaviour
         DestroyLegacyTreeViewportRaycastFillIfPresent();
         AttemptBuild(); // builds only revealed
         RefreshAll();
-        if (treeContent) _contentBaseScale = treeContent.localScale;
+        ApplyDefaultTreeZoom();
         AutoOpenFirstIfNeeded();
+    }
+
+    /// <summary>
+    /// Start the tree at minimum zoom (most zoomed-out) within the configured min/max range.
+    /// </summary>
+    private void ApplyDefaultTreeZoom()
+    {
+        if (!treeContent) return;
+        float lo = Mathf.Min(minZoom, maxZoom);
+        float hi = Mathf.Max(minZoom, maxZoom);
+        float z = Mathf.Clamp(lo, 0.01f, hi);
+        treeContent.localScale = new Vector3(z, z, 1f);
     }
 
     private void OnDisable()
@@ -142,6 +156,14 @@ public class RacingSkillUI : MonoBehaviour
             }
         }
         return false;
+    }
+
+    /// <summary>Cost text rect on the open detail card (tutorial cost spotlight).</summary>
+    public bool TryGetDetailCostHighlightRect(out RectTransform rect)
+    {
+        rect = null;
+        if (detailPanel == null) return false;
+        return detailPanel.TryGetCostHighlightRect(out rect);
     }
 
     /// <summary>
@@ -610,9 +632,11 @@ public class RacingSkillUI : MonoBehaviour
 
         if (Mathf.Abs(zoomInput) > 0.001f)
         {
-            float cur = treeContent.localScale.x;
-            float next = Mathf.Clamp(cur + (zoomInput * zoomStep * gamepadZoomSpeed * dt), minZoom, maxZoom);
-            treeContent.localScale = new Vector3(next, next, 1f);
+        float cur = treeContent.localScale.x;
+        float lo = Mathf.Min(minZoom, maxZoom);
+        float hi = Mathf.Max(minZoom, maxZoom);
+        float next = Mathf.Clamp(cur + (zoomInput * zoomStep * gamepadZoomSpeed * dt), lo, hi);
+        treeContent.localScale = new Vector3(next, next, 1f);
         }
     }
 
@@ -723,7 +747,9 @@ public class RacingSkillUI : MonoBehaviour
         float scroll = Input.mouseScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.001f) return;
         float cur = treeContent.localScale.x;
-        float next = Mathf.Clamp(cur + scroll * zoomStep, minZoom, maxZoom);
+        float lo = Mathf.Min(minZoom, maxZoom);
+        float hi = Mathf.Max(minZoom, maxZoom);
+        float next = Mathf.Clamp(cur + scroll * zoomStep, lo, hi);
         treeContent.localScale = new Vector3(next, next, 1f);
     }
 }
