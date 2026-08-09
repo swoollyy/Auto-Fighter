@@ -67,6 +67,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         public float hold;
         public float fadeOut;
         public float elapsed;
+        public bool allowWobble = true;
 
         public float Total => fadeIn + hold + fadeOut;
 
@@ -133,21 +134,33 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
     }
 
     // Public API to play a custom burst with overrides. Bursts STACK additively (no interrupt). Unscaled-time safe.
-    public void PlayBurstCustom(float chromaIntensity, float lensIntensityOverride, float holdSeconds, float fadeInSeconds = -1f, float fadeOutSeconds = -1f)
+    // allowWobble: finish-portal / cinematic bursts should pass false — center wobble + CA creates mid-screen glitch lines.
+    // includeBloom: false keeps bloom at the cached base (no punch).
+    // lensScaleOverride: < 0 uses the serialized lensScale; 1 = no scale zoom (avoids the "camera slides off center" look).
+    public void PlayBurstCustom(
+        float chromaIntensity,
+        float lensIntensityOverride,
+        float holdSeconds,
+        float fadeInSeconds = -1f,
+        float fadeOutSeconds = -1f,
+        bool allowWobble = true,
+        bool includeBloom = true,
+        float lensScaleOverride = -1f)
     {
         if (!EnsureSettings()) return;
         _bursts.Add(new FxBurst
         {
             chroma = Mathf.Clamp01(chromaIntensity),
             lens = Mathf.Clamp(lensIntensityOverride, -100f, 100f),
-            lensScale = lensScale,
+            lensScale = lensScaleOverride > 0f ? Mathf.Clamp(lensScaleOverride, 0.01f, 1f) : lensScale,
             centerX = lensCenterX,
             centerY = lensCenterY,
-            bloomPeak = bloomIntensity,
+            bloomPeak = includeBloom ? bloomIntensity : _baseBloom,
             fadeIn = fadeInSeconds > 0f ? fadeInSeconds : Mathf.Max(0.01f, fadeIn),
             hold = Mathf.Max(0f, holdSeconds),
             fadeOut = fadeOutSeconds > 0f ? fadeOutSeconds : Mathf.Max(0.01f, fadeOut),
-            elapsed = 0f
+            elapsed = 0f,
+            allowWobble = allowWobble
         });
     }
 
@@ -167,6 +180,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float bloomAdd = 0f;
         float chromaSum = 0f;
         float lensSum = 0f;
+        bool anyWobble = false;
 
         // Accumulate lens scale/center as an envelope-scaled DEVIATION FROM NEUTRAL (scale 1, center 0).
         // The old weighted-average approach held scale at ~0.85 even as a burst's envelope reached 0, so
@@ -194,10 +208,16 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
             bloomAdd += (b.bloomPeak - _baseBloom) * e;
             chromaSum += b.chroma * e;
             lensSum += b.lens * e;
+            if (b.allowWobble) anyWobble = true;
 
-            scaleDeviation += (1f - b.lensScale) * e;
-            centerX += b.centerX * e;
-            centerY += b.centerY * e;
+            // Scale/center only contribute while the burst actually has lens intensity.
+            // Otherwise a chroma/bloom-only burst still yanked scale to ~0.85 and looked like a camera slide.
+            if (Mathf.Abs(b.lens) > 1e-4f)
+            {
+                scaleDeviation += (1f - b.lensScale) * e;
+                centerX += b.centerX * e;
+                centerY += b.centerY * e;
+            }
         }
 
         SetBloom(_baseBloom + bloomAdd);
@@ -208,7 +228,7 @@ public sealed class ForcefieldPostFXController : MonoBehaviour
         float cy = Mathf.Clamp(centerY, -1f, 1f);
 
         // Only wobble while there is actual distortion, so it fully settles as the effect eases out.
-        if (wobbleCenter && wobbleAmplitude > 0f && wobbleFrequency > 0f && Mathf.Abs(lensSum) > 1e-4f)
+        if (wobbleCenter && anyWobble && wobbleAmplitude > 0f && wobbleFrequency > 0f && Mathf.Abs(lensSum) > 1e-4f)
         {
             _wobbleClock += dt;
             float wob = Mathf.Sin(_wobbleClock * Mathf.PI * 2f * wobbleFrequency) * wobbleAmplitude;

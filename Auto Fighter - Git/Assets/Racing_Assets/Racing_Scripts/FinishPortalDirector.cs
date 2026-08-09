@@ -40,7 +40,7 @@ public class FinishPortalDirector : MonoBehaviour
     [Tooltip("Void transparent → fully opaque after the delay.")]
     [SerializeField, Min(0.1f)] private float environmentFadeInSeconds = 2.4f;
     [SerializeField, Min(0.1f)] private float portalExitDuration = 1.1f;
-    [SerializeField, Min(60f)] private float tunnelFov = 148f;
+    [SerializeField, Range(60f, 179f)] private float tunnelFov = 148f;
     [SerializeField, Min(0.05f)] private float fovRampIn = 2.2f;
     [SerializeField, Min(0f)] private float postFxBloomHold = 0.9f;
     [SerializeField] private bool hideGameplayUiDuringIntro = true;
@@ -50,6 +50,18 @@ public class FinishPortalDirector : MonoBehaviour
     [SerializeField, Min(0f)] private float pullAcceleration = 55f;
     [SerializeField, Min(0f)] private float persistentShakeStrength = 0.22f;
     [SerializeField, Range(0f, 1f)] private float shakeStartNormalizedThroughFade = 0.55f;
+
+    [Header("Sequence FX Toggles (debug — uncheck to isolate glitches)")]
+    [SerializeField] private bool fxPortalExitAnim = true;
+    [SerializeField] private bool fxForcedFov = true;
+    [SerializeField] private bool fxPostChromatic = true;
+    [SerializeField] private bool fxPostLens = true;
+    [SerializeField] private bool fxPostBloom = true;
+    [SerializeField] private bool fxHyperTunnelUi = true;
+    [SerializeField] private bool fxFinalBlackout = true;
+    [SerializeField] private bool fxPersistentShake = true;
+    [SerializeField] private bool fxCarForwardPull = true;
+    [SerializeField] private bool fxHideGameplayHud = true;
 
     private Coroutine _sequenceCr;
     private bool _sequenceActive;
@@ -251,24 +263,45 @@ public class FinishPortalDirector : MonoBehaviour
         if (lockCarInputDuringSequence && car != null)
             car.SetExternalInputLock(true);
 
-        if (portal != null)
+        // Immune to crashes for the whole finish sequence — obstacles get flung instead.
+        if (car != null)
+            car.SetFinishPortalCrashShield(true);
+
+        if (fxPortalExitAnim && portal != null)
             portal.PlayExitAnimation(portalExitDuration);
 
         float fadeDelay = Mathf.Max(0f, environmentFadeDelaySeconds);
         float fadeIn = Mathf.Max(0.1f, environmentFadeInSeconds);
         float fovTime = Mathf.Max(0.05f, fovRampIn);
 
-        if (cameraFollow != null)
+        if (fxForcedFov && cameraFollow != null)
             cameraFollow.BeginForcedFov(tunnelFov, fovTime);
 
-        if (postFx != null)
-            postFx.PlayBurstCustom(0.25f, 0.15f, postFxBloomHold, 0.1f, 0.6f);
-
-        tunnelVfx.PlayPersistent(null, fadeIn, fadeDelay);
+        // Chroma / lens / bloom independently toggleable. No center wobble (glitch lines).
+        // lensScaleOverride=1 avoids the scale-zoom that reads as "camera slid off the car".
+        bool anyPostFx = fxPostChromatic || fxPostLens || fxPostBloom;
+        if (anyPostFx && postFx != null)
+        {
+            float chroma = fxPostChromatic ? 0.25f : 0f;
+            float lens = fxPostLens ? 0.15f : 0f;
+            postFx.PlayBurstCustom(
+                chroma,
+                lens,
+                postFxBloomHold,
+                0.1f,
+                0.6f,
+                allowWobble: false,
+                includeBloom: fxPostBloom,
+                lensScaleOverride: 1f);
+        }
 
         float t0 = Time.unscaledTime;
         float minUntilResults = fadeDelay + fadeIn + 0.5f;
-        float t1 = t0 + Mathf.Max(preResultsTunnelSeconds, minUntilResults);
+        float tunnelHold = Mathf.Max(preResultsTunnelSeconds, minUntilResults);
+        float t1 = t0 + tunnelHold;
+
+        if (fxHyperTunnelUi && tunnelVfx != null)
+            tunnelVfx.PlayPersistent(null, fadeIn, fadeDelay, expectedDriveSeconds: tunnelHold);
         float hudHideAt = t0 + hideHudAfterSeconds;
         bool hudHidden = false;
 
@@ -283,19 +316,19 @@ public class FinishPortalDirector : MonoBehaviour
 
         while (Time.unscaledTime < t1)
         {
-            if (!hudHidden && hideGameplayUiDuringIntro && Time.unscaledTime >= hudHideAt)
+            if (!hudHidden && fxHideGameplayHud && hideGameplayUiDuringIntro && Time.unscaledTime >= hudHideAt)
             {
                 uiManager?.SetGameCanvasVisible(false);
                 hudHidden = true;
             }
 
-            if (!shakeStarted && cameraFollow != null && Time.unscaledTime >= shakeAt)
+            if (fxPersistentShake && !shakeStarted && cameraFollow != null && Time.unscaledTime >= shakeAt)
             {
                 cameraFollow.BeginPersistentShake(persistentShakeStrength, 22, 100f);
                 shakeStarted = true;
             }
 
-            if (pullCarForwardDuringTunnel && rb != null && !Mathf.Approximately(Time.timeScale, 0f))
+            if (fxCarForwardPull && pullCarForwardDuringTunnel && rb != null && !Mathf.Approximately(Time.timeScale, 0f))
             {
                 Vector3 horiz = Vector3.ProjectOnPlane(rb.velocity, Vector3.up);
                 float target = Mathf.Max(horiz.magnitude, 28f);
@@ -306,13 +339,21 @@ public class FinishPortalDirector : MonoBehaviour
             yield return null;
         }
 
-        if (!hudHidden && hideGameplayUiDuringIntro)
+        if (!hudHidden && fxHideGameplayHud && hideGameplayUiDuringIntro)
             uiManager?.SetGameCanvasVisible(false);
-        if (!shakeStarted && cameraFollow != null)
+        if (fxPersistentShake && !shakeStarted && cameraFollow != null)
             cameraFollow.BeginPersistentShake(persistentShakeStrength, 22, 100f);
 
-        tunnelVfx.SetResultsFriendlyOverlay(true);
+        // Final black circle engulfs the tunnel, then results appear on the black screen.
+        if (fxHyperTunnelUi && fxFinalBlackout && tunnelVfx != null)
+            yield return tunnelVfx.StartCoroutine(tunnelVfx.CoFinalBlackout());
+
+        if (fxHyperTunnelUi && tunnelVfx != null)
+            tunnelVfx.SetResultsFriendlyOverlay(true);
         gameManager?.CompleteRunFromFinishPortal(keepTunnelPresentation: true);
+
+        if (car != null)
+            car.SetFinishPortalCrashShield(false);
 
         _sequenceActive = false;
         _sequenceCr = null;
@@ -326,6 +367,10 @@ public class FinishPortalDirector : MonoBehaviour
             _sequenceCr = null;
         }
         _sequenceActive = false;
+
+        var car = gameManager != null ? gameManager.ActiveCar : null;
+        if (car != null)
+            car.SetFinishPortalCrashShield(false);
 
         if (tunnelVfx != null)
             tunnelVfx.Stop();

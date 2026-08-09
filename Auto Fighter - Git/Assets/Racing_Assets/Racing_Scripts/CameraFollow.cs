@@ -1161,7 +1161,11 @@ public class CameraFollow : MonoBehaviour
             return;
         }
 
-        _fovLerpT += dt * fovLerpSpeed / _fovLerpDuration;
+        // Forced cinematic FOV (finish portal): honor rampDuration in real seconds.
+        // Gameplay FOV anims still use fovLerpSpeed (scene value can be tiny for soft peeks).
+        float stepDt = _forcedFovActive ? Time.unscaledDeltaTime : dt;
+        float speedMul = _forcedFovActive ? 1f : Mathf.Max(0.0001f, fovLerpSpeed);
+        _fovLerpT += stepDt * speedMul / _fovLerpDuration;
         float t = Mathf.Clamp01(_fovLerpT);
         cam.fieldOfView = Mathf.Lerp(_startFOV, _targetFOV, t);
 

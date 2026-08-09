@@ -124,6 +124,7 @@ public sealed class CarForcefield : MonoBehaviour
     private SphereCollider _trigger;
     private bool _armed;
     private float _cooldownRemain;
+    private bool _finishPortalShield;
     private readonly HashSet<Collider> _recentlyLaunched = new HashSet<Collider>(64);
 
     // Car colliders cache
@@ -211,6 +212,28 @@ public sealed class CarForcefield : MonoBehaviour
     }
 
     public bool IsArmed => _armed;
+    public bool IsFinishPortalShield => _finishPortalShield;
+
+    /// <summary>
+    /// Finish-portal sequence: stay armed, launch obstacles on contact, never crash, no bubble/slow-mo/postFX.
+    /// </summary>
+    public void SetFinishPortalShield(bool on)
+    {
+        _finishPortalShield = on;
+        if (on)
+        {
+            enabled = true;
+            _cooldownRemain = 0f;
+            SetArmed(true);
+            if (visualRoot != null)
+                visualRoot.gameObject.SetActive(false);
+        }
+        else
+        {
+            SetArmed(false);
+            _cooldownRemain = 0f;
+        }
+    }
 
     /// <summary>
     /// Some obstacles (or overlap-based checks) can confirm a hit without going through the forcefield trigger first,
@@ -223,6 +246,13 @@ public sealed class CarForcefield : MonoBehaviour
             return false;
         if (ownerCollider != null && obstacleCollider == ownerCollider)
             return false;
+
+        // Finish portal: always consume the hit (crash skipped by caller even if nothing launched).
+        if (_finishPortalShield)
+        {
+            HandleTriggerEnter(obstacleCollider);
+            return true;
+        }
 
         bool wasArmed = _armed;
         HandleTriggerEnter(obstacleCollider);
@@ -237,6 +267,7 @@ public sealed class CarForcefield : MonoBehaviour
 
     public void DisarmNow()
     {
+        if (_finishPortalShield) return;
         SetArmed(false);
         _cooldownRemain = cooldownSeconds;
     }
@@ -284,7 +315,7 @@ public sealed class CarForcefield : MonoBehaviour
     {
         bool wasArmed = _armed;
         _armed = v;
-        if (disableVisualOnUse && visualRoot)
+        if (disableVisualOnUse && visualRoot && !_finishPortalShield)
             visualRoot.gameObject.SetActive(v);
 
         if (_trigger)
@@ -292,8 +323,8 @@ public sealed class CarForcefield : MonoBehaviour
 
         SyncVisual(true);
 
-        // Play rearm sound only when transitioning from disarmed -> armed
-        if (v && !wasArmed)
+        // Play rearm sound only when transitioning from disarmed -> armed (not finish-portal shield).
+        if (v && !wasArmed && !_finishPortalShield)
         {
             // play rearm SFX at the car position
             Play3DClipAtPoint(forcefieldRearmClip, transform.position, forcefieldRearmVolume);
@@ -305,10 +336,48 @@ public sealed class CarForcefield : MonoBehaviour
         if (!visualRoot) return;
         visualRoot.localScale = Vector3.one * (triggerRadius * 2f);
 
-        bool show = _armed && this.enabled && (!disableVisualOnUse ? true : _armed);
+        // Finish-portal shield launches silently — no bubble visual.
+        bool show = !_finishPortalShield && _armed && this.enabled && (!disableVisualOnUse ? true : _armed);
         if (visualRoot.gameObject.activeSelf != show)
             visualRoot.gameObject.SetActive(show);
 
+    }
+
+    private void ConsumeForcefieldAfterLaunch()
+    {
+        if (_finishPortalShield)
+            return;
+
+        SetArmed(false);
+        _cooldownRemain = cooldownSeconds;
+        if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+    }
+
+    private void PlayLaunchPresentation(Vector3 fxPos, Quaternion fxRot, Transform parentForVfx)
+    {
+        if (launchVFX != null)
+        {
+            var vfx = Instantiate(launchVFX, fxPos, fxRot);
+            if (parentVfxToObstacle && vfx != null && parentForVfx != null)
+                vfx.transform.SetParent(parentForVfx, true);
+        }
+
+        // Finish portal: no slow-mo / postFX / popup spam — just fling the obstacle.
+        if (_finishPortalShield)
+        {
+            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume * 0.7f);
+            return;
+        }
+
+        if (enableLaunchSlowMo)
+            StartLaunchSlowMo();
+
+        Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
+
+        if (postFX != null)
+            postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
+
+        ShowForcefieldInvinciblePopup();
     }
 
     internal void HandleTriggerEnter(Collider other)
@@ -399,31 +468,12 @@ public sealed class CarForcefield : MonoBehaviour
             vfxForward.Normalize();
             Quaternion vfxRot = Quaternion.LookRotation(vfxForward, Vector3.up);
 
-            if (launchVFX != null)
-            {
-                var vfx = Instantiate(launchVFX, vfxPos, vfxRot);
-                if (parentVfxToObstacle && vfx != null)
-                    vfx.transform.SetParent(other.transform.root, true);
-            }
-
-            if (enableLaunchSlowMo)
-                StartLaunchSlowMo();
-
-            Play3DClipAtPoint(forcefieldUseClip, vfxPos, forcefieldUseVolume);
-
-
-            // NEW: trigger PPSv2 PostFX burst (Chromatic + Lens Distortion)
-            if (postFX != null)
-                postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
-
-            ShowForcefieldInvinciblePopup();
+            PlayLaunchPresentation(vfxPos, vfxRot, other.transform.root);
 
             // mark as recently handled
             _recentlyLaunched.Add(other);
 
-            SetArmed(false);
-            _cooldownRemain = cooldownSeconds;
-            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+            ConsumeForcefieldAfterLaunch();
 
             return;
         }
@@ -476,29 +526,11 @@ public sealed class CarForcefield : MonoBehaviour
 
             // FX/SFX like your other intercepts
             Vector3 fxPos = other.bounds.ClosestPoint(transform.position);
+            Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
+            PlayLaunchPresentation(fxPos, fxRot, other.transform.root);
 
-            if (launchVFX != null)
-            {
-                Quaternion fxRot = Quaternion.LookRotation((transform.position - fxPos).normalized, Vector3.up);
-                var vfx = Instantiate(launchVFX, fxPos, fxRot);
-                if (parentVfxToObstacle && vfx != null)
-                    vfx.transform.SetParent(other.transform.root, true);
-            }
-
-            if (enableLaunchSlowMo)
-                StartLaunchSlowMo();
-
-            Play3DClipAtPoint(forcefieldUseClip, fxPos, forcefieldUseVolume);
-
-            if (postFX != null)
-                postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
-
-            ShowForcefieldInvinciblePopup();
-
-            // Consume the forcefield (optional � delete this if you want NPC-crash to NOT consume it)
-            SetArmed(false);
-            _cooldownRemain = cooldownSeconds;
-            if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+            // Consume the forcefield (optional — delete this if you want NPC-crash to NOT consume it)
+            ConsumeForcefieldAfterLaunch();
 
             return;
         }
@@ -701,26 +733,8 @@ public sealed class CarForcefield : MonoBehaviour
         Vector3 pitchTorque = transform.right * (torqueMag * 0.35f * Mathf.Sign(Vector3.Dot(awayDir, transform.forward)));
         launchRb.AddTorque(yawTorque + rollTorque + pitchTorque, ForceMode.VelocityChange);
 
-        if (launchVFX != null)
-        {
-            var vfx = Instantiate(launchVFX, vfxPos2, vfxRot2);
-            if (parentVfxToObstacle && vfx != null)
-                vfx.transform.SetParent(launchRb.transform, true);
-        }
-
-        if (enableLaunchSlowMo)
-            StartLaunchSlowMo();
-
-        Play3DClipAtPoint(forcefieldUseClip, vfxPos2, forcefieldUseVolume);
-
-        if (postFX != null)
-            postFX.PlayBurst(fxFadeIn, fxHold, fxFadeOut);
-
-        ShowForcefieldInvinciblePopup();
-
-        SetArmed(false);
-        _cooldownRemain = cooldownSeconds;
-        if (disableVisualOnUse && visualRoot) visualRoot.gameObject.SetActive(false);
+        PlayLaunchPresentation(vfxPos2, vfxRot2, launchRb.transform);
+        ConsumeForcefieldAfterLaunch();
     }
 
     private void ShowForcefieldInvinciblePopup()

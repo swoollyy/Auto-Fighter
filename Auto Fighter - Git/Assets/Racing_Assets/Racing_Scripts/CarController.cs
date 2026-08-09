@@ -4039,6 +4039,20 @@ public class CarController : MonoBehaviour
     /// <summary>True while spawn / loading / cutscenes hold car input (drift reads false).</summary>
     public bool IsExternalInputLocked => _externalInputLocked;
 
+    /// <summary>
+    /// Finish-portal sequence: immune to crashes; obstacles get forcefield-launched instead.
+    /// </summary>
+    public void SetFinishPortalCrashShield(bool on)
+    {
+        if (_forcefield == null)
+            _forcefield = GetComponent<CarForcefield>();
+        if (_forcefield != null)
+            _forcefield.SetFinishPortalShield(on);
+    }
+
+    public bool IsFinishPortalCrashShieldActive =>
+        _forcefield != null && _forcefield.IsFinishPortalShield;
+
     private void TryTriggerDriftHeldBoost()
     {
         if (!enableDriftHeldBoost) return;
@@ -7363,6 +7377,10 @@ public class CarController : MonoBehaviour
         if (IsCrashInvulnerable)
             return;
 
+        // Finish portal: never take crash damage (obstacles are flung via forcefield shield).
+        if (_forcefield != null && _forcefield.IsFinishPortalShield)
+            return;
+
         if (_inCrash && !_flipMashActive)
             return;
 
@@ -8598,16 +8616,19 @@ public class CarController : MonoBehaviour
         if (collision.collider.GetComponentInParent<TrackObstacleBounceBack>() != null)
             return;
 
-        // === FORCEFIELD PROTECTION CHECK (targeted) ===
-        // Previously: while the forcefield was armed we blanket-ignored EVERY crash-layer collision,
-        // which made the car ghost through everything the whole time the field was armed / re-armed.
-        // Now we only skip the crash if the forcefield can actually intercept and launch THIS specific
-        // object. If it can't (already launched, wrong type, etc.), the hit falls through and crashes
-        // normally. This makes the forcefield a single-use proc rather than a lingering invincibility.
+        // === FORCEFIELD / FINISH-PORTAL PROTECTION ===
+        // Finish portal: always skip crash and try to fling the obstacle.
+        // Normal forcefield: only skip if it actually intercepts/consumes this hit.
         if (_forcefield != null && _forcefield.IsArmed)
         {
             if (((1 << collision.gameObject.layer) & crashLayers) != 0)
             {
+                if (_forcefield.IsFinishPortalShield)
+                {
+                    _forcefield.TryInterceptObstacleForOverlapHit(collision.collider);
+                    return;
+                }
+
                 if (_forcefield.TryInterceptObstacleForOverlapHit(collision.collider))
                 {
                     Debug.Log($"[CarController] Forcefield launched {collision.gameObject.name} - crash skipped");
@@ -9064,12 +9085,17 @@ public class CarController : MonoBehaviour
         if (impactSpeed < minImpactSpeed)
             return;
 
-        // Targeted forcefield protection (see OnCollisionEnter): only skip the crash if the forcefield
-        // actually launches THIS object; otherwise let it crash normally.
+        // Targeted forcefield / finish-portal protection (see OnCollisionEnter).
         if (_forcefield != null && _forcefield.IsArmed)
         {
             if (((1 << other.gameObject.layer) & crashLayers) != 0)
             {
+                if (_forcefield.IsFinishPortalShield)
+                {
+                    _forcefield.TryInterceptObstacleForOverlapHit(other);
+                    return;
+                }
+
                 if (_forcefield.TryInterceptObstacleForOverlapHit(other))
                 {
                     Debug.Log($"[CarController] Forcefield launched {other.name} - crash skipped");

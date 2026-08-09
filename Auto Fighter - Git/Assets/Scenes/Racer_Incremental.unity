@@ -2343,14 +2343,21 @@ MonoBehaviour:
   ringCount: 8
   rayCount: 15
   colorCycleSpeed: 1.4
-  ringSpinSpeed: 70
+  ringSpinSpeed: 50
   raySpinSpeed: 95
   rushSpeed: 1.35
+  fxIntroSeconds: 1.35
+  speedRampEndMultiplier: 3.25
   voidCanvasSort: 60
   fxCanvasSort: 120
   ringAlpha: 0.85
   rayAlpha: 0.7
   voidFadeInSeconds: 4
+  finalBlackoutSeconds: 1.5
+  finalBlackoutStartSize: 80
+  portalSparkSeconds: 0.3
+  portalSparkPeakSize: 20
+  portalSparkGlowStrength: 0.1
   voidCanvas: {fileID: 632802962}
   voidImage: {fileID: 482376753}
   fxCanvas: {fileID: 1759774784}
@@ -13937,20 +13944,30 @@ MonoBehaviour:
   minProgressToAccept: 0.02
   enableAutoProgressTrigger: 0
   autoTriggerProgress: 0.035
-  preResultsTunnelSeconds: 4.5
+  preResultsTunnelSeconds: 2.3
   environmentFadeDelaySeconds: 1.25
   environmentFadeInSeconds: 2.4
   portalExitDuration: 1.1
-  tunnelFov: 148
-  fovRampIn: 2.2
-  postFxBloomHold: 0.9
+  tunnelFov: 179
+  fovRampIn: 2.6
+  postFxBloomHold: 1.8
   hideGameplayUiDuringIntro: 1
   hideHudAfterSeconds: 1.5
   lockCarInputDuringSequence: 1
   pullCarForwardDuringTunnel: 1
   pullAcceleration: 55
-  persistentShakeStrength: 0.22
+  persistentShakeStrength: 3.44
   shakeStartNormalizedThroughFade: 0.55
+  fxPortalExitAnim: 1
+  fxForcedFov: 1
+  fxPostChromatic: 1
+  fxPostLens: 0
+  fxPostBloom: 1
+  fxHyperTunnelUi: 1
+  fxFinalBlackout: 1
+  fxPersistentShake: 1
+  fxCarForwardPull: 1
+  fxHideGameplayHud: 1
 --- !u!4 &1122974862
 Transform:
   m_ObjectHideFlags: 0
@@ -22532,15 +22549,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1764de1de43cc4d19af52679d3eaae06, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  version: 1073741824
-  desiredSimulationFPS: 20
-  workerThreads: 2
-  doubleBuffering: 0
-  hardCollisions: 1
-  symmetryBreakingBias: 0.1
-  movementPlane: 0
-  useNavmeshAsObstacle: 0
-  drawQuadtree: 0
 --- !u!114 &1966057592
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22553,50 +22561,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 78396926cbbfc4ac3b48fc5fc34a87d1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  version: 1073741824
-  data:
-    dataString: 
-    file_cachedStartup: {fileID: 0}
-    cacheStartup: 0
-  showNavGraphs: 1
-  showUnwalkableNodes: 1
-  debugMode: 0
-  graphUpdateDebugMode: 0
-  debugFloor: 0
-  debugRoof: 1
-  manualDebugFloorRoof: 0
-  showSearchTree: 0
-  unwalkableNodeDebugSize: 0.3
-  logPathResults: 1
-  maxNearestNodeDistance: 100
-  scanOnStartup: 1
-  fullGetNearestSearch: 0
-  prioritizeGraphs: 0
-  prioritizeGraphsLimit: 1
-  colorSettings:
-    _SolidColor: {r: 0.11764706, g: 0.4, b: 0.7882353, a: 0.9}
-    _UnwalkableNode: {r: 1, g: 0, b: 0, a: 0.5}
-    _BoundsHandles: {r: 0.29, g: 0.454, b: 0.741, a: 0.9}
-    _ConnectionLowLerp: {r: 0, g: 1, b: 0, a: 0.5}
-    _ConnectionHighLerp: {r: 1, g: 0, b: 0, a: 0.5}
-    _MeshEdgeColor: {r: 0, g: 0, b: 0, a: 0.5}
-    _AreaColors: []
-  tagNames: []
-  heuristic: 2
-  heuristicScale: 1
-  threadCount: 1
-  maxFrameTime: 1
-  batchGraphUpdates: 0
-  graphUpdateBatchingInterval: 0.2
-  navmeshUpdates:
-    updateInterval: 0
-  euclideanEmbedding:
-    mode: 0
-    seed: 0
-    pivotPointRoot: {fileID: 0}
-    spreadOutCount: 10
-  showGraphs: 0
-  showGraphsInStandalonePlayer: 0
 --- !u!4 &1966057593
 Transform:
   m_ObjectHideFlags: 0
