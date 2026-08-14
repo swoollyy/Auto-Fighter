@@ -39,6 +39,8 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private float steerFlipRetainedCharge = 0.055f;
     [SerializeField] private float steerFlipThreshold = 0.15f;
     [SerializeField] private float minChargeForFlipReset = 0f;
+    [Tooltip("How long opposite steer must be held before drift charge is cut. Prevents flick / swap from instantly killing charge.")]
+    [SerializeField, Min(0f)] private float steerFlipGraceSeconds = 0.22f;
     [SerializeField] private float steerFlipRebuildDelay = 0.1f;
     [SerializeField] private bool allowDriftGlideWithoutSteer = true;
     [SerializeField] private float driftGlideDecayPerSecond = 0.15f;
@@ -95,6 +97,7 @@ public class CarDriftConfig : MonoBehaviour
     public float SteerFlipRetainedCharge => steerFlipRetainedCharge;
     public float SteerFlipThreshold => steerFlipThreshold;
     public float MinChargeForFlipReset => minChargeForFlipReset;
+    public float SteerFlipGraceSeconds => steerFlipGraceSeconds;
     public float SteerFlipRebuildDelay => steerFlipRebuildDelay;
     public bool AllowDriftGlideWithoutSteer => allowDriftGlideWithoutSteer;
     public float DriftGlideDecayPerSecond => driftGlideDecayPerSecond;

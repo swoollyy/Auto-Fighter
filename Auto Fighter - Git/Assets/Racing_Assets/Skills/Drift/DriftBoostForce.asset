@@ -16,11 +16,15 @@ MonoBehaviour:
   displayName: Drift Boost Force
   description: Increases the force of drift boost by .015
   maxLevel: 5
-  baseCost: 30
-  costPerLevel: 2
+  baseCost: 15
+  costPerLevel: 3
   mode: 0
   baseValue: 0
   perLevelAdd: 0.015
   uiPosition: {x: 150, y: 300}
   revealedAtStart: 0
+  revealOnFirstSprocket: 0
+  usesSprockets: 0
+  baseSprocketCost: 5
+  sprocketCostPerLevel: 3
   progressiveUnlocks: []

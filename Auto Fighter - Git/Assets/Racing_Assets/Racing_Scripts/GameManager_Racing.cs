@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using Debug = UnityEngine.Debug;
 
 public class GameManager_Racing : MonoBehaviour
@@ -194,8 +196,10 @@ public class GameManager_Racing : MonoBehaviour
     private bool runStarted = false;
     private Coroutine beginRunRoutine;
     private Coroutine _afterTrackGenCr;
-
     private Coroutine _finalizeRunCR;
+    private Coroutine _flowIrisCr;
+    private Coroutine _beginRunIrisCr;
+    private Coroutine _restartIrisCr;
     private bool _finalizePending;
     private bool _acceptRunEndContinueInput;
     private RunFlowState _flowState = RunFlowState.SkillTree;
@@ -215,8 +219,23 @@ public class GameManager_Racing : MonoBehaviour
     private bool _depositSoundPlayed = false;
     private bool _loadingGameplayGateActive = false;
     private bool _audioPausedByLoadingGate = false;
+    /// <summary>False until iris engulf finishes and loading UI is actually showing.</summary>
+    private bool _beginRunIrisEngulfComplete = true;
+    /// <summary>When true, track gen runs without SetSection(Loading) so skill tree/results stay visible under goo.</summary>
+    private bool _deferLoadingUiReveal;
+    private float _loadingScreenShownAtRealtime = -1f;
+    private const float MinLoadingScreenSeconds = 0.45f;
+    [Header("Post-Loading Iris")]
+    [SerializeField, Min(0.05f), Tooltip("Goo iris open duration after loading (unscaled). Slower than the default close so DAY/static can read through the reveal.")]
+    private float postLoadingIrisOpenSeconds = 1.15f;
     private bool _finishPortalSequenceActive = false;
+    /// <summary>Set when this run ends via the finish portal (win), not fuel/HP death.</summary>
+    private bool _endedViaFinishPortal;
+    /// <summary>Trial-complete results: no quick replay — skill tree only.</summary>
+    private bool _blockQuickReplayThisRunEnd;
     private GameProgressState _progressState = GameProgressState.InitIntro;
+    [Tooltip("Story flag set when the player beats trial 1 (finish portal). Used for post-win skill-tree dialogue.")]
+    [SerializeField] private string trial1CompleteStoryFlag = "trial1_complete";
     [Header("Loading Audio Gate")]
     [Tooltip("Music/audio sources allowed to keep playing while loading gate is active (these get ignoreListenerPause enabled during loading).")]
     [SerializeField] private AudioSource[] loadingMusicWhitelist;
@@ -228,6 +247,14 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private string initFinishedStoryFlag = "init_finish";
     [Tooltip("Raised once when entering SkillTree after init is finished. Use this to trigger first-time skill tree narrative.")]
     [SerializeField] private string firstSkillTreeEntryStoryFlag = "skilltree_first_entry";
+
+    [Header("Debug — Start Trial")]
+    [Tooltip("ON: on boot, jump to Debug Start Trial Index (0 = first TrialConfig on DayTrialManager). Use to preview each level's track/spawner config.")]
+    [SerializeField] private bool debugForceStartTrial = false;
+    [Tooltip("0-based index into DayTrialManager → Trials (0 = trial 1 / Track1, 1 = second trial, …).")]
+    [SerializeField, Min(0)] private int debugStartTrialIndex = 0;
+    [Tooltip("When starting on trial > 0, max every skill from earlier trials' allowlists so the car is fully upgraded for those tracks.")]
+    [SerializeField] private bool debugMaxPreviousTrialSkills = true;
 
     public float DistanceAlongTrack => runDistanceMeters;
     public bool IsGameplayLive => !_loadingGameplayGateActive && runStarted && !runEnded;
@@ -278,7 +305,8 @@ public class GameManager_Racing : MonoBehaviour
         TimeScaleHub.ForceClearAllPauses();
         Time.timeScale = 1f;
 
-
+        // Scene may not have a DayTrialManager wired yet — create one so days advance on every run.
+        DayTrialManager.EnsureExists();
     }
 
     void Start()
@@ -295,6 +323,15 @@ public class GameManager_Racing : MonoBehaviour
         if (skillTreeUI != null) skillTreeUI.BindGameManager(this);
 
         WireNarrativeEvents();
+        GooIrisScreenTransition.EnsureExists();
+        DayTrialManager.EnsureExists();
+        // After DayTrial.Start (and any same-frame EnsureExists Start) so LoadState can't overwrite the jump.
+        StartCoroutine(CoApplyDebugStartTrialIfNeeded());
+
+        bool pendingIrisOpen = GooIrisScreenTransition.PendingOpenAfterSceneLoad;
+        if (pendingIrisOpen)
+            GooIrisScreenTransition.EnsureExists().SnapSealed();
+
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
         {
             // Dialogue may already be running (NarrativeDirector.Start can beat this Start).
@@ -305,12 +342,80 @@ public class GameManager_Racing : MonoBehaviour
         {
             // No intro this boot (skipped narrative, or already seen this session after a run restart).
             // UIManager used to leave the game canvas off waiting for dialogue end — show skill tree now.
-            ReturnToSkillTree();
+            // After Cross reload, defer narrative until iris opens so garage/CheckTriggers aren't mid-black.
+            ReturnToSkillTree(
+                raiseFirstSkillTreeEntryFlag: !pendingIrisOpen,
+                notifySkillTreeNarrative: !pendingIrisOpen);
         }
 
         // Safety: if another Start() order still left us without dialogue and without a canvas,
         // recover on the next frame.
         StartCoroutine(CoEnsureSkillTreeVisibleIfNoDialogue());
+        StartCoroutine(CoOpenIrisAfterSceneLoadIfPending());
+    }
+
+    private IEnumerator CoApplyDebugStartTrialIfNeeded()
+    {
+        // DayTrial.Start may still run later this frame if EnsureExists just created it.
+        yield return null;
+        ApplyDebugStartTrialIfNeeded();
+    }
+
+    private void ApplyDebugStartTrialIfNeeded()
+    {
+        if (!debugForceStartTrial) return;
+
+        var day = DayTrialManager.Instance ?? DayTrialManager.EnsureExists();
+        if (day == null)
+        {
+            Debug.LogWarning("[GameManager] Debug start trial: DayTrialManager missing.");
+            return;
+        }
+
+        day.DebugJumpToTrial(debugStartTrialIndex, debugMaxPreviousTrialSkills);
+    }
+
+    private IEnumerator CoOpenIrisAfterSceneLoadIfPending()
+    {
+        // Let skill tree / canvas settle one frame under sealed black.
+        yield return null;
+        yield return null;
+
+        var iris = GooIrisScreenTransition.EnsureExists();
+
+        // Never run a boot iris open over live dialogue (iris sort 32000 would bury it).
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
+        {
+            // Clear sealed-but-hidden leftovers without flashing black.
+            if (iris.IsSealed && !iris.IsVisuallyActive)
+                iris.SnapOpenHidden();
+            GooIrisScreenTransition.PendingOpenAfterSceneLoad = false;
+            yield break;
+        }
+
+        // Only open when we intentionally covered the screen (pending reload, or visible block).
+        // Do NOT treat sealed-but-hidden (HideVisualKeepSealed) as needing an open — that was
+        // flashing black goo over the skill tree / dialogue on every boot after a run.
+        bool needsOpen =
+            GooIrisScreenTransition.PendingOpenAfterSceneLoad ||
+            iris.IsBlockingScreen();
+
+        if (!needsOpen)
+        {
+            if (iris.IsSealed && !iris.IsVisuallyActive)
+                iris.SnapOpenHidden();
+            yield break;
+        }
+
+        yield return iris.CoOpen();
+
+        // Hard failsafe — never leave Cross→reload on permanent black.
+        if (iris.IsBlockingScreen() || iris.IsSealed)
+            iris.SnapOpenHidden();
+
+        // Garage / Init_SkillTree after reveal (deferred from Start when pending).
+        TryRaiseFirstSkillTreeEntryNarrativeFlag();
+        NarrativeDirector.NotifyReturnedToSkillTree();
     }
 
     private System.Collections.IEnumerator CoEnsureSkillTreeVisibleIfNoDialogue()
@@ -355,6 +460,9 @@ public class GameManager_Racing : MonoBehaviour
             StopCoroutine(_afterTrackGenCr);
             _afterTrackGenCr = null;
         }
+
+        EndFinishPortalPresentation();
+        FindObjectOfType<ForcefieldPostFXController>(true)?.ResetAllEffectsImmediate();
     }
 
     private void OnDisable()
@@ -376,6 +484,9 @@ public class GameManager_Racing : MonoBehaviour
         TimeScaleHub.End(_crashSlowMoOwner);
         TimeScaleHub.End(_closeCallSlowMoOwner);
         TimeScaleHub.End(this); // legacy cleanup if anything still keyed to the manager instance
+
+        EndFinishPortalPresentation();
+        FindObjectOfType<ForcefieldPostFXController>(true)?.ResetAllEffectsImmediate();
     }
 
     void Update()
@@ -425,7 +536,7 @@ public class GameManager_Racing : MonoBehaviour
             bool notInFlipMash = carController == null || !carController.IsFlipMashActive;
             if (notInFlipMash && RestartAllowedNow())
             {
-                if (WasQuickReplayPressed())
+                if (!_blockQuickReplayThisRunEnd && WasQuickReplayPressed())
                 {
                     if (_finalizeRunCR != null) StopCoroutine(_finalizeRunCR);
                     _finalizeRunCR = null;
@@ -506,40 +617,192 @@ public class GameManager_Racing : MonoBehaviour
 
     public void BeginRun()
     {
+        // Back-compat — same as later-run skill-tree Play.
+        BeginRunFromSkillTree();
+    }
+
+    /// <summary>
+    /// Later runs: skill tree stays visible while goo closes. Loading UI + track gen start
+    /// only after the iris is fully sealed (avoids lag during the close animation).
+    /// </summary>
+    public void BeginRunFromSkillTree()
+    {
         if (runStarted || _loadingGameplayGateActive || beginRunRoutine != null || _afterTrackGenCr != null)
             return;
+        if (_beginRunIrisCr != null)
+            return;
 
-        // Reset end-state flags immediately so loading cannot be interrupted by stale restart logic.
+        _beginRunIrisCr = StartCoroutine(CoBeginRunFromSkillTree());
+    }
+
+    /// <summary>
+    /// First run: controls overlay was dismissed. Continue iris ~50%→seal and start loading.
+    /// Never forces the skill tree canvas back on (that caused the garage flash in the hole).
+    /// </summary>
+    public void BeginRunAfterControlsDismissed()
+    {
+        if (runStarted || _loadingGameplayGateActive || beginRunRoutine != null || _afterTrackGenCr != null)
+            return;
+        if (_beginRunIrisCr != null)
+            return;
+
+        _beginRunIrisCr = StartCoroutine(CoBeginRunAfterControls());
+    }
+
+    private IEnumerator CoBeginRunFromSkillTree()
+    {
+        var iris = GooIrisScreenTransition.EnsureExists();
+        _beginRunIrisEngulfComplete = false;
+        _loadingScreenShownAtRealtime = -1f;
+        _deferLoadingUiReveal = true;
+
+        GameplayUIInputGuard.IsTutorialHighlightActive = true;
+
+        // Hard-pin skill tree for the entire goo close — SetSection(Loading) is ignored until unlock.
+        if (skillTreeRoot != null && !skillTreeRoot.activeSelf)
+            skillTreeRoot.SetActive(true);
+        uiManager?.SetGameCanvasVisible(true);
+        uiManager?.LockSection(UIManager_Racing.UISection.SkillTree);
+
+        // SkillTree root Image is authored translucent (~0.72). Keep it opaque while gen runs
+        // under the iris so the hole never reads as empty void.
+        Image skillTreeBg = skillTreeRoot != null ? skillTreeRoot.GetComponent<Image>() : null;
+        Color skillTreeBgColor = default;
+        float skillTreeBgAlpha = -1f;
+        if (skillTreeBg != null)
+        {
+            skillTreeBgColor = skillTreeBg.color;
+            skillTreeBgAlpha = skillTreeBgColor.a;
+            skillTreeBgColor.a = 1f;
+            skillTreeBg.color = skillTreeBgColor;
+        }
+
+        iris.EnsureReadyToCloseOverScreen();
+        Coroutine closeCr = iris.StartCoroutine(iris.CoCloseAndHold());
+
+        float sealWaitUntil = Time.unscaledTime + 3f;
+        while (!iris.IsSealed && Time.unscaledTime < sealWaitUntil)
+        {
+            if (skillTreeRoot != null && !skillTreeRoot.activeSelf)
+                skillTreeRoot.SetActive(true);
+            yield return null;
+        }
+        if (closeCr != null && !iris.IsSealed)
+            yield return closeCr;
+        if (!iris.IsSealed)
+            iris.SnapSealed();
+
+        // Fully sealed — show loading, then start heavy track gen (not during goo close).
+        RevealLoadingUi();
+        iris.HideVisualKeepSealed();
+
+        if (skillTreeBg != null && skillTreeBgAlpha >= 0f)
+        {
+            skillTreeBgColor.a = skillTreeBgAlpha;
+            skillTreeBg.color = skillTreeBgColor;
+        }
+
+        _loadingScreenShownAtRealtime = Time.realtimeSinceStartup;
+        _beginRunIrisEngulfComplete = true;
+        GameplayUIInputGuard.IsTutorialHighlightActive = false;
+
+        BeginRunCore(revealLoadingUi: false);
+        _deferLoadingUiReveal = false; // already revealed above; don't re-defer progress UI
+        _beginRunIrisCr = null;
+    }
+
+    private IEnumerator CoBeginRunAfterControls()
+    {
+        var iris = GooIrisScreenTransition.EnsureExists();
+        _beginRunIrisEngulfComplete = false;
+        _loadingScreenShownAtRealtime = -1f;
+        _deferLoadingUiReveal = true;
+
+        GameplayUIInputGuard.IsTutorialHighlightActive = true;
+
+        // Iris already ~50% from controls. Do NOT SetSection(SkillTree) — that flashes the garage.
+        // CONTROLS overlay stays opaque on top until we destroy it after full seal.
+        iris.RestoreDefaultSortOrder();
+        Coroutine closeCr = iris.StartCoroutine(iris.CoCloseAndHold());
+
+        if (closeCr != null)
+            yield return closeCr;
+        if (!iris.IsSealed)
+            iris.SnapSealed();
+
+        // Safe to drop CONTROLS now — screen is fully sealed black.
+        FirstRunControlsOverlay.DestroyIfPresent();
+
+        RevealLoadingUi();
+        iris.HideVisualKeepSealed();
+
+        _loadingScreenShownAtRealtime = Time.realtimeSinceStartup;
+        _beginRunIrisEngulfComplete = true;
+        GameplayUIInputGuard.IsTutorialHighlightActive = false;
+
+        BeginRunCore(revealLoadingUi: false);
+        _deferLoadingUiReveal = false;
+        _beginRunIrisCr = null;
+    }
+
+    private void BeginRunCore(bool revealLoadingUi)
+    {
+        // Full new-run reset (skill-tree Play and quick-replay share this path).
         runEnded = false;
         _finalizePending = false;
         _finishPortalSequenceActive = false;
+        _endedViaFinishPortal = false;
+        _blockQuickReplayThisRunEnd = false;
         _acceptRunEndContinueInput = false;
+        _currencyAwarded = false;
+        _deathStopBurstPlayed = false;
+        runDistanceMeters = 0f;
+        _maxRunNormalizedProgress = 0f;
         _flowState = RunFlowState.Loading;
         SetProgressState(GameProgressState.LoadingRun);
+        // Iris paths call RevealLoadingUi first (defer=false). Do not flip defer back on here —
+        // that left later-run progress updates writing to an inactive Loading_PANEL if anything
+        // stole the section between reveal and this call.
+        if (revealLoadingUi)
+            _deferLoadingUiReveal = false;
         if (_finalizeRunCR != null)
         {
             StopCoroutine(_finalizeRunCR);
             _finalizeRunCR = null;
         }
+        if (_afterTrackGenCr != null)
+        {
+            StopCoroutine(_afterTrackGenCr);
+            _afterTrackGenCr = null;
+        }
         runStarted = true;
         EnterLoadingGameplayGate();
         EnsureFinishPortalDirector();
-        uiManager?.SetSection(UIManager_Racing.UISection.Loading);
-        uiManager?.ShowLoading("Generating track...");
+        EndFinishPortalPresentation();
+        FindObjectOfType<ForcefieldPostFXController>(true)?.ResetAllEffectsImmediate();
+        (runStartIntro != null ? runStartIntro : FindObjectOfType<RunStartIntroUI>(true))?.PrepareForNewRun();
+
+        if (revealLoadingUi || !_deferLoadingUiReveal)
+        {
+            uiManager?.ShowLoading("Generating track...", 0.05f);
+            uiManager?.UpdateRunCoins(0);
+            uiManager?.ShowRunCoins();
+            uiManager?.UpdateRunSprockets(0);
+        }
+        else
+        {
+            // Prep loading text only — never SetSection(Loading) or HideTotalCoins while skill tree is up.
+            uiManager?.SetLoadingState("Generating track...", 0.05f);
+        }
 
         var mgr = RacingSkillTreeManager.Instance;
         _startingCurrency = mgr != null ? mgr.Currency : 0;
         _depositSoundPlayed = false;
 
-        // NEW: reset breakdown for this run
         _distanceCoinsThisRun = 0;
         _pickupCoinsThisRun = 0;
         _obstacleCoinsThisRun = 0;
         _sprocketsThisRun = 0;
-
-        uiManager?.UpdateRunCoins(0);   // HUD shows 0 to start
-        uiManager?.ShowRunCoins();
-        uiManager?.UpdateRunSprockets(0);
 
         if (trackGenerator == null)
             trackGenerator = FindGeneratorAnyState();
@@ -551,18 +814,64 @@ public class GameManager_Racing : MonoBehaviour
         beginRunRoutine = StartCoroutine(CoBeginRun());
     }
 
+    private void RevealLoadingUi()
+    {
+        _deferLoadingUiReveal = false;
+        // ShowLoading clears the section lock and swaps to the loading panel.
+        uiManager?.UnlockSection();
+        // Hard-kill skill tree / results so they cannot stay drawn over Loading_PANEL
+        // (Loading is the first Canvas sibling and draws underneath otherwise).
+        if (skillTreeRoot != null && skillTreeRoot.activeSelf)
+            skillTreeRoot.SetActive(false);
+        uiManager?.HideRunComplete();
+        uiManager?.ShowLoading("Generating track...", 0.05f);
+        uiManager?.UpdateRunCoins(0);
+        uiManager?.ShowRunCoins();
+        uiManager?.UpdateRunSprockets(0);
+    }
+
+    private void ApplyLoadingUiState(string message, float progress01)
+    {
+        // NEVER call ShowLoading while deferred — that SetSection(Loading) kills the skill tree under goo.
+        // Once revealed (or BeginRunCore(reveal:true)), keep the panel alive if anything stole the section.
+        if (!_deferLoadingUiReveal)
+        {
+            if (uiManager == null || uiManager.CurrentSection != UIManager_Racing.UISection.Loading)
+            {
+                if (skillTreeRoot != null && skillTreeRoot.activeSelf)
+                    skillTreeRoot.SetActive(false);
+                uiManager?.UnlockSection();
+                uiManager?.ShowLoading(message, progress01);
+                return;
+            }
+        }
+        uiManager?.SetLoadingState(message, progress01);
+    }
+
     private void RestartRun()
     {
-        Debug.Log("[GameManager_Racing] Restarting run...");
+        if (_restartIrisCr != null)
+            return;
+        _restartIrisCr = StartCoroutine(CoRestartRunWithIris());
+    }
+
+    private IEnumerator CoRestartRunWithIris()
+    {
+        Debug.Log("[GameManager_Racing] Restarting run (iris close → reload)...");
+        var iris = GooIrisScreenTransition.EnsureExists();
+        // Run on the DDOL iris so close state can't be abandoned mid-busy when this GM dies.
+        yield return iris.StartCoroutine(iris.CoCloseAndHold());
+        GooIrisScreenTransition.PendingOpenAfterSceneLoad = true;
+        iris.SnapSealed();
+
         // Do NOT reset Vintage TV here — results are still on screen. Scene reload +
         // VintageTVController.Awake restores defaults once the skill tree is up.
-        // Drop any slow-mo/pause owners before reloading so a mid-slow-mo restart can't carry a stale
-        // owner (and a stuck sub-1 timescale) into the next run.
         TimeScaleHub.ForceClearAll();
         TimeScaleHub.ForceClearAllPauses();
         Time.timeScale = 1f;
         Scene current = SceneManager.GetActiveScene();
         SceneManager.LoadScene(current.buildIndex);
+        _restartIrisCr = null;
     }
 
     /// <summary>
@@ -571,7 +880,21 @@ public class GameManager_Racing : MonoBehaviour
     /// </summary>
     private void QuickReplayFromRunEnd()
     {
+        if (runStarted || _loadingGameplayGateActive || beginRunRoutine != null || _afterTrackGenCr != null)
+            return;
+        if (_beginRunIrisCr != null)
+            return;
+
         Debug.Log("[GameManager_Racing] Quick replay from run-end (Play again, skip skill tree).");
+        _beginRunIrisCr = StartCoroutine(CoQuickReplayWithIris());
+    }
+
+    private IEnumerator CoQuickReplayWithIris()
+    {
+        var iris = GooIrisScreenTransition.EnsureExists();
+        _beginRunIrisEngulfComplete = false;
+        _loadingScreenShownAtRealtime = -1f;
+        _deferLoadingUiReveal = true;
 
         PlayDepositSoundImmediateIfNeeded();
 
@@ -582,12 +905,10 @@ public class GameManager_Racing : MonoBehaviour
 
         _acceptRunEndContinueInput = false;
         runEnded = false;
-        uiManager?.HideRunComplete();
 
         EndFinishPortalPresentation();
         FindObjectOfType<VintageTVController>(true)?.ResetVisualToDefaults();
 
-        // Dead/out-of-fuel car must not be reused — BeginRun respawns a fresh one.
         if (carInstance != null)
         {
             cameraFollow?.SetTarget(null);
@@ -597,7 +918,29 @@ public class GameManager_Racing : MonoBehaviour
             _carRb = null;
         }
 
-        BeginRun();
+        // Engulf results; start track gen only after seal so goo close stays smooth.
+        GameplayUIInputGuard.IsTutorialHighlightActive = true;
+        uiManager?.SetGameCanvasVisible(true);
+        uiManager?.LockSection(UIManager_Racing.UISection.RunEnd);
+        iris.EnsureReadyToCloseOverScreen();
+        Coroutine closeCr = iris.StartCoroutine(iris.CoCloseAndHold());
+
+        if (closeCr != null)
+            yield return closeCr;
+        if (!iris.IsSealed)
+            iris.SnapSealed();
+
+        uiManager?.HideRunComplete();
+        RevealLoadingUi();
+        iris.HideVisualKeepSealed();
+
+        _loadingScreenShownAtRealtime = Time.realtimeSinceStartup;
+        _beginRunIrisEngulfComplete = true;
+        GameplayUIInputGuard.IsTutorialHighlightActive = false;
+
+        BeginRunCore(revealLoadingUi: false);
+        _deferLoadingUiReveal = false;
+        _beginRunIrisCr = null;
     }
 
     private void PlayDepositSoundImmediateIfNeeded()
@@ -645,6 +988,7 @@ public class GameManager_Racing : MonoBehaviour
     {
         _maxRunNormalizedProgress = Mathf.Max(_maxRunNormalizedProgress, 1f);
         _finishPortalSequenceActive = false;
+        _endedViaFinishPortal = true;
 
         // Results UI owns the canvas again (stats panel).
         if (uiManager != null)
@@ -716,6 +1060,22 @@ public class GameManager_Racing : MonoBehaviour
             finalTotalCurrency = mgr.Currency;
         }
 
+        // Predict trial-1 win presentation before DayTrial advances (title / no quick-restart).
+        var day = DayTrialManager.Instance;
+        bool beatTrial1ViaPortal = false;
+        if (_endedViaFinishPortal && day != null && !day.AllTrialsCompleted
+            && day.CurrentTrialIndex == 0 && day.CurrentConfig != null
+            && _maxRunNormalizedProgress >= day.CurrentConfig.targetProgress)
+        {
+            beatTrial1ViaPortal = true;
+            _blockQuickReplayThisRunEnd = true;
+        }
+
+        string resultsTitle = beatTrial1ViaPortal ? "Trial Complete" : null;
+        string resultsHint = beatTrial1ViaPortal
+            ? "LMB / X: Skill Tree"
+            : null;
+
         // 3) Show breakdown + wallet total (matches skill tree) and run-only sprockets
         uiManager?.ShowRunComplete(
             distanceInt,
@@ -724,7 +1084,9 @@ public class GameManager_Racing : MonoBehaviour
             _obstacleCoinsThisRun,
             totalCoinsThisRun,
             finalTotalCurrency,
-            _sprocketsThisRun);
+            _sprocketsThisRun,
+            resultsTitle,
+            resultsHint);
         uiManager?.SetSection(UIManager_Racing.UISection.RunEnd);
         PlayRunCompleteCoinSound();
 
@@ -746,28 +1108,59 @@ public class GameManager_Racing : MonoBehaviour
             $"PickupCoins={_pickupCoinsThisRun}, " +
             $"ObstacleCoins={_obstacleCoinsThisRun}, " +
             $"TotalThisRun={totalCoinsThisRun}, " +
-            $"FinalTotalCurrency={finalTotalCurrency}. X=skill tree, V/Triangle=play again.");
+            $"FinalTotalCurrency={finalTotalCurrency}. " +
+            (beatTrial1ViaPortal
+                ? "Trial Complete — LMB/X=skill tree (quick restart disabled)."
+                : "LMB/X=skill tree, RMB/V/Triangle=play again."));
 
         // Day / Trial progression: this completed run counts as one day. Pass/advance, tick a day,
         // or (on the last allowed day without reaching the target) fail and revert to the trial baseline.
         // Done last so any baseline restore (which reverts coins/sprockets/skills) happens after rewards
         // are tallied for this run.
         DayTrialManager.Instance?.NotifyRunCompleted(_maxRunNormalizedProgress);
+
+        if (beatTrial1ViaPortal && !string.IsNullOrEmpty(trial1CompleteStoryFlag))
+            NarrativeDirector.SetStoryFlag(trial1CompleteStoryFlag);
     }
 
 
     private IEnumerator CoBeginRun()
     {
         EnsureTrackCallbacksWired();
-        uiManager?.ShowLoading("Generating track...", 0.05f);
+        ApplyLoadingUiState("Generating track...", 0.05f);
         // Apply the active trial's track settings before generation so BuildTrack reads them.
         DayTrialManager.Instance?.ApplyCurrentTrialToTrack(trackGenerator);
-        yield return trackGenerator.GenerateTrackCo();
+
+        IEnumerator genCo = trackGenerator.GenerateTrackCo();
+        while (genCo.MoveNext())
+        {
+            int attempts = trackGenerator.LastGenerationAttempts;
+            string status = trackGenerator.GenerationStatusMessage;
+            if (string.IsNullOrEmpty(status))
+                status = attempts > 0 ? $"Generating track (attempt {attempts})..." : "Generating track...";
+            float progress = Mathf.Clamp(0.05f + attempts * 0.003f, 0.05f, 0.52f);
+            ApplyLoadingUiState(status, progress);
+            yield return genCo.Current;
+        }
 
         if (!trackGenerator.LastGenerateSucceeded)
         {
             Debug.LogError("[GameManager_Racing] Track generation failed after retries.");
+            _deferLoadingUiReveal = false;
+            _beginRunIrisEngulfComplete = true;
+            GameplayUIInputGuard.IsTutorialHighlightActive = false;
+            FirstRunControlsOverlay.DestroyIfPresent();
+            if (_beginRunIrisCr != null)
+            {
+                StopCoroutine(_beginRunIrisCr);
+                _beginRunIrisCr = null;
+            }
+            var iris = GooIrisScreenTransition.EnsureExists();
+            iris.SnapOpenHidden();
             uiManager?.HideLoading();
+            uiManager?.UnlockSection();
+            if (skillTreeRoot != null)
+                skillTreeRoot.SetActive(true);
             uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
             ExitLoadingGameplayGate();
             carController?.SetExternalInputLock(true);
@@ -776,8 +1169,10 @@ public class GameManager_Racing : MonoBehaviour
         }
         else
         {
-            // OnTrackGeneratedDeferSpawn/HandleTrackGenerated continue post-generation setup.
-            uiManager?.SetLoadingState("Finalizing track...", 0.55f);
+            // Terrain sculpt already finished inside GenerateTrackCo. Post-gen (grass/spawn)
+            // continues in OnTrackGeneratedDeferSpawn — don't leave a sticky "Finalizing" label
+            // over the synchronous grass paint hitch.
+            ApplyLoadingUiState("Preparing run...", 0.55f);
         }
 
         beginRunRoutine = null;
@@ -1258,7 +1653,7 @@ public class GameManager_Racing : MonoBehaviour
     /// </summary>
     private void OnTrackGeneratedDeferSpawn(ProceduralTrackGenerator gen)
     {
-        uiManager?.SetLoadingState("Preparing spawn points...", 0.60f);
+        ApplyLoadingUiState("Preparing spawn points...", 0.60f);
         if (_afterTrackGenCr != null)
             StopCoroutine(_afterTrackGenCr);
         _afterTrackGenCr = StartCoroutine(CoHandleTrackGeneratedAfterTerrainHeight(gen));
@@ -1306,9 +1701,20 @@ public class GameManager_Racing : MonoBehaviour
     /// Plays the deposit sound only if the run awarded currency and the player's bank increased.
     /// This prevents the sound on first app boot or when nothing was deposited.
     /// </summary>
-    public void ReturnToSkillTree()
+    /// <param name="raiseFirstSkillTreeEntryFlag">
+    /// When false, defers <see cref="TryRaiseFirstSkillTreeEntryNarrativeFlag"/> so iris can open first.
+    /// </param>
+    /// <param name="notifySkillTreeNarrative">
+    /// When false, defers <see cref="NarrativeDirector.NotifyReturnedToSkillTree"/> until after iris open.
+    /// </param>
+    public void ReturnToSkillTree(bool raiseFirstSkillTreeEntryFlag = true, bool notifySkillTreeNarrative = true)
     {
+        // Never yank the player out of an in-flight begin-run load.
+        if (_progressState == GameProgressState.LoadingRun || _beginRunIrisCr != null)
+            return;
+
         // Ensure game canvas is on so player can see skill tree and interact (fixes canvas staying off after run/dialogue).
+        uiManager?.UnlockSection();
         uiManager?.SetGameCanvasVisible(true);
         uiManager?.SetGameplayCanvasInputLocked(false);
         // Static flag can survive scene reload if a tutorial spotlight was active.
@@ -1323,9 +1729,11 @@ public class GameManager_Racing : MonoBehaviour
         _acceptRunEndContinueInput = false;
         _flowState = RunFlowState.SkillTree;
         SetProgressState(GameProgressState.SkillTree);
-        TryRaiseFirstSkillTreeEntryNarrativeFlag();
+        if (raiseFirstSkillTreeEntryFlag)
+            TryRaiseFirstSkillTreeEntryNarrativeFlag();
         // Post-run garage dialogue (e.g. can-afford Max Fuel) — not during results.
-        NarrativeDirector.NotifyReturnedToSkillTree();
+        if (notifySkillTreeNarrative)
+            NarrativeDirector.NotifyReturnedToSkillTree();
 
         // Hide run UI if present
         uiManager?.HideRunComplete();
@@ -1380,7 +1788,23 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CoHandleTrackGenerated(ProceduralTrackGenerator gen)
     {
-        uiManager?.SetLoadingState("Spawning player car...", 0.65f);
+        // Paint/clear grass immediately after track+terrain are ready so later runs cannot keep
+        // prior detail density under a new road while spawners are still running.
+        if (terrainGrassPainter != null)
+        {
+            var planes = new List<Terrain>(16);
+            int planeCount = TrackTerrainOverlap.CollectFromTrack(trackGenerator, 40f, planes);
+            ApplyLoadingUiState(
+                planeCount > 0
+                    ? $"Painting grass ({planeCount} planes)..."
+                    : "Painting grass...",
+                0.62f);
+            // Let the loading label present a frame before the heavy detail write.
+            yield return null;
+            yield return StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
+        }
+
+        ApplyLoadingUiState("Spawning player car...", 0.70f);
         Vector3 startPos;
         Vector3 startForward;
         gen.GetStartPoint(out startPos, out startForward);
@@ -1397,17 +1821,6 @@ public class GameManager_Racing : MonoBehaviour
 
 
         yield return StartCoroutine(CoRespawnCarAtTrackStart(spawnPos, spawnRot));
-
-        if (terrainGrassPainter != null)
-        {
-            uiManager?.SetLoadingState("Applying terrain details...", 0.92f);
-            // Keep loading visible while this work is spread across frames.
-            yield return StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
-        }
-        else
-        {
-            uiManager?.SetLoadingState("Almost ready...", 0.97f);
-        }
 
         yield return StartCoroutine(CoHideLoadingNextFrame());
     }
@@ -1433,7 +1846,9 @@ public class GameManager_Racing : MonoBehaviour
             trackCoinSpawner,
             thrownObstacleDirector,
             rollingLogSpawner,
-            crossObstacleDirector);
+            crossObstacleDirector,
+            icePathSpawner,
+            bounceBackObstacleSpawner);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
@@ -1498,10 +1913,7 @@ public class GameManager_Racing : MonoBehaviour
         if (uiManager != null && carController != null)
             uiManager.BindCar(carController);
 
-        if (skillTreeRoot != null)
-            skillTreeRoot.SetActive(false);
-
-        uiManager?.SetLoadingState("Ready!", 0.99f);
+        ApplyLoadingUiState("Ready!", 0.99f);
     }
 
 
@@ -1519,9 +1931,14 @@ public class GameManager_Racing : MonoBehaviour
             && !TimeScaleHub.IsAnyActive;
     }
 
-    /// <summary>Triangle (pad North/Y) or V — quick replay into a new run.</summary>
+    /// <summary>Right-click, Triangle (pad North/Y), or V — quick replay into a new run.</summary>
     private static bool WasQuickReplayPressed()
     {
+        if (Input.GetMouseButtonDown(1))
+            return true;
+        if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            return true;
+
         if (Input.GetKeyDown(QUICK_RESTART_KEY))
             return true;
 
@@ -1538,9 +1955,14 @@ public class GameManager_Racing : MonoBehaviour
         return false;
     }
 
-    /// <summary>Cross (pad South/X) or R — back to skill tree.</summary>
+    /// <summary>Left-click, Cross (pad South/X), or R — back to skill tree.</summary>
     private static bool WasReturnToSkillTreePressed()
     {
+        if (Input.GetMouseButtonDown(0))
+            return true;
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            return true;
+
         if (Input.GetKeyDown(KeyCode.R))
             return true;
 
@@ -1559,29 +1981,48 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CoHideLoadingNextFrame()
     {
+        // Wait until goo sealed and loading canvas was uncovered.
+        while (!_beginRunIrisEngulfComplete)
+            yield return null;
+
+        // Keep loading up for a beat even if gen was instant (later runs).
+        if (_loadingScreenShownAtRealtime > 0f)
+        {
+            float shownUntil = _loadingScreenShownAtRealtime + MinLoadingScreenSeconds;
+            while (Time.realtimeSinceStartup < shownUntil)
+                yield return null;
+        }
+
         // let instantiates + layout rebuilds finish
         yield return null;
-        // Guarantee the follow cam is already on the car before the loading overlay drops
-        // (quick-replay used to reveal the world while still lerping from the previous death spot).
         cameraFollow?.SnapToTargetImmediate();
+
+        // Cover loading → in-game swap with sealed black, then iris-open onto the track.
+        var iris = GooIrisScreenTransition.EnsureExists();
+        iris.SnapSealed();
+
         uiManager?.HideLoading();
         ExitLoadingGameplayGate();
         uiManager?.SetSection(UIManager_Racing.UISection.InGameDefault);
-        // Re-apply run HUD once the in-game root is active (avoids live coin/sprocket lines staying hidden on later runs in the same session).
         uiManager?.ShowRunCoins();
         uiManager?.UpdateRunCoins(_pickupCoinsThisRun + _obstacleCoinsThisRun);
         uiManager?.UpdateRunSprockets(_sprocketsThisRun);
 
-        // Keep input locked through the run-start card + max TV static.
         carController?.SetExternalInputLock(true);
         _flowState = RunFlowState.InRun;
         SetProgressState(GameProgressState.InRun);
 
+        // DAY/RUN + TV static go up under sealed goo so they persist through the open,
+        // then keep their authored hold + fade after the iris finishes.
         RunStartIntroUI intro = runStartIntro;
         if (intro == null)
             intro = FindObjectOfType<RunStartIntroUI>(true);
-        if (intro != null && intro.isActiveAndEnabled)
-            yield return intro.PlayIntro();
+        bool introShown = intro != null && intro.isActiveAndEnabled && intro.ShowIntroImmediate();
+
+        yield return iris.CoOpen(postLoadingIrisOpenSeconds);
+
+        if (introShown)
+            yield return intro.CoHoldAndFadeOut();
 
         carController?.SetExternalInputLock(false);
         _acceptRunEndContinueInput = false;
@@ -1647,8 +2088,10 @@ public class GameManager_Racing : MonoBehaviour
     {
         if (DialogueManager.Instance == null) return;
         DialogueManager.Instance.OnSequenceStarted -= HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleting -= HandleDialogueSequenceCompleting;
         DialogueManager.Instance.OnSequenceCompleted -= HandleDialogueSequenceCompleted;
         DialogueManager.Instance.OnSequenceStarted += HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleting += HandleDialogueSequenceCompleting;
         DialogueManager.Instance.OnSequenceCompleted += HandleDialogueSequenceCompleted;
     }
 
@@ -1656,7 +2099,15 @@ public class GameManager_Racing : MonoBehaviour
     {
         if (DialogueManager.Instance == null) return;
         DialogueManager.Instance.OnSequenceStarted -= HandleDialogueSequenceStarted;
+        DialogueManager.Instance.OnSequenceCompleting -= HandleDialogueSequenceCompleting;
         DialogueManager.Instance.OnSequenceCompleted -= HandleDialogueSequenceCompleted;
+    }
+
+    private void HandleDialogueSequenceCompleting(DialogueSequenceSO completed)
+    {
+        // Keep the last init line + goo bubbles up so the iris can close over that screen.
+        if (SequenceCompletesWithFlag(completed, initFinishedStoryFlag))
+            DialogueManager.Instance?.RequestHoldUiUntilReleased();
     }
 
     private void HandleDialogueSequenceStarted(DialogueSequenceSO _)
@@ -1690,26 +2141,62 @@ public class GameManager_Racing : MonoBehaviour
             return;
         }
 
-        // Init_Dialogue writes setStoryFlagOnComplete (init_finish) in DialogueManager.EndSequence
-        // BEFORE this event fires. That flag is the gate for skill tree + gameplay UI.
-        bool initFinished =
-            NarrativeDirector.HasStoryFlag(initFinishedStoryFlag) ||
-            SequenceCompletesWithFlag(completed, initFinishedStoryFlag);
-
-        if (initFinished)
+        // Only the sequence that SETS init_finish should run the iris handoff — not every later
+        // dialogue while that flag is already present (e.g. Init_SkillTree).
+        if (SequenceCompletesWithFlag(completed, initFinishedStoryFlag))
         {
             Debug.Log(
-                $"[GameManager] Story flag '{initFinishedStoryFlag}' is set after dialogue " +
-                $"'{completed?.name}'. Enabling skill tree / gameplay UI.");
-            ReturnToSkillTree();
+                $"[GameManager] '{completed?.name}' completed with '{initFinishedStoryFlag}' — " +
+                "iris close over init dialogue → skill tree.");
+            if (_flowIrisCr != null)
+                StopCoroutine(_flowIrisCr);
+            _flowIrisCr = StartCoroutine(CoInitDialogueToSkillTreeWithIris());
             return;
         }
 
         // Non-init dialogue that kept the skill tree visible (e.g. Init_SkillTree overlay):
         // return to SkillTree state without requiring init_finish again.
+        // Never steal the Loading section mid begin-run.
+        if (_progressState == GameProgressState.LoadingRun ||
+            _progressState == GameProgressState.InRun ||
+            _flowState == RunFlowState.Loading)
+            return;
+
         SetProgressState(GameProgressState.SkillTree);
         uiManager?.SetGameCanvasVisible(true);
         uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
+    }
+
+    private IEnumerator CoInitDialogueToSkillTreeWithIris()
+    {
+        var iris = GooIrisScreenTransition.EnsureExists();
+
+        // Dialogue canvas sorts at 32150 — raise iris above it so goo covers the last line
+        // while bubbles keep animating underneath.
+        iris.EnsureReadyToCloseOverScreen();
+        iris.SetSortOrder(32500);
+        yield return iris.CoCloseAndHold(restoreDefaultSort: false);
+
+        // Sealed black: tear down held init dialogue, show skill tree, start Init_SkillTree
+        // UNDER the goo so it's already up as the iris opens.
+        DialogueManager.Instance?.ReleaseHeldDialogueUi();
+        ReturnToSkillTree(raiseFirstSkillTreeEntryFlag: false, notifySkillTreeNarrative: false);
+
+        TryRaiseFirstSkillTreeEntryNarrativeFlag();
+        NarrativeDirector.NotifyReturnedToSkillTree();
+
+        // Let PlaySequence Show + first line paint under sealed black.
+        yield return null;
+        yield return null;
+
+        if (!iris.IsSealed)
+            iris.SnapSealed();
+        // Stay above dialogue (32150) so the hole reveals tree + dialogue together.
+        iris.SetSortOrder(32500);
+        yield return iris.CoOpen(restoreDefaultSort: false);
+
+        iris.RestoreDefaultSortOrder();
+        _flowIrisCr = null;
     }
 
     private static bool SequenceCompletesWithFlag(DialogueSequenceSO sequence, string flag)

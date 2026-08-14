@@ -64,13 +64,30 @@ public class RunStartIntroUI : MonoBehaviour
     public float HoldDuration => holdDuration;
 
     /// <summary>
-    /// Show run count + force TV intro look, wait, then restore TV and hide.
-    /// Call while car input is still locked.
+    /// Clear any stuck in-progress intro so the next run can show DAY N again
+    /// (important for quick-replay, which does not reload the scene).
     /// </summary>
-    public IEnumerator PlayIntro()
+    public void PrepareForNewRun()
     {
-        if (!playOnEveryRun || _playing)
-            yield break;
+        _playing = false;
+        if (canvasGroup != null)
+            canvasGroup.alpha = 0f;
+        if (canvas != null)
+            canvas.gameObject.SetActive(false);
+        vintageTv?.EndIntroOverride(0f);
+    }
+
+    /// <summary>
+    /// Put DAY/RUN text + TV static up immediately at full strength so they read through
+    /// the goo iris open. Pair with <see cref="CoHoldAndFadeOut"/> after the iris finishes.
+    /// </summary>
+    public bool ShowIntroImmediate()
+    {
+        if (!playOnEveryRun)
+            return false;
+
+        if (_playing)
+            PrepareForNewRun();
 
         _playing = true;
         EnsureUi();
@@ -83,28 +100,22 @@ public class RunStartIntroUI : MonoBehaviour
             canvas.gameObject.SetActive(true);
         if (canvasGroup != null)
         {
-            canvasGroup.alpha = 0f;
+            canvasGroup.alpha = 1f;
             canvasGroup.blocksRaycasts = true;
             canvasGroup.interactable = false;
         }
 
         vintageTv?.BeginIntroOverride(introTvLook);
+        return true;
+    }
 
-        if (fadeInSeconds > 0f && canvasGroup != null)
-        {
-            float t = 0f;
-            while (t < fadeInSeconds)
-            {
-                t += Time.unscaledDeltaTime;
-                canvasGroup.alpha = Mathf.Clamp01(t / fadeInSeconds);
-                yield return null;
-            }
-            canvasGroup.alpha = 1f;
-        }
-        else if (canvasGroup != null)
-        {
-            canvasGroup.alpha = 1f;
-        }
+    /// <summary>
+    /// After the iris has opened: keep the authored hold, then fade text + static out.
+    /// </summary>
+    public IEnumerator CoHoldAndFadeOut()
+    {
+        if (!_playing)
+            yield break;
 
         float held = 0f;
         while (held < holdDuration)
@@ -130,11 +141,41 @@ public class RunStartIntroUI : MonoBehaviour
             if (canvasGroup != null)
                 canvasGroup.alpha = 0f;
         }
+        else if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0f;
+        }
 
         if (canvas != null)
             canvas.gameObject.SetActive(false);
 
         _playing = false;
+    }
+
+    /// <summary>
+    /// Full standalone intro (fade-in → hold → fade-out). Prefer ShowIntroImmediate +
+    /// CoHoldAndFadeOut when coordinating with the goo iris open.
+    /// </summary>
+    public IEnumerator PlayIntro()
+    {
+        if (!ShowIntroImmediate())
+            yield break;
+
+        // Optional soft fade-in when not revealed under sealed goo.
+        if (fadeInSeconds > 0f && canvasGroup != null)
+        {
+            canvasGroup.alpha = 0f;
+            float t = 0f;
+            while (t < fadeInSeconds)
+            {
+                t += Time.unscaledDeltaTime;
+                canvasGroup.alpha = Mathf.Clamp01(t / fadeInSeconds);
+                yield return null;
+            }
+            canvasGroup.alpha = 1f;
+        }
+
+        yield return CoHoldAndFadeOut();
     }
 
     private int ResolveRunNumber(out int dayLimit)
@@ -144,7 +185,11 @@ public class RunStartIntroUI : MonoBehaviour
             return Mathf.Max(1, NarrativeDirector.GetTotalRunsCompleted() + 1);
 
         var day = DayTrialManager.Instance;
-        if (day == null) return 1;
+        // DayTrialManager is optional / may have no TrialConfigs yet — still advance via session runs
+        // so quick-replay and skill-tree Play both show DAY 2, 3, ... instead of stuck DAY 1.
+        if (day == null || day.TrialCount <= 0)
+            return Mathf.Max(1, NarrativeDirector.GetTotalRunsCompleted() + 1);
+
         dayLimit = day.CurrentDayLimit;
         return Mathf.Max(1, day.CurrentDay);
     }

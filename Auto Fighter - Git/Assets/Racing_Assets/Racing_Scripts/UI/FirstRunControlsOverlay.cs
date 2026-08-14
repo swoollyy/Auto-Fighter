@@ -5,12 +5,10 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Full-screen controls explainer shown once — the first time the player presses Play
-/// to start their very first run (after the intro / skill-tree tutorial).
-/// Uses the same dark dim as the dialogue panel and tutorial highlight. Dismissed with
-/// any key / click / gamepad button, then the pending run-start callback fires.
-/// UI is generated entirely in code (same pattern as <see cref="TutorialUIHighlightCoach"/>),
-/// so no scene or prefab wiring is needed.
+/// Full-screen controls explainer shown once on first Play.
+/// Goo creeps to ~50% behind CONTROLS text. On dismiss the overlay stays opaque while
+/// GameManager finishes the iris seal and starts loading — then tears this overlay down.
+/// UI is generated entirely in code (same pattern as <see cref="TutorialUIHighlightCoach"/>).
 /// </summary>
 public class FirstRunControlsOverlay : MonoBehaviour
 {
@@ -21,9 +19,10 @@ public class FirstRunControlsOverlay : MonoBehaviour
     private const float MinShowSeconds = 0.6f;
     private const float FadeInSeconds = 0.25f;
     private const float FadeOutSeconds = 0.15f;
+    /// <summary>Above GooIrisScreenTransition so CONTROLS text sits in the clear iris hole.</summary>
+    private const int OverlaySortOrder = 32100;
+    private const int IrisUnderOverlaySort = 32050;
 
-    // Matches the dialogue panel's Background Panel tint.
-    private static readonly Color DimColor = new Color(0.047f, 0.047f, 0.047f, 0.957f);
     // Matches the tutorial highlight's yellow accent.
     private static readonly Color AccentColor = new Color(1f, 0.847f, 0.302f, 1f);
 
@@ -89,15 +88,25 @@ public class FirstRunControlsOverlay : MonoBehaviour
         _dismissed = true;
 
         NarrativeDirector.SetStoryFlag(ShownStoryFlag);
-        GameplayUIInputGuard.IsTutorialHighlightActive = false;
+        // Keep CONTROLS fully opaque until GameManager finishes the iris seal.
+        // Fading here would flash the skill tree through the half-open goo hole.
+        if (_group != null)
+            _group.alpha = 1f;
 
-        // Start the run immediately so the loading screen comes up behind the fade-out.
+        var iris = GooIrisScreenTransition.EnsureExists();
+        iris.RestoreDefaultSortOrder();
+
         var cb = _onDismissed;
         _onDismissed = null;
         cb?.Invoke();
+    }
 
-        StopAllCoroutines();
-        StartCoroutine(CoFadeOutAndDestroy());
+    /// <summary>Torn down once the iris is fully sealed (called by GameManager).</summary>
+    public static void DestroyIfPresent()
+    {
+        var existing = FindObjectOfType<FirstRunControlsOverlay>();
+        if (existing != null)
+            Destroy(existing.gameObject);
     }
 
     // ---------- UI construction ----------
@@ -106,7 +115,7 @@ public class FirstRunControlsOverlay : MonoBehaviour
     {
         var canvas = gameObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 300; // above game + dialogue canvases
+        canvas.sortingOrder = OverlaySortOrder;
 
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -120,12 +129,12 @@ public class FirstRunControlsOverlay : MonoBehaviour
         _group.blocksRaycasts = true;
         _group.interactable = true;
 
-        // Full-screen dim; raycast target so clicks never reach the UI underneath.
-        CreateChild("Dim", transform, out RectTransform dimRt);
-        StretchFull(dimRt);
-        var dimImg = dimRt.gameObject.AddComponent<Image>();
-        dimImg.color = DimColor;
-        dimImg.raycastTarget = true;
+        // Invisible full-screen raycast blocker (goo iris provides the visible cover).
+        CreateChild("HitCatcher", transform, out RectTransform hitRt);
+        StretchFull(hitRt);
+        var hitImg = hitRt.gameObject.AddComponent<Image>();
+        hitImg.color = new Color(0f, 0f, 0f, 0.01f);
+        hitImg.raycastTarget = true;
 
         // Centered content column.
         CreateChild("Content", transform, out RectTransform contentRt);
@@ -152,6 +161,11 @@ public class FirstRunControlsOverlay : MonoBehaviour
 
         // Freeze the skill-tree chrome behind us (pan/zoom, buttons) while the overlay is up.
         GameplayUIInputGuard.IsTutorialHighlightActive = true;
+
+        // Goo creeps from edges to ~50% behind the text.
+        var iris = GooIrisScreenTransition.EnsureExists();
+        iris.SetSortOrder(IrisUnderOverlaySort);
+        iris.BeginCloseToHoleAndHold();
 
         StartCoroutine(CoFadeIn());
     }

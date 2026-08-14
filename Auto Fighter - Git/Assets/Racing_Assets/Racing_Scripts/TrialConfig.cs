@@ -29,7 +29,7 @@ public class TrialConfig : ScriptableObject
     [Tooltip("If enabled, only skills listed in Allowed Skills can appear in the tree and be purchased during this trial. Progressive unlocks for later skills are still remembered, but stay hidden until a trial that allows them.")]
     public bool restrictSkillsToAllowlist = false;
 
-    [Tooltip("Skills available on this track/trial (e.g. Max Fuel, Drift). Ignored when Restrict Skills To Allowlist is off.")]
+    [Tooltip("This trial's skillset. Used when Restrict Skills To Allowlist is on, and always used as the 'previous trial' kit when debug-jumping ahead (even if restrict is off).")]
     public List<SkillType> allowedSkills = new();
 
     /// <summary>True if this skill may be shown / purchased while this trial is active.</summary>
@@ -51,6 +51,8 @@ public class TrialConfig : ScriptableObject
     public ThrownSettings thrown = new();
     public RollingLogSettings rollingLogs = new();
     public CrossObstacleSettings crossObstacles = new();
+    public IcePathSettings icePaths = new();
+    public BounceObstacleSettings bounceObstacles = new();
 
     // =====================================================================
     // TRACK — mirrors ProceduralTrackGenerator
@@ -72,15 +74,15 @@ public class TrialConfig : ScriptableObject
         public float segmentLength = 10f;
 
         [Header("Turn Tightness (Difficulty)")]
+        [Tooltip("Max turn angle lerps from Start → End over track progress.")]
         public float minTurnAngle = 5f;
         public float startMaxTurnAngle = 10f;
         public float endMaxTurnAngle = 40f;
-        public AnimationCurve difficultyCurve = AnimationCurve.Linear(0, 0, 1, 1);
 
         [Header("Turn Frequency")]
+        [Tooltip("Turn chance lerps from Start → End over track progress.")]
         [Range(0f, 1f)] public float startTurnChance = 0.35f;
         [Range(0f, 1f)] public float endTurnChance = 0.85f;
-        public AnimationCurve turnFrequencyCurve = AnimationCurve.Linear(0, 0, 1, 1);
 
         [Header("Small Wiggles")]
         public float maxWiggleAngle = 3f;
@@ -122,12 +124,16 @@ public class TrialConfig : ScriptableObject
         [Header("Start / End Separation")]
         [Tooltip("Reject tracks whose finish sits too close to the start (XZ), so players can't cut offroad to the end.")]
         public bool enforceMinStartEndSeparation = true;
-        [Tooltip("Absolute minimum planar (XZ) distance between start and end.")]
+        [Tooltip("Absolute minimum planar (XZ) distance between start and FINISH.")]
         public float minStartEndDistance = 120f;
-        [Tooltip("Also require end at least this fraction of total path length away from start on XZ.")]
+        [Tooltip("Also require finish at least this fraction of total path length away from start on XZ.")]
         [Range(0.05f, 0.75f)] public float minStartEndDistancePathFraction = 0.28f;
-        [Tooltip("Once this fraction of segments is built, reject yaws that would bring the path back inside the min start distance.")]
-        [Range(0.05f, 0.95f)] public float startSeparationEnforceAfterNormalized = 0.3f;
+        [Tooltip("Legacy field (generator uses start-region keep-out instead of mid-build full end-distance rejects).")]
+        [Range(0.05f, 1f)] public float startSeparationEnforceAfterNormalized = 1f;
+        [Tooltip("Anti-shortcut keep-out around start/early road during generation (meters). Not the finish distance.")]
+        [Min(0f)] public float startRegionKeepOutMeters = 90f;
+        [Range(0.05f, 0.5f)] public float startRegionKeepOutAfterNormalized = 0.12f;
+        [Range(0.05f, 0.45f)] public float startKeepOutEarlyPathFraction = 0.22f;
     }
 
     // =====================================================================
@@ -153,7 +159,8 @@ public class TrialConfig : ScriptableObject
         [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
 
         [Header("Spawn Settings")]
-        public float obstacleSpacing = 40f;
+        [Tooltip("Obstacle spacing in meters. X = at track start, Y = at track end (usually lower Y = denser later).")]
+        public Vector2 obstacleSpacingByProgress = new Vector2(40f, 18f);
         public int maxActiveObstacles = 20;
         public float minSpawnDistanceAhead = 60f;
         public float maxSpawnDistanceAhead = 160f;
@@ -164,8 +171,8 @@ public class TrialConfig : ScriptableObject
 
         [Header("Randomization")]
         public float distanceJitter = 12f;
-        [Range(0f, 1f)] public float spawnChancePerSlot = 0.45f;
-        public AnimationCurve globalSpawnChanceByDistance = AnimationCurve.Linear(0f, 0.4f, 1f, 1f);
+        [Tooltip("Chance to fill a spawn slot (0–1). X = at track start, Y = at track end.")]
+        public Vector2 spawnChanceByProgress = new Vector2(0.18f, 0.45f);
         [Range(0f, 1f)] public float lateralFraction = 0.6f;
         public float edgeInnerMargin = 0.5f;
 
@@ -225,8 +232,8 @@ public class TrialConfig : ScriptableObject
 
         [Header("Randomization")]
         public float distanceJitter = 15f;
-        [Range(0f, 1f)] public float spawnChancePerSlot = 0.5f;
-        public AnimationCurve spawnChanceByDistance = AnimationCurve.Linear(0f, 0.3f, 1f, 1f);
+        [Tooltip("Chance to fill a spawn slot (0–1). X = at track start, Y = at track end.")]
+        public Vector2 spawnChanceByProgress = new Vector2(0.15f, 0.5f);
 
         [Header("Placement")]
         [Range(0f, 1f)] public float lateralFraction = 0.7f;
@@ -285,8 +292,8 @@ public class TrialConfig : ScriptableObject
 
         [Header("Randomization")]
         public float distanceJitter = 20f;
-        [Range(0f, 1f)] public float spawnChancePerSlot = 0.6f;
-        public AnimationCurve spawnChanceByDistance = AnimationCurve.Linear(0f, 0.3f, 1f, 1f);
+        [Tooltip("Chance to fill a spawn slot (0–1). X = at track start, Y = at track end.")]
+        public Vector2 spawnChanceByProgress = new Vector2(0.18f, 0.6f);
 
         [Header("Lane Assignment")]
         [Range(0f, 1f)] public float lateralFraction = 0.7f;
@@ -327,12 +334,12 @@ public class TrialConfig : ScriptableObject
         [Tooltip("Which coin types can spawn and their distance-based weight multipliers.")]
         public List<TrackCoinSpawner.CoinTypeWeight> coinTypeWeights = new List<TrackCoinSpawner.CoinTypeWeight>()
         {
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, globalScale = 1.12f },
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Silver, enabled = true, globalScale = 0.95f },
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Gold, enabled = true, globalScale = 0.8f },
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, globalScale = 0.4f },
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, globalScale = 0.15f },
-            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, globalScale = 0.05f }
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, weightByProgress = new Vector2(1.12f, 1.12f) },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Silver, enabled = true, weightByProgress = new Vector2(0.95f, 0.95f) },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Gold, enabled = true, weightByProgress = new Vector2(0.8f, 0.8f) },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, weightByProgress = new Vector2(0.4f, 0.4f) },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, weightByProgress = new Vector2(0.15f, 0.15f) },
+            new TrackCoinSpawner.CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, weightByProgress = new Vector2(0.05f, 0.05f) }
         };
 
         [Header("Spawn Layout")]
@@ -344,13 +351,8 @@ public class TrialConfig : ScriptableObject
         public float initialPreSpawnDistance = 80f;
 
         [Header("Spawn Probability")]
-        [Range(0f, 1f)] public float baseSpawnChance = 0.85f;
-        public AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
-        public AnimationCurve lateTrackSpawnBonusCurve = new AnimationCurve(
-            new Keyframe(0f, 1f),
-            new Keyframe(0.8f, 1f),
-            new Keyframe(1f, 1.15f)
-        );
+        [Tooltip("Chance a coin slot fills (0–1). X = at track start, Y = at track end.")]
+        public Vector2 spawnChanceByProgress = new Vector2(0.85f, 0.98f);
 
         [Header("Skill Integration")]
         public bool applySkillSpawnRate = true;
@@ -429,14 +431,14 @@ public class TrialConfig : ScriptableObject
         public int destroyReward = 12;
 
         [Header("Accuracy / Misses")]
-        [Range(0f, 1f)] public float baseAccuracy = 0.10f;
-        public AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
+        [Tooltip("Hit accuracy (0–1). X = at track start, Y = at track end.")]
+        public Vector2 accuracyByProgress = new Vector2(0.10f, 0.10f);
         [Min(0f)] public float maxMissLateral = 4f;
         [Min(0f)] public float maxMissForward = 6f;
 
         [Header("Explosion Frequency")]
-        [Range(0f, 1f)] public float explosionBaseChance = 0.06f;
-        public AnimationCurve explosionChanceByDistance = AnimationCurve.Linear(0, 0.5f, 1, 1.5f);
+        [Tooltip("Chance a throw is explosive (0–1). X = at track start, Y = at track end.")]
+        public Vector2 explosionChanceByProgress = new Vector2(0.03f, 0.09f);
 
         [Header("Debug")]
         public bool debugDraw = false;
@@ -507,25 +509,29 @@ public class TrialConfig : ScriptableObject
         [Header("Spawn Control")]
         public bool enabledSpawning = true;
         public float minPlayerSpeed = 4f;
-        public float spawnCooldownSeconds = 5f;
+        [Tooltip("Seconds between cross spawns. X = at track start, Y = at track end (lower Y = more frequent later).")]
+        public Vector2 spawnCooldownByProgress = new Vector2(5f, 2f);
         public float minLeadDistance = 15f;
         public float maxLeadDistance = 80f;
         public float maxCurvatureHorizonScale = 0.65f;
 
         [Header("Cross Speed")]
+        [Tooltip("Random cross speed range (m/s). Not progress-based.")]
         public Vector2 crossSpeedRange = new Vector2(5f, 11f);
-        public AnimationCurve crossSpeedMultiplierCurve = AnimationCurve.Linear(0, 1, 1, 1);
+        [Tooltip("Multiplies cross speed. X = at track start, Y = at track end.")]
+        public Vector2 crossSpeedMulByProgress = new Vector2(1f, 1f);
 
         [Header("Size Scaling")]
+        [Tooltip("Random scale range. Not progress-based.")]
         public Vector2 obstacleScaleRange = new Vector2(0.8f, 1.35f);
-        public AnimationCurve sizeCurve = AnimationCurve.Linear(0, 1, 1, 1);
+        [Tooltip("Multiplies chosen scale. X = at track start, Y = at track end.")]
+        public Vector2 sizeMulByProgress = new Vector2(1f, 1f);
 
         [Header("Yaw / Accuracy")]
-        public AnimationCurve yawErrorDegreesCurve = AnimationCurve.Linear(0, 22, 1, 4);
-        public AnimationCurve accuracyCurve = AnimationCurve.Linear(0, 0.6f, 1, 0.05f);
-
-        [Header("Spawn Interval Scaling")]
-        public AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
+        [Tooltip("Aim yaw error in degrees. X = at track start, Y = at track end.")]
+        public Vector2 yawErrorDegreesByProgress = new Vector2(22f, 4f);
+        [Tooltip("Miss blend 0–1 (higher = more miss). X = at track start, Y = at track end.")]
+        public Vector2 missAmountByProgress = new Vector2(0.6f, 0.05f);
 
         [Header("Spawn Cooldown Randomness")]
         public Vector2 spawnCooldownRandomRange = new Vector2(0.8f, 1.2f);
@@ -554,5 +560,108 @@ public class TrialConfig : ScriptableObject
         [Header("Debug")]
         public bool debugGizmos = false;
         public bool verboseLog = false;
+    }
+
+    // =====================================================================
+    // ICE PATHS — mirrors IcePathSpawner (full-width icy road sections)
+    // =====================================================================
+    [System.Serializable]
+    public class IcePathSettings
+    {
+        [Tooltip("Uncheck to use the scene IcePathSpawner's own values for this trial.")]
+        public bool overrideIcePaths = false;
+
+        [Header("Prefab / Material")]
+        [Tooltip("Optional template for GroundSurface / IcePath values. Visual is generated as a full-width road mesh.")]
+        public GameObject iceSegmentPrefab;
+        public Material iceMaterial;
+
+        [Header("Spawn Mode")]
+        public bool preSpawnOnInitialize = true;
+        public bool streamSpawnDuringRun = true;
+
+        [Header("Path Sampling")]
+        public bool useSmoothing = true;
+        [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
+
+        [Header("Spawn Settings")]
+        public float sectionSpacing = 80f;
+        [Tooltip("Max ice sections spawned this run. Despawning does not free budget. 0 = unlimited.")]
+        [Min(0)] public int maxActiveSections = 8;
+        public float minSpawnDistanceAhead = 40f;
+        public float maxSpawnDistanceAhead = 220f;
+
+        [Header("Initial Pre-Spawn")]
+        public float initialPreSpawnDistance = 250f;
+        public float despawnBehindDistance = 30f;
+
+        [Header("Randomization")]
+        public float distanceJitter = 12f;
+        [Tooltip("Chance to spawn an ice section (0–1). X = at track start, Y = at track end.")]
+        public Vector2 spawnChanceByProgress = new Vector2(0.4f, 0.55f);
+
+        [Header("Ice Section Shape")]
+        [Tooltip("Along-track length of each full-width icy patch (meters).")]
+        [Min(4f)] public float sectionLength = 28f;
+        [Min(0f)] public float sectionLengthJitter = 8f;
+        [Tooltip("1 = exact road width. Slightly above 1 covers road edges.")]
+        [Range(0.9f, 1.15f)] public float roadWidthScale = 1.02f;
+
+        [Header("Raycast")]
+        public LayerMask roadLayer = ~0;
+        public float raycastStartHeight = 6f;
+        public float raycastDownDistance = 40f;
+        public float iceHeightOffset = 0.02f;
+
+        [Header("Ice Mesh")]
+        [Min(0.25f)] public float iceSampleSpacing = 1.0f;
+        public float iceUVTiling = 0.15f;
+        public bool addIceMeshColliderTrigger = true;
+
+        [Header("Timing")]
+        public float updateInterval = 0.5f;
+
+        [Header("Debug")]
+        public bool verboseDebug = false;
+    }
+
+    // =====================================================================
+    // BOUNCE OBSTACLES — mirrors BounceBackObstacleSpawner
+    // =====================================================================
+    [System.Serializable]
+    public class BounceObstacleSettings
+    {
+        [Tooltip("Uncheck to use the scene BounceBackObstacleSpawner's own values for this trial.")]
+        public bool overrideBounceObstacles = false;
+
+        [Header("Prefab")]
+        public GameObject bounceBackPrefab;
+
+        [Header("Path Sampling")]
+        public bool useSmoothing = true;
+        [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
+
+        [Header("Spawn Timing")]
+        public bool enableSpawning = true;
+        [Min(0.5f)] public float minSpawnIntervalSeconds = 5f;
+        [Min(0.5f)] public float maxSpawnIntervalSeconds = 12f;
+        [Min(1)] public int maxActive = 6;
+
+        [Header("Placement")]
+        [Min(5f)] public float minSpawnDistanceAhead = 40f;
+        [Min(5f)] public float maxSpawnDistanceAhead = 120f;
+        [Min(0.5f)] public float obstacleSpacing = 35f;
+        [Range(0f, 1f)] public float spawnChancePerSlot = 0.55f;
+        [Range(0f, 1f)] public float lateralFraction = 0.6f;
+        public float edgeInnerMargin = 0.5f;
+        public float distanceJitter = 10f;
+
+        [Header("Raycast")]
+        public LayerMask roadLayer = ~0;
+        public float raycastStartHeight = 6f;
+        public float raycastDownDistance = 24f;
+
+        [Header("Progress Gate")]
+        [Range(0f, 0.95f)] public float minNormalizedProgressToSpawn = 0.02f;
     }
 }

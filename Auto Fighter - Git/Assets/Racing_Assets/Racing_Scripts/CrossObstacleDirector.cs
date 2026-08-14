@@ -14,27 +14,28 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
     [Header("Spawn Control")]
     [SerializeField] private bool enabledSpawning = true;
     [SerializeField] private float minPlayerSpeed = 4f;
-    [SerializeField] private float spawnCooldownSeconds = 5f;
+    [Tooltip("Seconds between cross spawns. X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 spawnCooldownByProgress = new Vector2(5f, 2f);
     [SerializeField] private float minLeadDistance = 15f;
     [Tooltip("LEGACY: No longer used to block spawning near end of track. You can remove this safely.")]
-    [SerializeField] private float maxLeadDistance = 80f; // legacy � kept for serialized data
+    [SerializeField] private float maxLeadDistance = 80f;
     [SerializeField] private float maxCurvatureHorizonScale = 0.65f;
 
     [Header("Cross Speed")]
     [SerializeField] private Vector2 crossSpeedRange = new Vector2(5f, 11f);
-    [Tooltip("Curve (x=normalized distance) scaling cross speed (multiplier).")]
-    [SerializeField] private AnimationCurve crossSpeedMultiplierCurve = AnimationCurve.Linear(0, 1, 1, 1);
+    [Tooltip("Multiplies cross speed. X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 crossSpeedMulByProgress = new Vector2(1f, 1f);
 
     [Header("Size Scaling")]
     [SerializeField] private Vector2 obstacleScaleRange = new Vector2(0.8f, 1.35f);
-    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.Linear(0, 1, 1, 1);
+    [Tooltip("Multiplies chosen scale. X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 sizeMulByProgress = new Vector2(1f, 1f);
 
     [Header("Yaw / Accuracy")]
-    [SerializeField] private AnimationCurve yawErrorDegreesCurve = AnimationCurve.Linear(0, 22, 1, 4);
-    [SerializeField] private AnimationCurve accuracyCurve = AnimationCurve.Linear(0, 0.6f, 1, 0.05f);
-
-    [Header("Spawn Interval Scaling")]
-    [SerializeField] private AnimationCurve spawnIntervalCurve = AnimationCurve.Linear(0, 1f, 1, 0.4f);
+    [Tooltip("Aim yaw error in degrees. X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 yawErrorDegreesByProgress = new Vector2(22f, 4f);
+    [Tooltip("Miss blend 0–1 (higher = more miss). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 missAmountByProgress = new Vector2(0.6f, 0.05f);
 
     [Header("Spawn Cooldown Randomness")]
     [Tooltip("Random multiplier applied to the spawn cooldown each time an obstacle is spawned.")]
@@ -82,18 +83,17 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
 
         enabledSpawning = s.enabledSpawning;
         minPlayerSpeed = s.minPlayerSpeed;
-        spawnCooldownSeconds = s.spawnCooldownSeconds;
+        spawnCooldownByProgress = s.spawnCooldownByProgress;
         minLeadDistance = s.minLeadDistance;
         maxLeadDistance = s.maxLeadDistance;
         maxCurvatureHorizonScale = s.maxCurvatureHorizonScale;
 
         crossSpeedRange = s.crossSpeedRange;
-        crossSpeedMultiplierCurve = s.crossSpeedMultiplierCurve;
+        crossSpeedMulByProgress = s.crossSpeedMulByProgress;
         obstacleScaleRange = s.obstacleScaleRange;
-        sizeCurve = s.sizeCurve;
-        yawErrorDegreesCurve = s.yawErrorDegreesCurve;
-        accuracyCurve = s.accuracyCurve;
-        spawnIntervalCurve = s.spawnIntervalCurve;
+        sizeMulByProgress = s.sizeMulByProgress;
+        yawErrorDegreesByProgress = s.yawErrorDegreesByProgress;
+        missAmountByProgress = s.missAmountByProgress;
         spawnCooldownRandomRange = s.spawnCooldownRandomRange;
         initialSpawnDelayRange = s.initialSpawnDelayRange;
         useActualPathLengthForPrediction = s.useActualPathLengthForPrediction;
@@ -121,17 +121,16 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
             crossObstaclePrefab = crossObstaclePrefab,
             enabledSpawning = enabledSpawning,
             minPlayerSpeed = minPlayerSpeed,
-            spawnCooldownSeconds = spawnCooldownSeconds,
+            spawnCooldownByProgress = spawnCooldownByProgress,
             minLeadDistance = minLeadDistance,
             maxLeadDistance = maxLeadDistance,
             maxCurvatureHorizonScale = maxCurvatureHorizonScale,
             crossSpeedRange = crossSpeedRange,
-            crossSpeedMultiplierCurve = crossSpeedMultiplierCurve,
+            crossSpeedMulByProgress = crossSpeedMulByProgress,
             obstacleScaleRange = obstacleScaleRange,
-            sizeCurve = sizeCurve,
-            yawErrorDegreesCurve = yawErrorDegreesCurve,
-            accuracyCurve = accuracyCurve,
-            spawnIntervalCurve = spawnIntervalCurve,
+            sizeMulByProgress = sizeMulByProgress,
+            yawErrorDegreesByProgress = yawErrorDegreesByProgress,
+            missAmountByProgress = missAmountByProgress,
             spawnCooldownRandomRange = spawnCooldownRandomRange,
             initialSpawnDelayRange = initialSpawnDelayRange,
             useActualPathLengthForPrediction = useActualPathLengthForPrediction,
@@ -284,9 +283,6 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
         float sCar = distanceMeter.DistanceAlongTrack;
         float distanceNorm = Mathf.Clamp01(_trackTotalLength > 0f ? sCar / _trackTotalLength : 0f);
 
-        float intervalScale = Mathf.Clamp(spawnIntervalCurve.Evaluate(distanceNorm), 0.05f, 10f);
-
-        // NEW: randomize cooldown so spawns aren�t perfectly periodic
         float cooldownJitter = 1f;
         if (spawnCooldownRandomRange.x != 1f || spawnCooldownRandomRange.y != 1f)
         {
@@ -296,13 +292,13 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
             );
         }
 
-        float effectiveCooldown = spawnCooldownSeconds * intervalScale * cooldownJitter;
+        float effectiveCooldown = Mathf.Max(0.05f, TrackProgressRange.Lerp(spawnCooldownByProgress, distanceNorm)) * cooldownJitter;
 
         float curvatureFactor = SampleCurvature(sCar, curvatureSampleLength);
         bool highCurvature = curvatureFactor > highCurvatureThreshold;
 
         float baseCrossSpeed = UnityEngine.Random.Range(crossSpeedRange.x, crossSpeedRange.y);
-        float speedMul = Mathf.Max(0.1f, crossSpeedMultiplierCurve.Evaluate(distanceNorm));
+        float speedMul = Mathf.Max(0.1f, TrackProgressRange.Lerp(crossSpeedMulByProgress, distanceNorm));
         float crossSpeed = baseCrossSpeed * speedMul;
 
         float halfRoad = trackGenerator.RoadWidth * 0.5f;
@@ -333,13 +329,13 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
 
         SampleSpline(sIntercept, out Vector3 posIntercept, out Vector3 tanIntercept);
 
-        float accuracyErr = Mathf.Clamp01(accuracyCurve.Evaluate(distanceNorm));
+        float accuracyErr = TrackProgressRange.Lerp01(missAmountByProgress, distanceNorm);
         float paramError = predictedLeadDistance * accuracyErr * UnityEngine.Random.Range(-1f, 1f);
 
         float sSpawn = sCar + Mathf.Clamp(predictedLeadDistance + paramError, minLeadDistance, maxAllowedLead);
         if (sSpawn >= _trackTotalLength - 0.25f) sSpawn = _trackTotalLength - 0.25f;
 
-        float yawErrorDeg = yawErrorDegreesCurve.Evaluate(distanceNorm);
+        float yawErrorDeg = TrackProgressRange.Lerp(yawErrorDegreesByProgress, distanceNorm);
         float appliedYaw = UnityEngine.Random.Range(-yawErrorDeg, yawErrorDeg);
 
         if (enableYawWeightedMisses && yawErrorDeg > 0.0001f)
@@ -435,8 +431,7 @@ public sealed class CrossObstacleDirector : MonoBehaviour, ITrackSpawnQueueSourc
         if (Mathf.Approximately(targetWS.y, targetHorizontal.y))
             targetWS = SpawnUtils.ProjectOntoSurface(targetHorizontal + Vector3.up * upOffsetForCast, out _, upOffsetForCast, maxDown, null);
 
-        // Size scaling
-        float sizeEval = sizeCurve.Evaluate(distanceNorm);
+        float sizeEval = Mathf.Max(0.05f, TrackProgressRange.Lerp(sizeMulByProgress, distanceNorm));
         float sizeRand = UnityEngine.Random.Range(obstacleScaleRange.x, obstacleScaleRange.y);
         float finalScale = sizeRand * sizeEval;
 

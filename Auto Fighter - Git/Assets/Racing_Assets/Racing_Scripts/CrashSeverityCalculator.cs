@@ -144,6 +144,8 @@ public static class CrashSeverityCalculator
             return CrashObstacleKind.CrossTrack;
         if (t.GetComponentInParent<ShuttleTrackObstacle>() != null)
             return CrashObstacleKind.Shuttle;
+        if (t.GetComponentInParent<TrackSideShooterObstacle>() != null)
+            return CrashObstacleKind.SideShooter;
         if (t.GetComponentInParent<TrackObstacleBounceBack>() != null)
             return CrashObstacleKind.BounceBack;
         if (t.GetComponentInParent<RollingLogAlongTrack>() != null)

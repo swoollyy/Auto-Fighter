@@ -53,8 +53,9 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField, Min(1)] private int smoothingSubdivisionsPerSegment = 6;
 
     [Header("Spawn Settings")]
-    [Tooltip("Ideal spacing between potential spawn slots (meters).")]
-    [SerializeField] private float obstacleSpacing = 40f;
+    [Tooltip("Obstacle spacing in meters. X = at track start, Y = at track end (lower Y = denser later).")]
+    [SerializeField] private Vector2 obstacleSpacingByProgress = new Vector2(40f, 18f);
+
     [SerializeField] private int maxActiveObstacles = 20;
 
     [Tooltip("Minimum distance in front of the player where new obstacles are allowed to appear.")]
@@ -73,12 +74,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     [Header("Randomization")]
     [SerializeField] private float distanceJitter = 12f;
-    [SerializeField] private float spawnChancePerSlot = 0.45f;
-
-    [Tooltip("Global spawn chance multiplier based on distance (0=start, 1=end).")]
-    [SerializeField]
-    private AnimationCurve globalSpawnChanceByDistance =
-        AnimationCurve.Linear(0f, 0.4f, 1f, 1f);   // starts chill, ramps to 100%
+    [Tooltip("Chance to fill a spawn slot (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 spawnChanceByProgress = new Vector2(0.18f, 0.45f);
 
     [SerializeField, Range(0f, 1f)] private float lateralFraction = 0.6f;
     [SerializeField] private float edgeInnerMargin = 0.5f;
@@ -118,7 +115,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         useSmoothing = s.useSmoothing;
         smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
 
-        obstacleSpacing = s.obstacleSpacing;
+        obstacleSpacingByProgress = s.obstacleSpacingByProgress;
         maxActiveObstacles = s.maxActiveObstacles;
         minSpawnDistanceAhead = s.minSpawnDistanceAhead;
         maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
@@ -127,8 +124,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         despawnBehindDistance = s.despawnBehindDistance;
 
         distanceJitter = s.distanceJitter;
-        spawnChancePerSlot = s.spawnChancePerSlot;
-        globalSpawnChanceByDistance = s.globalSpawnChanceByDistance;
+        spawnChanceByProgress = s.spawnChanceByProgress;
         lateralFraction = s.lateralFraction;
         edgeInnerMargin = s.edgeInnerMargin;
 
@@ -156,15 +152,14 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             obstacleTypes = obstacleTypes != null ? new List<ObstacleType>(obstacleTypes) : new List<ObstacleType>(),
             useSmoothing = useSmoothing,
             smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
-            obstacleSpacing = obstacleSpacing,
+            obstacleSpacingByProgress = obstacleSpacingByProgress,
             maxActiveObstacles = maxActiveObstacles,
             minSpawnDistanceAhead = minSpawnDistanceAhead,
             maxSpawnDistanceAhead = maxSpawnDistanceAhead,
             initialPreSpawnDistance = initialPreSpawnDistance,
             despawnBehindDistance = despawnBehindDistance,
             distanceJitter = distanceJitter,
-            spawnChancePerSlot = spawnChancePerSlot,
-            globalSpawnChanceByDistance = globalSpawnChanceByDistance,
+            spawnChanceByProgress = spawnChanceByProgress,
             lateralFraction = lateralFraction,
             edgeInnerMargin = edgeInnerMargin,
             stabilizeRigidbodiesOnSpawn = stabilizeRigidbodiesOnSpawn,
@@ -187,11 +182,40 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     private Dictionary<int, GameObject> _obstaclesBySlot = new();
     private readonly Dictionary<int, int> _surfaceReservationBySlot = new();
     private int _maxSlotIndex;
+    /// <summary>Fine slot grid step (meters). Uses the denser end of the spacing range.</summary>
+    private float _slotStep = 12f;
     private float _updateTimer;
     private int _lastClosestIdx = 0;
     private List<int> _toRemove = new();
     private readonly TrackSpawnQueuePendingState _queueState = new();
     private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
+
+    private float GetEffectiveSpacing(float distAlongTrack)
+    {
+        float norm = TrackProgressRange.NormalizedDistance(distAlongTrack, _totalLength);
+        return Mathf.Max(1f, TrackProgressRange.Lerp(obstacleSpacingByProgress, norm));
+    }
+
+    private float GetSpawnChance(float distAlongTrack)
+    {
+        float norm = TrackProgressRange.NormalizedDistance(distAlongTrack, _totalLength);
+        return TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
+    }
+
+    /// <summary>True if no existing obstacle is closer than <paramref name="requiredSpacing"/> along the track.</summary>
+    private bool HasEnoughSpacingFromNeighbors(float dist, float requiredSpacing)
+    {
+        if (requiredSpacing <= 0.01f) return true;
+
+        foreach (var kvp in _obstaclesBySlot)
+        {
+            float otherDist = kvp.Key * _slotStep;
+            if (Mathf.Abs(otherDist - dist) < requiredSpacing)
+                return false;
+        }
+
+        return true;
+    }
 
     private void Update()
     {
@@ -242,7 +266,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     private void SetupSlots()
     {
         _obstaclesBySlot.Clear();
-        _maxSlotIndex = Mathf.FloorToInt(_totalLength / obstacleSpacing);
+        _slotStep = Mathf.Max(1f, Mathf.Min(obstacleSpacingByProgress.x, obstacleSpacingByProgress.y));
+        _maxSlotIndex = Mathf.FloorToInt(_totalLength / _slotStep);
     }
 
     private void StreamObstacles()
@@ -255,8 +280,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
         float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
 
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / obstacleSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / obstacleSpacing), 0, _maxSlotIndex);
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / _slotStep), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / _slotStep), 0, _maxSlotIndex);
 
 
         // ---------------------------
@@ -270,21 +295,17 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (_obstaclesBySlot.Count >= maxActiveObstacles)
                 break;
 
-            float dist = slot * obstacleSpacing;
+            float dist = slot * _slotStep;
 
             // Just in case, enforce min distance again
             if (dist < playerDist + minSpawnDistanceAhead)
                 continue;
 
-            // Distance normalized [0,1] along track
-            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
+            float requiredSpacing = GetEffectiveSpacing(dist);
+            if (!HasEnoughSpacingFromNeighbors(dist, requiredSpacing))
+                continue;
 
-            // Global difficulty scaling curve
-            float difficultyMult = (globalSpawnChanceByDistance != null)
-                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
-                : 1f;
-
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            float effectiveChance = GetSpawnChance(dist);
             if (effectiveChance <= 0f)
                 continue;
 
@@ -305,7 +326,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         _toRemove.Clear();
         foreach (var kvp in _obstaclesBySlot)
         {
-            float dist = kvp.Key * obstacleSpacing;
+            float dist = kvp.Key * _slotStep;
             if (dist < playerDist - despawnBehindDistance)
                 _toRemove.Add(kvp.Key);
         }
@@ -335,8 +356,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
         float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
 
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / obstacleSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / obstacleSpacing), 0, _maxSlotIndex);
+        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / _slotStep), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / _slotStep), 0, _maxSlotIndex);
 
         for (int slot = startSlot; slot <= endSlot; slot++)
         {
@@ -346,16 +367,15 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (_obstaclesBySlot.Count >= maxActiveObstacles)
                 break;
 
-            float dist = slot * obstacleSpacing;
+            float dist = slot * _slotStep;
             if (dist < playerDist + minSpawnDistanceAhead)
                 continue;
 
-            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
-            float difficultyMult = (globalSpawnChanceByDistance != null)
-                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
-                : 1f;
+            float requiredSpacing = GetEffectiveSpacing(dist);
+            if (!HasEnoughSpacingFromNeighbors(dist, requiredSpacing))
+                continue;
 
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            float effectiveChance = GetSpawnChance(dist);
             if (effectiveChance <= 0f)
                 continue;
 
@@ -458,15 +478,29 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
                 clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
 
             float finalLateral = Mathf.Clamp(rawLateral, -clampedUsable, clampedUsable);
+
+            // Side shooters self-snap to the road edge; prefer spawning already at the edge.
+            bool isSideShooter = chosenPrefab.GetComponentInChildren<TrackSideShooterObstacle>(true) != null;
+            if (isSideShooter && clampedUsable > 0.01f)
+                finalLateral = (Random.value < 0.5f ? -1f : 1f) * clampedUsable;
+
             Vector3 spawnPos = centered + right * finalLateral;
 
-            // Instantiate at ground level first
             GameObject obstacle = Instantiate(chosenPrefab, spawnPos, rot, parent);
             StabilizeObstacleRigidbodies(obstacle);
 
             var shuttle = obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true);
             if (shuttle != null && trackGenerator != null)
                 shuttle.SetGenerator(trackGenerator);
+
+            var shooter = obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true);
+            if (shooter != null)
+            {
+                if (trackGenerator != null)
+                    shooter.SetGenerator(trackGenerator);
+                if (playerTransform != null)
+                    shooter.SetPlayer(playerTransform);
+            }
 
             // Get the parent object's renderer bounds (not children)
             float parentBottomOffset = GetParentBottomOffset(obstacle);
@@ -630,22 +664,20 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             return;
 
         float preSpawnEnd = Mathf.Clamp(initialPreSpawnDistance, 0f, _totalLength);
-        int endSlot = Mathf.FloorToInt(preSpawnEnd / obstacleSpacing);
+        int endSlot = Mathf.FloorToInt(preSpawnEnd / _slotStep);
 
         for (int slot = 0; slot <= endSlot; slot++)
         {
             if (_obstaclesBySlot.ContainsKey(slot))
                 continue;
 
-            float dist = slot * obstacleSpacing;
+            float dist = slot * _slotStep;
 
-            // Same difficulty logic as runtime
-            float norm = (_totalLength > 0f) ? Mathf.Clamp01(dist / _totalLength) : 0f;
-            float difficultyMult = (globalSpawnChanceByDistance != null)
-                ? Mathf.Max(0f, globalSpawnChanceByDistance.Evaluate(norm))
-                : 1f;
+            float requiredSpacing = GetEffectiveSpacing(dist);
+            if (!HasEnoughSpacingFromNeighbors(dist, requiredSpacing))
+                continue;
 
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            float effectiveChance = GetSpawnChance(dist);
             if (effectiveChance <= 0f) continue;
             if (Random.value > effectiveChance) continue;
 
@@ -724,6 +756,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         // Don’t mess with obstacles that manage their own kinematic/dynamic state
         if (obstacle.GetComponentInChildren<CrossTrackObstacle>(true) != null) return;
         if (obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true) != null) return;
+        if (obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true) != null) return;
         if (obstacle.GetComponentInChildren<RollingLogAlongTrack>(true) != null) return;
 
         var rbs = obstacle.GetComponentsInChildren<Rigidbody>(true);

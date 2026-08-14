@@ -27,58 +27,10 @@ MonoBehaviour:
     minTurnAngle: 10
     startMaxTurnAngle: 45
     endMaxTurnAngle: 75
-    difficultyCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0.04
-        inSlope: 0.14439885
-        outSlope: 0.14439885
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0.3365059
-      - serializedVersion: 3
-        time: 1
-        value: 0.4
-        inSlope: 1.1064818
-        outSlope: 1.1064818
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0.08098912
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    startTurnChance: 0.28
-    endTurnChance: 0.908
-    turnFrequencyCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0.2
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 2
-        outSlope: 2
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    startTurnChance: 0.18
+    endTurnChance: 0.65
     maxWiggleAngle: 7
-    wiggleOverDistance: 0.542
+    wiggleOverDistance: 0.2
     useAvoidance: 1
     avoidanceRadius: 16.9
     avoidanceStrength: 0.828
@@ -99,6 +51,10 @@ MonoBehaviour:
     collisionPadding: 1
     trackRadiusMultiplier: 1.6
     recentIgnoreCount: 2
+    enforceMinStartEndSeparation: 1
+    minStartEndDistance: 120
+    minStartEndDistancePathFraction: 0.28
+    startSeparationEnforceAfterNormalized: 0.3
   obstacles:
     overrideObstacles: 1
     preSpawnOnInitialize: 1
@@ -163,29 +119,14 @@ MonoBehaviour:
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacing: 16
-    maxActiveObstacles: 100
+    obstacleSpacingByProgress: {x: 20, y: 6}
+    maxActiveObstacles: 120
     minSpawnDistanceAhead: 80
     maxSpawnDistanceAhead: 100
     initialPreSpawnDistance: 80
     despawnBehindDistance: 40
     distanceJitter: 1.5
-    spawnChancePerSlot: 0.85
-    globalSpawnChanceByDistance:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 34
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    spawnChanceByProgress: {x: 0.18, y: 0.45}
     lateralFraction: 0.969
     edgeInnerMargin: 0.5
     stabilizeRigidbodiesOnSpawn: 1
@@ -492,31 +433,7 @@ MonoBehaviour:
     initialPreSpawnDistance: 70
     despawnBehindDistance: 20
     distanceJitter: 6
-    spawnChancePerSlot: 0.5
-    spawnChanceByDistance:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0.3
-        inSlope: 0
-        outSlope: 0.7
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0.7
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    spawnChanceByProgress: {x: 0.15, y: 0.5}
     lateralFraction: 0.9
     edgeInnerMargin: 0.1
     roadLayer:
@@ -551,40 +468,7 @@ MonoBehaviour:
     despawnBehindDistance: 60
     despawnCrashedAfter: 10
     distanceJitter: 0.4
-    spawnChancePerSlot: 0.963
-    spawnChanceByDistance:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0
-        inSlope: 0.05231574
-        outSlope: 0.05231574
-        tangentMode: 34
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0.33333334
-      - serializedVersion: 3
-        time: 0.49583435
-        value: 0.025939941
-        inSlope: -0.00810442
-        outSlope: -0.00810442
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0.2525345
-        outWeight: 0.33333334
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 1.9320239
-        outSlope: 1.9320239
-        tangentMode: 34
-        weightedMode: 0
-        inWeight: 0.33333334
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    spawnChanceByProgress: {x: 0.18, y: 0.6}
     lateralFraction: 0.817
     edgeMargin: 0.89
     preferLanes: 1
@@ -609,239 +493,29 @@ MonoBehaviour:
     coinTypeWeights:
     - coinType: 0
       enabled: 1
-      globalScale: 1.12
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0.015
-          value: 0.9
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 1
-          value: 0.1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 1.12, y: 1.12}
     - coinType: 1
       enabled: 1
-      globalScale: 0.65
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0.015
-          value: 0.35
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 0.49179077
-          value: 0.6284164
-          inSlope: 0.82987446
-          outSlope: 0.82987446
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0.33333334
-          outWeight: 0.33333334
-        - serializedVersion: 3
-          time: 1
-          value: 0.75
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 0.95, y: 0.95}
     - coinType: 2
       enabled: 1
-      globalScale: 0.2
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0.015
-          value: 0.1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 0.9877014
-          value: 0.40754545
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 0.8, y: 0.8}
     - coinType: 3
       enabled: 0
-      globalScale: 0.4
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 1
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 0.4, y: 0.4}
     - coinType: 4
       enabled: 0
-      globalScale: 0.15
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 1
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 0.15, y: 0.15}
     - coinType: 5
       enabled: 0
-      globalScale: 0.05
-      distanceCurve:
-        serializedVersion: 2
-        m_Curve:
-        - serializedVersion: 3
-          time: 0
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        - serializedVersion: 3
-          time: 1
-          value: 1
-          inSlope: 0
-          outSlope: 0
-          tangentMode: 0
-          weightedMode: 0
-          inWeight: 0
-          outWeight: 0
-        m_PreInfinity: 2
-        m_PostInfinity: 2
-        m_RotationOrder: 4
+      weightByProgress: {x: 0.05, y: 0.05}
     coinSpacing: 11.4
     maxActiveCoins: 30
     minSpawnDistanceAhead: 70
     maxSpawnDistanceAhead: 150
     despawnBehindDistance: 25
     initialPreSpawnDistance: 70
-    baseSpawnChance: 0.375
-    spawnChanceDistanceCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1.5
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    lateTrackSpawnBonusCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 0.8
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1.15
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    spawnChanceByProgress: {x: 0.6, y: 0.8}
     applySkillSpawnRate: 1
     coinHeightOffset: 0.5
     lateralFractionOfHalfWidth: 0.812
@@ -888,58 +562,10 @@ MonoBehaviour:
     lateralJitter: 2.63
     forwardJitter: 0
     destroyReward: 12
-    baseAccuracy: 0.5
-    accuracyByDistance:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: -0.0041656494
-        value: 0.35
-        inSlope: 1.5983123
-        outSlope: 1.5983123
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0.070246
-      - serializedVersion: 3
-        time: 1
-        value: 0.9764151
-        inSlope: 0.0761923
-        outSlope: 0.0761923
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0.21488732
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    accuracyByProgress: {x: 0.1, y: 0.1}
     maxMissLateral: 6
     maxMissForward: 5
-    explosionBaseChance: 0.15
-    explosionChanceByDistance:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0.15
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 0.6
-        inSlope: 1
-        outSlope: 1
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    explosionChanceByProgress: {x: 0.03, y: 0.09}
     debugDraw: 1
   rollingLogs:
     overrideRollingLogs: 1
@@ -970,123 +596,16 @@ MonoBehaviour:
     crossObstaclePrefab: {fileID: 3874382558013832276, guid: c2e070191caaf7649b438c2b8d9d4f15, type: 3}
     enabledSpawning: 1
     minPlayerSpeed: -0.1
-    spawnCooldownSeconds: 45
+    spawnCooldownByProgress: {x: 5, y: 2}
     minLeadDistance: 5
     maxLeadDistance: 29
     maxCurvatureHorizonScale: 0.65
     crossSpeedRange: {x: 3, y: 8}
-    crossSpeedMultiplierCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 2
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    crossSpeedMulByProgress: {x: 1, y: 1}
     obstacleScaleRange: {x: 2, y: 2.7}
-    sizeCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    yawErrorDegreesCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    accuracyCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 0
-        value: 0
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    spawnIntervalCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 34
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
+    sizeMulByProgress: {x: 1, y: 1}
+    yawErrorDegreesByProgress: {x: 22, y: 4}
+    missAmountByProgress: {x: 0.6, y: 0.05}
     spawnCooldownRandomRange: {x: 2.37, y: 5.84}
     initialSpawnDelayRange: {x: 6.19, y: 15}
     useActualPathLengthForPrediction: 1
@@ -1103,3 +622,55 @@ MonoBehaviour:
     yawAngleAmplifyMax: 0.6
     debugGizmos: 1
     verboseLog: 0
+  icePaths:
+    overrideIcePaths: 1
+    iceSegmentPrefab: {fileID: 3253188342474316155, guid: 611d925f54392ba4ca537de369119b9b, type: 3}
+    iceMaterial: {fileID: 2100000, guid: f34365c4120c80241b3771827c67fc66, type: 2}
+    preSpawnOnInitialize: 1
+    streamSpawnDuringRun: 1
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 12
+    sectionSpacing: 70
+    maxActiveSections: 0
+    minSpawnDistanceAhead: 40
+    maxSpawnDistanceAhead: 220
+    initialPreSpawnDistance: 250
+    despawnBehindDistance: 30
+    distanceJitter: 12
+    spawnChanceByProgress: {x: 0.5, y: 0.5}
+    sectionLength: 28
+    sectionLengthJitter: 8
+    roadWidthScale: 1.02
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 24576
+    raycastStartHeight: 6
+    raycastDownDistance: 20
+    iceHeightOffset: 0.02
+    iceSampleSpacing: 1
+    iceUVTiling: 0.15
+    addIceMeshColliderTrigger: 1
+    updateInterval: 0.5
+    verboseDebug: 0
+  bounceObstacles:
+    overrideBounceObstacles: 1
+    bounceBackPrefab: {fileID: 7218115627756473360, guid: c79e89c8e2e15ee4ca4a516065c5e520, type: 3}
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
+    enableSpawning: 1
+    minSpawnIntervalSeconds: 7
+    maxSpawnIntervalSeconds: 14
+    maxActive: 2
+    minSpawnDistanceAhead: 40
+    maxSpawnDistanceAhead: 120
+    obstacleSpacing: 15
+    spawnChancePerSlot: 0.55
+    lateralFraction: 0.8
+    edgeInnerMargin: 0.25
+    distanceJitter: 10
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 8192
+    raycastStartHeight: 6
+    raycastDownDistance: 24
+    minNormalizedProgressToSpawn: 0.02

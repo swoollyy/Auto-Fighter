@@ -1524,7 +1524,7 @@ MonoBehaviour:
   skipSpeedClampWhileAirborne: 1
   enableLandingCarrySpeed: 0
   landingExcessBleedPerSecond: 5.5
-  landingNoClampGraceSeconds: 0.29
+  landingNoClampGraceSeconds: 0.35
   enableLandingBoost: 1
   landingBoostStrength: 0.65
   landingBoostDuration: 0.29
@@ -1533,10 +1533,10 @@ MonoBehaviour:
   landingLateralBleedPerSecond: 14
   landingLateralBleedDuration: 0.45
   enableLandingSlipStraighten: 1
-  landingSlipStraightenDuration: 0.6
-  landingSlipCarryFraction: 0.6
+  landingSlipStraightenDuration: 0.3
+  landingSlipCarryFraction: 0
   landingSlipMaxAlignDegrees: 28
-  landingSlipLateralKeep: 0.7
+  landingSlipLateralKeep: 0.75
   enableBadLandingCrash: 1
   badLandingMinAirborneSeconds: 0.2
   badLandingUpAlignDotMin: 0.332

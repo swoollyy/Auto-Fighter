@@ -34,9 +34,39 @@ public class DialogueManager : MonoBehaviour
     private Coroutine _playRoutine;
     private bool _isPlaying;
     private bool _hidGameCanvasForCurrentSequence;
+    /// <summary>When true, EndSequence keeps the dialogue panel up so a goo iris can close over it.</summary>
+    private bool _holdUiAfterComplete;
+    private bool _pendingCanvasRestoreAfterHold;
 
     /// <summary>True while a sequence is being played.</summary>
     public bool IsPlaying => _isPlaying;
+
+    /// <summary>
+    /// Call from <see cref="OnSequenceCompleting"/> so the dialogue panel (and its goo bubbles)
+    /// stay visible until <see cref="ReleaseHeldDialogueUi"/> — used for init→skill-tree iris.
+    /// </summary>
+    public void RequestHoldUiUntilReleased()
+    {
+        _holdUiAfterComplete = true;
+    }
+
+    /// <summary>Hide held dialogue UI and restore any canvas that was deferred at sequence end.</summary>
+    public void ReleaseHeldDialogueUi()
+    {
+        dialogueUI?.Hide();
+
+        if (_pendingCanvasRestoreAfterHold)
+        {
+            if (uiManagerRacing != null)
+                uiManagerRacing.SetGameCanvasVisible(true);
+            else if (gameCanvasToEnableWhenSequenceEnds != null)
+                gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+        }
+
+        _pendingCanvasRestoreAfterHold = false;
+        _holdUiAfterComplete = false;
+        uiManagerRacing?.SetGameplayCanvasInputLocked(false);
+    }
 
     /// <summary>Fired when a sequence finishes (with the sequence that finished).</summary>
     public event Action<DialogueSequenceSO> OnSequenceCompleted;
@@ -247,12 +277,30 @@ public class DialogueManager : MonoBehaviour
         _currentSequence = null;
         _currentLineIndex = 0;
 
-        // Let tutorial / overlays mount dim WHILE dialogue panel is still visible,
-        // then hide dialogue so the handoff never flashes the undimmed skill tree.
+        // Let tutorial / overlays (and init→skill-tree iris hold) run WHILE dialogue is still up.
         if (completed != null)
             OnSequenceCompleting?.Invoke(completed);
 
-        dialogueUI?.Hide();
+        if (_holdUiAfterComplete)
+        {
+            // Keep last line + goo bubbles on screen for the iris close; canvas restore waits too.
+            _pendingCanvasRestoreAfterHold = _hidGameCanvasForCurrentSequence;
+            _hidGameCanvasForCurrentSequence = false;
+        }
+        else
+        {
+            dialogueUI?.Hide();
+
+            if (_hidGameCanvasForCurrentSequence)
+            {
+                if (uiManagerRacing != null)
+                    uiManagerRacing.SetGameCanvasVisible(true);
+                else if (gameCanvasToEnableWhenSequenceEnds != null)
+                    gameCanvasToEnableWhenSequenceEnds.SetActive(true);
+            }
+            _hidGameCanvasForCurrentSequence = false;
+            uiManagerRacing?.SetGameplayCanvasInputLocked(false);
+        }
 
         if (completed != null && !string.IsNullOrEmpty(completed.setStoryFlagOnComplete))
         {
@@ -261,18 +309,6 @@ public class DialogueManager : MonoBehaviour
                 $"[DialogueManager] Sequence '{completed.name}' complete — story flag " +
                 $"'{completed.setStoryFlagOnComplete}' set.");
         }
-
-        // Restore game canvas only if this sequence hid it.
-        if (_hidGameCanvasForCurrentSequence)
-        {
-            if (uiManagerRacing != null)
-                uiManagerRacing.SetGameCanvasVisible(true);
-            else if (gameCanvasToEnableWhenSequenceEnds != null)
-                gameCanvasToEnableWhenSequenceEnds.SetActive(true);
-        }
-        _hidGameCanvasForCurrentSequence = false;
-
-        uiManagerRacing?.SetGameplayCanvasInputLocked(false);
 
         if (completed != null)
             OnSequenceCompleted?.Invoke(completed);

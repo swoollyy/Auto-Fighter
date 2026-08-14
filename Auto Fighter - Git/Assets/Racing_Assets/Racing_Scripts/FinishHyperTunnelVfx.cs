@@ -24,6 +24,25 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     [SerializeField, Min(0.1f)] private float fxIntroSeconds = 1.35f;
     [Tooltip("Speed multiplier at the end of the drive (just before blackout). 1 = no ramp.")]
     [SerializeField, Min(1f)] private float speedRampEndMultiplier = 3.25f;
+    [Tooltip("How fast the void background cycles purple → blue → green (cycles per second).")]
+    [SerializeField, Min(0.05f)] private float voidColorCyclesPerSecond = 0.35f;
+    [Tooltip("1 = denser rings. Higher leaves more empty background between concentric rings.")]
+    [SerializeField, Range(1f, 3f)] private float ringSpacing = 1.9f;
+
+    [Header("UI Rumble (rings/rays)")]
+    [SerializeField] private bool uiRumble = true;
+    [Tooltip("Pixel shake at the start of the tunnel (baseline).")]
+    [SerializeField, Min(0f)] private float uiRumblePositionStrength = 14f;
+    [Tooltip("Pixel shake at peak (iris blackout climax).")]
+    [SerializeField, Min(0f)] private float uiRumblePositionStrengthPeak = 36f;
+    [Tooltip("Z rotation shake at the start of the tunnel (degrees).")]
+    [SerializeField, Min(0f)] private float uiRumbleRotationDegrees = 1.35f;
+    [Tooltip("Z rotation shake at peak (degrees).")]
+    [SerializeField, Min(0f)] private float uiRumbleRotationDegreesPeak = 3.4f;
+    [Tooltip("How busy the rumble feels (higher = faster jitter).")]
+    [SerializeField, Min(0.5f)] private float uiRumbleSpeed = 22f;
+    [Tooltip("Also nudge the void wash so the whole tunnel frame rumbles together.")]
+    [SerializeField] private bool uiRumbleIncludeVoid = true;
 
     [Header("Layering")]
     [SerializeField] private int voidCanvasSort = 60;
@@ -34,8 +53,16 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     [SerializeField, Min(0.05f)] private float voidFadeInSeconds = 2.4f;
 
     [Header("Final Blackout")]
-    [Tooltip("Black disc expands from center to full screen after the void is opaque.")]
-    [SerializeField, Min(0.05f)] private float finalBlackoutSeconds = 0.22f;
+    [Tooltip("Iris close: blackness creeps in from the edges to the center, then the star pops.")]
+    [SerializeField, Min(0.05f)] private float finalBlackoutSeconds = 0.95f;
+    [Tooltip("Starting hole size (1 ≈ screen corners). Lower = black already hugging the edges when close starts.")]
+    [SerializeField, Range(0.85f, 1.35f)] private float irisStartHole = 1.02f;
+    [Tooltip("Extra speed multiplier added on top of the end ramp while the iris closes (1 = no extra).")]
+    [SerializeField, Min(1f)] private float blackoutSpeedBoostMultiplier = 1.85f;
+    [Tooltip("Camera shake strength scale at iris seal (1 = keep current persistent shake).")]
+    [SerializeField, Min(1f)] private float blackoutCameraShakePeakScale = 1.75f;
+    [Tooltip("Beat of pure black after the iris seals, before the star spark.")]
+    [SerializeField, Min(0f)] private float sparkDelayAfterSealSeconds = 0.18f;
     [SerializeField, Min(20f)] private float finalBlackoutStartSize = 80f;
     [Tooltip("White portal-close spark after black engulfs, before results.")]
     [SerializeField, Min(0.05f)] private float portalSparkSeconds = 0.16f;
@@ -59,6 +86,14 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     private Sprite _discSprite;
     private Sprite _starSprite;
     private Sprite _softGlowSprite;
+    private Sprite _whiteRectSprite;
+    private Material _gooIrisMat;
+    private static readonly int IrisHoleId = Shader.PropertyToID("_HoleRadius");
+    private static readonly int IrisAspectId = Shader.PropertyToID("_Aspect");
+    private static readonly int IrisAnimTimeId = Shader.PropertyToID("_AnimTime");
+    private static readonly int IrisColorId = Shader.PropertyToID("_Color");
+    private static readonly int IrisRimColorId = Shader.PropertyToID("_RimColor");
+    private float _irisAnimClock;
     private RectTransform _finalBlackout;
     private Image _finalBlackoutImage;
     private RectTransform _portalSpark;
@@ -69,6 +104,9 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     private Image _portalSparkWashImage;
     private bool _running;
     private bool _blackoutActive;
+    private bool _blackoutSealed;
+    /// <summary>0..1 while the goo iris is closing; drives extra FX speed + rumble.</summary>
+    private float _blackoutProgress01;
     private float _paletteClock;
     private float _voidFadeInSecondsRuntime = 2.4f;
     private float _voidFadeDelayRuntime;
@@ -77,8 +115,11 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     private int _savedGameCanvasSort = int.MinValue;
     private Canvas _bumpedGameCanvas;
     private readonly float[] _ringPhase = new float[64];
+    private float _uiRumbleSeed;
+    /// <summary>Full ring grow cycle length. Phases stay evenly spaced across this so speed-up never syncs into a burst.</summary>
+    private const float RingPhaseLength = 1.75f;
 
-    // Purple (light→dark), blues, some greens, white — nothing else.
+    // Purple (light→dark), blues, some greens, white — rings/rays only.
     private static readonly Color[] TunnelPalette =
     {
         new Color(0.92f, 0.78f, 1.00f), // light purple
@@ -97,6 +138,14 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         new Color(0.88f, 0.92f, 1.00f), // cool white
     };
 
+    // Void background: purple ↔ blue ↔ green.
+    private static readonly Color VoidPurpleLight = new Color(0.72f, 0.42f, 1.00f);
+    private static readonly Color VoidPurpleDeep = new Color(0.34f, 0.10f, 0.62f);
+    private static readonly Color VoidBlueLight = new Color(0.40f, 0.62f, 1.00f);
+    private static readonly Color VoidBlueDeep = new Color(0.10f, 0.18f, 0.68f);
+    private static readonly Color VoidGreenLight = new Color(0.45f, 0.95f, 0.62f);
+    private static readonly Color VoidGreenDeep = new Color(0.08f, 0.42f, 0.28f);
+
     private static Color SampleTunnelPalette(float t01)
     {
         int n = TunnelPalette.Length;
@@ -104,6 +153,22 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         int i0 = Mathf.FloorToInt(f) % n;
         int i1 = (i0 + 1) % n;
         return Color.Lerp(TunnelPalette[i0], TunnelPalette[i1], f - Mathf.Floor(f));
+    }
+
+    /// <summary>Cycles purple → blue → green → purple, with a light↔deep breathe.</summary>
+    private static Color SampleVoidBackdrop(float cycle01, float depth01)
+    {
+        depth01 = Mathf.Clamp01(depth01);
+        Color purple = Color.Lerp(VoidPurpleLight, VoidPurpleDeep, depth01);
+        Color blue = Color.Lerp(VoidBlueLight, VoidBlueDeep, depth01);
+        Color green = Color.Lerp(VoidGreenLight, VoidGreenDeep, depth01);
+
+        float t = Mathf.Repeat(cycle01, 1f) * 3f;
+        if (t < 1f)
+            return Color.Lerp(purple, blue, t);
+        if (t < 2f)
+            return Color.Lerp(blue, green, t - 1f);
+        return Color.Lerp(green, purple, t - 2f);
     }
 
     public bool IsPlaying => _running;
@@ -121,12 +186,16 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         }
         _running = true;
         _blackoutActive = false;
+        _blackoutSealed = false;
+        _blackoutProgress01 = 0f;
         SetCanvasesActive(true);
         ResetFinalBlackoutVisual();
         if (voidImage != null)
             voidImage.color = new Color(1f, 1f, 1f, 0f);
         ResetRingPhases();
         HideTunnelSprites();
+        _uiRumbleSeed = Random.value * 1000f;
+        ResetUiRumbleTransforms();
         _lifeCr = StartCoroutine(CoPlay(durationUnscaled, persist: false));
     }
 
@@ -148,12 +217,16 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         }
         _running = true;
         _blackoutActive = false;
+        _blackoutSealed = false;
+        _blackoutProgress01 = 0f;
         SetCanvasesActive(true);
         ResetFinalBlackoutVisual();
         if (voidImage != null)
             voidImage.color = new Color(1f, 1f, 1f, 0f);
         ResetRingPhases();
         HideTunnelSprites();
+        _uiRumbleSeed = Random.value * 1000f;
+        ResetUiRumbleTransforms();
         _lifeCr = StartCoroutine(CoPlay(99999f, persist: true));
     }
 
@@ -164,8 +237,8 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     }
 
     /// <summary>
-    /// After the colored void is fully opaque: fast black engulf, then a white portal-close spark.
-    /// Yields until black + spark finish. Call before showing results.
+    /// Iris close: gooey blackness creeps from the outside toward the center (with rising rumble),
+    /// then the white portal-close spark fires once the hole seals.
     /// </summary>
     public IEnumerator CoFinalBlackout(float durationSeconds = -1f)
     {
@@ -175,6 +248,8 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         EnsureSprites();
         EnsureFinalBlackout();
         EnsurePortalSpark();
+        if (!EnsureGooIrisMaterial())
+            yield break;
         if (_finalBlackout == null || _finalBlackoutImage == null)
             yield break;
 
@@ -182,32 +257,72 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         dur = Mathf.Max(0.05f, dur);
 
         _blackoutActive = true;
+        _blackoutSealed = false;
+        _blackoutProgress01 = 0f;
+        _irisAnimClock = 0f;
+
+        var camFollow = Object.FindObjectOfType<CameraFollow>(true);
+        float camShakeBase = 0f;
+        if (camFollow != null)
+            camShakeBase = camFollow.CurrentPersistentShakeStrength;
+
         _finalBlackout.gameObject.SetActive(true);
         _finalBlackout.SetAsLastSibling();
-        _finalBlackoutImage.color = Color.black;
-        _finalBlackoutImage.sprite = _discSprite;
 
-        float start = Mathf.Max(20f, finalBlackoutStartSize);
-        float cover = Mathf.Max(fxRoot.rect.width, fxRoot.rect.height);
-        if (cover < 32f)
-            cover = Mathf.Max(Screen.width, Screen.height);
-        // Overshoot so soft edge fully clears the corners.
-        float end = cover * 1.75f;
+        // Overscan past the screen edges so goo never leaves a ray-sliver frame.
+        StretchFull(_finalBlackout);
+        _finalBlackout.offsetMin = new Vector2(-160f, -160f);
+        _finalBlackout.offsetMax = new Vector2(160f, 160f);
+        _finalBlackout.localScale = Vector3.one * 1.12f;
 
-        _finalBlackout.sizeDelta = Vector2.one * start;
+        _finalBlackoutImage.color = Color.white;
+        _finalBlackoutImage.preserveAspect = false;
+        EnsureWhiteRectSprite();
+        _finalBlackoutImage.sprite = _whiteRectSprite;
+        _finalBlackoutImage.material = _gooIrisMat;
+
+        float aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 1.777f;
+        float startHole = Mathf.Clamp(irisStartHole, 0.85f, 1.35f);
+        _gooIrisMat.SetFloat(IrisAspectId, aspect);
+        _gooIrisMat.SetColor(IrisColorId, Color.black);
+        _gooIrisMat.SetColor(IrisRimColorId, Color.black);
+        _gooIrisMat.SetFloat("_RimWidth", 0f);
+        _gooIrisMat.SetFloat("_RimStrength", 0f);
+        SetIrisHole(startHole); // edges already dark — no long "nothing happening" beat
+        _finalBlackoutImage.SetAllDirty();
 
         float t0 = Time.unscaledTime;
         float t1 = t0 + dur;
         while (Time.unscaledTime < t1)
         {
-            // Ease-out so it snaps across the screen quickly.
             float linear = Mathf.Clamp01(Mathf.InverseLerp(t0, t1, Time.unscaledTime));
-            float u = 1f - (1f - linear) * (1f - linear);
-            _finalBlackout.sizeDelta = Vector2.one * Mathf.Lerp(start, end, u);
+            // Smooth across the whole close so black reads immediately, then settles shut.
+            float u = Mathf.SmoothStep(0f, 1f, linear);
+            _blackoutProgress01 = u;
+            SetIrisHole(Mathf.Lerp(startHole, 0f, u));
+
+            float dt = Time.unscaledDeltaTime;
+            if (dt <= 0f) dt = 1f / 60f;
+            _irisAnimClock += dt * 1.35f;
+            _gooIrisMat.SetFloat(IrisAnimTimeId, _irisAnimClock);
+            _finalBlackoutImage.SetAllDirty();
+
+            if (camFollow != null && camShakeBase > 0f)
+            {
+                float shake = camShakeBase * Mathf.Lerp(1f, blackoutCameraShakePeakScale, u);
+                camFollow.SetPersistentShakeStrength(shake);
+            }
+
             yield return null;
         }
 
-        _finalBlackout.sizeDelta = Vector2.one * end;
+        _blackoutProgress01 = 1f;
+        SetIrisHole(0f);
+        _finalBlackoutImage.SetAllDirty();
+
+        // Seal: tunnel FX can stop updating under solid black.
+        _blackoutSealed = true;
+
         // Solid black under results — void also locked to black so soft edges can't leak color.
         if (voidImage != null)
             voidImage.color = new Color(0f, 0f, 0f, 1f);
@@ -222,8 +337,52 @@ public class FinishHyperTunnelVfx : MonoBehaviour
                 rayImages[i].enabled = false;
         }
 
-        // Closing spark: white flash in the center (player / portal vanishing), then settle to black.
+        ResetUiRumbleTransforms();
+
+        // Hold on sealed black briefly, then spark.
+        float sparkDelay = Mathf.Max(0f, sparkDelayAfterSealSeconds);
+        if (sparkDelay > 0f)
+        {
+            float holdUntil = Time.unscaledTime + sparkDelay;
+            while (Time.unscaledTime < holdUntil)
+                yield return null;
+        }
+
         yield return CoPortalCloseSpark();
+    }
+
+    private bool EnsureGooIrisMaterial()
+    {
+        if (_gooIrisMat != null)
+            return true;
+
+        // Builds strip Shader.Find-only shaders — pull via Resources first (see GooIrisScreenTransition).
+        Material template = Resources.Load<Material>("GooIrisClose");
+        if (template != null && template.shader != null)
+        {
+            _gooIrisMat = new Material(template);
+        }
+        else
+        {
+            Shader shader = Shader.Find("UI/GooIrisClose");
+            if (shader == null)
+            {
+                Debug.LogError(
+                    "[FinishHyperTunnelVfx] Missing shader UI/GooIrisClose in this build. " +
+                    "Ensure Assets/Resources/GooIrisClose.mat exists and the shader is Always Included.");
+                return false;
+            }
+            _gooIrisMat = new Material(shader);
+        }
+
+        _gooIrisMat.name = "PortalGooIrisClose_Runtime";
+        return true;
+    }
+
+    private void SetIrisHole(float hole01)
+    {
+        if (_gooIrisMat == null) return;
+        _gooIrisMat.SetFloat(IrisHoleId, hole01);
     }
 
     private IEnumerator CoPortalCloseSpark()
@@ -317,19 +476,98 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         }
         _running = false;
         _blackoutActive = false;
+        _blackoutSealed = false;
+        _blackoutProgress01 = 0f;
+        ResetUiRumbleTransforms();
         ResetFinalBlackoutVisual();
         RestoreGameCanvasSort();
         SetCanvasesActive(false);
     }
 
+    private void ResetUiRumbleTransforms()
+    {
+        if (fxRoot != null)
+        {
+            fxRoot.anchoredPosition = Vector2.zero;
+            fxRoot.localRotation = Quaternion.identity;
+        }
+        if (voidImage != null)
+        {
+            voidImage.rectTransform.anchoredPosition = Vector2.zero;
+            voidImage.rectTransform.localRotation = Quaternion.identity;
+        }
+    }
+
+    private void ApplyUiRumble(float amount01, float ramp01, float elapsed)
+    {
+        if (!uiRumble || amount01 <= 0.001f)
+        {
+            ResetUiRumbleTransforms();
+            return;
+        }
+
+        ramp01 = Mathf.Clamp01(ramp01);
+        float posStr = Mathf.Lerp(uiRumblePositionStrength, uiRumblePositionStrengthPeak, ramp01);
+        float rotStr = Mathf.Lerp(uiRumbleRotationDegrees, uiRumbleRotationDegreesPeak, ramp01);
+
+        float t = elapsed * uiRumbleSpeed;
+        float seed = _uiRumbleSeed;
+        float nx = Mathf.PerlinNoise(seed, t) * 2f - 1f;
+        float ny = Mathf.PerlinNoise(seed + 19.7f, t * 1.13f) * 2f - 1f;
+        float nr = Mathf.PerlinNoise(seed + 41.3f, t * 0.91f) * 2f - 1f;
+
+        // Layer a faster sine so it reads as a rumble, not just a slow drift.
+        float fast = elapsed * uiRumbleSpeed * 2.4f;
+        nx = Mathf.Clamp(nx + 0.55f * Mathf.Sin(fast * 1.7f + seed), -1.25f, 1.25f);
+        ny = Mathf.Clamp(ny + 0.55f * Mathf.Cos(fast * 1.9f + seed * 0.5f), -1.25f, 1.25f);
+
+        Vector2 pos = new Vector2(nx, ny) * (posStr * amount01);
+        float rot = nr * rotStr * amount01;
+
+        if (fxRoot != null)
+        {
+            fxRoot.anchoredPosition = pos;
+            fxRoot.localRotation = Quaternion.Euler(0f, 0f, rot);
+        }
+
+        if (uiRumbleIncludeVoid && voidImage != null)
+        {
+            // Slightly softer on the void so rings stay the loudest motion.
+            voidImage.rectTransform.anchoredPosition = pos * 0.55f;
+            voidImage.rectTransform.localRotation = Quaternion.Euler(0f, 0f, rot * 0.45f);
+        }
+    }
+
     private void ResetRingPhases()
     {
-        // Start near the center (small) so rings rush outward as they fade in — not already mid-screen.
-        for (int i = 0; i < rings.Count && i < _ringPhase.Length; i++)
+        // Use a sparser active set so consecutive rings have visible background between them.
+        int n = Mathf.Min(rings.Count, _ringPhase.Length);
+        int active = Mathf.Max(3, Mathf.RoundToInt(n / Mathf.Max(1f, ringSpacing)));
+        active = Mathf.Min(active, n);
+
+        for (int i = 0; i < n; i++)
         {
-            _ringPhase[i] = Mathf.Lerp(0.02f, 0.28f, (float)i / Mathf.Max(1, rings.Count - 1));
-            if (rings[i] != null)
-                rings[i].sizeDelta = Vector2.one * Mathf.Lerp(80f, 220f, _ringPhase[i] / 0.28f);
+            if (i < active)
+            {
+                float spaced = active <= 1 ? 0f : (i / (float)active) * RingPhaseLength;
+                _ringPhase[i] = spaced;
+                if (rings[i] != null)
+                {
+                    float size = Mathf.Lerp(140f, 1400f, Mathf.SmoothStep(0f, 1f, spaced / RingPhaseLength));
+                    rings[i].sizeDelta = Vector2.one * size;
+                }
+            }
+            else
+            {
+                // Extra authored rings stay off so spacing isn't filled back in.
+                _ringPhase[i] = -1f;
+                if (ringImages[i] != null)
+                {
+                    Color c = ringImages[i].color;
+                    c.a = 0f;
+                    ringImages[i].color = c;
+                }
+            }
         }
     }
 
@@ -354,13 +592,15 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     private void EnsureFinalBlackout()
     {
         if (fxRoot == null) return;
-        if (_finalBlackoutImage != null && _finalBlackout != null) return;
 
-        var existing = fxRoot.Find("FinalBlackout");
-        if (existing != null)
+        if (_finalBlackout == null || _finalBlackoutImage == null)
         {
-            _finalBlackout = existing as RectTransform;
-            _finalBlackoutImage = existing.GetComponent<Image>();
+            var existing = fxRoot.Find("FinalBlackout");
+            if (existing != null)
+            {
+                _finalBlackout = existing as RectTransform;
+                _finalBlackoutImage = existing.GetComponent<Image>();
+            }
         }
 
         if (_finalBlackout == null)
@@ -368,15 +608,32 @@ public class FinishHyperTunnelVfx : MonoBehaviour
             var go = new GameObject("FinalBlackout", typeof(RectTransform));
             go.transform.SetParent(fxRoot, false);
             _finalBlackout = go.GetComponent<RectTransform>();
-            _finalBlackout.anchorMin = _finalBlackout.anchorMax = new Vector2(0.5f, 0.5f);
-            _finalBlackout.pivot = new Vector2(0.5f, 0.5f);
+            StretchFull(_finalBlackout);
             _finalBlackoutImage = go.AddComponent<Image>();
             _finalBlackoutImage.raycastTarget = false;
-            _finalBlackoutImage.preserveAspect = true;
+            _finalBlackoutImage.preserveAspect = false;
         }
 
-        if (_finalBlackoutImage != null && _discSprite != null)
-            _finalBlackoutImage.sprite = _discSprite;
+        EnsureWhiteRectSprite();
+        if (_finalBlackoutImage != null)
+        {
+            _finalBlackoutImage.preserveAspect = false;
+            _finalBlackoutImage.sprite = _whiteRectSprite;
+        }
+    }
+
+    private void EnsureWhiteRectSprite()
+    {
+        if (_whiteRectSprite != null) return;
+        var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Point;
+        var fill = new Color[16];
+        for (int i = 0; i < fill.Length; i++)
+            fill[i] = Color.white;
+        tex.SetPixels(fill);
+        tex.Apply(false, false);
+        _whiteRectSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 100f);
     }
 
     private void EnsurePortalSpark()
@@ -467,7 +724,10 @@ public class FinishHyperTunnelVfx : MonoBehaviour
         if (_finalBlackout != null)
         {
             _finalBlackout.gameObject.SetActive(false);
-            _finalBlackout.sizeDelta = Vector2.one * finalBlackoutStartSize;
+            StretchFull(_finalBlackout);
+            _finalBlackout.localScale = Vector3.one;
+            if (_finalBlackoutImage != null)
+                _finalBlackoutImage.material = null;
         }
         if (_portalSpark != null)
         {
@@ -680,7 +940,7 @@ public class FinishHyperTunnelVfx : MonoBehaviour
     private void EnsureSprites()
     {
         if (_ringSprite == null)
-            _ringSprite = BuildRingSprite(128, 0.72f, 0.92f);
+            _ringSprite = BuildRingSprite(128, 0.80f, 0.90f);
         if (_raySprite == null)
             _raySprite = BuildRaySprite(16, 128);
         if (_discSprite == null)
@@ -865,8 +1125,8 @@ public class FinishHyperTunnelVfx : MonoBehaviour
             float dt = Time.unscaledDeltaTime;
             if (dt <= 0f) dt = 1f / 60f;
 
-            // Final black disc owns the frame — freeze colored tunnel updates underneath.
-            if (_blackoutActive)
+            // After iris seals, leave a solid black frame (spark / results own the beat).
+            if (_blackoutSealed)
             {
                 yield return null;
                 continue;
@@ -877,21 +1137,28 @@ public class FinishHyperTunnelVfx : MonoBehaviour
             // Keep early FX soft while the world is still visible; settle to full once void owns the frame.
             float fxMul = intro * Mathf.Lerp(0.55f, 1f, voidOpaque);
 
-            // Accelerate spin/rush through the drive until blackout.
+            // Accelerate through the drive; keep climbing harder while the goo iris closes.
             float drive01 = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / Mathf.Max(0.5f, _driveSecondsRuntime)));
             float speedMul = Mathf.Lerp(1f, speedRampEndMultiplier, drive01);
+            if (_blackoutActive)
+                speedMul *= Mathf.Lerp(1f, blackoutSpeedBoostMultiplier, _blackoutProgress01);
+
             float rushMul = rushSpeed * speedMul * (0.45f + 0.55f * intro);
             float ringSpinMul = ringSpinSpeed * speedMul;
             float raySpinMul = raySpinSpeed * speedMul;
             float colorMul = colorCycleSpeed * Mathf.Lerp(1f, 1.6f, drive01);
+            if (_blackoutActive)
+                colorMul *= Mathf.Lerp(1f, 1.45f, _blackoutProgress01);
 
             _paletteClock = (_paletteClock + colorMul * dt * 0.12f) % 1f;
 
             if (voidImage != null)
             {
-                // Void stays in deep purple/blue — no rainbow wash behind the rings.
-                float voidT = Mathf.Repeat(_paletteClock * 0.35f + 0.05f * Mathf.Sin(Time.unscaledTime * 2.5f), 1f);
-                Color voidCol = SampleTunnelPalette(voidT) * Mathf.Lerp(0.55f, 0.85f, voidOpaque);
+                // Fluctuate purple → blue → green (light↔deep breathe).
+                float cycleSpeed = voidColorCyclesPerSecond * (_blackoutActive ? Mathf.Lerp(1f, 1.6f, _blackoutProgress01) : 1f);
+                float cycle = Mathf.Repeat(Time.unscaledTime * cycleSpeed, 1f);
+                float depth = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f * cycleSpeed * 0.41f + 1.3f);
+                Color voidCol = SampleVoidBackdrop(cycle, depth) * Mathf.Lerp(0.55f, 0.85f, voidOpaque);
                 voidCol.a = voidOpaque;
                 voidImage.color = voidCol;
             }
@@ -899,21 +1166,23 @@ public class FinishHyperTunnelVfx : MonoBehaviour
             for (int i = 0; i < rings.Count; i++)
             {
                 if (rings[i] == null || i >= ringImages.Count || ringImages[i] == null) continue;
+                if (_ringPhase[i] < 0f) continue;
 
                 // Stagger intro slightly per ring so they don't all bloom at once.
                 float ringIntro = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((elapsed - i * 0.03f) / Mathf.Max(0.1f, fxIntroSeconds)));
 
-                _ringPhase[i] += rushMul * (0.55f + intensity) * dt * 0.35f;
-                if (_ringPhase[i] > 1.75f)
-                    _ringPhase[i] -= 1.6f;
+                // Same advance rate for every ring — relative spacing stays fixed, so speed only
+                // makes each ring expand faster, not fire as a synchronized burst.
+                _ringPhase[i] += rushMul * dt * 0.35f;
+                _ringPhase[i] = Mathf.Repeat(_ringPhase[i], RingPhaseLength);
 
                 float p = _ringPhase[i];
-                float size = Mathf.Lerp(140f, 1400f, Mathf.SmoothStep(0f, 1f, p / 1.75f));
+                float size = Mathf.Lerp(140f, 1400f, Mathf.SmoothStep(0f, 1f, p / RingPhaseLength));
                 rings[i].sizeDelta = Vector2.one * size;
                 rings[i].Rotate(0f, 0f, ringSpinMul * dt * (i % 2 == 0 ? 1f : -1f));
 
                 Color c = SampleTunnelPalette(_paletteClock + i * (1f / TunnelPalette.Length));
-                float fade = 1f - Mathf.Clamp01((_ringPhase[i] - 1.15f) / 0.6f);
+                float fade = 1f - Mathf.Clamp01((p - 1.15f) / 0.6f);
                 c.a = ringAlpha * fade * fxMul * ringIntro;
                 ringImages[i].color = c;
             }
@@ -938,6 +1207,11 @@ public class FinishHyperTunnelVfx : MonoBehaviour
                 }
             }
 
+            // Baseline rumble; iris close ramps to peak.
+            float rumbleAmt = Mathf.Clamp01(fxMul * Mathf.Lerp(0.35f, 1f, voidOpaque));
+            float rumbleRamp = _blackoutActive ? _blackoutProgress01 : 0f;
+            ApplyUiRumble(Mathf.Max(rumbleAmt, _blackoutActive ? 1f : rumbleAmt), rumbleRamp, elapsed);
+
             yield return null;
         }
 
@@ -953,6 +1227,10 @@ public class FinishHyperTunnelVfx : MonoBehaviour
             Destroy(_raySprite.texture);
         if (_discSprite != null)
             Destroy(_discSprite.texture);
+        if (_whiteRectSprite != null)
+            Destroy(_whiteRectSprite.texture);
+        if (_gooIrisMat != null)
+            Destroy(_gooIrisMat);
         if (_starSprite != null)
             Destroy(_starSprite.texture);
         if (_softGlowSprite != null)

@@ -21,7 +21,7 @@ MonoBehaviour:
   mode: 0
   baseValue: 0
   perLevelAdd: 0.03
-  uiPosition: {x: -75, y: -225}
+  uiPosition: {x: -75, y: -75}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 0

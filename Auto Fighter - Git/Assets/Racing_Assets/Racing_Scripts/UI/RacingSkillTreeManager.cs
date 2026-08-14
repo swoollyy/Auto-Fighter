@@ -117,11 +117,12 @@ public class RacingSkillTreeManager : MonoBehaviour
 
     private void Start()
     {
+        DayTrialManager.EnsureExists();
         HookTrialEvents();
         // Rebuild listeners in case the first trial's allowlist differs from "everything revealed".
         NotifySkillAvailabilityChanged();
     }
-
+    
     private void OnDestroy()
     {
         UnhookQuestRevealEvents();
@@ -161,6 +162,9 @@ public class RacingSkillTreeManager : MonoBehaviour
     {
         var day = DayTrialManager.Instance;
         if (day == null) return true;
+        // After beating the final trial, open the full tree (progressive unlocks that were
+        // remembered under Track1's allowlist can appear when their unlock skills are leveled).
+        if (day.AllTrialsCompleted) return true;
         var cfg = day.CurrentConfig;
         if (cfg == null) return true;
         return cfg.IsSkillAllowed(type);
@@ -837,6 +841,52 @@ public class RacingSkillTreeManager : MonoBehaviour
             OnLevelChanged?.Invoke(t, GetLevel(t));
 
         OnSkillsReset?.Invoke();
+    }
+
+    /// <summary>
+    /// Debug: max every skill in earlier trials' <see cref="TrialConfig.allowedSkills"/> lists
+    /// (indices 0 .. <paramref name="priorToTrialIndex"/>-1). Uses the authored skillset even when
+    /// that trial does not enforce the allowlist — never maxes the selected trial's own list.
+    /// </summary>
+    public void DebugMaxSkillsFromPriorTrials(IList<TrialConfig> trials, int priorToTrialIndex)
+    {
+        if (trials == null || priorToTrialIndex <= 0) return;
+
+        var maxed = new HashSet<SkillType>();
+        for (int i = 0; i < priorToTrialIndex && i < trials.Count; i++)
+        {
+            var cfg = trials[i];
+            if (cfg?.allowedSkills == null || cfg.allowedSkills.Count == 0)
+                continue;
+
+            for (int s = 0; s < cfg.allowedSkills.Count; s++)
+                maxed.Add(cfg.allowedSkills[s]);
+        }
+
+        foreach (var type in maxed)
+            DebugMaxSkill(type);
+
+        _state.Save();
+        NotifySkillAvailabilityChanged();
+        OnSkillsReset?.Invoke();
+        Debug.Log($"[RacingSkillTreeManager] DEBUG maxed {maxed.Count} skill(s) from prior trial skillset(s) before index {priorToTrialIndex}.");
+    }
+
+    /// <summary>Debug: set one skill to its max level and reveal / progressive-unlock dependents.</summary>
+    public void DebugMaxSkill(SkillType type)
+    {
+        if (!_map.TryGetValue(type, out var def) || def == null) return;
+
+        int max = Mathf.Max(0, def.maxLevel);
+        if (max <= 0) return;
+
+        _state.SetLevel(type, max);
+        RevealSkill(def);
+
+        for (int lvl = 1; lvl <= max; lvl++)
+            EvaluateProgressiveUnlocks(def, lvl);
+
+        OnLevelChanged?.Invoke(type, max);
     }
 
     public bool IsPassiveMashUnlocked => GetLevel(SkillType.MashPassiveUnlock) > 0;

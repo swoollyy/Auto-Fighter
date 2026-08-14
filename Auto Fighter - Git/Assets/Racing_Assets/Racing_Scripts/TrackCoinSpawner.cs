@@ -18,12 +18,12 @@ public class TrackCoinSpawner : MonoBehaviour
     [SerializeField]
     private List<CoinTypeWeight> coinTypeWeights = new List<CoinTypeWeight>()
     {
-        new CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, globalScale = 1.12f },
-        new CoinTypeWeight { coinType = CoinType.Silver, enabled = true, globalScale = 0.95f },
-        new CoinTypeWeight { coinType = CoinType.Gold, enabled = true, globalScale = 0.8f },
-        new CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, globalScale = 0.4f },
-        new CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, globalScale = 0.15f },
-        new CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, globalScale = 0.05f }
+        new CoinTypeWeight { coinType = CoinType.Bronze, enabled = true, weightByProgress = new Vector2(1.12f, 1.12f) },
+        new CoinTypeWeight { coinType = CoinType.Silver, enabled = true, weightByProgress = new Vector2(0.95f, 0.95f) },
+        new CoinTypeWeight { coinType = CoinType.Gold, enabled = true, weightByProgress = new Vector2(0.8f, 0.8f) },
+        new CoinTypeWeight { coinType = CoinType.Platinum, enabled = true, weightByProgress = new Vector2(0.4f, 0.4f) },
+        new CoinTypeWeight { coinType = CoinType.Diamond, enabled = true, weightByProgress = new Vector2(0.15f, 0.15f) },
+        new CoinTypeWeight { coinType = CoinType.Legendary, enabled = true, weightByProgress = new Vector2(0.05f, 0.05f) }
     };
 
     [System.Serializable]
@@ -32,11 +32,8 @@ public class TrackCoinSpawner : MonoBehaviour
         public CoinType coinType = CoinType.Bronze;
         public bool enabled = true;
 
-        [Tooltip("Multiplier applied to the base spawn weight from CoinDatabase.")]
-        public float globalScale = 1f;
-
-        [Tooltip("Distance-based weight curve (0 = track start, 1 = track end). Multiplies base weight.")]
-        public AnimationCurve distanceCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
+        [Tooltip("Spawn weight multiplier vs CoinDatabase. X = at track start, Y = at track end.")]
+        public Vector2 weightByProgress = new Vector2(1f, 1f);
     }
 
     [Header("Spawn Layout")]
@@ -48,16 +45,8 @@ public class TrackCoinSpawner : MonoBehaviour
     [SerializeField] private float initialPreSpawnDistance = 80f;
 
     [Header("Spawn Probability")]
-    [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.85f;
-    [Tooltip("Curve remaps distance fraction → multiplier on base spawn chance.")]
-    [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
-    [Tooltip("Optional late-track spawn chance boost.")]
-    [SerializeField]
-    private AnimationCurve lateTrackSpawnBonusCurve = new AnimationCurve(
-        new Keyframe(0f, 1f),
-        new Keyframe(0.8f, 1f),
-        new Keyframe(1f, 1.15f)
-    );
+    [Tooltip("Chance a coin slot fills (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 spawnChanceByProgress = new Vector2(0.85f, 0.98f);
 
     [Header("Skill Integration")]
     [SerializeField] private bool applySkillSpawnRate = true;
@@ -114,9 +103,7 @@ public class TrackCoinSpawner : MonoBehaviour
         despawnBehindDistance = s.despawnBehindDistance;
         initialPreSpawnDistance = s.initialPreSpawnDistance;
 
-        baseSpawnChance = s.baseSpawnChance;
-        spawnChanceDistanceCurve = s.spawnChanceDistanceCurve;
-        lateTrackSpawnBonusCurve = s.lateTrackSpawnBonusCurve;
+        spawnChanceByProgress = s.spawnChanceByProgress;
         applySkillSpawnRate = s.applySkillSpawnRate;
 
         coinHeightOffset = s.coinHeightOffset;
@@ -149,9 +136,7 @@ public class TrackCoinSpawner : MonoBehaviour
             maxSpawnDistanceAhead = maxSpawnDistanceAhead,
             despawnBehindDistance = despawnBehindDistance,
             initialPreSpawnDistance = initialPreSpawnDistance,
-            baseSpawnChance = baseSpawnChance,
-            spawnChanceDistanceCurve = spawnChanceDistanceCurve,
-            lateTrackSpawnBonusCurve = lateTrackSpawnBonusCurve,
+            spawnChanceByProgress = spawnChanceByProgress,
             applySkillSpawnRate = applySkillSpawnRate,
             coinHeightOffset = coinHeightOffset,
             lateralFractionOfHalfWidth = lateralFractionOfHalfWidth,
@@ -401,11 +386,8 @@ public class TrackCoinSpawner : MonoBehaviour
             // Get base weight from CoinDataSO
             float baseWeight = coinData.spawnWeight;
 
-            // Apply distance curve
-            float distanceMultiplier = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(normalizedDistance) : 1f;
-
-            // Apply global scale
-            float finalWeight = Mathf.Max(0f, baseWeight * distanceMultiplier * ctw.globalScale);
+            float progressWeight = TrackProgressRange.Lerp(ctw.weightByProgress, normalizedDistance);
+            float finalWeight = Mathf.Max(0f, baseWeight * progressWeight);
 
             if (finalWeight > 0f)
             {
@@ -433,14 +415,8 @@ public class TrackCoinSpawner : MonoBehaviour
 
     private float ComputeSpawnChance(float distance)
     {
-        float norm = _totalLength > 0f ? distance / _totalLength : 0f;
-        float chance = baseSpawnChance;
-
-        if (spawnChanceDistanceCurve != null)
-            chance *= Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
-
-        if (lateTrackSpawnBonusCurve != null)
-            chance *= Mathf.Max(0f, lateTrackSpawnBonusCurve.Evaluate(norm));
+        float norm = TrackProgressRange.NormalizedDistance(distance, _totalLength);
+        float chance = TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
 
         if (applySkillSpawnRate)
         {
@@ -485,8 +461,8 @@ public class TrackCoinSpawner : MonoBehaviour
                 if (coinData == null) continue;
 
                 float baseWeight = coinData.spawnWeight;
-                float distMult = ctw.distanceCurve != null ? ctw.distanceCurve.Evaluate(f) : 1f;
-                float w = Mathf.Max(0f, baseWeight * distMult * ctw.globalScale * 0.02f);
+                float progressWeight = TrackProgressRange.Lerp(ctw.weightByProgress, f);
+                float w = Mathf.Max(0f, baseWeight * progressWeight * 0.02f);
 
                 Gizmos.color = coinData.primaryColor;
                 Vector3 start = basePos + Vector3.right * x + Vector3.up * yOffset;

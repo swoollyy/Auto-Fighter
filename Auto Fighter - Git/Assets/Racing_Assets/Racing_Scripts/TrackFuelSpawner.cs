@@ -20,9 +20,8 @@ public class TrackFuelSpawner : MonoBehaviour
     [SerializeField] private float initialPreSpawnDistance = 80f;
 
     [Header("Spawn Probability")]
-    [SerializeField, Range(0f, 1f)] private float baseSpawnChance = 0.15f; // relatively rare by default
-    [Tooltip("Curve remaps distance fraction → multiplier on base spawn chance.")]
-    [SerializeField] private AnimationCurve spawnChanceDistanceCurve = AnimationCurve.Linear(0, 1, 1, 1);
+    [Tooltip("Chance a pickup slot fills (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 spawnChanceByProgress = new Vector2(0.15f, 0.15f);
 
     [Header("Placement")]
     [SerializeField] private float heightOffset = 0.5f;
@@ -63,17 +62,22 @@ public class TrackFuelSpawner : MonoBehaviour
         RebuildPath();
         ClearAll();
         SetupSlots();
-        PreSpawnInitial();
+
+        // Only pre-spawn when the unlock skill is owned; otherwise leave the track empty.
+        var mgr = RacingSkillTreeManager.Instance;
+        if (mgr != null && mgr.IsFuelPickupUnlocked())
+            PreSpawnInitial();
+
         _updateT = 0f;
     }
-
+    
     private void Update()
     {
         if (_path.Count < 2 || playerTransform == null) return;
 
         // Gate spawning behind skill unlock
         var mgr = RacingSkillTreeManager.Instance;
-        if (mgr != null && !mgr.IsFuelPickupUnlocked())
+        if (mgr == null || !mgr.IsFuelPickupUnlocked())
             return;
 
         _updateT += Time.deltaTime;
@@ -210,6 +214,10 @@ public class TrackFuelSpawner : MonoBehaviour
 
     private void TrySpawnAtDistance(int slotIndex, float distanceAlongTrack, bool preSpawn)
     {
+        var unlockMgr = RacingSkillTreeManager.Instance;
+        if (unlockMgr != null && !unlockMgr.IsFuelPickupUnlocked())
+            return;
+
         float jitter = distanceJitter > 0f ? Random.Range(-distanceJitter, distanceJitter) : 0f;
         float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
 
@@ -217,10 +225,7 @@ public class TrackFuelSpawner : MonoBehaviour
         float norm = _totalLength > 0f ? dist / _totalLength : 0f;
 
         // Build chance: base → distance curve → unlock bonus → skill chain multiplier
-        float chance = baseSpawnChance;
-
-        if (spawnChanceDistanceCurve != null)
-            chance *= Mathf.Clamp01(spawnChanceDistanceCurve.Evaluate(norm));
+        float chance = TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
 
         var mgr = RacingSkillTreeManager.Instance;
         if (mgr != null)

@@ -43,6 +43,51 @@ public class DayTrialManager : MonoBehaviour
 
     private SkillProgressSnapshot _baseline;
 
+    /// <summary>Trial config at index, or null if out of range.</summary>
+    public TrialConfig GetTrialConfig(int index) =>
+        (index >= 0 && index < trials.Count) ? trials[index] : null;
+
+    /// <summary>
+    /// Debug/testing: jump to a trial index (0 = first). Optionally max every skill that belonged
+    /// to earlier trials' allowlists so the car starts as if those trials were already cleared.
+    /// </summary>
+    public void DebugJumpToTrial(int trialIndex, bool maxPreviousTrialSkills = true)
+    {
+        if (trials == null || trials.Count == 0)
+        {
+            if (verboseLogging)
+                Debug.LogWarning("[DayTrial] DebugJumpToTrial: no TrialConfig list assigned.");
+            return;
+        }
+
+        int clamped = Mathf.Clamp(trialIndex, 0, trials.Count - 1);
+        CurrentTrialIndex = clamped;
+        CurrentDay = 1;
+        AllTrialsCompleted = false;
+
+        if (maxPreviousTrialSkills && clamped > 0)
+        {
+            var skills = RacingSkillTreeManager.Instance;
+            if (skills != null)
+                skills.DebugMaxSkillsFromPriorTrials(trials, clamped);
+            else if (verboseLogging)
+                Debug.LogWarning("[DayTrial] DebugJumpToTrial: RacingSkillTreeManager missing; skipped skill max.");
+        }
+
+        CaptureBaseline();
+        SaveState();
+
+        if (verboseLogging)
+        {
+            string name = CurrentConfig != null ? CurrentConfig.trialName : "?";
+            Debug.Log($"[DayTrial] DEBUG jump → trial {CurrentTrialIndex} ('{name}'), day 1" +
+                      (maxPreviousTrialSkills && clamped > 0 ? " (previous trial skills maxed)." : "."));
+        }
+
+        OnTrialAdvanced?.Invoke(CurrentTrialIndex);
+        OnStateChanged?.Invoke();
+    }
+
     // ---- Events (for UI / narrative) ----
     /// <summary>Fired whenever day, trial index, or completion state changes (good for refreshing a HUD).</summary>
     public event Action OnStateChanged;
@@ -87,7 +132,9 @@ public class DayTrialManager : MonoBehaviour
         TrackCoinSpawner coins = null,
         ThrownObstacleDirector thrown = null,
         RollingLogSpawner rollingLogs = null,
-        CrossObstacleDirector crossObstacles = null)
+        CrossObstacleDirector crossObstacles = null,
+        IcePathSpawner icePaths = null,
+        BounceBackObstacleSpawner bounceObstacles = null)
     {
         var cfg = CurrentConfig;
         if (cfg == null) return;
@@ -98,6 +145,8 @@ public class DayTrialManager : MonoBehaviour
         if (thrown != null) thrown.ApplyConfig(cfg.thrown);
         if (rollingLogs != null) rollingLogs.ApplyConfig(cfg.rollingLogs);
         if (crossObstacles != null) crossObstacles.ApplyConfig(cfg.crossObstacles);
+        if (icePaths != null) icePaths.ApplyConfig(cfg.icePaths);
+        if (bounceObstacles != null) bounceObstacles.ApplyConfig(cfg.bounceObstacles);
     }
 
     private void Awake()
@@ -123,6 +172,24 @@ public class DayTrialManager : MonoBehaviour
     /// Call this once per completed run. <paramref name="normalizedProgressReached"/> is the furthest
     /// road progress (0-1) the player reached during that run.
     /// </summary>
+    /// <summary>Create a DDOL instance if the scene has none (so day ticks even before TrialConfigs are wired).</summary>
+    public static DayTrialManager EnsureExists()
+    {
+        if (Instance != null)
+            return Instance;
+
+        var existing = FindObjectOfType<DayTrialManager>(true);
+        if (existing != null)
+        {
+            Instance = existing;
+            DontDestroyOnLoad(existing.gameObject);
+            return existing;
+        }
+
+        var go = new GameObject("DayTrialManager");
+        return go.AddComponent<DayTrialManager>();
+    }
+
     public void NotifyRunCompleted(float normalizedProgressReached)
     {
         if (AllTrialsCompleted)
@@ -131,8 +198,12 @@ public class DayTrialManager : MonoBehaviour
         var trial = CurrentConfig;
         if (trial == null)
         {
+            // No TrialConfig list yet — still advance the day counter so run intros / HUD progress.
+            CurrentDay++;
+            SaveState();
+            OnStateChanged?.Invoke();
             if (verboseLogging)
-                Debug.LogWarning("[DayTrial] No trial configured; run ignored. Add TrialConfig assets to the Trials list.");
+                Debug.Log($"[DayTrial] No trial configured; advanced session day to {CurrentDay}. Add TrialConfig assets for trial goals.");
             return;
         }
 

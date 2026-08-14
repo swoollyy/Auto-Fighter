@@ -38,4 +38,7 @@ public enum CrashObstacleKind
 
     /// <summary><see cref="RollingLogAlongTrack"/> (scripted roll or free physics).</summary>
     RollingLog = 11,
+
+    /// <summary><see cref="TrackSideShooterObstacle"/> roadside turret.</summary>
+    SideShooter = 12,
 }

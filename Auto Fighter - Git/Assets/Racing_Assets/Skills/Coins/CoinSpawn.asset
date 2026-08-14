@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: Coin Spawn Rate
   description: Increases spawn rate of coins by .5
   maxLevel: 5
-  baseCost: 12
-  costPerLevel: 12
+  baseCost: 20
+  costPerLevel: 2
   mode: 0
   baseValue: 0
   perLevelAdd: 0.75

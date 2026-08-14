@@ -119,8 +119,12 @@ public class FinishPortalGate : MonoBehaviour
             swirlRenderer.receiveShadows = false;
         }
     }
-
-    public void PlaceAtTrackEnd(Vector3 endPos, Vector3 endForward, float roadWidth)
+     
+    /// <param name="approachCatchMeters">
+    /// Extra trigger depth along the approach (behind the portal face). Use for end portals so a
+    /// thin gate past the cliff cannot be missed. &lt;= 0 keeps authored <see cref="depth"/>.
+    /// </param>
+    public void PlaceAtTrackEnd(Vector3 endPos, Vector3 endForward, float roadWidth, float approachCatchMeters = -1f)
     {
         ResolveVisuals();
         EnsureMaterials();
@@ -142,12 +146,21 @@ public class FinishPortalGate : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
 
         float width = _roadWidth + widthPadding * 2f;
+        float triggerDepth = depth;
+        float triggerCenterZ = 0f;
+        if (approachCatchMeters > depth)
+        {
+            // Keep the visible face near endPos, but extend the trigger backward over the approach.
+            triggerDepth = approachCatchMeters;
+            triggerCenterZ = -(approachCatchMeters - depth) * 0.5f;
+        }
+
         if (trigger != null)
         {
             trigger.isTrigger = true;
             trigger.enabled = true;
-            trigger.size = new Vector3(width, height, depth);
-            trigger.center = Vector3.zero;
+            trigger.size = new Vector3(width, height, triggerDepth);
+            trigger.center = new Vector3(0f, 0f, triggerCenterZ);
         }
 
         _visualBaseScale = new Vector3(width, height, 1f);
@@ -272,9 +285,15 @@ public class FinishPortalGate : MonoBehaviour
         rend.SetPropertyBlock(_mpb);
     }
 
-    private void OnTriggerEnter(Collider other)
+    private void OnTriggerEnter(Collider other) => TryNotifyEnter(other);
+
+    // Rearm while the car is still overlapping must still be able to finish the run —
+    // OnTriggerEnter alone will not fire again until exit+re-enter.
+    private void OnTriggerStay(Collider other) => TryNotifyEnter(other);
+
+    private void TryNotifyEnter(Collider other)
     {
-        if (!_armed || _director == null) return;
+        if (!_armed || _director == null || _exiting) return;
         if (!IsActiveCar(other)) return;
         _director.NotifyPortalEntered(this);
     }
@@ -282,10 +301,18 @@ public class FinishPortalGate : MonoBehaviour
     private static bool IsActiveCar(Collider other)
     {
         if (other == null) return false;
-        var gm = GameManager_Racing.Instance;
-        if (gm == null || gm.ActiveCar == null) return false;
 
         var car = other.GetComponentInParent<CarController>();
-        return car != null && car == gm.ActiveCar;
+        if (car == null) return false;
+
+        var gm = GameManager_Racing.Instance;
+        if (gm == null)
+            return true; // best-effort if GM missing
+
+        // Prefer ActiveCar, but don't miss the finish if the ref briefly lags a respawn.
+        if (gm.ActiveCar != null)
+            return car == gm.ActiveCar;
+
+        return gm.IsGameplayLive;
     }
 }

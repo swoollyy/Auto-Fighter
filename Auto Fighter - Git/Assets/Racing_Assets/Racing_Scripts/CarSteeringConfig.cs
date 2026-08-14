@@ -53,6 +53,8 @@ public class CarSteeringConfig : MonoBehaviour
     [SerializeField] private float steerTractionBlendOut = 2.8f;
     [Tooltip("How much of full coast-turn traction remains while accelerating + turning (0 = old hard cut, 1 = same as coast).")]
     [SerializeField, Range(0f, 1f)] private float steerTractionWhileAccelerating = 0.4f;
+    [Tooltip("How much of full coast-turn traction remains while braking + turning (1 = same as coast — avoids a separate brake handling snap).")]
+    [SerializeField, Range(0f, 1f)] private float steerTractionWhileBraking = 1f;
     [SerializeField, Range(0f, 2f)] private float steerRollingAccelCoastMultiplier = 0.441f;
     [SerializeField] private bool applySteerRollingAccelOnIce = false;
 
@@ -83,6 +85,7 @@ public class CarSteeringConfig : MonoBehaviour
     public float SteerTractionBlendIn => steerTractionBlendIn;
     public float SteerTractionBlendOut => steerTractionBlendOut;
     public float SteerTractionWhileAccelerating => steerTractionWhileAccelerating;
+    public float SteerTractionWhileBraking => steerTractionWhileBraking;
     public float SteerRollingAccelCoastMultiplier => steerRollingAccelCoastMultiplier;
     public bool ApplySteerRollingAccelOnIce => applySteerRollingAccelOnIce;
 }

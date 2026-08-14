@@ -66,8 +66,11 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     [SerializeField] private Vector2 fixedNoiseSeedOffset;
 
     [Header("Heightmap smoothing")]
-    [Tooltip("Box-blur passes after sculpt. Kills residual speed-bump frequencies on slopes.")]
+    [Tooltip("Box-blur passes after sculpt on tiles the track overlaps. Kills residual speed-bump frequencies.")]
     [SerializeField, Range(0, 4)] private int heightmapBlurPasses = 2;
+
+    [Tooltip("Blur passes for neighbor tiles (no road corridor). 0–1 keeps seams soft without full cost.")]
+    [SerializeField, Range(0, 2)] private int neighborBlurPasses = 1;
 
     [Tooltip("Blur radius in heightmap samples (cells). 2–3 is usually enough.")]
     [SerializeField, Range(1, 6)] private int heightmapBlurRadiusSamples = 2;
@@ -75,9 +78,21 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     [Header("Performance")]
     [SerializeField] private bool spreadWorkAcrossFrames = true;
 
-    [SerializeField, Min(1)] private int heightmapRowsPerYield = 6;
+    [SerializeField, Min(1)] private int heightmapRowsPerYield = 20;
     [Tooltip("Soft CPU budget for height carving each frame. Lower = smoother loading UI, higher = faster total completion.")]
-    [SerializeField, Min(0.25f)] private float heightGenFrameBudgetMs = 2.0f;
+    [SerializeField, Min(0.25f)] private float heightGenFrameBudgetMs = 10f;
+
+    [Tooltip("If true, skip 3×3 spatial noise smoothing during apply (much faster; still world-continuous).")]
+    [SerializeField] private bool useFastNoiseDuringApply = true;
+
+    [Tooltip("If true, only sculpt terrains the road overlaps. If false, sculpt every scene terrain.")]
+    [SerializeField] private bool sculptRoadOverlappingTerrainsOnly = true;
+
+    [Tooltip("Deprecated: neighbors are no longer sculpted. Kept so old scenes don't remap other fields.")]
+    [SerializeField] private bool sculptOverlapAndNeighborsOnly = true;
+
+    [Tooltip("Extra meters beyond the road blend band where hills are generated. Outside this, terrain stays on baseline (no full-tile noise).")]
+    [SerializeField, Min(5f)] private float hillBandExtraMeters = 55f;
 
     [Tooltip("Resample centerline so distance checks are cheaper.")]
     [SerializeField, Min(0.5f)] private float polylineResampleStepMeters = 2f;
@@ -90,8 +105,10 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     [SerializeField] private bool restoreOriginalTerrainDataOnDisable = true;
 
     private readonly List<Terrain> _resolvedTerrains = new List<Terrain>(16);
-    private readonly List<TerrainData> _originalTerrainData = new List<TerrainData>(16);
+    private readonly Dictionary<Terrain, TerrainData> _authoredByTerrain = new Dictionary<Terrain, TerrainData>();
+    private readonly Dictionary<Terrain, int[][,]> _authoredDetails = new Dictionary<Terrain, int[][,]>();
     private readonly List<float[,]> _baselines = new List<float[,]>(16);
+    private readonly List<int[][,]> _detailBaselines = new List<int[][,]>(16);
     private readonly List<Vector2> _polyScratch = new List<Vector2>(2048);
     private readonly List<Vector3> _pathScratch = new List<Vector3>(2048);
 
@@ -100,32 +117,25 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     private float[] _blurRowScratch;
     private float[] _blurColScratch;
 
+    private readonly List<Terrain> _overlapScratch = new List<Terrain>(16);
+    private readonly List<Terrain> _sculptScratch = new List<Terrain>(16);
+
+    private bool _fastNoiseThisApply;
+
+    /// <summary>Terrains that last overlapped the track corridor during ApplyFromTrack.</summary>
+    public int LastOverlappingTerrainCount { get; private set; }
+
+    /// <summary>All terrain planes that received the shared world-noise sculpt last apply.</summary>
+    public int LastSculptedTerrainCount { get; private set; }
+
     public bool SpreadWorkAcrossFrames => spreadWorkAcrossFrames;
 
     private void Awake()
     {
+        // Capture authored grass now — Unity Play, before any in-game run clones/paints.
         ResolveTerrains();
-        if (!Application.isPlaying) return;
-
-        if (cloneTerrainDataAtRuntime)
-        {
-            _clonedAny = false;
-            for (int i = 0; i < _resolvedTerrains.Count; i++)
-            {
-                Terrain t = _resolvedTerrains[i];
-                if (t == null) continue;
-                TerrainData td = t.terrainData;
-                if (td == null) continue;
-
-                _originalTerrainData.Add(td);
-                TerrainData inst = Instantiate(td);
-                inst.name = td.name + " (RuntimeClone)";
-                t.terrainData = inst;
-                _clonedAny = true;
-            }
-        }
-
-        CaptureBaselines();
+        for (int i = 0; i < _resolvedTerrains.Count; i++)
+            RememberAuthored(_resolvedTerrains[i], _resolvedTerrains[i] != null ? _resolvedTerrains[i].terrainData : null);
     }
 
     private void OnDisable()
@@ -136,15 +146,20 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         {
             Terrain t = _resolvedTerrains[i];
             if (t == null) continue;
-            if (i >= _originalTerrainData.Count) break;
-            TerrainData orig = _originalTerrainData[i];
+            TerrainData orig;
+            if (!_authoredByTerrain.TryGetValue(t, out orig) || orig == null)
+                continue;
             TerrainData cur = t.terrainData;
-            if (orig != null) t.terrainData = orig;
+            t.terrainData = orig;
             if (cur != null && cur != orig) Destroy(cur);
         }
 
-        _originalTerrainData.Clear();
+        _baselines.Clear();
+        _detailBaselines.Clear();
+        _resolvedTerrains.Clear();
         _clonedAny = false;
+        // Keep _authoredByTerrain / _authoredDetails — those were captured at Unity Play
+        // before any grass paint. Clearing them made later runs recapture dirty maps.
     }
 
     private void ResolveTerrains()
@@ -169,9 +184,148 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         _resolvedTerrains.Sort((a, b) => a.GetInstanceID().CompareTo(b.GetInstanceID()));
     }
 
+    /// <summary>
+    /// Adds any missing scene terrains (with runtime clones + baselines) so apply can sculpt
+    /// every plane the track crosses — even when the Inspector only listed the start tile.
+    /// </summary>
+    private void EnsureAllSceneTerrainsPrepared()
+    {
+        Terrain[] found = FindObjectsOfType<Terrain>();
+        for (int i = 0; i < found.Length; i++)
+        {
+            Terrain t = found[i];
+            if (t == null || t.terrainData == null) continue;
+            if (_resolvedTerrains.Contains(t)) continue;
+            PrepareAndAddTerrain(t);
+        }
+
+        _resolvedTerrains.RemoveAll(t => t == null || t.terrainData == null);
+    }
+
+    private void PrepareAndAddTerrain(Terrain t)
+    {
+        TerrainData td = t.terrainData;
+        if (td == null) return;
+        RememberAuthored(t, td);
+        if (_resolvedTerrains.Contains(t)) return;
+        _resolvedTerrains.Add(t);
+    }
+
+    private void RememberAuthored(Terrain t, TerrainData td)
+    {
+        if (t == null || td == null) return;
+        if (IsRuntimeClone(td)) return;
+        if (!_authoredByTerrain.ContainsKey(t))
+            _authoredByTerrain[t] = td;
+        if (!_authoredDetails.ContainsKey(t))
+            _authoredDetails[t] = CopyAllDetailLayers(td);
+    }
+
+    /// <summary>
+    /// Every run does what the first run does: clone the authored TerrainData, never reuse
+    /// last run's painted grass maps.
+    /// </summary>
+    private void RecreateRuntimeCloneFromOriginal(Terrain t)
+    {
+        if (!Application.isPlaying || !cloneTerrainDataAtRuntime || t == null) return;
+        TerrainData cur = t.terrainData;
+        if (cur == null) return;
+
+        RememberAuthored(t, cur);
+
+        TerrainData authored;
+        if (!_authoredByTerrain.TryGetValue(t, out authored) || authored == null)
+        {
+            if (IsRuntimeClone(cur))
+            {
+                Debug.LogWarning("[TerrainAroundFlatRoad] No authored TerrainData for " + t.name + "; cannot reset grass.");
+                RefreshTerrainCollider(t, cur);
+                return;
+            }
+            authored = cur;
+            _authoredByTerrain[t] = authored;
+        }
+
+        TerrainData inst = Object.Instantiate(authored);
+        inst.name = authored.name + " (RuntimeClone)";
+
+        t.terrainData = inst;
+        RefreshTerrainCollider(t, inst);
+        ApplyAuthoredDetails(t, authored, inst);
+        t.Flush();
+        _clonedAny = true;
+
+        if (cur != authored && cur != inst)
+            Destroy(cur);
+
+        int ti = _resolvedTerrains.IndexOf(t);
+        if (ti >= 0)
+        {
+            int res = inst.heightmapResolution;
+            while (_baselines.Count <= ti)
+                _baselines.Add(null);
+            _baselines[ti] = inst.GetHeights(0, 0, res, res);
+
+            while (_detailBaselines.Count <= ti)
+                _detailBaselines.Add(null);
+            _detailBaselines[ti] = null;
+            CaptureDetailBaseline(t);
+        }
+    }
+
+    private static int[][,] CopyAllDetailLayers(TerrainData td)
+    {
+        int n = td.detailPrototypes != null ? td.detailPrototypes.Length : 0;
+        int w = td.detailWidth;
+        int h = td.detailHeight;
+        var layers = new int[n][,];
+        if (w <= 0 || h <= 0) return layers;
+        for (int i = 0; i < n; i++)
+        {
+            int[,] map = td.GetDetailLayer(0, 0, w, h, i);
+            int[,] copy = new int[map.GetLength(0), map.GetLength(1)];
+            System.Array.Copy(map, copy, map.Length);
+            layers[i] = copy;
+        }
+        return layers;
+    }
+
+    private void ApplyAuthoredDetails(Terrain t, TerrainData authored, TerrainData dst)
+    {
+        if (authored == null || dst == null) return;
+
+        int w = authored.detailWidth;
+        int h = authored.detailHeight;
+        if (w <= 0 || h <= 0) return;
+
+        dst.detailPrototypes = authored.detailPrototypes;
+        dst.wavingGrassStrength = authored.wavingGrassStrength;
+        dst.wavingGrassAmount = authored.wavingGrassAmount;
+        dst.wavingGrassSpeed = authored.wavingGrassSpeed;
+        dst.wavingGrassTint = authored.wavingGrassTint;
+
+        int[][,] layers;
+        if (!_authoredDetails.TryGetValue(t, out layers) || layers == null)
+            layers = CopyAllDetailLayers(authored);
+
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (layers[i] == null) continue;
+            int[,] copy = new int[layers[i].GetLength(0), layers[i].GetLength(1)];
+            System.Array.Copy(layers[i], copy, layers[i].Length);
+            dst.SetDetailLayer(0, 0, i, copy);
+        }
+    }
+
+    private static bool IsRuntimeClone(TerrainData td)
+    {
+        return td != null && td.name.IndexOf("RuntimeClone", System.StringComparison.Ordinal) >= 0;
+    }
+
     private void CaptureBaselines()
     {
         _baselines.Clear();
+        _detailBaselines.Clear();
         for (int i = 0; i < _resolvedTerrains.Count; i++)
         {
             Terrain t = _resolvedTerrains[i];
@@ -179,7 +333,33 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             int w = td.heightmapResolution;
             int h = td.heightmapResolution;
             _baselines.Add(td.GetHeights(0, 0, w, h));
+            CaptureDetailBaseline(t);
         }
+    }
+
+    private void EnsureBaselineSlot(Terrain t)
+    {
+        int ti = _resolvedTerrains.IndexOf(t);
+        if (ti < 0 || t == null || t.terrainData == null) return;
+
+        while (_baselines.Count <= ti)
+            _baselines.Add(null);
+
+        if (_baselines[ti] != null) return;
+
+        TerrainData td = t.terrainData;
+        int res = td.heightmapResolution;
+        _baselines[ti] = td.GetHeights(0, 0, res, res);
+        CaptureDetailBaseline(t);
+    }
+
+    private void EnsureBaselinesForSculptScratch()
+    {
+        while (_baselines.Count < _resolvedTerrains.Count)
+            _baselines.Add(null);
+
+        for (int i = 0; i < _sculptScratch.Count; i++)
+            EnsureBaselineSlot(_sculptScratch[i]);
     }
 
     /// <summary>Re-read heightmaps as baselines (e.g. after editing terrain in editor).</summary>
@@ -206,16 +386,6 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         if (gen == null || !gen.LastGenerateSucceeded)
             yield break;
 
-        ResolveTerrains();
-        if (_baselines.Count != _resolvedTerrains.Count)
-            CaptureBaselines();
-
-        if (_baselines.Count == 0)
-        {
-            Debug.LogWarning("[TerrainAroundFlatRoad] No terrains or baselines; nothing to do.");
-            yield break;
-        }
-
         gen.FillRoadMeshCenterPath(_pathScratch);
         if (_pathScratch.Count < 2)
         {
@@ -229,20 +399,80 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
         float inner = gen.RoadWidth * 0.5f + extraHalfWidthMeters;
         float outer = inner + Mathf.Max(0.05f, blendDistanceMeters);
-        float margin = outer + 1f;
+        // Only generate hills / carve inside this skirt around the road — not the whole tile.
+        float sculptMargin = outer + Mathf.Max(5f, hillBandExtraMeters);
 
         if (randomizeNoiseSeedPerApply)
             _noiseSeed = new Vector2(Random.Range(0f, 9999f), Random.Range(0f, 9999f));
         else
             _noiseSeed = fixedNoiseSeedOffset;
 
-        ComputePathBoundsXZ(_polyScratch, margin, out float pMinX, out float pMaxX, out float pMinZ, out float pMaxZ);
+        ComputePathBoundsXZ(_polyScratch, sculptMargin, out float pMinX, out float pMaxX, out float pMinZ, out float pMaxZ);
 
-        for (int ti = 0; ti < _resolvedTerrains.Count; ti++)
+        Terrain[] sceneTerrains = FindObjectsOfType<Terrain>();
+        LastOverlappingTerrainCount = TrackTerrainOverlap.CollectFromPath(
+            _pathScratch, sculptMargin, _overlapScratch, sceneTerrains);
+
+        _sculptScratch.Clear();
+        if (sculptRoadOverlappingTerrainsOnly)
         {
-            Terrain terrain = _resolvedTerrains[ti];
+            // Road tiles only — never generate hills on unused neighbor planes.
+            for (int i = 0; i < _overlapScratch.Count; i++)
+            {
+                Terrain t = _overlapScratch[i];
+                if (t != null && !_sculptScratch.Contains(t))
+                    _sculptScratch.Add(t);
+            }
+        }
+        else
+        {
+            if (sceneTerrains != null)
+            {
+                for (int i = 0; i < sceneTerrains.Length; i++)
+                {
+                    Terrain t = sceneTerrains[i];
+                    if (t != null && t.terrainData != null && t.gameObject.activeInHierarchy)
+                        _sculptScratch.Add(t);
+                }
+            }
+        }
+
+        if (_sculptScratch.Count == 0)
+        {
+            Debug.LogWarning("[TerrainAroundFlatRoad] No terrain planes to sculpt; skip.");
+            yield break;
+        }
+
+        // Every run: clone authored TerrainData (same as the first Play). Tiles we painted
+        // last run but do not sculpt this run still need that reset or leftover blades stay.
+        EnsureAllSceneTerrainsPrepared();
+        for (int i = 0; i < _sculptScratch.Count; i++)
+        {
+            Terrain t = _sculptScratch[i];
+            if (t != null && !_resolvedTerrains.Contains(t))
+                PrepareAndAddTerrain(t);
+        }
+        for (int i = 0; i < _resolvedTerrains.Count; i++)
+        {
+            Terrain t = _resolvedTerrains[i];
+            if (t == null) continue;
+            RecreateRuntimeCloneFromOriginal(t);
+            if (spreadWorkAcrossFrames)
+                yield return null;
+        }
+
+        EnsureBaselinesForSculptScratch();
+
+        _fastNoiseThisApply = useFastNoiseDuringApply;
+        LastSculptedTerrainCount = 0;
+
+        for (int si = 0; si < _sculptScratch.Count; si++)
+        {
+            Terrain terrain = _sculptScratch[si];
             if (terrain == null || terrain.terrainData == null) continue;
-            if (ti >= _baselines.Count) break;
+
+            int ti = _resolvedTerrains.IndexOf(terrain);
+            if (ti < 0 || ti >= _baselines.Count) continue;
 
             TerrainData td = terrain.terrainData;
             float[,] baseline = _baselines[ti];
@@ -250,21 +480,56 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
             Vector3 tp = terrain.transform.position;
             Vector3 ts = td.size;
-            if (!IntersectsXZRect(tp.x, tp.x + ts.x, tp.z, tp.z + ts.z, pMinX, pMaxX, pMinZ, pMaxZ))
-                continue;
+            bool nearTrack = _overlapScratch.Contains(terrain) ||
+                             IntersectsXZRect(tp.x, tp.x + ts.x, tp.z, tp.z + ts.z, pMinX, pMaxX, pMinZ, pMaxZ);
 
             float hMaxNorm = NormFromWorldY(terrain, roadWorldY - carveBelowRoadMeters);
             float hSeamGuardNorm = NormFromWorldY(terrain, roadWorldY - seamGuardBelowRoadMeters);
             int res = td.heightmapResolution;
             float[,] dst = new float[res, res];
             float lastYieldRealtime = Time.realtimeSinceStartup;
-            float frameBudgetSeconds = Mathf.Max(0.00025f, heightGenFrameBudgetMs * 0.001f);
-
-            for (int y = 0; y < res; y++)
+            float effectiveBudgetMs = heightGenFrameBudgetMs;
+            int effectiveRowsPerYield = heightmapRowsPerYield;
+            if (useFastNoiseDuringApply)
             {
-                if (spreadWorkAcrossFrames && y > 0)
+                // Bigger chunks per frame — Finalizing terrain was crawling from tiny yields.
+                effectiveBudgetMs = Mathf.Max(effectiveBudgetMs, 16f);
+                effectiveRowsPerYield = Mathf.Max(effectiveRowsPerYield, 64);
+            }
+            float frameBudgetSeconds = Mathf.Max(0.00025f, effectiveBudgetMs * 0.001f);
+            float invHeightY = 1f / Mathf.Max(1e-4f, ts.y);
+
+            // Heightmap indices for the road + hill skirt only.
+            int xMin = 0, xMax = res - 1, yMin = 0, yMax = res - 1;
+            if (nearTrack)
+            {
+                WorldRectToHeightmapIndices(terrain, td, pMinX, pMaxX, pMinZ, pMaxZ,
+                    out xMin, out xMax, out yMin, out yMax);
+            }
+            else
+            {
+                // No road on this tile — restore baseline and skip expensive work.
+                for (int y = 0; y < res; y++)
+                for (int x = 0; x < res; x++)
+                    dst[y, x] = baseline[y, x];
+                td.SetHeights(0, 0, dst);
+                CloseAllHoles(td);
+                RefreshTerrainCollider(terrain, td);
+                LastSculptedTerrainCount++;
+                continue;
+            }
+
+            // 1) Cheap: entire tile back to baseline (clears prior full-tile hills).
+            for (int y = 0; y < res; y++)
+            for (int x = 0; x < res; x++)
+                dst[y, x] = baseline[y, x];
+
+            // 2) Expensive noise + road carve ONLY inside the road skirt.
+            for (int y = yMin; y <= yMax; y++)
+            {
+                if (spreadWorkAcrossFrames && y > yMin)
                 {
-                    bool rowCadenceHit = (y % heightmapRowsPerYield) == 0;
+                    bool rowCadenceHit = ((y - yMin) % effectiveRowsPerYield) == 0;
                     bool budgetExceeded = (Time.realtimeSinceStartup - lastYieldRealtime) >= frameBudgetSeconds;
                     if (rowCadenceHit || budgetExceeded)
                     {
@@ -276,31 +541,32 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
                 float nz = y / (float)Mathf.Max(1, res - 1);
                 float worldZ = tp.z + nz * ts.z;
 
-                for (int x = 0; x < res; x++)
+                for (int x = xMin; x <= xMax; x++)
                 {
                     float nx = x / (float)Mathf.Max(1, res - 1);
                     float worldX = tp.x + nx * ts.x;
 
-                    float b = baseline[y, x];
-
                     if (worldX < pMinX || worldX > pMaxX || worldZ < pMinZ || worldZ > pMaxZ)
+                        continue;
+
+                    float b = baseline[y, x];
+                    float noiseM = SampleNoiseMeters(worldX, worldZ);
+                    float hill = Mathf.Clamp01(b + noiseM * invHeightY);
+
+                    // Exact centerline distance — never approximate (hills-on-road regression).
+                    float d = DistancePointToPolylineXZ(new Vector2(worldX, worldZ), _polyScratch);
+
+                    // Outside carve/blend but still in hill skirt: keep the hills.
+                    if (d > outer)
                     {
-                        dst[y, x] = b;
+                        dst[y, x] = hill;
                         continue;
                     }
 
-                    Vector2 wxz = new Vector2(worldX, worldZ);
-                    float d = DistancePointToPolylineXZ(wxz, _polyScratch);
-
-                    float noiseM = SampleNoiseMeters(worldX, worldZ);
-                    float hill = Mathf.Clamp01(b + noiseM / ts.y);
-
                     float carved = Mathf.Min(hill, hMaxNorm);
-                    // Quintic smootherstep: C2-continuous at carve/hill boundaries (avoids kink "speed bumps").
                     float wBlend = Smoother01((d - inner) / Mathf.Max(0.001f, outer - inner));
                     float outH = Mathf.Lerp(carved, hill, wBlend);
 
-                    // Feather seam guard instead of a hard Min clamp (hard edges create ledge bumps).
                     float guardOuter = inner + seamGuardBandMeters;
                     if (d < guardOuter && seamGuardBandMeters > 1e-4f)
                     {
@@ -309,13 +575,22 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
                         outH = Mathf.Lerp(capped, outH, gT);
                     }
 
+                    // Hard guarantee: under the asphalt footprint terrain stays below the road.
+                    if (d <= inner)
+                        outH = Mathf.Min(outH, hMaxNorm);
+
                     dst[y, x] = outH;
                 }
             }
 
-            if (heightmapBlurPasses > 0)
+            // Blur bleeds hills into the corridor. Skip during fast load; otherwise re-carve exactly after.
+            int blurPasses = nearTrack ? heightmapBlurPasses : neighborBlurPasses;
+            if (useFastNoiseDuringApply)
+                blurPasses = 0;
+
+            if (blurPasses > 0)
             {
-                for (int pass = 0; pass < heightmapBlurPasses; pass++)
+                for (int pass = 0; pass < blurPasses; pass++)
                 {
                     if (spreadWorkAcrossFrames)
                     {
@@ -326,58 +601,63 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
                     BoxBlurHeightmapInPlace(dst, res, heightmapBlurRadiusSamples);
                 }
 
-                // Re-enforce road corridor after blur so smoothed hills can't creep back under the road.
-                for (int y = 0; y < res; y++)
+                if (nearTrack)
                 {
-                    if (spreadWorkAcrossFrames && y > 0 && (y % heightmapRowsPerYield) == 0)
+                    for (int y = yMin; y <= yMax; y++)
                     {
-                        yield return null;
-                        lastYieldRealtime = Time.realtimeSinceStartup;
-                    }
-
-                    float nz = y / (float)Mathf.Max(1, res - 1);
-                    float worldZ = tp.z + nz * ts.z;
-
-                    for (int x = 0; x < res; x++)
-                    {
-                        float nx = x / (float)Mathf.Max(1, res - 1);
-                        float worldX = tp.x + nx * ts.x;
-
-                        if (worldX < pMinX || worldX > pMaxX || worldZ < pMinZ || worldZ > pMaxZ)
-                            continue;
-
-                        float d = DistancePointToPolylineXZ(new Vector2(worldX, worldZ), _polyScratch);
-                        if (d > outer)
-                            continue;
-
-                        float h = dst[y, x];
-                        if (d <= inner)
+                        if (spreadWorkAcrossFrames && y > yMin && (y % effectiveRowsPerYield) == 0)
                         {
-                            dst[y, x] = Mathf.Min(h, hMaxNorm);
-                            continue;
+                            yield return null;
+                            lastYieldRealtime = Time.realtimeSinceStartup;
                         }
 
-                        float wBlend = Smoother01((d - inner) / Mathf.Max(0.001f, outer - inner));
-                        float carved = Mathf.Min(h, hMaxNorm);
-                        h = Mathf.Lerp(carved, h, wBlend);
+                        float nz = y / (float)Mathf.Max(1, res - 1);
+                        float worldZ = tp.z + nz * ts.z;
 
-                        float guardOuter = inner + seamGuardBandMeters;
-                        if (d < guardOuter && seamGuardBandMeters > 1e-4f)
+                        for (int x = xMin; x <= xMax; x++)
                         {
-                            float gT = Smoother01((d - inner) / seamGuardBandMeters);
-                            float capped = Mathf.Min(h, hSeamGuardNorm);
-                            h = Mathf.Lerp(capped, h, gT);
-                        }
+                            float nx = x / (float)Mathf.Max(1, res - 1);
+                            float worldX = tp.x + nx * ts.x;
 
-                        dst[y, x] = h;
+                            if (worldX < pMinX || worldX > pMaxX || worldZ < pMinZ || worldZ > pMaxZ)
+                                continue;
+
+                            float d = DistancePointToPolylineXZ(new Vector2(worldX, worldZ), _polyScratch);
+                            if (d > outer)
+                                continue;
+
+                            float h = dst[y, x];
+                            if (d <= inner)
+                            {
+                                dst[y, x] = Mathf.Min(h, hMaxNorm);
+                                continue;
+                            }
+
+                            float wBlend = Smoother01((d - inner) / Mathf.Max(0.001f, outer - inner));
+                            float carved = Mathf.Min(h, hMaxNorm);
+                            h = Mathf.Lerp(carved, h, wBlend);
+
+                            float guardOuter = inner + seamGuardBandMeters;
+                            if (d < guardOuter && seamGuardBandMeters > 1e-4f)
+                            {
+                                float gT = Smoother01((d - inner) / seamGuardBandMeters);
+                                float capped = Mathf.Min(h, hSeamGuardNorm);
+                                h = Mathf.Lerp(capped, h, gT);
+                            }
+
+                            dst[y, x] = h;
+                        }
                     }
                 }
             }
 
             td.SetHeights(0, 0, dst);
+            CloseAllHoles(td);
             RefreshTerrainCollider(terrain, td);
+            LastSculptedTerrainCount++;
         }
 
+        _fastNoiseThisApply = false;
         Physics.SyncTransforms();
     }
 
@@ -428,6 +708,47 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
             for (int y = 0; y < res; y++)
                 map[y, x] = _blurColScratch[y];
+        }
+    }
+
+    private void CaptureDetailBaseline(Terrain t)
+    {
+        int ti = _resolvedTerrains.IndexOf(t);
+        if (ti < 0 || t == null || t.terrainData == null) return;
+
+        while (_detailBaselines.Count <= ti)
+            _detailBaselines.Add(null);
+        if (_detailBaselines[ti] != null) return;
+
+        TerrainData td = t.terrainData;
+        int w = td.detailWidth;
+        int h = td.detailHeight;
+        int n = td.detailPrototypes != null ? td.detailPrototypes.Length : 0;
+        if (w <= 0 || h <= 0 || n <= 0)
+        {
+            _detailBaselines[ti] = new int[0][,];
+            return;
+        }
+
+        var layers = new int[n][,];
+        for (int i = 0; i < n; i++)
+            layers[i] = td.GetDetailLayer(0, 0, w, h, i);
+        _detailBaselines[ti] = layers;
+    }
+
+    private void RestoreDetailBaseline(Terrain t)
+    {
+        int ti = _resolvedTerrains.IndexOf(t);
+        if (ti < 0 || ti >= _detailBaselines.Count || t == null || t.terrainData == null) return;
+
+        int[][,] layers = _detailBaselines[ti];
+        if (layers == null) return;
+
+        TerrainData td = t.terrainData;
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (layers[i] == null) continue;
+            td.SetDetailLayer(0, 0, i, (int[,])layers[i].Clone());
         }
     }
 
@@ -546,6 +867,43 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         dst.AddRange(tmp);
     }
 
+    /// <summary>
+    /// Undo any leftover terrain holes (they cut collision as well as grass).
+    /// </summary>
+    private static void CloseAllHoles(TerrainData td)
+    {
+        if (td == null) return;
+        int res = td.holesResolution;
+        if (res <= 1) return;
+
+        bool[,] holes = new bool[res, res];
+        for (int y = 0; y < res; y++)
+            for (int x = 0; x < res; x++)
+                holes[y, x] = true;
+        td.SetHoles(0, 0, holes);
+    }
+
+    private static void WorldRectToHeightmapIndices(
+        Terrain terrain, TerrainData td,
+        float minX, float maxX, float minZ, float maxZ,
+        out int x0, out int x1, out int y0, out int y1)
+    {
+        Vector3 tp = terrain.transform.position;
+        Vector3 ts = td.size;
+        int res = td.heightmapResolution;
+        float invX = 1f / Mathf.Max(1e-4f, ts.x);
+        float invZ = 1f / Mathf.Max(1e-4f, ts.z);
+
+        x0 = Mathf.Clamp(Mathf.FloorToInt((minX - tp.x) * invX * (res - 1)), 0, res - 1);
+        x1 = Mathf.Clamp(Mathf.CeilToInt((maxX - tp.x) * invX * (res - 1)), 0, res - 1);
+        // Unity heightmap Y maps to world Z.
+        y0 = Mathf.Clamp(Mathf.FloorToInt((minZ - tp.z) * invZ * (res - 1)), 0, res - 1);
+        y1 = Mathf.Clamp(Mathf.CeilToInt((maxZ - tp.z) * invZ * (res - 1)), 0, res - 1);
+
+        if (x1 < x0) { int t = x0; x0 = x1; x1 = t; }
+        if (y1 < y0) { int t = y0; y0 = y1; y1 = t; }
+    }
+
     private static float DistancePointToPolylineXZ(Vector2 p, IReadOnlyList<Vector2> poly)
     {
         float best = float.MaxValue;
@@ -570,7 +928,7 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
     private float SampleNoiseMeters(float worldX, float worldZ)
     {
-        if (noiseSpatialSmoothingMeters < 1e-4f)
+        if (_fastNoiseThisApply || noiseSpatialSmoothingMeters < 1e-4f)
             return SampleNoiseMetersRaw(worldX, worldZ);
 
         // 3x3 weighted cross (center + cardinals + diagonals) for smoother macro shapes.

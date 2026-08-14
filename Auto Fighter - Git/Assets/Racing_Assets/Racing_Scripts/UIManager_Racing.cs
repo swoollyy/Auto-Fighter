@@ -123,6 +123,12 @@ public class UIManager_Racing : MonoBehaviour
     private CarController car;
     private UISection _currentSection = UISection.SkillTree;
     private CanvasGroup _gameplayCanvasGroup;
+    /// <summary>
+    /// When true, <see cref="SetSection"/> ignores any section other than <see cref="_lockedSection"/>.
+    /// Used so later-run Play can't kill the skill tree mid goo-iris close.
+    /// </summary>
+    private bool _sectionLocked;
+    private UISection _lockedSection;
 
     /// <summary>
     /// Called by GameManager_Racing once the car is spawned.
@@ -280,7 +286,9 @@ public class UIManager_Racing : MonoBehaviour
         int obstacleCoins,
         int coinsEarnedThisRun,
         int walletCoinsAfterRun,
-        int sprocketsThisRun = 0)
+        int sprocketsThisRun = 0,
+        string titleOverride = null,
+        string restartHintOverride = null)
     {
         int totalThisRun = distanceCoins + pickupCoins + obstacleCoins;
 
@@ -314,11 +322,19 @@ public class UIManager_Racing : MonoBehaviour
             runTotalSprocketsText.text = $"Sprockets This Run: {sprocketsThisRun}";
         }
 
-        if (runRestartHintText)
-            runRestartHintText.text = "X: Skill Tree    V / Triangle: Play Again";
+        if (runCompleteTitle)
+        {
+            runCompleteTitle.text = !string.IsNullOrEmpty(titleOverride)
+                ? titleOverride
+                : "Run Over";
+        }
 
-        if (runCompleteTitle && string.IsNullOrEmpty(runCompleteTitle.text))
-            runCompleteTitle.text = "Run Complete";
+        if (runRestartHintText)
+        {
+            runRestartHintText.text = !string.IsNullOrEmpty(restartHintOverride)
+                ? restartHintOverride
+                : "LMB / X: Skill Tree    RMB / V / Triangle: Play Again";
+        }
 
         if (runCompleteRoot)
             runCompleteRoot.SetActive(true);
@@ -607,9 +623,42 @@ public class UIManager_Racing : MonoBehaviour
         }
     }
 
+    /// <summary>Pin the active section so Play→iris can't swap away from the skill tree early.</summary>
+    public void LockSection(UISection section)
+    {
+        _sectionLocked = true;
+        _lockedSection = section;
+        // Bypass lock check for the initial pin.
+        _sectionLocked = false;
+        SetSection(section);
+        _sectionLocked = true;
+        _lockedSection = section;
+    }
+
+    public void UnlockSection()
+    {
+        _sectionLocked = false;
+    }
+
+    public bool IsSectionLocked => _sectionLocked;
+
     public void ShowLoading(string message = "Loading...", float progress01 = 0f)
     {
+        // Keep the whole game canvas on — loading lives under it.
+        if (gameCanvas != null && !gameCanvas.activeSelf)
+            gameCanvas.SetActive(true);
+
+        // Section lock would block Loading — clear it so the post-iris reveal can proceed.
+        _sectionLocked = false;
         SetSection(UISection.Loading);
+        if (loadingOverlayRoot != null)
+        {
+            // Loading_PANEL is authored as the first Canvas child (under SkillTree / In-Game / RunOver).
+            // Later runs can leave those siblings active for a frame — draw loading on top.
+            loadingOverlayRoot.transform.SetAsLastSibling();
+            if (!loadingOverlayRoot.activeSelf)
+                loadingOverlayRoot.SetActive(true);
+        }
         SetLoadingState(message, progress01);
     }
 
@@ -653,6 +702,9 @@ public class UIManager_Racing : MonoBehaviour
 
     public void SetSection(UISection section)
     {
+        if (_sectionLocked && section != _lockedSection)
+            return;
+
         _currentSection = section;
         ApplySectionVisibility(section);
     }
@@ -668,10 +720,14 @@ public class UIManager_Racing : MonoBehaviour
         if (!visible)
             return;
 
-        // If another system enables the game canvas (e.g. dialogue end), ensure
-        // the section lands in a deterministic non-loading state.
+        // CRITICAL: never remap Loading → SkillTree. That used to wipe the loading panel
+        // whenever dialogue/canvas restore ran during LoadingRun.
         if (_currentSection == UISection.Loading)
-            SetSection(UISection.SkillTree);
+        {
+            if (loadingOverlayRoot != null && !loadingOverlayRoot.activeSelf)
+                loadingOverlayRoot.SetActive(true);
+            return;
+        }
     }
 
     /// <summary>
@@ -755,7 +811,11 @@ public class UIManager_Racing : MonoBehaviour
         RacingInputReader.Instance?.SetSkillTreeMapEnabled(isSkillTree);
 
         if (skillTreeSectionRoot != null)
-            skillTreeSectionRoot.SetActive(isSkillTree);
+        {
+            // While locked on SkillTree for iris close, never allow the root to be turned off.
+            bool forceSkillTreeOn = _sectionLocked && _lockedSection == UISection.SkillTree;
+            skillTreeSectionRoot.SetActive(isSkillTree || forceSkillTreeOn);
+        }
 
         // Keep health / fuel / distance (and other in-run HUD under this root) visible during crash mash as well.
         if (inGameDefaultSectionRoot != null)

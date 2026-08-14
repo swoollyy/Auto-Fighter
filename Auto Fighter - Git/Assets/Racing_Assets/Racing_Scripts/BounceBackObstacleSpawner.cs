@@ -41,6 +41,63 @@ public class BounceBackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Progress Gate")]
     [SerializeField, Range(0f, 0.95f)] private float minNormalizedProgressToSpawn = 0.02f;
 
+    // ------------------------------------------------------------------------
+    // Per-trial config (TrialConfig). Apply BEFORE InitializeForRun.
+    // ------------------------------------------------------------------------
+    public void ApplyConfig(TrialConfig.BounceObstacleSettings s)
+    {
+        if (s == null || !s.overrideBounceObstacles) return;
+
+        if (s.bounceBackPrefab != null) bounceBackPrefab = s.bounceBackPrefab;
+
+        useSmoothing = s.useSmoothing;
+        smoothingSubdivisionsPerSegment = s.smoothingSubdivisionsPerSegment;
+
+        enableSpawning = s.enableSpawning;
+        minSpawnIntervalSeconds = s.minSpawnIntervalSeconds;
+        maxSpawnIntervalSeconds = s.maxSpawnIntervalSeconds;
+        maxActive = s.maxActive;
+
+        minSpawnDistanceAhead = s.minSpawnDistanceAhead;
+        maxSpawnDistanceAhead = s.maxSpawnDistanceAhead;
+        obstacleSpacing = s.obstacleSpacing;
+        spawnChancePerSlot = s.spawnChancePerSlot;
+        lateralFraction = s.lateralFraction;
+        edgeInnerMargin = s.edgeInnerMargin;
+        distanceJitter = s.distanceJitter;
+
+        roadLayer = s.roadLayer;
+        raycastStartHeight = s.raycastStartHeight;
+        raycastDownDistance = s.raycastDownDistance;
+        minNormalizedProgressToSpawn = s.minNormalizedProgressToSpawn;
+    }
+
+    public TrialConfig.BounceObstacleSettings CaptureConfig()
+    {
+        return new TrialConfig.BounceObstacleSettings
+        {
+            overrideBounceObstacles = true,
+            bounceBackPrefab = bounceBackPrefab,
+            useSmoothing = useSmoothing,
+            smoothingSubdivisionsPerSegment = smoothingSubdivisionsPerSegment,
+            enableSpawning = enableSpawning,
+            minSpawnIntervalSeconds = minSpawnIntervalSeconds,
+            maxSpawnIntervalSeconds = maxSpawnIntervalSeconds,
+            maxActive = maxActive,
+            minSpawnDistanceAhead = minSpawnDistanceAhead,
+            maxSpawnDistanceAhead = maxSpawnDistanceAhead,
+            obstacleSpacing = obstacleSpacing,
+            spawnChancePerSlot = spawnChancePerSlot,
+            lateralFraction = lateralFraction,
+            edgeInnerMargin = edgeInnerMargin,
+            distanceJitter = distanceJitter,
+            roadLayer = roadLayer,
+            raycastStartHeight = raycastStartHeight,
+            raycastDownDistance = raycastDownDistance,
+            minNormalizedProgressToSpawn = minNormalizedProgressToSpawn,
+        };
+    }
+
     private readonly List<Vector3> _path = new();
     private readonly Dictionary<int, GameObject> _bySlot = new();
     private readonly TrackSpawnQueuePendingState _queueState = new();

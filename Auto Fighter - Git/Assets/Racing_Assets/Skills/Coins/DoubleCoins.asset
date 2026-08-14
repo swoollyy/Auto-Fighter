@@ -17,7 +17,7 @@ MonoBehaviour:
   description: Chance to give double value of a coin!
   maxLevel: 5
   baseCost: 5
-  costPerLevel: 10
+  costPerLevel: 5
   mode: 0
   baseValue: 0.01
   perLevelAdd: 0.06

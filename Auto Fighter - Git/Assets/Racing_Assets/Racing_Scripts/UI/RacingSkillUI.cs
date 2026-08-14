@@ -206,7 +206,9 @@ public class RacingSkillUI : MonoBehaviour
         if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
 
         ClearSelection();
-        detailPanel?.HideImmediate();
+        // HideInfo only — HideImmediate deactivates detailPanel.root, which is wired to the
+        // SkillTree GameObject in scene, so it was killing the whole tree on Play.
+        detailPanel?.HideInfo();
 
         var inventoryPanel = FindObjectOfType<RacingRunInventoryPanelUI>(true);
         if (inventoryPanel != null)
@@ -220,18 +222,32 @@ public class RacingSkillUI : MonoBehaviour
 
     private void ProceedToRunFromPlay()
     {
-        // Very first run: show the controls explainer once; the run starts when it's dismissed.
-        if (FirstRunControlsOverlay.TryShow(StartRunNow))
+        // First run: controls overlay only. Loading starts when the player advances past it.
+        if (FirstRunControlsOverlay.TryShow(OnFirstRunControlsDismissed))
+        {
+            // Drop the skill tree so it can't show through the controls iris hole.
+            // Later runs intentionally keep it visible under the goo close.
+            if (treeViewport != null)
+                treeViewport.gameObject.SetActive(false);
             return;
+        }
 
-        StartRunNow();
+        // Later runs: skill tree stays up, blobs close over it, load starts immediately.
+        StartRunFromSkillTree();
     }
 
-    private void StartRunNow()
+    private void OnFirstRunControlsDismissed()
     {
         if (!gameManager)
             gameManager = FindObjectOfType<GameManager_Racing>();
-        gameManager?.BeginRun();
+        gameManager?.BeginRunAfterControlsDismissed();
+    }
+
+    private void StartRunFromSkillTree()
+    {
+        if (!gameManager)
+            gameManager = FindObjectOfType<GameManager_Racing>();
+        gameManager?.BeginRunFromSkillTree();
     }
 
     private void OnQuestClicked()

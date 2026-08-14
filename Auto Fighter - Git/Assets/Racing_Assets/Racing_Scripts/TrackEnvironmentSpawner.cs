@@ -120,7 +120,18 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = false;
 
+    [Header("Track Terrain Planes")]
+    [Tooltip("Only place environment on terrain tiles the track centerline overlaps. If resolve finds none, falls back to all active terrains.")]
+    [SerializeField] private bool restrictToTrackTerrains = true;
+
+    [Tooltip("XZ margin around the track when deciding which terrain planes count as 'under the track'.")]
+    [SerializeField, Min(0f)] private float trackTerrainMarginMeters = 40f;
+
     private readonly RaycastHit[] _rayHits = new RaycastHit[48];
+    private readonly List<Terrain> _trackTerrains = new List<Terrain>(16);
+
+    /// <summary>Terrains resolved for the current run (track-overlapping planes).</summary>
+    public int TrackTerrainCount => _trackTerrains.Count;
 
     // runtime path
     private readonly List<Vector3> _path = new();
@@ -201,12 +212,37 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         RebuildPath();
         ClearAll();
         SetupSlots();
+        ResolveTrackTerrains();
 
         if (spawnMode == EnvSpawnMode.PopulateOnceAfterTrack)
         {
             PopulateOnceAcrossTrack();
         }
         // else: streaming will fill via Update()
+    }
+
+    private void ResolveTrackTerrains()
+    {
+        _trackTerrains.Clear();
+        float margin = Mathf.Max(trackTerrainMarginMeters, maxDistanceFromCenterline + 5f);
+
+        TrackTerrainOverlap.CollectFromTrack(trackGenerator, margin, _trackTerrains);
+
+        if (_trackTerrains.Count == 0)
+        {
+            Terrain[] active = Terrain.activeTerrains;
+            if (active != null)
+            {
+                for (int i = 0; i < active.Length; i++)
+                {
+                    if (active[i] != null && active[i].terrainData != null)
+                        _trackTerrains.Add(active[i]);
+                }
+            }
+        }
+
+        if (verboseDebug)
+            Debug.Log($"[EnvSpawn] Track terrains resolved: {_trackTerrains.Count}");
     }
 
     // =========================
@@ -313,13 +349,13 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     // =========================
     // Core spawning
     // =========================
-    private static float GetMaxTerrainSurfaceYAtXZ(float wx, float wz)
+    private float GetMaxTerrainSurfaceYAtXZ(float wx, float wz)
     {
         float bestY = float.NegativeInfinity;
-        Terrain[] active = Terrain.activeTerrains;
-        for (int i = 0; i < active.Length; i++)
+        IList<Terrain> terrains = GetTerrainsForPlacement();
+        for (int i = 0; i < terrains.Count; i++)
         {
-            Terrain t = active[i];
+            Terrain t = terrains[i];
             if (t == null || t.terrainData == null) continue;
             Vector3 tp = t.transform.position;
             Vector3 sz = t.terrainData.size;
@@ -332,14 +368,14 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         return bestY;
     }
 
-    private static bool TryTerrainSurfaceAtXZ(float wx, float wz, out Vector3 groundPoint, out Vector3 groundNormal)
+    private bool TryTerrainSurfaceAtXZ(float wx, float wz, out Vector3 groundPoint, out Vector3 groundNormal)
     {
         float bestY = float.NegativeInfinity;
         Terrain bestTerrain = null;
-        Terrain[] active = Terrain.activeTerrains;
-        for (int i = 0; i < active.Length; i++)
+        IList<Terrain> terrains = GetTerrainsForPlacement();
+        for (int i = 0; i < terrains.Count; i++)
         {
-            Terrain t = active[i];
+            Terrain t = terrains[i];
             if (t == null || t.terrainData == null) continue;
             Vector3 tp = t.transform.position;
             Vector3 sz = t.terrainData.size;
@@ -369,6 +405,14 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         groundPoint = default;
         groundNormal = Vector3.up;
         return false;
+    }
+
+    private IList<Terrain> GetTerrainsForPlacement()
+    {
+        if (restrictToTrackTerrains && _trackTerrains.Count > 0)
+            return _trackTerrains;
+
+        return Terrain.activeTerrains;
     }
 
     private void ComputePlacementRayOrigin(Vector3 xzWorld, out Vector3 rayOrigin, out float maxRayDistance)
@@ -466,6 +510,10 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         if (!TryResolveGroundBelow(xz, rayOrigin, maxRay, out Vector3 groundPoint, out Vector3 groundNormal))
             return false;
 
+        if (restrictToTrackTerrains && _trackTerrains.Count > 0 &&
+            !TrackTerrainOverlap.IsOnAny(_trackTerrains, groundPoint.x, groundPoint.z))
+            return false;
+
         // Separation uses final ground XZ (ray may nudge slightly, but XZ is what matters for stacking).
         if (IsTooCloseToOccupied(groundPoint.x, groundPoint.z))
             return false;
@@ -558,6 +606,10 @@ public class TrackEnvironmentSpawner : MonoBehaviour
                 continue;
 
             if (IsTooCloseToOccupied(candidate.x, candidate.z))
+                continue;
+
+            if (restrictToTrackTerrains && _trackTerrains.Count > 0 &&
+                !TrackTerrainOverlap.IsOnAny(_trackTerrains, candidate.x, candidate.z))
                 continue;
 
             xz = candidate;

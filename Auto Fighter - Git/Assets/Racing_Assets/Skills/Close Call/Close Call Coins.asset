@@ -15,13 +15,13 @@ MonoBehaviour:
   type: 4800
   displayName: Gambling Man
   description: Gives +1 coin on close calls!
-  maxLevel: 10
-  baseCost: 5
-  costPerLevel: 4
+  maxLevel: 3
+  baseCost: 30
+  costPerLevel: 10
   mode: 0
   baseValue: 0
   perLevelAdd: 1
-  uiPosition: {x: 150, y: 75}
+  uiPosition: {x: 0, y: 375}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
   usesSprockets: 0

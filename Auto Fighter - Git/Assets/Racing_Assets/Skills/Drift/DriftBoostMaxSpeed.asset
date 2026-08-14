@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: Drift Boost Max Speed
   description: Increases duration of drift boost by .1
   maxLevel: 5
-  baseCost: 30
-  costPerLevel: 4
+  baseCost: 15
+  costPerLevel: 5
   mode: 0
   baseValue: 0
   perLevelAdd: 0.1

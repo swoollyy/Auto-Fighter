@@ -10,7 +10,8 @@ public enum ObstacleTyping
     Tree,
     Cross,
     Shuttle,
-    Bounce
+    Bounce,
+    SideShooter
 }
 
 [DisallowMultipleComponent]

@@ -68,15 +68,14 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField] private KeyCode spawnTestKey = KeyCode.T;
 
     [Header("Accuracy / Misses")]
-    [Tooltip("Chance this throw is a TRUE predicted hit on the player (0..1).")]
-    [SerializeField, Range(0f, 1f)] private float baseAccuracy = 0.10f;
-    [SerializeField] private AnimationCurve accuracyByDistance = AnimationCurve.Linear(0, 1, 1, 1);
+    [Tooltip("Hit accuracy (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 accuracyByProgress = new Vector2(0.10f, 0.10f);
     [SerializeField, Min(0f)] private float maxMissLateral = 4f;
     [SerializeField, Min(0f)] private float maxMissForward = 6f;
 
     [Header("Explosion Frequency")]
-    [SerializeField, Range(0f, 1f)] private float explosionBaseChance = 0.06f;
-    [SerializeField] private AnimationCurve explosionChanceByDistance = AnimationCurve.Linear(0, 0.5f, 1, 1.5f);
+    [Tooltip("Chance a throw is explosive (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 explosionChanceByProgress = new Vector2(0.03f, 0.09f);
 
     // Legacy serialized fields kept so existing prefab/scene values don't vanish; unused by new aim model.
 #pragma warning disable 0414
@@ -128,13 +127,11 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
         forwardJitter = s.forwardJitter;
         destroyReward = s.destroyReward;
 
-        baseAccuracy = s.baseAccuracy;
-        accuracyByDistance = s.accuracyByDistance;
+        accuracyByProgress = s.accuracyByProgress;
         maxMissLateral = s.maxMissLateral;
         maxMissForward = s.maxMissForward;
 
-        explosionBaseChance = s.explosionBaseChance;
-        explosionChanceByDistance = s.explosionChanceByDistance;
+        explosionChanceByProgress = s.explosionChanceByProgress;
         debugDraw = s.debugDraw;
     }
 
@@ -170,12 +167,10 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
             lateralJitter = lateralJitter,
             forwardJitter = forwardJitter,
             destroyReward = destroyReward,
-            baseAccuracy = baseAccuracy,
-            accuracyByDistance = accuracyByDistance,
+            accuracyByProgress = accuracyByProgress,
             maxMissLateral = maxMissLateral,
             maxMissForward = maxMissForward,
-            explosionBaseChance = explosionBaseChance,
-            explosionChanceByDistance = explosionChanceByDistance,
+            explosionChanceByProgress = explosionChanceByProgress,
             debugDraw = debugDraw,
         };
     }
@@ -323,8 +318,8 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
         // Re-derive time from clamped speed so telegraph / arrival stay consistent.
         flightTime = pathLen / Mathf.Max(0.05f, finalSpeed);
 
-        float explosionChanceMul = explosionChanceByDistance != null ? explosionChanceByDistance.Evaluate(distanceNorm) : 1f;
-        bool explosive = explosiveByDefault || UnityEngine.Random.value < Mathf.Clamp01(explosionBaseChance * explosionChanceMul);
+        bool explosive = explosiveByDefault ||
+                         UnityEngine.Random.value < TrackProgressRange.Lerp01(explosionChanceByProgress, distanceNorm);
 
         GameObject chosenPrefab = explosive
             ? (projectilePrefabExplosive != null ? projectilePrefabExplosive : projectilePrefabPlain)
@@ -553,8 +548,7 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
 
     private AimDecision DecideAim(float distanceNorm)
     {
-        float curveMul = accuracyByDistance != null ? accuracyByDistance.Evaluate(distanceNorm) : 1f;
-        float acc = Mathf.Clamp01(baseAccuracy * curveMul);
+        float acc = TrackProgressRange.Lerp01(accuracyByProgress, distanceNorm);
         bool trueHit = UnityEngine.Random.value < acc;
         return new AimDecision { isTrueHit = trueHit, accuracy = acc };
     }

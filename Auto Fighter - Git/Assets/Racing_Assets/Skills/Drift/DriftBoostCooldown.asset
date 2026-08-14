@@ -17,10 +17,10 @@ MonoBehaviour:
   description: Decreases cooldown of drift boost!
   maxLevel: 5
   baseCost: 10
-  costPerLevel: 6
-  mode: 1
+  costPerLevel: 2
+  mode: 0
   baseValue: 0
-  perLevelAdd: 0.01
+  perLevelAdd: 0.1
   uiPosition: {x: 225, y: 225}
   revealedAtStart: 0
   revealOnFirstSprocket: 0

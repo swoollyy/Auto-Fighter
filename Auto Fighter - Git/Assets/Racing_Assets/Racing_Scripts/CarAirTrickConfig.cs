@@ -13,6 +13,10 @@ public class CarAirTrickConfig : MonoBehaviour
     [Header("Air Turn (left stick)")]
     [Tooltip("Air yaw as a fraction of current ground turn speed (0.6 = 60% of ground feel).")]
     [SerializeField, Range(0.05f, 1.5f)] private float airTurnSpeedMultiplier = 0.6f;
+    [Tooltip("While drifting in air: how much of the ground drift steer sharpening applies (0 = cruise air turn only, 1 = full drift steer mul).")]
+    [SerializeField, Range(0f, 1f)] private float airDriftSteerFeel = 0.72f;
+    [Tooltip("While drifting in air: fraction of ground drift side-force applied horizontally (keeps the slide feel without full ground physics).")]
+    [SerializeField, Range(0f, 1f)] private float airDriftSideForceScale = 0.55f;
     [Tooltip("Legacy absolute air yaw rate (deg/s) used by older air-aim path.")]
     [SerializeField] private float airYawRate = 110f;
     [SerializeField, Range(0f, 1f)] private float airYawInputDeadzone = 0.12f;
@@ -79,6 +83,8 @@ public class CarAirTrickConfig : MonoBehaviour
 
     public bool EnableAirTricks => enableAirTricks;
     public float AirTurnSpeedMultiplier => airTurnSpeedMultiplier;
+    public float AirDriftSteerFeel => airDriftSteerFeel;
+    public float AirDriftSideForceScale => airDriftSideForceScale;
     public float AirYawRate => airYawRate;
     public float AirYawInputDeadzone => airYawInputDeadzone;
     public float AirVelocityFollowNose => airVelocityFollowNose;

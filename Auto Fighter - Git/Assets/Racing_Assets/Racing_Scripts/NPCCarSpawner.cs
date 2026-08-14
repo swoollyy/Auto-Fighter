@@ -65,11 +65,8 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [Header("Randomization")]
     [SerializeField] private float distanceJitter = 20f;
 
-    [Tooltip("Chance to spawn a car at each slot.")]
-    [SerializeField, Range(0f, 1f)] private float spawnChancePerSlot = 0.6f;
-
-    [Tooltip("Spawn chance multiplier based on distance (0=start, 1=end).")]
-    [SerializeField] private AnimationCurve spawnChanceByDistance = AnimationCurve.Linear(0f, 0.3f, 1f, 1f);
+    [Tooltip("Chance to fill a spawn slot (0–1). X = at track start, Y = at track end.")]
+    [SerializeField] private Vector2 spawnChanceByProgress = new Vector2(0.18f, 0.6f);
 
     [Header("Lane Assignment")]
     [Tooltip("Fraction of road half-width used for lane offset.")]
@@ -142,8 +139,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         despawnCrashedAfter = s.despawnCrashedAfter;
 
         distanceJitter = s.distanceJitter;
-        spawnChancePerSlot = s.spawnChancePerSlot;
-        spawnChanceByDistance = s.spawnChanceByDistance;
+        spawnChanceByProgress = s.spawnChanceByProgress;
 
         lateralFraction = s.lateralFraction;
         edgeMargin = s.edgeMargin;
@@ -186,8 +182,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             despawnBehindDistance = despawnBehindDistance,
             despawnCrashedAfter = despawnCrashedAfter,
             distanceJitter = distanceJitter,
-            spawnChancePerSlot = spawnChancePerSlot,
-            spawnChanceByDistance = spawnChanceByDistance,
+            spawnChanceByProgress = spawnChanceByProgress,
             lateralFraction = lateralFraction,
             edgeMargin = edgeMargin,
             preferLanes = preferLanes,
@@ -466,11 +461,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
         // Check spawn chance
         float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
-        float difficultyMult = spawnChanceByDistance != null
-            ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
-            : 1f;
-
-        float effectiveChance = spawnChancePerSlot * difficultyMult;
+        float effectiveChance = TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
         if (effectiveChance <= 0f)
             return;
 
@@ -568,11 +559,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             float dist = slot * carSpacing;
 
             float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
-            float difficultyMult = spawnChanceByDistance != null
-                ? Mathf.Max(0f, spawnChanceByDistance.Evaluate(norm))
-                : 1f;
-
-            float effectiveChance = spawnChancePerSlot * difficultyMult;
+            float effectiveChance = TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
             if (effectiveChance <= 0f) continue;
             if (UnityEngine.Random.value > effectiveChance) continue;
 

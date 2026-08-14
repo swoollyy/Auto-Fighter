@@ -141,6 +141,9 @@ public struct CrashKindSeverityEntry
             case CrashObstacleKind.RollingLog:
                 w = 1.32f;
                 break;
+            case CrashObstacleKind.SideShooter:
+                w = 0.9f;
+                break;
         }
 
         return new CrashKindSeverityEntry

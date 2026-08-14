@@ -895,6 +895,14 @@ public class CameraFollow : MonoBehaviour
         shakeSeed = UnityEngine.Random.value * 1000f;
     }
 
+    public void SetPersistentShakeStrength(float strength)
+    {
+        if (!_persistentShake) return;
+        shakeStrength = Mathf.Max(0f, strength);
+    }
+
+    public float CurrentPersistentShakeStrength => _persistentShake ? shakeStrength : 0f;
+
     public void EndPersistentShake()
     {
         _persistentShake = false;

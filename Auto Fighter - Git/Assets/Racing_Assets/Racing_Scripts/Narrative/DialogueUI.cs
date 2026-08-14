@@ -161,6 +161,14 @@ public class DialogueUI : MonoBehaviour
     {
         if (panelRoot != null)
             panelRoot.SetActive(true);
+        // Sit above GooIrisScreenTransition (32000) so boot/load goo never buries dialogue.
+        Canvas host = HostCanvas;
+        if (host != null)
+        {
+            host.overrideSorting = true;
+            if (host.sortingOrder < 32150)
+                host.sortingOrder = 32150;
+        }
         if (canvasGroup != null)
         {
             canvasGroup.alpha = 1f;

@@ -288,32 +288,15 @@ public class RacingSkillDetailPanel : MonoBehaviour
     }
 
     /// <summary>
-    /// Legacy full hide if ever needed elsewhere (not used by backdrop now).
+    /// Same as <see cref="HideInfo"/>. Never deactivates <see cref="root"/> — in this scene
+    /// root is the SkillTree layer; turning it off would wipe the whole garage UI.
     /// </summary>
-    public void Hide()
-    {
-        if (infoContainer) infoContainer.SetActive(false);
-        if (buyButton) buyButton.gameObject.SetActive(true);
-        ApplyBuyButtonIdleState();
-        if (root) root.SetActive(false);
-        UnwireLiveEvents();
-        def = null;
-        OnHidden?.Invoke();
-    }
+    public void Hide() => HideInfo();
 
     /// <summary>
-    /// Immediate full hide (same as Hide, bypassing transitions).
+    /// Same as <see cref="HideInfo"/> (no transitions to bypass).
     /// </summary>
-    public void HideImmediate()
-    {
-        if (infoContainer) infoContainer.SetActive(false);
-        if (buyButton) buyButton.gameObject.SetActive(true);
-        ApplyBuyButtonIdleState();
-        if (root) root.SetActive(false);
-        UnwireLiveEvents();
-        def = null;
-        OnHidden?.Invoke();
-    }
+    public void HideImmediate() => HideInfo();
 
     private void WireLiveEvents()
     {

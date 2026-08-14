@@ -51,6 +51,6 @@ Material:
     - _WarpAmount: 0.45
     - _WarpDepth: 0.85
     m_Colors:
-    - _Color: {r: 0.25490198, g: 0, b: 0.015, a: 1}
-    - _RimColor: {r: 1, g: 0, b: 0, a: 1}
+    - _Color: {r: 0.05, g: 0.09, b: 0.12, a: 1}
+    - _RimColor: {r: 0.30980393, g: 0.53333336, b: 0.6431373, a: 1}
   m_BuildTextureStacks: []

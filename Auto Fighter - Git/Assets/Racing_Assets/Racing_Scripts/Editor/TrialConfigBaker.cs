@@ -55,11 +55,64 @@ public static class TrialConfigBaker
         Debug.Log(
             $"[TrialConfigBaker] Updated '{cfg.name}' — thrown={thrown != null}, " +
             $"rollingLogs={rollingLogs != null}, cross={cross != null}. " +
-            "Track / obstacles / creatures / NPC / coins left unchanged.");
+            "Track / obstacles / creatures / NPC / coins / ice / bounce left unchanged.");
     }
 
     [MenuItem("Tools/Racing/Bake Thrown / Log / Cross Into Selected Trial Config", true)]
     private static bool BakeThrownLogCrossIntoSelectedValidate()
+    {
+        return Selection.activeObject is TrialConfig;
+    }
+
+    /// <summary>
+    /// Bakes Ice Path + Bounce Obstacle spawner settings from the open scene into the
+    /// currently selected TrialConfig. Other sections stay as-is.
+    /// </summary>
+    [MenuItem("Tools/Racing/Bake Ice Path / Bounce Into Selected Trial Config")]
+    public static void BakeIceBounceIntoSelected()
+    {
+        var cfg = Selection.activeObject as TrialConfig;
+        if (cfg == null)
+        {
+            EditorUtility.DisplayDialog(
+                "Bake Ice Path / Bounce",
+                "Select a Trial Config asset in the Project window first (e.g. Track1), then run this again.\n\n" +
+                "Only Ice Paths and Bounce Obstacles will be overwritten from the open scene. Other sections stay as-is.",
+                "OK");
+            return;
+        }
+
+        var ice = Object.FindObjectOfType<IcePathSpawner>(true);
+        var bounce = Object.FindObjectOfType<BounceBackObstacleSpawner>(true);
+
+        if (ice == null && bounce == null)
+        {
+            EditorUtility.DisplayDialog(
+                "Bake Ice Path / Bounce",
+                "Couldn't find IcePathSpawner / BounceBackObstacleSpawner in the open scene.\n" +
+                "Open Racer_Incremental.unity first.",
+                "OK");
+            return;
+        }
+
+        Undo.RecordObject(cfg, "Bake Ice Path / Bounce Into Trial Config");
+
+        if (ice != null)
+            cfg.icePaths = ice.CaptureConfig();
+        if (bounce != null)
+            cfg.bounceObstacles = bounce.CaptureConfig();
+
+        EditorUtility.SetDirty(cfg);
+        AssetDatabase.SaveAssets();
+        EditorGUIUtility.PingObject(cfg);
+
+        Debug.Log(
+            $"[TrialConfigBaker] Updated '{cfg.name}' — icePaths={ice != null}, " +
+            $"bounceObstacles={bounce != null}. Other sections left unchanged.");
+    }
+
+    [MenuItem("Tools/Racing/Bake Ice Path / Bounce Into Selected Trial Config", true)]
+    private static bool BakeIceBounceIntoSelectedValidate()
     {
         return Selection.activeObject is TrialConfig;
     }
