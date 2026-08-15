@@ -17,5 +17,10 @@ public enum CreatureBehaviorType
     /// <summary>
     /// Beast: hunts critters, player, and NPC traffic; bull rush vs player when configured.
     /// </summary>
-    Aggressive
+    Aggressive,
+
+    /// <summary>
+    /// Gorilla: idles on hills, seeks nearby environment props, lifts and throws them at the player.
+    /// </summary>
+    Thrower
 }

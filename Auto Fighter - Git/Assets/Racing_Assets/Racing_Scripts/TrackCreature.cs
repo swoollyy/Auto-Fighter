@@ -13,6 +13,9 @@ public enum CreatureState
     Wandering,
     Fleeing,
     Charging,
+    ApproachingProp,
+    Lifting,
+    Throwing,
     Dead
 }
 
@@ -29,7 +32,7 @@ public enum CreatureKillSource
 /// <summary>
 /// Base behavior component for track creatures.
 /// Handles movement, player detection, and behavior state machine.
-/// Supports Passive (dumb wandering), Scared (flees from player), and Aggressive (charges player) behaviors.
+/// Supports Passive (bug), Scared (critter), Aggressive (beast), and Thrower (gorilla) behaviors.
 /// 
 /// COLLISION NOTES:
 /// - All creatures use TRIGGER colliders to avoid disrupting car physics
@@ -40,7 +43,7 @@ public enum CreatureKillSource
 /// - Killed by CAR → Coins (handled here)
 /// - Killed by TURRET → Sprockets (handled by RacingBullet)
 /// </summary>
-public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
+public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 {
     #region Inspector Overrides (Optional)
 
@@ -346,6 +349,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     public CreatureState CurrentState => currentState;
     public bool IsDead => isDead;
     public CreatureBehaviorType BehaviorType => behaviorType;
+    public bool IsLargeCreature =>
+        behaviorType == CreatureBehaviorType.Aggressive ||
+        behaviorType == CreatureBehaviorType.Thrower;
     public float DistanceToPlayer => playerDistance;
 
 
@@ -361,6 +367,11 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         LayerMask m = movementAvoidanceLayers;
         if (behaviorType != CreatureBehaviorType.Aggressive)
             m.value |= rollingLogAvoidanceLayers.value;
+
+        if (behaviorType == CreatureBehaviorType.Thrower &&
+            (currentState == CreatureState.ApproachingProp || currentState == CreatureState.Lifting) &&
+            config != null)
+            m.value &= ~config.throwerObstacleLayers.value;
 
         // While charging an NPC car, do not steer/clamp away from the traffic layer — otherwise the beast never reaches contact.
         if (IsActivelyChargingNpcTraffic())
@@ -435,6 +446,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 break;
             case CreatureBehaviorType.Scared:
             case CreatureBehaviorType.Aggressive:
+            case CreatureBehaviorType.Thrower:
                 SetState(CreatureState.Idle);
                 break;
         }
@@ -665,6 +677,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             case CreatureBehaviorType.Aggressive:
                 UpdateAggressiveBehavior(dt);
                 break;
+            case CreatureBehaviorType.Thrower:
+                UpdateThrowerBehavior(dt);
+                break;
         }
     }
 
@@ -701,6 +716,9 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
                     if (behaviorType == CreatureBehaviorType.Aggressive && config.aggressiveIdleUseBugMovement)
                         CaptureIdleAnchor();
+
+                    if (behaviorType == CreatureBehaviorType.Thrower)
+                        CaptureThrowerIdleAnchor();
                 }
                 break;
 
@@ -2041,6 +2059,12 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     {
         if (spawner == null) return;
 
+        if (behaviorType == CreatureBehaviorType.Thrower)
+        {
+            UpdateThrowerWorldMovement(dt);
+            return;
+        }
+
         // Sample path at current distance (spline frame for normal motion; bull rush uses world XZ below)
         spawner.SamplePath(currentDistanceAlongTrack, out Vector3 pathPos, out Vector3 pathForward);
 
@@ -2436,6 +2460,15 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         {
             // Ensure windup facing and active rush facing match the telegraphed rush line.
             lookDirection = bullRushDirection;
+        }
+        else if (behaviorType == CreatureBehaviorType.Thrower &&
+                 (currentState == CreatureState.Lifting || currentState == CreatureState.Throwing) &&
+                 playerTransform != null)
+        {
+            Vector3 toPlayer = playerTransform.position - transform.position;
+            toPlayer.y = 0f;
+            if (toPlayer.sqrMagnitude > IntendedDirMinSqr)
+                lookDirection = toPlayer;
         }
         else if (_hasIntendedPlanarMoveDir && _intendedPlanarMoveDir.sqrMagnitude > IntendedDirMinSqr)
         {
@@ -2948,7 +2981,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (obstacleSpeed < minCrushSpeed)
             return;
 
-        if (behaviorType == CreatureBehaviorType.Aggressive)
+        if (IsLargeCreature)
         {
             if (_forcefieldPhysicsLaunchActive)
                 return;
@@ -3007,7 +3040,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         // CHECK FOR ARMED FORCEFIELD FIRST
         // Only aggressive creatures (beast) are forcefield-intercepted.
         var forcefield = playerCollider.GetComponentInParent<CarForcefield>();
-        if (forcefield != null && forcefield.IsArmed && behaviorType == CreatureBehaviorType.Aggressive)
+        if (forcefield != null && forcefield.IsArmed && IsLargeCreature)
         {
             // The forcefield will handle this via its own trigger detection
             // Just call KilledByForcefield directly to ensure it happens
@@ -3015,12 +3048,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
             return;
         }
 
-        // Aggressive (beast): slam the car, stay alive, and go idle so it can hunt again.
-        if (behaviorType == CreatureBehaviorType.Aggressive)
+        // Large creatures (beast / gorilla): slam the car, stay alive, and go idle.
+        if (IsLargeCreature)
         {
             CausePlayerCrash(playerCollider);
             HideBullRushTelegraph();
             EndBullRush();
+            ReleaseHeldThrowerProp();
             SetState(CreatureState.Idle);
             return;
         }
@@ -3037,7 +3071,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
     /// </summary>
     protected virtual void LaunchAggressiveBeastByObstacleThenDie(Collider obstacleCollider, float obstacleSpeed)
     {
-        if (isDead || behaviorType != CreatureBehaviorType.Aggressive || obstacleCollider == null) return;
+        if (isDead || !IsLargeCreature || obstacleCollider == null) return;
 
         killSource = CreatureKillSource.Other;
 
@@ -3354,6 +3388,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
         if (isDead) return;
 
         isDead = true;
+        ReleaseHeldThrowerProp();
         SetState(CreatureState.Dead);
     }
 
@@ -3693,7 +3728,7 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
 
         if (!string.IsNullOrEmpty(runningParam))
         {
-            bool isRunning = speed > 0.5f && (currentState == CreatureState.Fleeing || currentState == CreatureState.Charging);
+            bool isRunning = speed > 0.5f && (currentState == CreatureState.Fleeing || currentState == CreatureState.Charging || currentState == CreatureState.ApproachingProp);
             animator.SetBool(runningParam, isRunning);
         }
     }
@@ -3719,6 +3754,13 @@ public class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageable
                 case CreatureBehaviorType.Aggressive:
                     Gizmos.color = Color.red;
                     Gizmos.DrawWireSphere(transform.position, config.aggressiveDetectionRadius);
+                    break;
+
+                case CreatureBehaviorType.Thrower:
+                    Gizmos.color = new Color(0.55f, 0.32f, 0.12f, 0.9f);
+                    Gizmos.DrawWireSphere(transform.position, config.throwerObstacleSeekRadius);
+                    Gizmos.color = Color.cyan;
+                    Gizmos.DrawWireSphere(transform.position, config.throwerGrabRange);
                     break;
             }
         }

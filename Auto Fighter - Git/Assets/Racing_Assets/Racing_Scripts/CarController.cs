@@ -236,24 +236,12 @@ public class CarController : MonoBehaviour
 
     private bool GetAccelerateKeyOrTrigger()
     {
-        // Ignore while crashed/reorienting/mashing/post-crash recovery, and require a fresh
-        // press after recovery ends. Trigger deadzone dips used to clear the release-gate early
-        // and fire full throttle + drag-cancel while still sideways — that felt like a boost.
-        bool held = IsAccelerateHeldRaw();
-
-        if (IsDrivingGameplayLockedByCrash || IsPostCrashRecoveryDriving)
-        {
-            _blockAccelUntilReleased = true;
+        // No throttle while tumbled / uprighting / mashing. Held W/RT stays valid and
+        // applies the instant control returns — crash speed is killed separately.
+        if (IsDrivingGameplayLockedByCrash)
             return false;
-        }
 
-        if (_blockAccelUntilReleased)
-        {
-            if (held) return false;
-            _blockAccelUntilReleased = false;
-        }
-
-        return held;
+        return IsAccelerateHeldRaw();
     }
 
     private bool IsAccelerateHeldRaw()
@@ -515,6 +503,7 @@ public class CarController : MonoBehaviour
     [Header("Ice Surface Transition")]
     private float iceFrictionTransitionSpeed;
     private float iceHandlingTransitionSpeed;
+    private float iceHandlingExitSpeed;
     private float iceLateralSlideForce;
     private float iceVelocityAlignmentStrength;
 
@@ -1138,12 +1127,10 @@ public class CarController : MonoBehaviour
     private bool IsPostCrashRecoveryDriving => Time.time < _postCrashRecoveryUntil;
 
     /// <summary>
-    /// After crash / mash / reorient, ignore held boost AND held throttle until released once.
-    /// Otherwise sideways recovery + held W/RT fires full accel (and drag cancel) the instant
-    /// control returns — that reads as a leftover boost even when boost state was cleared.
+    /// After crash / mash / reorient, ignore held boost until released once.
+    /// Throttle may stay held; leftover crash speed is stripped in FinishCrashDrivingRecovery.
     /// </summary>
     private bool _blockBoostUntilReleased;
-    private bool _blockAccelUntilReleased;
 
     private bool IsDrivingGameplayLockedByCrash =>
         _inCrash || _isReorienting || _flipMashActive;
@@ -1303,6 +1290,7 @@ public class CarController : MonoBehaviour
     private float surfaceMaxSpeedLerpRate;
 
     private float _smoothedSurfaceMaxSpeed = -1f;
+    private float _smoothedSurfaceTurnMul = -1f;
 
     /// <summary>
     /// After any crash recovery (mash or upright), ignore boost-pad/ramp surface for this long so
@@ -1539,6 +1527,7 @@ public class CarController : MonoBehaviour
             closeCallRootCooldown = _driftConfig.CloseCallRootCooldown;
             iceFrictionTransitionSpeed = _driftConfig.IceFrictionTransitionSpeed;
             iceHandlingTransitionSpeed = _driftConfig.IceHandlingTransitionSpeed;
+            iceHandlingExitSpeed = _driftConfig.IceHandlingExitSpeed;
             iceLateralSlideForce = _driftConfig.IceLateralSlideForce;
             iceVelocityAlignmentStrength = _driftConfig.IceVelocityAlignmentStrength;
         }
@@ -1557,7 +1546,7 @@ public class CarController : MonoBehaviour
             closeCallBoostBaseDuration = 0.9f; closeCallBoostForce = 9f; closeCallBoostForceMode = ForceMode.VelocityChange;
             closeCallBoostMaxSpeedMult = 1.3f; enableCloseCallNearMisses = true; closeCallDistance = 0.45f;
             closeCallMinSpeed = 2.88f; closeCallCooldown = 1.42f; closeCallRootCooldown = 4.39f;
-            iceFrictionTransitionSpeed = 3f; iceHandlingTransitionSpeed = 4f; iceLateralSlideForce = 0.1f;
+            iceFrictionTransitionSpeed = 3f; iceHandlingTransitionSpeed = 4f; iceHandlingExitSpeed = 1.15f; iceLateralSlideForce = 0.1f;
             iceVelocityAlignmentStrength = 0.02f;
         }
 
@@ -2455,9 +2444,9 @@ public class CarController : MonoBehaviour
         // After all velocity writes — restore planar speed lost on grass→road / lip contacts.
         ApplyGrassToRoadTransitionSpeedPreserve();
 
-        // Crawl-cap only while crashed / uprighting / short post-crash window.
-        // Do NOT use full ShouldSuppressBoostSurfaces — pad-lock-until-exit would brick driving.
-        if (_inCrash || _isReorienting || _flipMashActive || IsPostCrashRecoveryDriving)
+        // Crawl leftover crash speed only while control is locked. After upright, held
+        // throttle must be allowed to build speed from that crawl — do not keep pinning it.
+        if (_inCrash || _isReorienting || _flipMashActive)
             KillPlanarSpeedAfterCrashRecovery();
         else if (ShouldSuppressBoostSurfaces())
             SoftClampPlanarSpeedToRoadCapAfterCrash();
@@ -2960,10 +2949,16 @@ public class CarController : MonoBehaviour
             iceFrictionTransitionSpeed * dt
         );
 
-        _currentIceHandling = Mathf.Lerp(
+        // Enter ice quickly; leave ice slowly so grip / turn don't snap back to road.
+        float exitRate = iceHandlingExitSpeed > 0.01f ? iceHandlingExitSpeed : 1.15f;
+        float enterRate = iceHandlingTransitionSpeed > 0.01f ? iceHandlingTransitionSpeed : 4f;
+        float handlingRate = _iceHandlingTarget > _currentIceHandling + 0.001f
+            ? exitRate
+            : enterRate;
+        _currentIceHandling = Mathf.MoveTowards(
             _currentIceHandling,
             _iceHandlingTarget,
-            iceHandlingTransitionSpeed * dt
+            handlingRate * dt
         );
 
         // Apply friction to physic material
@@ -4025,17 +4020,9 @@ public class CarController : MonoBehaviour
                     // Build while drift + steer are held — braking/decel does not wipe charge.
                     if (driftButtonHeld && _driftCurrentSteerSign != 0)
                     {
-                        if (_driftHoldDirectionSign == 0 || _driftHoldDirectionSign == _driftCurrentSteerSign)
-                        {
-                            _driftHoldDirectionSign = _driftCurrentSteerSign;
-                        }
-                        else
-                        {
-                            // Direction flip: start new accumulation
-                            ResetDriftHeldTimer();
-                            _driftHoldDirectionSign = _driftCurrentSteerSign;
-                        }
-
+                        // Keep boost charge across steer flips. Camera / driftCharge still
+                        // use their own flip logic — only the held-boost timer is sticky.
+                        _driftHoldDirectionSign = _driftCurrentSteerSign;
                         _driftHoldTimeSeconds += Time.deltaTime;
                     }
 
@@ -4320,13 +4307,12 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Clear queued boost and require a fresh boost + accelerate press after crash recovery.
-    /// Held throttle through upright while sideways was launching the car like a boost.
+    /// Clear queued boost and require a fresh boost press after crash recovery.
+    /// Accelerate may stay held; planar speed is killed at recovery so it cannot rocket.
     /// </summary>
     private void ArmCrashDrivingInputGates()
     {
         _blockBoostUntilReleased = true;
-        _blockAccelUntilReleased = true;
         _boostRequested = false;
         ClearBoostOverride();
     }
@@ -5177,7 +5163,7 @@ public class CarController : MonoBehaviour
             CancelPlanarDrag(effectiveDrag);
         }
 
-        if (!enableSteerTraction || _onIceSurface || Mathf.Abs(steeringInput) <= 0.001f)
+        if (!enableSteerTraction || _currentIceHandling < 0.35f)
             return;
 
         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z);
@@ -5195,7 +5181,7 @@ public class CarController : MonoBehaviour
         if (Vector3.Dot(flatVel, flatForward) < 0f)
             alignTarget = -flatForward;
 
-        float t = steerTractionReorientRate * Time.fixedDeltaTime;
+        float t = steerTractionReorientRate * Mathf.Clamp01(_currentIceHandling) * Time.fixedDeltaTime;
         Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, alignTarget, t).normalized;
 
         Vector3 fwdComp = alignTarget * Vector3.Dot(flatVel, alignTarget);
@@ -5218,8 +5204,8 @@ public class CarController : MonoBehaviour
     /// </summary>
     private void ApplySteerRollingTraction()
     {
-        if (rb == null || !enableSteerTraction || _onIceSurface) return;
-        if (driftButtonHeld || Mathf.Abs(steeringInput) <= 0.001f) return;
+        if (rb == null || !enableSteerTraction || _currentIceHandling < 0.35f) return;
+        if (driftButtonHeld) return;
         if (_steerTractionBlend <= 0.0001f) return;
 
         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z);
@@ -5235,7 +5221,8 @@ public class CarController : MonoBehaviour
         if (Vector3.Dot(flatVel, flatForward) < 0f)
             alignTarget = -flatForward;
 
-        float t = steerTractionReorientRate * _steerTractionBlend * Time.fixedDeltaTime;
+        float iceGrip = Mathf.Clamp01(_currentIceHandling);
+        float t = steerTractionReorientRate * _steerTractionBlend * iceGrip * Time.fixedDeltaTime;
         Vector3 blendedDir = Vector3.Slerp(flatVel.normalized, alignTarget, t).normalized;
 
         Vector3 fwdComp = alignTarget * Vector3.Dot(flatVel, alignTarget);
@@ -5446,10 +5433,8 @@ public class CarController : MonoBehaviour
 
         // TEST: auto-cruise forward when not drifting. During drift, leave forwardKey as the real
         // accelerate input so hard drift (accel held) vs soft drift (accel released) still work.
-        // Respect post-crash accel gate — otherwise always-accel reintroduces the recovery boost.
         bool alwaysAccel = IsAlwaysAccelerateTestActive();
         if (alwaysAccel
-            && !_blockAccelUntilReleased
             && !driftPhysicsActive
             && !reverseKey
             && !_flipMashActive
@@ -5486,7 +5471,7 @@ public class CarController : MonoBehaviour
                 enableSteerTraction &&
                 !driftButtonHeld &&
                 !driftPhysicsActive &&
-                Mathf.Abs(steeringInput) > 0.001f;
+                (Mathf.Abs(steeringInput) > 0.001f || (!accelerating && !brakingOrReverse));
 
             float tractionTarget = 0f;
             if (canHaveSteerTraction)
@@ -5600,8 +5585,7 @@ public class CarController : MonoBehaviour
         // Uphill assist: ramps up/down smoothly so steep ramps don't feel underpowered or jerky.
         float assistTarget = 0f;
         Vector3 assistDir = forward;
-        bool throttleForAssist = forwardKey && !reverseKey && !isOutOfFuel && maxFuel > 0f && groundedNow
-            && !IsPostCrashRecoveryDriving;
+        bool throttleForAssist = forwardKey && !reverseKey && !isOutOfFuel && maxFuel > 0f && groundedNow;
         if (throttleForAssist && TryGetSlopeDriveAssist(out Vector3 surfFwd, out float extraA))
         {
             assistDir = surfFwd;
@@ -5609,9 +5593,8 @@ public class CarController : MonoBehaviour
         }
 
         float assistDt = Time.fixedDeltaTime;
-        // While braking or in post-crash recovery, kill residual assist immediately — it was a
-        // forward shove even when the player was trying to decelerate.
-        if (reverseKey || IsPostCrashRecoveryDriving)
+        // While braking, kill residual assist immediately — it was a forward shove on decel.
+        if (reverseKey)
         {
             _slopeAssistSmoothed = 0f;
         }
@@ -5744,6 +5727,7 @@ public class CarController : MonoBehaviour
     private void ConsumeFuel(float amount)
     {
         if (isOutOfFuel || maxFuel <= 0f) return;
+        if (_externalInputLocked) return;
 
         // Skip fuel consumption during mash IF we're draining health instead
         if (_flipMashActive && mashDrainsHealth) return;
@@ -7103,7 +7087,25 @@ public class CarController : MonoBehaviour
 
     private void ApplySurfaceMultipliers(float maxSpeedMul, float accelMul, float turnMul, float dragMul)
     {
-        surfaceTurnMultiplier = Mathf.Max(0f, turnMul);
+        float targetTurnMul = Mathf.Max(0f, turnMul);
+        if (_smoothedSurfaceTurnMul < 0f)
+        {
+            _smoothedSurfaceTurnMul = targetTurnMul;
+        }
+        else
+        {
+            // Leaving ice (turn mul rising toward road) uses the slow exit rate.
+            float exitRate = iceHandlingExitSpeed > 0.01f ? iceHandlingExitSpeed : 1.15f;
+            float enterRate = iceHandlingTransitionSpeed > 0.01f ? iceHandlingTransitionSpeed : 4f;
+            float turnRate = targetTurnMul > _smoothedSurfaceTurnMul + 0.001f
+                ? exitRate
+                : enterRate;
+            _smoothedSurfaceTurnMul = Mathf.MoveTowards(
+                _smoothedSurfaceTurnMul,
+                targetTurnMul,
+                turnRate * Time.fixedDeltaTime);
+        }
+        surfaceTurnMultiplier = _smoothedSurfaceTurnMul;
 
         float targetMaxSpeed = baseMaxSpeed * maxSpeedMul;
 
@@ -9019,7 +9021,7 @@ public class CarController : MonoBehaviour
         // TrackCreature.CausePlayerCrash). Non-aggressive creatures (bugs/critters) must not run the
         // car crash pipeline, otherwise splatting one wrongly shows the crash popup.
         var hitCreatureCollision = collision.collider.GetComponentInParent<TrackCreature>();
-        if (hitCreatureCollision != null && hitCreatureCollision.BehaviorType != CreatureBehaviorType.Aggressive)
+        if (hitCreatureCollision != null && !hitCreatureCollision.IsLargeCreature)
             return;
 
         if (hitNpcTraffic)
@@ -9377,7 +9379,7 @@ public class CarController : MonoBehaviour
         // popup + coins). Only the beast should produce a crash popup, so skip the car crash
         // pipeline for any non-aggressive creature to avoid the wrong "crash" popup on a splat.
         var hitCreatureTrigger = other.GetComponentInParent<TrackCreature>();
-        if (hitCreatureTrigger != null && hitCreatureTrigger.BehaviorType != CreatureBehaviorType.Aggressive)
+        if (hitCreatureTrigger != null && !hitCreatureTrigger.IsLargeCreature)
             return;
 
         bool hitNpcTrafficTrigger = other.GetComponentInParent<NPCTrafficCar>() != null;

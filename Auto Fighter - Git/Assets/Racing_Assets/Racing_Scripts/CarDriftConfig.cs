@@ -71,6 +71,8 @@ public class CarDriftConfig : MonoBehaviour
     [Header("Ice Surface Transition")]
     [SerializeField] private float iceFrictionTransitionSpeed = 3f;
     [SerializeField] private float iceHandlingTransitionSpeed = 4f;
+    [Tooltip("How quickly ice handling / turn snap recover after leaving ice. Keep lower than enter speed so the exit is a blend, not a cut.")]
+    [SerializeField] private float iceHandlingExitSpeed = 1.15f;
     [SerializeField] private float iceLateralSlideForce = 0.1f;
     [SerializeField] private float iceVelocityAlignmentStrength = 0.02f;
 
@@ -119,6 +121,7 @@ public class CarDriftConfig : MonoBehaviour
     public float CloseCallRootCooldown => closeCallRootCooldown;
     public float IceFrictionTransitionSpeed => iceFrictionTransitionSpeed;
     public float IceHandlingTransitionSpeed => iceHandlingTransitionSpeed;
+    public float IceHandlingExitSpeed => iceHandlingExitSpeed;
     public float IceLateralSlideForce => iceLateralSlideForce;
     public float IceVelocityAlignmentStrength => iceVelocityAlignmentStrength;
 }

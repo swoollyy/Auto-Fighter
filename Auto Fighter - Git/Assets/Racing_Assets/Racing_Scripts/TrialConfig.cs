@@ -53,6 +53,7 @@ public class TrialConfig : ScriptableObject
     public CrossObstacleSettings crossObstacles = new();
     public IcePathSettings icePaths = new();
     public BounceObstacleSettings bounceObstacles = new();
+    public SpawnQueueSettings spawnQueue = new();
 
     // =====================================================================
     // TRACK — mirrors ProceduralTrackGenerator
@@ -663,5 +664,33 @@ public class TrialConfig : ScriptableObject
 
         [Header("Progress Gate")]
         [Range(0f, 0.95f)] public float minNormalizedProgressToSpawn = 0.02f;
+    }
+
+    // =====================================================================
+    // SPAWN QUEUE — mirrors TrackSpawnerQueue playback (not scene entry refs)
+    // =====================================================================
+    [System.Serializable]
+    public class SpawnQueueSettings
+    {
+        [Tooltip("Uncheck to leave the scene TrackSpawnerQueue untouched for this trial.")]
+        public bool overrideSpawnQueue = true;
+
+        [Header("Playback")]
+        public bool enableQueue = true;
+        public bool takeoverAutonomousSpawning = true;
+        public TrackSpawnerQueue.PlaybackMode playbackMode = TrackSpawnerQueue.PlaybackMode.Sequential;
+        public bool loop = true;
+
+        [Header("Timing")]
+        [Min(0f)] public float startDelay = 3f;
+        [Min(0.05f)] public float intervalSeconds = 5f;
+        public Vector2 intervalJitter = new Vector2(1f, 3f);
+        public bool scaleJitterByProgress = true;
+        public Vector2 intervalJitterAtFullProgress = new Vector2(2f, 4f);
+        [Min(0.05f)] public float failedSpawnRetryDelay = 0.35f;
+        [Min(0f)] public float waveStaggerSeconds = 0.15f;
+
+        [Header("Gate")]
+        [Range(0f, 1f)] public float minNormalizedProgress = 0f;
     }
 }

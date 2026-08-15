@@ -238,8 +238,8 @@ MonoBehaviour:
   faceDownTrackBias: 0.15
   engageRange: 50
   disengageRange: 85
-  minAimDot: 0.7
-  aimAccuracy: 0.9
+  minAimDot: 0.2
+  aimAccuracy: 0.85
   aimErrorMaxDegrees: 14
   leadBleedOff: 0.85
   muzzle: {fileID: 1870283948420639043}

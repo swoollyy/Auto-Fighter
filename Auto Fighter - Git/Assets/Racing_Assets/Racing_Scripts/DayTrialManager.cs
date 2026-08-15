@@ -134,7 +134,8 @@ public class DayTrialManager : MonoBehaviour
         RollingLogSpawner rollingLogs = null,
         CrossObstacleDirector crossObstacles = null,
         IcePathSpawner icePaths = null,
-        BounceBackObstacleSpawner bounceObstacles = null)
+        BounceBackObstacleSpawner bounceObstacles = null,
+        TrackSpawnerQueue spawnQueue = null)
     {
         var cfg = CurrentConfig;
         if (cfg == null) return;
@@ -147,6 +148,7 @@ public class DayTrialManager : MonoBehaviour
         if (crossObstacles != null) crossObstacles.ApplyConfig(cfg.crossObstacles);
         if (icePaths != null) icePaths.ApplyConfig(cfg.icePaths);
         if (bounceObstacles != null) bounceObstacles.ApplyConfig(cfg.bounceObstacles);
+        if (spawnQueue != null) spawnQueue.ApplyConfig(cfg.spawnQueue);
     }
 
     private void Awake()

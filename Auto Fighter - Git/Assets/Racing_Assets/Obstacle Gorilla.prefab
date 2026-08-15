@@ -1,0 +1,297 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3874382558013832276
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7497818950983598276}
+  - component: {fileID: 5392864896104291230}
+  - component: {fileID: 7000252740046131143}
+  - component: {fileID: 4913427648244586458}
+  - component: {fileID: 3314179452664020840}
+  - component: {fileID: 1741596697079727974}
+  - component: {fileID: 4180077745294689445}
+  - component: {fileID: -4551857146402561667}
+  - component: {fileID: -394754841547445716}
+  m_Layer: 21
+  m_Name: Obstacle Gorilla
+  m_TagString: Creature
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7497818950983598276
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1.15, y: 1.45, z: 1.15}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &5392864896104291230
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &7000252740046131143
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: d9ef9624850cb1d418f68802d10cfc23, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &4913427648244586458
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 32768
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &3314179452664020840
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5dcc88590aab2c0459c50f0bba784d7a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  obstacleType: 0
+  destructible: 1
+  maxHealth: 3
+  scaleOnHit: 0.25
+  scalePunchTime: 0.15
+  destroyVFX: {fileID: 6654140371040763768, guid: d58264c85b000204aa6c68caa8f2afa6, type: 3}
+  rewardCurrency: 15
+  treeToppleMinVelocity: 2
+  treeToppleImpulseScale: 2
+  treeToppleImpulseMin: 3
+  treeToppleImpulseMax: 25
+  treeToppleForceHeight: 2
+  enableTreeToppleCrashPopup: 1
+  treeToppleCrashPopupHeight: 1.2
+  enablePropClashCrashPopup: 1
+  propClashPopupHeight: 1
+  propClashMinRelativeSpeed: 2.5
+  propClashPairCooldown: 0.2
+  baseImpactVelocityThreshold: 8
+  impactDamageCooldown: 0.25
+--- !u!114 &1741596697079727974
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 1073741824
+  graphMask:
+    value: -1
+  type: 3
+  mesh: {fileID: 0}
+  rectangleSize: {x: 1.7, y: 1.7}
+  circleRadius: 1
+  circleResolution: 6
+  height: 3
+  meshScale: 1
+  center: {x: 0, y: 0, z: 0}
+  updateDistance: 0.4
+  isDual: 0
+  radiusExpansionMode: 1
+  cutsAddedGeom: 1
+  updateRotationDistance: 10
+  useRotationAndScale: 1
+--- !u!114 &4180077745294689445
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 789d782bf28eafc45bd529cda7cd4878, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hitCollider: {fileID: 4913427648244586458}
+  enableRunOverPopup: 0
+  runOverPopupType: 12
+  runOverPopupHeight: 1.2
+  enableBeastEatPopup: 1
+  enableCritterEatBugPopup: 1
+  beastEatPopupType: 14
+  beastEatPopupHeight: 1.1
+  visualRoot: {fileID: 0}
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 90113
+  enableMovementAvoidance: 1
+  movementAvoidanceLayers:
+    serializedVersion: 2
+    m_Bits: 1837056
+  rollingLogAvoidanceLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  avoidanceIncludeTriggers: 1
+  avoidanceRadius: 0.55
+  avoidanceLookAhead: 1.4
+  avoidanceCastHeight: 0.45
+  avoidanceRayCount: 11
+  avoidanceFanAngleDeg: 100
+  avoidanceSteerSmoothSpeed: 14
+  avoidanceIdlePathNudgeSpeed: 5
+  avoidanceSideBias: 0
+  avoidanceResponse: 3
+  wanderStuckWindowSeconds: 0.55
+  wanderProgressRatioThreshold: 0.4
+  wanderPathClearFraction: 0.6
+  aggressivePlayerPriorityRadius: 8
+  creatureSenseLayers:
+    serializedVersion: 2
+    m_Bits: 2097152
+  crushLayers:
+    serializedVersion: 2
+    m_Bits: 11405313
+  minCrushSpeed: 1
+  allowTagCrushWithoutRigidbody: 1
+  obstacleTags:
+  - Creature
+  aggressiveCrushMassThreshold: 9
+  obstacleLaunchCorpseMass: 85
+  obstacleLaunchBaseVelocityChange: 9
+  obstacleLaunchSpeedScale: 0.45
+  obstacleLaunchMaxVelocityChange: 34
+  obstacleLaunchUpVelocityChange: 6
+  obstacleLaunchTorque: 10
+  obstacleLaunchDeathDelay: 0.42
+  groundRayHeight: 3
+  groundRayDistance: 8
+  groundOffset: 0.7
+  groundSnapSpeed: 15
+  rotationSpeed: 10
+  alignToGround: 1
+  animator: {fileID: 0}
+  speedParam: Speed
+  runningParam: IsRunning
+  deadParam: IsDead
+  audioSource: {fileID: 0}
+  idleSound: {fileID: 0}
+  runSound: {fileID: 0}
+  deathSound: {fileID: 0}
+  aggroSound: {fileID: 0}
+  turretKillSound: {fileID: 0}
+  carKillSound: {fileID: 0}
+  killSoundVolume: 1
+  deathEffectPrefab: {fileID: 0}
+  coinSpawnPoint: {fileID: 0}
+  showDebugGizmos: 0
+--- !u!114 &-4551857146402561667
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19f784f05b410304c8e2da06ce0fc243, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  useFixedUpdate: 1
+--- !u!54 &-394754841547445716
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3874382558013832276}
+  serializedVersion: 4
+  m_Mass: 50
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0

@@ -121,6 +121,7 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
     private readonly List<Terrain> _sculptScratch = new List<Terrain>(16);
 
     private bool _fastNoiseThisApply;
+    private float _roadCutRadius;
 
     /// <summary>Terrains that last overlapped the track corridor during ApplyFromTrack.</summary>
     public int LastOverlappingTerrainCount { get; private set; }
@@ -132,10 +133,17 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
     private void Awake()
     {
-        // Capture authored grass now — Unity Play, before any in-game run clones/paints.
+        // Snapshot every scene terrain's authored grass now — Unity Play, before any
+        // in-game run clones/paints. Do not wait for the Inspector list / auto-discover
+        // sculpt set; a tile first seen after it already has a RuntimeClone cannot be reset.
         ResolveTerrains();
-        for (int i = 0; i < _resolvedTerrains.Count; i++)
-            RememberAuthored(_resolvedTerrains[i], _resolvedTerrains[i] != null ? _resolvedTerrains[i].terrainData : null);
+        Terrain[] found = FindObjectsOfType<Terrain>();
+        for (int i = 0; i < found.Length; i++)
+        {
+            Terrain t = found[i];
+            if (t == null || t.terrainData == null) continue;
+            RememberAuthored(t, t.terrainData);
+        }
     }
 
     private void OnDisable()
@@ -248,10 +256,12 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
         TerrainData inst = Object.Instantiate(authored);
         inst.name = authored.name + " (RuntimeClone)";
+        // First Unity detail-patch build must already lack blades on the new asphalt.
+        // That is what kept run 1 clear before the shader clip existed.
+        CutDetailsUnderPath(inst, t.transform.position, inst.size, _pathScratch, _roadCutRadius);
 
         t.terrainData = inst;
         RefreshTerrainCollider(t, inst);
-        ApplyAuthoredDetails(t, authored, inst);
         t.Flush();
         _clonedAny = true;
 
@@ -273,6 +283,68 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         }
     }
 
+    private static void CutDetailsUnderPath(
+        TerrainData td, Vector3 terrainPos, Vector3 terrainSize, List<Vector3> path, float radius)
+    {
+        if (td == null || path == null || path.Count < 2 || radius < 0.1f) return;
+        int w = td.detailWidth;
+        int h = td.detailHeight;
+        int n = td.detailPrototypes != null ? td.detailPrototypes.Length : 0;
+        if (w <= 0 || h <= 0 || n <= 0) return;
+        if (terrainSize.x < 1e-4f || terrainSize.z < 1e-4f) return;
+
+        float invX = w / terrainSize.x;
+        float invZ = h / terrainSize.z;
+        float rSq = radius * radius;
+        float stamp = Mathf.Max(0.35f, radius * 0.35f);
+
+        for (int layer = 0; layer < n; layer++)
+        {
+            int[,] map = td.GetDetailLayer(0, 0, w, h, layer);
+            bool changed = false;
+            for (int i = 0; i < path.Count - 1; i++)
+            {
+                Vector3 a = path[i];
+                Vector3 b = path[i + 1];
+                float len = Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+                if (len < 0.01f) continue;
+                int steps = Mathf.Max(1, Mathf.CeilToInt(len / stamp));
+                for (int s = 0; s <= steps; s++)
+                {
+                    float u = s / (float)steps;
+                    float wx = a.x + (b.x - a.x) * u;
+                    float wz = a.z + (b.z - a.z) * u;
+                    int cx = Mathf.FloorToInt((wx - terrainPos.x) * invX);
+                    int cz = Mathf.FloorToInt((wz - terrainPos.z) * invZ);
+                    int radX = Mathf.CeilToInt(radius * invX) + 1;
+                    int radZ = Mathf.CeilToInt(radius * invZ) + 1;
+                    int x0 = Mathf.Max(0, cx - radX);
+                    int x1 = Mathf.Min(w - 1, cx + radX);
+                    int z0 = Mathf.Max(0, cz - radZ);
+                    int z1 = Mathf.Min(h - 1, cz + radZ);
+                    if (x1 < 0 || z1 < 0 || x0 >= w || z0 >= h) continue;
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        float worldZ = terrainPos.z + (z + 0.5f) / h * terrainSize.z;
+                        float dz = worldZ - wz;
+                        for (int x = x0; x <= x1; x++)
+                        {
+                            if (map[z, x] == 0) continue;
+                            float worldX = terrainPos.x + (x + 0.5f) / w * terrainSize.x;
+                            float dx = worldX - wx;
+                            if (dx * dx + dz * dz > rSq) continue;
+                            map[z, x] = 0;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+                td.SetDetailLayer(0, 0, layer, map);
+        }
+    }
+
     private static int[][,] CopyAllDetailLayers(TerrainData td)
     {
         int n = td.detailPrototypes != null ? td.detailPrototypes.Length : 0;
@@ -288,33 +360,6 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             layers[i] = copy;
         }
         return layers;
-    }
-
-    private void ApplyAuthoredDetails(Terrain t, TerrainData authored, TerrainData dst)
-    {
-        if (authored == null || dst == null) return;
-
-        int w = authored.detailWidth;
-        int h = authored.detailHeight;
-        if (w <= 0 || h <= 0) return;
-
-        dst.detailPrototypes = authored.detailPrototypes;
-        dst.wavingGrassStrength = authored.wavingGrassStrength;
-        dst.wavingGrassAmount = authored.wavingGrassAmount;
-        dst.wavingGrassSpeed = authored.wavingGrassSpeed;
-        dst.wavingGrassTint = authored.wavingGrassTint;
-
-        int[][,] layers;
-        if (!_authoredDetails.TryGetValue(t, out layers) || layers == null)
-            layers = CopyAllDetailLayers(authored);
-
-        for (int i = 0; i < layers.Length; i++)
-        {
-            if (layers[i] == null) continue;
-            int[,] copy = new int[layers[i].GetLength(0), layers[i].GetLength(1)];
-            System.Array.Copy(layers[i], copy, layers[i].Length);
-            dst.SetDetailLayer(0, 0, i, copy);
-        }
     }
 
     private static bool IsRuntimeClone(TerrainData td)
@@ -442,6 +487,8 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             Debug.LogWarning("[TerrainAroundFlatRoad] No terrain planes to sculpt; skip.");
             yield break;
         }
+
+        _roadCutRadius = gen.RoadWidth * 0.5f + extraHalfWidthMeters + 1.5f;
 
         // Every run: clone authored TerrainData (same as the first Play). Tiles we painted
         // last run but do not sculpt this run still need that reset or leftover blades stay.

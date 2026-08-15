@@ -1788,18 +1788,10 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CoHandleTrackGenerated(ProceduralTrackGenerator gen)
     {
-        // Paint/clear grass immediately after track+terrain are ready so later runs cannot keep
-        // prior detail density under a new road while spawners are still running.
+        // Bake a road clip mask. Authored terrain grass maps are not rewritten.
         if (terrainGrassPainter != null)
         {
-            var planes = new List<Terrain>(16);
-            int planeCount = TrackTerrainOverlap.CollectFromTrack(trackGenerator, 40f, planes);
-            ApplyLoadingUiState(
-                planeCount > 0
-                    ? $"Painting grass ({planeCount} planes)..."
-                    : "Painting grass...",
-                0.62f);
-            // Let the loading label present a frame before the heavy detail write.
+            ApplyLoadingUiState("Clearing grass on road...", 0.62f);
             yield return null;
             yield return StartCoroutine(terrainGrassPainter.CoPaint(trackGenerator));
         }
@@ -1848,7 +1840,8 @@ public class GameManager_Racing : MonoBehaviour
             rollingLogSpawner,
             crossObstacleDirector,
             icePathSpawner,
-            bounceBackObstacleSpawner);
+            bounceBackObstacleSpawner,
+            trackSpawnerQueue);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
@@ -1860,8 +1853,10 @@ public class GameManager_Racing : MonoBehaviour
         yield return null;
 
         uiManager?.SetLoadingState("Placing environment...", 0.80f);
-        trackEnvironmentSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
-        yield return null;
+        if (trackEnvironmentSpawner != null)
+            yield return trackEnvironmentSpawner.CoInitializeForRun(trackGenerator, carInstance.transform);
+        else
+            yield return null;
 
         uiManager?.SetLoadingState("Spawning coins...", 0.84f);
         trackCoinSpawner?.InitializeForRun(trackGenerator, carInstance.transform);

@@ -1507,6 +1507,7 @@ MonoBehaviour:
   steerTractionBlendIn: 3.64
   steerTractionBlendOut: 3.02
   steerTractionWhileAccelerating: 0.4
+  steerTractionWhileBraking: 1
   steerRollingAccelCoastMultiplier: 0.441
   applySteerRollingAccelOnIce: 0
 --- !u!114 &6905870851410593353
@@ -1582,6 +1583,7 @@ MonoBehaviour:
   steerFlipRetainedCharge: 0.055
   steerFlipThreshold: 0.15
   minChargeForFlipReset: 0
+  steerFlipGraceSeconds: 0.22
   steerFlipRebuildDelay: 0.1
   allowDriftGlideWithoutSteer: 1
   driftGlideDecayPerSecond: 0.09
@@ -1603,6 +1605,7 @@ MonoBehaviour:
   closeCallRootCooldown: 4.39
   iceFrictionTransitionSpeed: 1.9
   iceHandlingTransitionSpeed: 2.9
+  iceHandlingExitSpeed: 1.15
   iceLateralSlideForce: 0.1
   iceVelocityAlignmentStrength: 0.02
 --- !u!114 &1364268315715001057
@@ -1650,9 +1653,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 6
-  fuelUsePerSecondBraking: 6
-  idleFuelUsePerSecond: 2
+  fuelUsePerSecondAtFullThrottle: 0
+  fuelUsePerSecondBraking: 0
+  idleFuelUsePerSecond: 0
   idleSpeedThreshold: 0.5
   enableLowHpExtraFuelDrain: 1
   extraFuelDrainPercentAtZeroHp: 100
@@ -1722,6 +1725,9 @@ MonoBehaviour:
   groundNormalMixedSurfaceBlendScale: 0.42
   groundNormalMixedGrassMin: 0.06
   groundNormalMixedGrassMax: 0.94
+  steepGroundNormalBlendRate: 36
+  steepGroundNormalDotThreshold: 0.97
+  boostSurfaceNormalBlendRate: 28
   roadGrassTransitionLiftSpeed: 0
   roadGrassTransitionMinSpeed: 2.5
   roadGrassTransitionLiftCooldown: 0.25
@@ -1753,6 +1759,10 @@ MonoBehaviour:
   groundNormalCheckDistance: 1.23
   landingPredictDistance: 2.75
   landingAlignStartDistance: 1.97
+  steepAlignSpeedMultiplier: 2.1
+  steepAlignMinAngle: 12
+  rampVelocityRemapStrength: 0.72
+  rampVelocityRemapMinAngle: 3.5
 --- !u!114 &5501037321091204196
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1987,6 +1997,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enableAirTricks: 1
   airTurnSpeedMultiplier: 1.1
+  airDriftSteerFeel: 0.72
+  airDriftSideForceScale: 0.55
   airYawRate: 30
   airYawInputDeadzone: 0.12
   airVelocityFollowNose: 0.45

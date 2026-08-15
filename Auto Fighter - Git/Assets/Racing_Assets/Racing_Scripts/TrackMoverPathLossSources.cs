@@ -14,8 +14,9 @@ public static class TrackMoverPathLossSources
         if (other == null) return false;
         if (other.GetComponentInParent<RollingLogAlongTrack>() != null) return true;
         if (other.GetComponentInParent<ThrownObstacle>() != null) return true;
+        if (other.GetComponentInParent<GorillaThrownProp>() != null) return true;
         if (other.GetComponentInParent<TrackObstacleBounceBack>() != null) return true;
         var tc = other.GetComponentInParent<TrackCreature>();
-        return tc != null && tc.BehaviorType == CreatureBehaviorType.Aggressive;
+        return tc != null && tc.IsLargeCreature;
     }
 }

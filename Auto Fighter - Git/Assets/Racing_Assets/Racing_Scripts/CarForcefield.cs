@@ -390,7 +390,7 @@ public sealed class CarForcefield : MonoBehaviour
         var creature = other.GetComponentInParent<TrackCreature>();
         if (creature != null && !creature.IsDead)
         {
-            if (affectOnlyAggressiveTrackCreatures && creature.BehaviorType != CreatureBehaviorType.Aggressive)
+            if (affectOnlyAggressiveTrackCreatures && !creature.IsLargeCreature)
                 return;
 
             if (_recentlyLaunched.Contains(other)) return;

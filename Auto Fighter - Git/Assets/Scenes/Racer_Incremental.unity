@@ -8061,12 +8061,60 @@ MonoBehaviour:
   minTurnAngle: 30
   startMaxTurnAngle: 45
   endMaxTurnAngle: 90
+  difficultyCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   startTurnChance: 0.59
   endTurnChance: 0.908
+  turnFrequencyCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 1
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 1
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   maxWiggleAngle: 11.58
   wiggleOverDistance: 0.885
   useAvoidance: 1
-  avoidanceRadius: 2.92
+  avoidanceRadius: 40
   avoidanceStrength: 0.828
   avoidanceFalloff: 1
   constrainToGlobalDirection: 1
@@ -8078,7 +8126,7 @@ MonoBehaviour:
   preferredTerrainEdgeInset: 55
   preferredStartCornerInsetFraction: 0.25
   preferStayOnPreferredTerrain: 1
-  hardClampToPreferredTerrain: 0
+  hardClampToPreferredTerrain: 1
   preferredTerrainStayBias: 0.65
   preferredTerrainEdgeSteerMeters: 80
   preferredTerrainRoadHalfPadding: 1.5
@@ -8115,8 +8163,8 @@ MonoBehaviour:
   collisionPadding: 1
   trackRadiusMultiplier: 1.6
   recentIgnoreCount: 2
-  minSelfClearanceRoadWidths: 1.4
-  minSelfClearanceExtraMeters: 1.25
+  minSelfClearanceRoadWidths: 2
+  minSelfClearanceExtraMeters: 4
   selfCollisionLookAheadSegments: 2
   enforceMinStartEndSeparation: 1
   minStartEndDistance: 120
@@ -8957,24 +9005,29 @@ MonoBehaviour:
     extraHeightOffset: 0
     extraLateralPadding: 0
     alignToGroundNormal: 1
-  spawnMode: 0
+  spawnMode: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  spacing: 3
-  maxActive: 3500
-  targetCount: 3500
-  maxAttemptsPerSlot: 37
-  minSeparationMeters: 1.5
+  spacing: 7
+  maxActive: 1200
+  lateralsPerSide: 3
+  minSeparationMeters: 3.2
+  offsetFromRoadEdge: 1
+  targetCount: 1200
+  maxAttemptsPerSlot: 4
   fillEmptyGaps: 0
-  streamSpawnDuringRun: 0
-  updateInterval: 0.38
-  maxSpawnDistanceAhead: 18.8
-  maxSpawnDistanceBehind: 6.3
-  despawnBehindDistance: 10.9
-  minDistanceFromRoad: 2
-  maxDistanceFromCenterline: 35
-  sideBias: 0.3
-  placementAttempts: 14
+  streamSpawnDuringRun: 1
+  updateInterval: 0.15
+  maxSpawnDistanceAhead: 330
+  maxSpawnDistanceBehind: 100
+  despawnBehindDistance: 220
+  maxSpawnsPerUpdate: 20
+  preloadAheadMeters: 180
+  preloadSpawnsPerFrame: 28
+  minDistanceFromRoad: 1
+  maxDistanceFromCenterline: 70
+  sideBias: 0.92
+  placementAttempts: 4
   autoGroundUsingBounds: 1
   extraGroundPadding: 0
   maxSnapDownDistance: 2.5
@@ -9008,40 +9061,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a616aa6ca49671643913a5b0b1b3fa94, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetTerrain: {fileID: 2014939780}
-  additionalTerrains: []
-  autoDiscoverTerrains: 1
-  cloneTerrainDataAtRuntime: 0
-  restoreOriginalOnDisable: 1
-  fillEntireTerrainBeforeCut: 0
-  baselineDensity: 64
-  stillPaintRingsAfterFill: 0
-  detailLayerIndex: 0
-  bandStepMeters: 0.66
-  bandRings: 14
-  maxBandRingsDuringLoad: 14
-  ringSpacingMeters: 0.94
-  ringJitter: 0.523
-  paintChunkMeters: 36
-  clearRoadUsingPhysics: 1
-  roadMask:
-    serializedVersion: 2
-    m_Bits: 24576
-  roadClearRayStartHeight: 5
-  roadClearRayDown: 10
-  roadClearExtraMeters: 0.5
   roadClearPaddingMeters: 2.5
-  roadFeatherMeters: 0.2
-  paintOutwardMeters: 4
-  grassDensity: 32
-  sampleStepMeters: 0.6
-  paintAsCoroutine: 1
-  yieldEverySamples: 80
-  minBandStepDuringLoad: 2.5
+  maskResolution: 1024
+  metersPerTexel: 0.5
   debugLogBounds: 1
-  debugStampAtCarOnce: 0
-  debugStampSizeCells: 18
-  debugStampDensity: 16
 --- !u!114 &796779783
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9059,12 +9082,12 @@ MonoBehaviour:
   autoDiscoverTerrains: 0
   roadWorldY: 0
   carveBelowRoadMeters: 0.35
-  extraHalfWidthMeters: 1.19
+  extraHalfWidthMeters: 1.8
   blendDistanceMeters: 22
   seamGuardBandMeters: 1.64
   seamGuardBelowRoadMeters: 0.12
-  noiseAmplitudeMeters: 4
-  noiseWorldScale: 0.1
+  noiseAmplitudeMeters: 16
+  noiseWorldScale: 0.05
   noiseOctaves: 1
   noisePersistence: 0.15
   hillBias: 0.6

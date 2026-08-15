@@ -65,6 +65,44 @@ public class TrackSpawnerQueue : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool logQueueEvents = true;
 
+    public void ApplyConfig(TrialConfig.SpawnQueueSettings s)
+    {
+        if (s == null || !s.overrideSpawnQueue) return;
+
+        enableQueue = s.enableQueue;
+        takeoverAutonomousSpawning = s.takeoverAutonomousSpawning;
+        playbackMode = s.playbackMode;
+        loop = s.loop;
+        startDelay = s.startDelay;
+        intervalSeconds = s.intervalSeconds;
+        intervalJitter = s.intervalJitter;
+        scaleJitterByProgress = s.scaleJitterByProgress;
+        intervalJitterAtFullProgress = s.intervalJitterAtFullProgress;
+        failedSpawnRetryDelay = s.failedSpawnRetryDelay;
+        waveStaggerSeconds = s.waveStaggerSeconds;
+        minNormalizedProgress = s.minNormalizedProgress;
+    }
+
+    public TrialConfig.SpawnQueueSettings CaptureConfig()
+    {
+        return new TrialConfig.SpawnQueueSettings
+        {
+            overrideSpawnQueue = true,
+            enableQueue = enableQueue,
+            takeoverAutonomousSpawning = takeoverAutonomousSpawning,
+            playbackMode = playbackMode,
+            loop = loop,
+            startDelay = startDelay,
+            intervalSeconds = intervalSeconds,
+            intervalJitter = intervalJitter,
+            scaleJitterByProgress = scaleJitterByProgress,
+            intervalJitterAtFullProgress = intervalJitterAtFullProgress,
+            failedSpawnRetryDelay = failedSpawnRetryDelay,
+            waveStaggerSeconds = waveStaggerSeconds,
+            minNormalizedProgress = minNormalizedProgress,
+        };
+    }
+
     private readonly HashSet<ITrackSpawnQueueSource> _registered = new();
     private readonly List<ITrackSpawnQueueSource> _pending = new();
     private readonly Dictionary<ITrackSpawnQueueSource, Entry> _entryBySource = new();

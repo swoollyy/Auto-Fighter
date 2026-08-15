@@ -152,6 +152,8 @@ public static class CrashSeverityCalculator
             return CrashObstacleKind.RollingLog;
         if (t.GetComponentInParent<ThrownObstacle>() != null)
             return CrashObstacleKind.ThrownObstacle;
+        if (t.GetComponentInParent<GorillaThrownProp>() != null)
+            return CrashObstacleKind.ThrownObstacle;
 
         var npc = t.GetComponentInParent<NPCTrafficCar>();
         if (npc != null)
@@ -160,7 +162,7 @@ public static class CrashSeverityCalculator
         var creature = t.GetComponentInParent<TrackCreature>();
         if (creature != null)
         {
-            return creature.BehaviorType == CreatureBehaviorType.Aggressive
+            return creature.IsLargeCreature
                 ? CrashObstacleKind.TrackCreatureAggressive
                 : CrashObstacleKind.TrackCreaturePassive;
         }

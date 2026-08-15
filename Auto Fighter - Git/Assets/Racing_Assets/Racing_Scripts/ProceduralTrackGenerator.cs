@@ -71,11 +71,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [SerializeField] private float minTurnAngle = 5f;
     [SerializeField] private float startMaxTurnAngle = 10f;
     [SerializeField] private float endMaxTurnAngle = 40f;
+    [SerializeField] private AnimationCurve difficultyCurve = AnimationCurve.Linear(0, 0, 1, 1);
 
     [Header("Turn Frequency")]
     [Tooltip("Chance of turning each segment. Lerps from Start → End over track progress.")]
     [Range(0f, 1f)][SerializeField] private float startTurnChance = 0.35f;
     [Range(0f, 1f)][SerializeField] private float endTurnChance = 0.85f;
+    [SerializeField] private AnimationCurve turnFrequencyCurve = AnimationCurve.Linear(0, 0, 1, 1);
 
     [Header("Small Wiggles")]
     [Tooltip("Maximum small wiggle angle added every segment.")]
@@ -107,8 +109,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
         NorthEast = 4
     }
 
-    [Header("Preferred Terrain (minimize multi-tile tracks)")]
-    [Tooltip("Main terrain the track should start on and try to stay on. Falls back to TerrainAroundFlatRoad / activeTerrain.")]
+    [Header("Preferred Terrain (stay on the active tile)")]
+    [Tooltip("Main terrain the track should start on and stay on. If empty, uses the single active terrain.")]
     [SerializeField] private Terrain preferredTerrain;
 
     [Tooltip("Start generation at an inset corner of the preferred terrain, facing inward.")]
@@ -227,11 +229,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("DEPRECATED for hard collision — hard checks always skip only the previous connected segment. Kept for serialization.")]
     [SerializeField] private int recentIgnoreCount = 0;
 
-    [Tooltip("Minimum centerline separation as a multiple of roadWidth (1.0 = edges touching, 1.35 = small gap).")]
-    [SerializeField, Min(1f)] private float minSelfClearanceRoadWidths = 1.4f;
+    [Tooltip("Minimum centerline separation for parallel stretches, as a multiple of roadWidth. 1.0 = edges touching, 2.0 = one road-width of dirt between them.")]
+    [SerializeField, Min(1f)] private float minSelfClearanceRoadWidths = 2.0f;
 
-    [Tooltip("Extra meters added on top of minSelfClearanceRoadWidths * roadWidth.")]
-    [SerializeField, Min(0f)] private float minSelfClearanceExtraMeters = 1.25f;
+    [Tooltip("Extra meters added on top of minSelfClearanceRoadWidths * roadWidth for parallel / nearby stretches.")]
+    [SerializeField, Min(0f)] private float minSelfClearanceExtraMeters = 4f;
 
     [Tooltip("How many extra straight segments to simulate ahead when validating a yaw (catches fold-ins early).")]
     [SerializeField, Range(0, 4)] private int selfCollisionLookAheadSegments = 2;
@@ -779,38 +781,67 @@ public class ProceduralTrackGenerator : MonoBehaviour
         _globalForwardRef = transform.forward;
 
         ApplyPreferredTerrainStartPlacement();
-        _lastCommittedYaw = 0f;
-        UpdateFlowGoalFromStart();
-        BuildGuideWaypoints();
-        _guideWaypointIndex = 0;
-        _currentTurnDirectionSign = Random.value < 0.5f ? -1f : 1f;
-        _arcYawRate = Random.Range(7f, 14f) * _currentTurnDirectionSign;
-        Vector3 startFwd = _currentRotation * Vector3.forward;
-        _recentFlowHeadingXZ = new Vector2(startFwd.x, startFwd.z);
-        if (_recentFlowHeadingXZ.sqrMagnitude > 1e-6f)
-            _recentFlowHeadingXZ.Normalize();
-        else
-            _recentFlowHeadingXZ = Vector2.up;
 
         float effLength = Mathf.Max(0.001f, segmentLength);
+        bool requireTerrain = ShouldRequirePreferredTerrain();
 
-        // Stuck relax rises with retries so fat self-clearance doesn't force failure loops.
-        _stuckRelaxLevel = 0;
-        if (LastGenerationAttempts >= 3) _stuckRelaxLevel = 1;
-        if (LastGenerationAttempts >= 6) _stuckRelaxLevel = 2;
-        if (LastGenerationAttempts >= 12) _stuckRelaxLevel = 3;
-
-        if (!TryBuildTrackFromSpline(effLength))
+        for (int i = 0; i < segmentCount && !_abortedGeneration; i++)
         {
-            _abortedGeneration = true;
-            if (string.IsNullOrEmpty(_lastBuildFailReason))
-                _lastBuildFailReason = "spline path rejected";
-            return false;
+            float tNorm = (segmentCount <= 1) ? 0f : (float)i / (segmentCount - 1);
+
+            float difficultyT = difficultyCurve != null ? difficultyCurve.Evaluate(tNorm) : tNorm;
+            float maxTurnAngle = Mathf.Lerp(startMaxTurnAngle, endMaxTurnAngle, difficultyT);
+            maxTurnAngle = Mathf.Max(minTurnAngle, maxTurnAngle);
+
+            float frequencyT = turnFrequencyCurve != null ? turnFrequencyCurve.Evaluate(tNorm) : tNorm;
+            float turnChance = Mathf.Lerp(startTurnChance, endTurnChance, frequencyT);
+
+            float preferredYaw = ComputeTurnYawSimple(i, tNorm, maxTurnAngle, turnChance);
+
+            if (constrainToGlobalDirection)
+                preferredYaw = ApplyGlobalDirectionBias(preferredYaw, maxTurnAngle);
+
+            if (requireTerrain)
+                preferredYaw = ApplyPreferredTerrainStayBias(preferredYaw, maxTurnAngle);
+
+            float chosenYaw = preferredYaw;
+
+            if (preventSelfIntersections || enforceMinStartEndSeparation || requireTerrain)
+            {
+                if (!TryFindCollisionFreeYaw(preferredYaw, maxTurnAngle, effLength, out chosenYaw))
+                {
+                    _lastBuildFailReason = requireTerrain
+                        ? "no valid segment yaw (terrain, intersection, or start proximity)"
+                        : "no valid segment yaw (intersection or start proximity)";
+                    _abortedGeneration = true;
+                    break;
+                }
+            }
+
+            CommitSegment(chosenYaw, effLength);
         }
 
-        if (generateRoadMesh)
+        if (!_abortedGeneration && preventSelfIntersections && !PassesSelfClearancePathCheck())
+        {
+            _lastBuildFailReason = "path packed too close to itself";
+            _abortedGeneration = true;
+        }
+
+        if (!_abortedGeneration && requireTerrain && !PassesPreferredTerrainPathCheck())
+        {
+            _lastBuildFailReason = "left preferred terrain";
+            _abortedGeneration = true;
+        }
+
+        if (!_abortedGeneration && !PassesStartEndSeparationCheck(effLength))
+        {
+            _lastBuildFailReason = "finish too close to start";
+            _abortedGeneration = true;
+        }
+
+        if (!_abortedGeneration && generateRoadMesh)
             BuildRoadMeshFromPath();
-        else
+        else if (!generateRoadMesh)
         {
             if (_meshFilter != null) _meshFilter.sharedMesh = null;
             if (_meshCollider != null) _meshCollider.sharedMesh = null;
@@ -885,7 +916,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
         LimitMaxTurnPerSegment(spaced, segLength);
         ApplyContinuousHeadingWiggle(spaced, segLength);
 
-        if (preferStayOnPreferredTerrain && _stuckRelaxLevel < 3 && !PolylineStaysOnPreferredTerrain(spaced))
+        if (ShouldRequirePreferredTerrain() && !PolylineStaysOnPreferredTerrain(spaced))
         {
             failReason = "spline left preferred terrain";
             return false;
@@ -2321,7 +2352,24 @@ public class ProceduralTrackGenerator : MonoBehaviour
     // ================================================================
     private float ComputeTurnYawSimple(int index, float tNorm, float maxTurnAngle, float turnChance)
     {
-        return BuildTurnIntentYaw(index, tNorm, maxTurnAngle, turnChance);
+        float wiggleScale = Mathf.Lerp(1f, 1f + wiggleOverDistance, tNorm);
+        float noiseT = _noiseOffset + index * 0.15f;
+        float noise = Mathf.PerlinNoise(noiseT, 0.1234f) * 2f - 1f;
+        float wiggle = noise * maxWiggleAngle * wiggleScale;
+
+        float avoidanceBias = ComputeAvoidanceYawBias(maxTurnAngle);
+
+        float yaw = wiggle + avoidanceBias;
+
+        if (Random.value < turnChance)
+        {
+            float sign = Random.value < 0.5f ? -1f : 1f;
+            float bigTurn = Random.Range(minTurnAngle, maxTurnAngle);
+            yaw += sign * bigTurn;
+            _currentTurnDirectionSign = sign;
+        }
+
+        return Mathf.Clamp(yaw, -maxTurnAngle, maxTurnAngle);
     }
 
     // ================================================================
@@ -2419,19 +2467,30 @@ public class ProceduralTrackGenerator : MonoBehaviour
     // ================================================================
     private bool TryFindCollisionFreeYaw(float preferredYawDeg, float maxTurnAngle, float segLength, out float resultYaw)
     {
+        bool requireTerrain = ShouldRequirePreferredTerrain();
         preferredYawDeg = Mathf.Clamp(preferredYawDeg, -maxTurnAngle, maxTurnAngle);
 
-        bool mustStay = preferStayOnPreferredTerrain; // hard stay whenever prefer-stay is enabled
+        if (IsYawValid(preferredYawDeg, segLength, requireTerrain))
+        {
+            resultYaw = preferredYawDeg;
+            return true;
+        }
 
-        // Always search stay-on-tile yaws first.
-        if (preferStayOnPreferredTerrain &&
-            TryFindYaw(preferredYawDeg, maxTurnAngle, segLength, requirePreferredTerrain: true, out resultYaw))
+        int samples = Mathf.Max(1, yawSearchSamples);
+        if (requireTerrain)
+            samples = Mathf.Max(samples, 36);
+
+        if (TrySearchYawBand(preferredYawDeg, maxTurnAngle, segLength, requireTerrain, samples, out resultYaw))
             return true;
 
-        // Leaving the preferred terrain is only allowed when prefer-stay is off.
-        if (!mustStay)
+        // Near a tile edge the intended turn may be too small to stay on the terrain.
+        // Allow a sharper bounce rather than leaving the active tile.
+        if (requireTerrain)
         {
-            if (TryFindYaw(preferredYawDeg, maxTurnAngle, segLength, requirePreferredTerrain: false, out resultYaw))
+            float bounceTurn = Mathf.Max(maxTurnAngle, 95f);
+            if (TrySearchYawBand(preferredYawDeg, bounceTurn, segLength, requireTerrain, 48, out resultYaw))
+                return true;
+            if (TrySearchYawBand(0f, 150f, segLength, requireTerrain, 60, out resultYaw))
                 return true;
         }
 
@@ -2441,6 +2500,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private bool TryFindYaw(float preferredYawDeg, float maxTurnAngle, float segLength, bool requirePreferredTerrain, out float resultYaw)
     {
+        preferredYawDeg = Mathf.Clamp(preferredYawDeg, -maxTurnAngle, maxTurnAngle);
         if (IsYawValid(preferredYawDeg, segLength, requirePreferredTerrain))
         {
             resultYaw = preferredYawDeg;
@@ -2450,6 +2510,21 @@ public class ProceduralTrackGenerator : MonoBehaviour
         int samples = Mathf.Max(1, yawSearchSamples);
         if (preferStayOnPreferredTerrain)
             samples = Mathf.Max(samples, 36);
+
+        return TrySearchYawBand(preferredYawDeg, maxTurnAngle, segLength, requirePreferredTerrain, samples, out resultYaw);
+    }
+
+    private bool TrySearchYawBand(
+        float preferredYawDeg,
+        float maxTurnAngle,
+        float segLength,
+        bool requirePreferredTerrain,
+        int samples,
+        out float resultYaw)
+    {
+        resultYaw = preferredYawDeg;
+        samples = Mathf.Max(1, samples);
+        maxTurnAngle = Mathf.Max(1f, maxTurnAngle);
         float step = maxTurnAngle / samples;
 
         for (int i = 1; i <= samples; i++)
@@ -2471,16 +2546,14 @@ public class ProceduralTrackGenerator : MonoBehaviour
             }
         }
 
-        resultYaw = preferredYawDeg;
         return false;
     }
 
     private bool IsYawValid(float yawDeg, float segLength, bool requirePreferredTerrain = false)
     {
-        // Advanced single-terrain steering handles heading via center-seeking scores.
-        bool ignoreHeadingCap = preferStayOnPreferredTerrain;
-
-        if (!ignoreHeadingCap && constrainToGlobalDirection && maxHeadingDeviation < 179f)
+        // The tile itself is the bound when we must stay on one terrain.
+        // A global heading cap would otherwise force the road off the far edge.
+        if (!requirePreferredTerrain && constrainToGlobalDirection && maxHeadingDeviation < 179f)
         {
             Quaternion newRot = _currentRotation * Quaternion.Euler(0f, yawDeg, 0f);
             Vector3 newForward = newRot * Vector3.forward;
@@ -2506,44 +2579,43 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (SegmentCollidesWithExistingTrack(a, b, skipConnectedTail: true))
                 return false;
 
-            // Reject tight parallel / anti-parallel switchbacks (the paperclip look).
-            if (_stuckRelaxLevel < 2 && SegmentIsParallelSwitchback(a, b))
-                return false;
-
-            // Look-ahead hard rejects boxed long tracks into impossible tips. Soft scoring
-            // (ScoreForwardClearance) still prefers open headings without aborting.
-            int lookAhead = 0;
-            if (lookAhead > 0)
+            int lookAhead = selfCollisionLookAheadSegments;
+            if (lookAhead > 0 && segLength > 0.01f)
             {
-                Vector2 laStart = b;
-                Vector2 laDir = (b - a);
-                if (laDir.sqrMagnitude > 1e-8f)
+                Vector2 dir = b - a;
+                float lenSq = dir.sqrMagnitude;
+                if (lenSq > 1e-8f)
                 {
-                    laDir.Normalize();
-                    for (int step = 0; step < lookAhead; step++)
+                    dir /= Mathf.Sqrt(lenSq);
+                    Vector2 p = b;
+                    for (int k = 0; k < lookAhead; k++)
                     {
-                        Vector2 laEnd = laStart + laDir * segLength;
-                        if (SegmentCollidesWithExistingTrack(laStart, laEnd, skipConnectedTail: false))
+                        Vector2 q = p + dir * segLength;
+                        if (SegmentCollidesWithExistingTrack(p, q, skipConnectedTail: true))
                             return false;
-                        if (step > 0)
-                        {
-                            float minClear = GetHardSelfClearanceMeters();
-                            float dCand = Mathf.Sqrt(SegmentSegmentDistanceSq(a, b, laStart, laEnd));
-                            if (dCand + 1e-4f < minClear)
-                                return false;
-                        }
-
-                        if (requirePreferredTerrain && !SegmentStaysOnPreferredTerrain(laStart, laEnd))
-                            return false;
-
-                        laStart = laEnd;
+                        p = q;
                     }
                 }
             }
         }
 
-        // Start-region anti-cut is soft-scored only. Hard-rejecting it packed the tile into
-        // impossible corridors (1000+ failed attempts).
+        // Late path must stay outside a start exclusion bubble so the finish can't curl back for a grass cut.
+        if (enforceMinStartEndSeparation && minStartEndDistance > 0.01f && segmentCount > 1)
+        {
+            float builtNorm = (float)_segments2D.Count / (segmentCount - 1);
+            if (builtNorm >= startSeparationEnforceAfterNormalized)
+            {
+                Vector2 startXZ = new Vector2(_trackStartPosition.x, _trackStartPosition.z);
+                float minSepSq = minStartEndDistance * minStartEndDistance;
+                if ((a - startXZ).sqrMagnitude < minSepSq
+                    || (b - startXZ).sqrMagnitude < minSepSq
+                    || PointSegmentDistanceSq(startXZ, a, b) < minSepSq)
+                {
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
@@ -2588,27 +2660,56 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private float GetHardSelfClearanceMeters()
     {
-        // Keep a visible gap between parallel / nearby stretches (not just non-overlap).
-        // Stuck rescue may still loosen this so generation can't hard-dead-end.
-        float comfort = roadWidth * Mathf.Clamp(minSelfClearanceRoadWidths, 1.15f, 1.6f);
-        if (_stuckRelaxLevel >= 2)
-            return roadWidth * 1.02f;
-        if (_stuckRelaxLevel >= 1)
-            return roadWidth * 1.15f;
-        return Mathf.Max(comfort, roadWidth + 1.5f);
+        return GetParallelSelfClearanceMeters();
     }
 
     private float GetMinSelfClearanceMeters()
     {
-        // Used by soft scoring / legacy callers — keep a comfortable gap preference.
-        float fromWidths = roadWidth * Mathf.Max(1f, minSelfClearanceRoadWidths);
-        float legacyCapsule = roadWidth * 0.5f * Mathf.Max(1f, trackRadiusMultiplier) * 2f + collisionPadding;
-        return Mathf.Max(fromWidths + minSelfClearanceExtraMeters, legacyCapsule, roadWidth + 0.5f);
+        return GetParallelSelfClearanceMeters();
+    }
+
+    /// <summary>
+    /// Centerline gap required when two stretches run alongside each other.
+    /// 2.0 * roadWidth + extra ≈ one full road-width of dirt between asphalt edges.
+    /// </summary>
+    private float GetParallelSelfClearanceMeters()
+    {
+        float fromWidths = roadWidth * Mathf.Max(1.15f, minSelfClearanceRoadWidths);
+        return Mathf.Max(fromWidths + minSelfClearanceExtraMeters, roadWidth + 6f);
+    }
+
+    /// <summary>
+    /// Corners may sit closer; parallel / anti-parallel stretches need a real off-road strip.
+    /// </summary>
+    private float GetRequiredClearanceMeters(Vector2 dirA, Vector2 dirB)
+    {
+        if (dirA.sqrMagnitude < 1e-8f || dirB.sqrMagnitude < 1e-8f)
+            return GetParallelSelfClearanceMeters();
+
+        dirA.Normalize();
+        dirB.Normalize();
+        float absDot = Mathf.Abs(Vector2.Dot(dirA, dirB));
+        float parallelT = Mathf.SmoothStep(0.3f, 0.82f, absDot);
+        float cornerNeed = roadWidth * 1.08f;
+        return Mathf.Lerp(cornerNeed, GetParallelSelfClearanceMeters(), parallelT);
+    }
+
+    /// <summary>
+    /// How many recent same-heading segments still count as "this road continuing",
+    /// not a second nearby stretch. Must be past the parallel-gap distance along the path.
+    /// </summary>
+    private int GetSameChainSkipCount()
+    {
+        float spacing = Mathf.Max(1f, segmentLength);
+        int skip = Mathf.CeilToInt(GetParallelSelfClearanceMeters() / spacing) + 1;
+        return Mathf.Clamp(skip, 3, 8);
     }
 
     /// <summary>
     /// Returns true if segment AB is too close to / intersects existing track.
-    /// When skipConnectedTail, ignores only the immediately previous segment (shared vertex).
+    /// When skipConnectedTail, ignores the immediately previous segment (shared vertex).
+    /// Recent same-direction segments are the current road, not a packed neighbor.
+    /// Anti-parallel folds are always tested so U-turns can't run 1m beside themselves.
     /// </summary>
     private bool SegmentCollidesWithExistingTrack(Vector2 a, Vector2 b, bool skipConnectedTail)
     {
@@ -2619,8 +2720,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
         if (skipConnectedTail && count >= 1)
             lastIndexExclusive = count - 1;
 
-        float minClear = GetHardSelfClearanceMeters();
-        float minClearSq = minClear * minClear;
+        Vector2 adir = b - a;
+        int sameChainSkip = GetSameChainSkipCount();
 
         for (int i = 0; i < lastIndexExclusive; i++)
         {
@@ -2629,15 +2730,31 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (SegmentsProperlyIntersect(a, b, s.a, s.b))
                 return true;
 
+            Vector2 bdir = s.b - s.a;
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, adir, bdir, sameChainSkip))
+                continue;
+
+            float need = GetRequiredClearanceMeters(adir, bdir);
             float distSq = SegmentSegmentDistanceSq(a, b, s.a, s.b);
-            if (distSq < minClearSq)
+            if (distSq < need * need)
                 return true;
         }
 
         return false;
     }
 
-    /// <summary>Final audit: true if no proper self-intersections (distance packing is OK).</summary>
+    private static bool IsSameChainContinuation(int age, Vector2 dirA, Vector2 dirB, int sameChainSkip)
+    {
+        if (age <= 0 || age >= sameChainSkip)
+            return false;
+        if (dirA.sqrMagnitude < 1e-8f || dirB.sqrMagnitude < 1e-8f)
+            return false;
+        // Only skip forward continuation. Negative dot = folding back / paperclip.
+        return Vector2.Dot(dirA.normalized, dirB.normalized) > 0.2f;
+    }
+
+    /// <summary>Final audit: true if no proper self-intersections.</summary>
     private bool PassesSelfIntersectionPathCheck()
     {
         int count = _segments2D.Count;
@@ -2656,8 +2773,30 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private bool PassesSelfClearancePathCheck()
     {
-        // Kept for compatibility; generation uses intersection-only final audit.
-        return PassesSelfIntersectionPathCheck();
+        if (!PassesSelfIntersectionPathCheck())
+            return false;
+
+        int count = _segments2D.Count;
+        int sameChainSkip = GetSameChainSkipCount();
+        for (int i = 0; i < count; i++)
+        {
+            Segment2D a = _segments2D[i];
+            Vector2 adir = a.b - a.a;
+            for (int j = 0; j < i - 1; j++)
+            {
+                Segment2D b = _segments2D[j];
+                int age = i - j;
+                Vector2 bdir = b.b - b.a;
+                if (IsSameChainContinuation(age, adir, bdir, sameChainSkip))
+                    continue;
+
+                float need = GetRequiredClearanceMeters(adir, bdir);
+                if (SegmentSegmentDistanceSq(a.a, a.b, b.a, b.b) < need * need)
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private bool IsYawOnPreferredTerrain(float yawDeg, float segLength)
@@ -2689,8 +2828,24 @@ public class ProceduralTrackGenerator : MonoBehaviour
             (_preferredMinZ + _preferredMaxZ) * 0.5f);
         _hasPreferredTerrainBounds = true;
 
-        if (!startAtPreferredTerrainCorner)
+        Vector2 startXZ = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        float keepInset = Mathf.Max(roadWidth * 2f, preferredTerrainEdgeInset * 0.35f, 30f);
+        bool startAlreadyInside = PointInRect(
+            startXZ,
+            _preferredMinX + keepInset,
+            _preferredMaxX - keepInset,
+            _preferredMinZ + keepInset,
+            _preferredMaxZ - keepInset);
+
+        // Keep the restored start pose when it already sits on the active tile.
+        if (startAlreadyInside)
             return;
+
+        if (!startAtPreferredTerrainCorner)
+        {
+            SnapStartOntoPreferredTerrain(keepInset);
+            return;
+        }
 
         // Start ~25% in from the corner toward center so generation isn't hugging the tile edge.
         float frac = Mathf.Clamp(preferredStartCornerInsetFraction, 0.05f, 0.45f);
@@ -2736,10 +2891,65 @@ public class ProceduralTrackGenerator : MonoBehaviour
         _hasInitializedHeading = false;
     }
 
+    private void SnapStartOntoPreferredTerrain(float inset)
+    {
+        float minX = _preferredMinX + inset;
+        float maxX = _preferredMaxX - inset;
+        float minZ = _preferredMinZ + inset;
+        float maxZ = _preferredMaxZ - inset;
+        if (maxX <= minX || maxZ <= minZ)
+        {
+            minX = _preferredMinX;
+            maxX = _preferredMaxX;
+            minZ = _preferredMinZ;
+            maxZ = _preferredMaxZ;
+        }
+
+        float x = Mathf.Clamp(_currentEndPosition.x, minX, maxX);
+        float z = Mathf.Clamp(_currentEndPosition.z, minZ, maxZ);
+        Vector3 start = new Vector3(x, _currentEndPosition.y, z);
+        Vector3 toCenter = new Vector3(_preferredCenterXZ.x - x, 0f, _preferredCenterXZ.y - z);
+        if (toCenter.sqrMagnitude < 1e-4f)
+            toCenter = _currentRotation * Vector3.forward;
+
+        _currentEndPosition = start;
+        _trackStartPosition = start;
+        _currentRotation = Quaternion.LookRotation(toCenter.normalized, Vector3.up);
+        _globalForwardRef = _currentRotation * Vector3.forward;
+        _hasInitializedHeading = false;
+    }
+
+    private bool ShouldRequirePreferredTerrain()
+    {
+        if (!preferStayOnPreferredTerrain || !_hasPreferredTerrainBounds)
+            return false;
+        if (hardClampToPreferredTerrain)
+            return true;
+        return _stuckRelaxLevel < 3;
+    }
+
     private Terrain ResolvePreferredTerrain()
     {
-        if (preferredTerrain != null && preferredTerrain.terrainData != null)
+        if (preferredTerrain != null && preferredTerrain.terrainData != null
+            && preferredTerrain.gameObject.activeInHierarchy)
             return preferredTerrain;
+
+        // If only one terrain is enabled, that is the track's tile.
+        Terrain[] active = Terrain.activeTerrains;
+        if (active != null)
+        {
+            Terrain only = null;
+            int n = 0;
+            for (int i = 0; i < active.Length; i++)
+            {
+                Terrain t = active[i];
+                if (t == null || t.terrainData == null) continue;
+                only = t;
+                n++;
+            }
+            if (n == 1)
+                return only;
+        }
 
         Terrain[] found = FindObjectsOfType<Terrain>();
         // Prefer the tile that contains world origin (main terrain center in this project).

@@ -269,4 +269,74 @@ public class CreatureTypeConfig
     [Tooltip("Delay before despawning after hitting the player (allows death FX to play).")]
     [Min(0f)] public float despawnDelay = 0.3f;
 
+    [Header("Thrower (Gorilla) - Hill Spawn")]
+    [Tooltip("Spawn off-road on hills instead of on the road. Used by the gorilla.")]
+    public bool spawnOffroadOnHills = false;
+
+    [Tooltip("Terrain must be at least this many meters above the road for a valid hill spawn.")]
+    [Min(0f)] public float minHillHeightAboveRoad = 5f;
+
+    [Tooltip("Minimum planar distance from the road edge when spawning on hills.")]
+    [Min(0f)] public float hillSpawnMinDistanceFromRoad = 10f;
+
+    [Tooltip("Maximum planar distance from the track centerline when spawning on hills.")]
+    [Min(1f)] public float hillSpawnMaxDistanceFromCenterline = 55f;
+
+    [Tooltip("How many placement attempts before giving up on a spawn slot.")]
+    [Min(1)] public int hillSpawnAttempts = 8;
+
+    [Header("Thrower (Gorilla) - Idle")]
+    [Min(0f)] public float throwerIdleMoveSpeed = 1.8f;
+    [Min(0.05f)] public float throwerIdleDirectionChangeInterval = 2.4f;
+    [Min(0f)] public float throwerIdleWanderRadius = 8f;
+
+    [Header("Thrower (Gorilla) - Seek & Grab")]
+    [Tooltip("While idle, look for environment props within this radius.")]
+    [Min(0f)] public float throwerObstacleSeekRadius = 16f;
+
+    [Tooltip("When this close to a sought prop, start the run-in.")]
+    [Min(0.1f)] public float throwerApproachTriggerRange = 16f;
+
+    [Tooltip("How close the gorilla must get to grab and lift the prop.")]
+    [Min(0.1f)] public float throwerGrabRange = 1.8f;
+
+    [Min(0f)] public float throwerRunToObstacleSpeed = 7f;
+
+    [Tooltip("Layers treated as throwable environment obstacles.")]
+    public LayerMask throwerObstacleLayers = 1 << 20;
+
+    [Header("Thrower (Gorilla) - Lift")]
+    [Min(0f)] public float throwerLiftDuration = 0.55f;
+    [Min(0f)] public float throwerLiftHeight = 2.2f;
+
+    [Header("Thrower (Gorilla) - Throw")]
+    [Tooltip("Only commit to a grab/throw if the player is within this range.")]
+    [Min(0f)] public float throwerMaxPlayerRange = 80f;
+
+    [Tooltip("Horizontal throw speed (m/s). Flight time is distance / this.")]
+    [Min(0.1f)] public float throwerThrowSpeed = 22f;
+
+    [Tooltip("Extra upward loft added to the ballistic throw.")]
+    [Min(0f)] public float throwerThrowArcHeight = 4f;
+
+    [Tooltip("0 = aim at the player's current position, 1 = full track-lead prediction.")]
+    [Range(0f, 1f)] public float throwerPredictionStrength = 0.85f;
+
+    [Tooltip("Spin applied to the thrown prop.")]
+    [Min(0f)] public float throwerThrowSpin = 8f;
+
+    [Min(0f)] public float throwerThrowCooldown = 3.5f;
+
+    [Tooltip("Seconds the thrown prop stays as physics debris before despawn (0 = leave it).")]
+    [Min(0f)] public float throwerThrownPropLifetime = 12f;
+
+    [Tooltip("Layer assigned to a prop after it is thrown so it can hit the car. Default 7 = Wall.")]
+    public int throwerThrownPropLayer = 7;
+
+    [Header("Thrower (Gorilla) - Thrown Impact")]
+    [Range(0f, 1f)] public float throwerThrownCrashSeverity = 0.55f;
+    [Min(0f)] public float throwerThrownKnockbackForce = 10f;
+    [Min(0f)] public float throwerThrownLift = 2.5f;
+    [Min(0f)] public float throwerThrownTorque = 5f;
+
 }

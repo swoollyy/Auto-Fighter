@@ -8,7 +8,7 @@ using Random = UnityEngine.Random;
 /// <summary>
 /// Spawns creatures along the procedural track.
 /// Mirrors TrackObstacleSpawner and NPCTrafficCarSpawner patterns for consistency.
-/// Supports passive (bug), scared (critter), and aggressive (beast) creature behaviors.
+/// Supports passive (bug), scared (critter), aggressive (beast), and thrower (gorilla) creature behaviors.
 /// </summary>
 public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
 {
@@ -162,12 +162,15 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
     private float _totalLength;
 
     private readonly Dictionary<int, GameObject> _creaturesBySlot = new();
+    private readonly Dictionary<int, GameObject> _hillCreaturesBySlot = new();
     private readonly List<int> _toRemove = new();
     private int _maxSlotIndex;
     private float _updateTimer;
     private int _lastClosestIdx;
     private readonly TrackSpawnQueuePendingState _queueState = new();
     private readonly TrackSpawnQueueLastSpawn _queueLastSpawn = new();
+    private const float HillCreatureSpacing = 70f;
+    private const int MaxHillCreatures = 5;
 
     #region Unity Lifecycle
 
@@ -183,6 +186,7 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (_updateTimer >= updateInterval)
             {
                 _updateTimer = 0f;
+                StreamHillCreatures(GetPlayerDistance());
                 _queueState.TrySubmit(this);
             }
             return;
@@ -195,6 +199,7 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (_updateTimer < updateInterval) return;
 
         _updateTimer = 0f;
+        StreamHillCreatures(GetPlayerDistance());
         StreamCreatures();
     }
 
@@ -224,7 +229,10 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
         SetupSlots();
 
         if (preSpawnOnInitialize)
+        {
             PreSpawnInitialWindow();
+            PreSpawnHillCreatures();
+        }
 
         _updateTimer = 0f;
     }
@@ -404,6 +412,28 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
             _creaturesBySlot.Remove(slot);
         }
+
+        _toRemove.Clear();
+        foreach (var kvp in _hillCreaturesBySlot)
+        {
+            float dist = kvp.Key * HillCreatureSpacing;
+            if (kvp.Value != null)
+            {
+                var tc = kvp.Value.GetComponent<TrackCreature>();
+                if (tc != null && tc.IsInitialized)
+                    dist = tc.DistanceAlongTrack;
+            }
+
+            if (dist < playerDist - despawnBehindDistance || kvp.Value == null)
+                _toRemove.Add(kvp.Key);
+        }
+
+        foreach (int slot in _toRemove)
+        {
+            if (_hillCreaturesBySlot.TryGetValue(slot, out var obj) && obj != null)
+                Destroy(obj);
+            _hillCreaturesBySlot.Remove(slot);
+        }
     }
 
     private void PreSpawnInitialWindow()
@@ -436,6 +466,118 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
             Debug.Log($"[TrackCreatureSpawner] PreSpawn: {_creaturesBySlot.Count} creatures up to {preSpawnEnd:F0}m.");
     }
 
+    private void PreSpawnHillCreatures()
+    {
+        if (_totalLength <= 0f)
+            return;
+
+        float preSpawnEnd = Mathf.Clamp(Mathf.Max(initialPreSpawnDistance, 180f), 0f, _totalLength);
+        StreamHillCreaturesInRange(0f, preSpawnEnd);
+    }
+
+    private void StreamHillCreatures(float playerDist)
+    {
+        if (_totalLength <= 0f)
+            return;
+
+        float startDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float endDist = Mathf.Clamp(playerDist + Mathf.Max(maxSpawnDistanceAhead, 160f), 0f, _totalLength);
+        StreamHillCreaturesInRange(startDist, endDist);
+    }
+
+    private void StreamHillCreaturesInRange(float startDist, float endDist)
+    {
+        CreatureTypeConfig hillType = FindHillCreatureType();
+        if (hillType == null)
+            return;
+
+        GameObject prefab = ResolveHillPrefab(hillType);
+        if (prefab == null)
+        {
+            Debug.LogWarning("[TrackCreatureSpawner] Gorilla/hill creature has no prefab (and no fallback).");
+            return;
+        }
+
+        int startSlot = Mathf.Max(0, Mathf.FloorToInt(startDist / HillCreatureSpacing));
+        int endSlot = Mathf.Max(startSlot, Mathf.FloorToInt(endDist / HillCreatureSpacing));
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+        {
+            if (_hillCreaturesBySlot.ContainsKey(slot))
+                continue;
+            if (_hillCreaturesBySlot.Count >= MaxHillCreatures)
+                break;
+
+            float dist = Mathf.Clamp(slot * HillCreatureSpacing, 0f, _totalLength);
+            TrySpawnHillCreatureAtDistance(slot, dist, hillType, prefab);
+        }
+    }
+
+    private CreatureTypeConfig FindHillCreatureType()
+    {
+        if (creatureTypes == null)
+            return null;
+
+        for (int i = 0; i < creatureTypes.Count; i++)
+        {
+            var t = creatureTypes[i];
+            if (t == null || t.baseWeight <= 0f)
+                continue;
+            if (t.behaviorType == CreatureBehaviorType.Thrower || t.spawnOffroadOnHills)
+                return t;
+        }
+
+        return null;
+    }
+
+    private GameObject ResolveHillPrefab(CreatureTypeConfig hillType)
+    {
+        if (hillType != null && hillType.prefab != null)
+            return hillType.prefab;
+
+        if (creatureTypes == null)
+            return null;
+
+        for (int i = 0; i < creatureTypes.Count; i++)
+        {
+            var t = creatureTypes[i];
+            if (t != null && t.prefab != null)
+                return t.prefab;
+        }
+
+        return null;
+    }
+
+    private void TrySpawnHillCreatureAtDistance(int slot, float sampleDist, CreatureTypeConfig chosenType, GameObject prefab)
+    {
+        SampleAlongPath(sampleDist, out Vector3 pos, out Vector3 forward);
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = Vector3.forward;
+
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 0.0001f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        if (!TryPickHillSpawnPosition(pos, flatForward, chosenType, out Vector3 spawnPos))
+        {
+            Debug.LogWarning($"[TrackCreatureSpawner] Gorilla hill spawn failed at {sampleDist:F0}m.");
+            return;
+        }
+
+        float randomYaw = Random.Range(0f, 360f);
+        Transform parent = creatureParent != null ? creatureParent : transform;
+        GameObject creature = Instantiate(prefab, spawnPos, Quaternion.Euler(0f, randomYaw, 0f), parent);
+        creature.name = string.IsNullOrEmpty(chosenType.id) ? "Gorilla" : chosenType.id;
+
+        InitializeCreatureBehavior(creature, chosenType, sampleDist);
+        _hillCreaturesBySlot[slot] = creature;
+        _queueLastSpawn.Record(creature.transform.position, creature.name);
+
+        Debug.Log($"[TrackCreatureSpawner] Spawned {chosenType.id} on hill at {sampleDist:F0}m  y={spawnPos.y:F1}");
+    }
+
     #endregion
 
     #region Spawning
@@ -460,47 +602,204 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
             flatForward = Vector3.forward;
         flatForward.Normalize();
 
-        // Lateral offset
-        float halfWidth = trackGenerator.RoadWidth * 0.5f;
-        float usable = (halfWidth * lateralFraction) - edgeInnerMargin - chosenType.extraLateralPadding;
-        if (usable <= 0f)
-            usable = halfWidth * 0.3f;
-
-        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
-        float lateralOffset = Random.Range(-usable, usable);
-        pos += right * lateralOffset;
-
-        // Raycast to ground
-        Vector3 origin = pos + Vector3.up * raycastStartHeight;
-        float maxRay = raycastStartHeight + raycastDownDistance;
-
-        if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+        Vector3 spawnPos;
+        if (chosenType.behaviorType == CreatureBehaviorType.Thrower || chosenType.spawnOffroadOnHills)
         {
-            if (verboseDebug)
-                Debug.LogWarning($"[TrackCreatureSpawner] No ground found at slot {slot}");
-            return;
+            if (!TryPickHillSpawnPosition(pos, flatForward, chosenType, out spawnPos))
+            {
+                if (verboseDebug)
+                    Debug.LogWarning($"[TrackCreatureSpawner] No valid hill spawn for {chosenType.id} at slot {slot}");
+                return;
+            }
+        }
+        else
+        {
+            // Lateral offset on the road
+            float halfWidth = trackGenerator.RoadWidth * 0.5f;
+            float usable = (halfWidth * lateralFraction) - edgeInnerMargin - chosenType.extraLateralPadding;
+            if (usable <= 0f)
+                usable = halfWidth * 0.3f;
+
+            Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+            float lateralOffset = Random.Range(-usable, usable);
+            pos += right * lateralOffset;
+
+            Vector3 origin = pos + Vector3.up * raycastStartHeight;
+            float maxRay = raycastStartHeight + raycastDownDistance;
+
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
+            {
+                if (verboseDebug)
+                    Debug.LogWarning($"[TrackCreatureSpawner] No ground found at slot {slot}");
+                return;
+            }
+
+            spawnPos = hit.point + Vector3.up * (creatureHeightOffset + chosenType.extraHeightOffset);
         }
 
-        Vector3 spawnPos = hit.point + Vector3.up * (creatureHeightOffset + chosenType.extraHeightOffset);
-
-        // Random rotation for variety
         float randomYaw = Random.Range(0f, 360f);
         Quaternion rot = Quaternion.Euler(0f, randomYaw, 0f);
 
         Transform parent = creatureParent != null ? creatureParent : transform;
 
-        // Spawn the creature
         GameObject creature = Instantiate(chosenType.prefab, spawnPos, rot, parent);
 
         _queueLastSpawn.Record(creature.transform.position, chosenType.prefab.name);
 
-        // Initialize the creature behavior
         InitializeCreatureBehavior(creature, chosenType, sampleDist);
 
         _creaturesBySlot[slot] = creature;
 
         if (verboseDebug)
             Debug.Log($"[TrackCreatureSpawner] Spawned {chosenType.id} ({chosenType.behaviorType}) at slot {slot}, dist={sampleDist:F0}m");
+    }
+
+    private bool TryPickHillSpawnPosition(
+        Vector3 pathPos,
+        Vector3 flatForward,
+        CreatureTypeConfig type,
+        out Vector3 spawnPos)
+    {
+        spawnPos = pathPos;
+
+        float halfWidth = trackGenerator != null ? trackGenerator.RoadWidth * 0.5f : 2f;
+        float minFromRoad = Mathf.Max(0.5f, type.hillSpawnMinDistanceFromRoad);
+        float rMin = halfWidth + minFromRoad;
+        float configuredMax = Mathf.Max(rMin + 1f, type.hillSpawnMaxDistanceFromCenterline);
+        // Hills finish blending ~22m past the road cut. A tight max radius stays on that ramp
+        // and never reaches minHillHeight, so expand the search far enough to hit real peaks.
+        float rMax = Mathf.Max(configuredMax, 55f);
+        rMax = Mathf.Min(70f, rMax);
+
+        float roadY = pathPos.y;
+        float minHill = Mathf.Max(0f, type.minHillHeightAboveRoad);
+        LayerMask roadMask = roadLayer.value != 0 ? roadLayer : (LayerMask)((1 << 13) | (1 << 14));
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        bool found = false;
+        float bestHeight = float.NegativeInfinity;
+        Vector3 bestGround = pathPos;
+        bool foundAny = false;
+        float bestAnyHeight = float.NegativeInfinity;
+        Vector3 bestAnyGround = pathPos;
+
+        float[] alongOffsets = { -10f, -4f, 0f, 4f, 10f };
+        float step = Mathf.Max(3.5f, (rMax - rMin) / 8f);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (float r = rMin; r <= rMax + 0.01f; r += step)
+            {
+                for (int a = 0; a < alongOffsets.Length; a++)
+                {
+                    Vector3 xz = pathPos + right * (side * r) + flatForward * alongOffsets[a];
+                    if (TryEvaluateHillCandidate(xz, roadY, minHill, roadMask, ref bestHeight, ref bestGround, ref foundAny, ref bestAnyHeight, ref bestAnyGround))
+                        found = true;
+                }
+            }
+        }
+
+        int extraTries = Mathf.Max(0, type.hillSpawnAttempts);
+        for (int i = 0; i < extraTries; i++)
+        {
+            float side = Random.value < 0.5f ? -1f : 1f;
+            float r = Random.Range(rMin, rMax);
+            float along = Random.Range(-12f, 12f);
+            Vector3 xz = pathPos + right * (side * r) + flatForward * along;
+            if (TryEvaluateHillCandidate(xz, roadY, minHill, roadMask, ref bestHeight, ref bestGround, ref foundAny, ref bestAnyHeight, ref bestAnyGround))
+                found = true;
+        }
+
+        if (!found && foundAny && bestAnyHeight >= Mathf.Min(2f, minHill))
+        {
+            found = true;
+            bestGround = bestAnyGround;
+        }
+
+        if (!found)
+        {
+            Debug.LogWarning($"[TrackCreatureSpawner] No hill >= {minHill:0.0}m for {type.id} (search {rMin:0.0}-{rMax:0.0}m).");
+            return false;
+        }
+
+        spawnPos = bestGround + Vector3.up * (creatureHeightOffset + type.extraHeightOffset);
+        return true;
+    }
+
+    private bool TryEvaluateHillCandidate(
+        Vector3 xz,
+        float roadY,
+        float minHill,
+        LayerMask roadMask,
+        ref float bestHeight,
+        ref Vector3 bestGround,
+        ref bool foundAny,
+        ref float bestAnyHeight,
+        ref Vector3 bestAnyGround)
+    {
+        if (Physics.CheckSphere(xz + Vector3.up * 0.5f, 1.1f, roadMask, QueryTriggerInteraction.Ignore))
+            return false;
+        if (!TrySampleTerrainHeight(xz.x, xz.z, out float terrainY))
+            return false;
+
+        Vector3 groundPoint = new Vector3(xz.x, terrainY, xz.z);
+        float originY = Mathf.Max(terrainY + 24f, xz.y + 20f);
+        Vector3 rayOrigin = new Vector3(xz.x, originY, xz.z);
+        float maxRay = originY - terrainY + 40f;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, maxRay, ~0, QueryTriggerInteraction.Ignore))
+        {
+            if (((1 << hit.collider.gameObject.layer) & roadMask) != 0)
+                return false;
+            if (Mathf.Abs(hit.point.y - terrainY) <= 2.5f)
+                groundPoint = hit.point;
+        }
+
+        float heightAboveRoad = groundPoint.y - roadY;
+        if (heightAboveRoad > bestAnyHeight)
+        {
+            bestAnyHeight = heightAboveRoad;
+            bestAnyGround = groundPoint;
+            foundAny = true;
+        }
+
+        if (heightAboveRoad < minHill)
+            return false;
+
+        if (groundPoint.y <= bestHeight)
+            return true;
+
+        bestHeight = groundPoint.y;
+        bestGround = groundPoint;
+        return true;
+    }
+
+    private static bool TrySampleTerrainHeight(float wx, float wz, out float heightY)
+    {
+        heightY = float.NegativeInfinity;
+        Terrain[] terrains = Terrain.activeTerrains;
+        if (terrains == null || terrains.Length == 0)
+            return false;
+
+        bool found = false;
+        for (int i = 0; i < terrains.Length; i++)
+        {
+            Terrain t = terrains[i];
+            if (t == null || t.terrainData == null)
+                continue;
+
+            Vector3 tp = t.transform.position;
+            Vector3 sz = t.terrainData.size;
+            if (wx < tp.x || wx > tp.x + sz.x || wz < tp.z || wz > tp.z + sz.z)
+                continue;
+
+            float y = t.SampleHeight(new Vector3(wx, 0f, wz)) + tp.y;
+            if (!found || y > heightY)
+            {
+                heightY = y;
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     private void InitializeCreatureBehavior(GameObject creature, CreatureTypeConfig config, float distanceAlongTrack)
@@ -685,6 +984,13 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
                 Destroy(kvp.Value);
         }
         _creaturesBySlot.Clear();
+
+        foreach (var kvp in _hillCreaturesBySlot)
+        {
+            if (kvp.Value != null)
+                Destroy(kvp.Value);
+        }
+        _hillCreaturesBySlot.Clear();
     }
 
     #endregion
@@ -711,6 +1017,16 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (slotToRemove.HasValue)
         {
             _creaturesBySlot.Remove(slotToRemove.Value);
+            return;
+        }
+
+        foreach (var kvp in _hillCreaturesBySlot)
+        {
+            if (kvp.Value == creature)
+            {
+                _hillCreaturesBySlot.Remove(kvp.Key);
+                return;
+            }
         }
     }
 

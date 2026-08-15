@@ -24,13 +24,13 @@ MonoBehaviour:
     segmentCount: 140
     autoDetectSegmentLength: 1
     segmentLength: 15
-    minTurnAngle: 15
-    startMaxTurnAngle: 60
-    endMaxTurnAngle: 120
-    startTurnChance: 0.8
-    endTurnChance: 1
-    maxWiggleAngle: 25
-    wiggleOverDistance: 1
+    minTurnAngle: 0
+    startMaxTurnAngle: 45
+    endMaxTurnAngle: 80
+    startTurnChance: 0.1
+    endTurnChance: 0.6
+    maxWiggleAngle: 16
+    wiggleOverDistance: 0.607
     useAvoidance: 1
     avoidanceRadius: 16.9
     avoidanceStrength: 0.9
@@ -149,7 +149,7 @@ MonoBehaviour:
     - id: Bug
       prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
       behaviorType: 0
-      baseWeight: 1.1
+      baseWeight: 0.6
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.2
       stopAtNormalizedDist: 1
@@ -237,6 +237,35 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.5
       despawnAfterHit: 1
       despawnDelay: 0.3
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
     - id: Critter
       prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
       behaviorType: 1
@@ -328,6 +357,35 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.5
       despawnAfterHit: 1
       despawnDelay: 0.3
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
     - id: Beast
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
@@ -385,7 +443,7 @@ MonoBehaviour:
       aggressiveIdleBugLateralRadius: 13.3
       aggressiveIdleBugForwardRadius: 12.9
       aggressiveHuntScaredCreatures: 1
-      aggressiveHuntRadius: 7.79
+      aggressiveHuntRadius: 10
       aggressiveHuntSpeedMultiplier: 2
       aggressiveHuntNpcTraffic: 1
       aggressiveNpcTrafficDetectRadius: 6
@@ -394,8 +452,8 @@ MonoBehaviour:
       aggressiveMaxOffTrackDistance: 50
       aggressiveCrushMassThreshold: 24.54
       useBullRush: 1
-      bullRushChargeUpDuration: 0.91
-      bullRushSpeedMultiplier: 1.98
+      bullRushChargeUpDuration: 0.6
+      bullRushSpeedMultiplier: 2.03
       bullRushDuration: 5.84
       bullRushMaxSteerRate: 0.8
       bullRushOvershootDistance: 21.1
@@ -419,10 +477,159 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.14
       despawnAfterHit: 0
       despawnDelay: 0.7
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
+    - id: Gorilla
+      prefab: {fileID: 3874382558013832276, guid: c4e8a91b7d3f42a0b6e1f8c2d5a09734, type: 3}
+      behaviorType: 3
+      baseWeight: 2
+      startAtNormalizedDist: 0
+      fullWeightNormalizedDist: 0.05
+      stopAtNormalizedDist: 1
+      extraHeightOffset: 0
+      extraLateralPadding: 0
+      coinReward: 6
+      idleUseWalkPauseRhythm: 1
+      idleWalkSegmentMinSec: 1.4
+      idleWalkSegmentMaxSec: 3.2
+      idlePauseMinSec: 0.4
+      idlePauseMaxSec: 1.4
+      idleMinTravelDistance: 3.5
+      passiveWanderSpeed: 0
+      passiveDirectionChangeInterval: 0
+      passiveFleeFromScared: 0
+      passiveScaredDetectRadius: 14
+      passiveScaredLoseDistance: 28
+      passiveFleeBaseSpeed: 3.5
+      passiveFleeMaxSpeed: 10
+      passiveFleeBuildupRate: 3
+      passiveFleeMaxOffRoadDistance: 3
+      passiveUseBugIdleMovement: 0
+      passiveIdleBugMoveSpeed: 1.15
+      passiveIdleBugDirectionChangeInterval: 1.05
+      passiveIdleBugLateralRadius: 2.2
+      passiveIdleBugForwardRadius: 1.3
+      scaredDetectionRadius: 0
+      scaredBaseFleeSpeed: 0
+      scaredMaxFleeSpeed: 0
+      scaredSpeedBuildupRate: 0
+      scaredMaxOffRoadDistance: 0
+      scaredIdleUseBugMovement: 0
+      scaredIdleBugMoveSpeed: 1.25
+      scaredIdleBugDirectionChangeInterval: 1
+      scaredIdleBugLateralRadius: 2
+      scaredIdleBugForwardRadius: 1.25
+      scaredFleeFromAggressive: 0
+      scaredAggressiveDetectRadius: 18
+      scaredAggressiveLoseFearDistance: 30
+      scaredAggressiveFleeSpeedMultiplier: 1.25
+      scaredFleeFromNpcTraffic: 0
+      scaredNpcTrafficDetectRadius: 20
+      scaredHuntPassiveCreatures: 0
+      scaredHuntPassiveRadius: 12
+      scaredPassiveHuntLoseDistance: 20
+      scaredBugHuntSpeed: 5
+      scaredBugHuntSpeedMultiplier: 1.15
+      aggressiveIdleUseBugMovement: 0
+      aggressiveIdleBugMoveSpeed: 0
+      aggressiveIdleBugDirectionChangeInterval: 0.05
+      aggressiveIdleBugLateralRadius: 0
+      aggressiveIdleBugForwardRadius: 0
+      aggressiveHuntScaredCreatures: 0
+      aggressiveHuntRadius: 0
+      aggressiveHuntSpeedMultiplier: 0
+      aggressiveHuntNpcTraffic: 0
+      aggressiveNpcTrafficDetectRadius: 30
+      aggressiveDetectionRadius: 0
+      aggressiveChargeSpeed: 0
+      aggressiveMaxOffTrackDistance: 50
+      aggressiveCrushMassThreshold: 80
+      useBullRush: 0
+      bullRushChargeUpDuration: 0.8
+      bullRushSpeedMultiplier: 1.5
+      bullRushDuration: 1.5
+      bullRushMaxSteerRate: 15
+      bullRushOvershootDistance: 8
+      bullRushCooldown: 1
+      bullRushObstaclePushEnabled: 0
+      bullRushObstaclePushVelocityChange: 7
+      bullRushObstaclePushSpeedScale: 0.22
+      bullRushObstaclePushMaxVelocityChange: 28
+      bullRushObstacleMaxPushMass: 900
+      bullRushShowTelegraph: 0
+      bullRushLineWidth: 0.2
+      bullRushLineLength: 25
+      bullRushLineYOffset: 0.1
+      bullRushLineColorCharging: {r: 1, g: 0.3, b: 0, a: 0.7}
+      bullRushLineColorRushing: {r: 1, g: 0, b: 0, a: 0.9}
+      bullRushLineFadeOutTime: 0.2
+      impactCrashSeverity: 0.55
+      impactKnockbackForce: 10
+      impactLift: 2.5
+      impactTorque: 5
+      bullRushImpactMultiplier: 1
+      despawnAfterHit: 0
+      despawnDelay: 0.3
+      spawnOffroadOnHills: 1
+      minHillHeightAboveRoad: 8
+      hillSpawnMinDistanceFromRoad: 18
+      hillSpawnMaxDistanceFromCenterline: 40
+      hillSpawnAttempts: 24
+      throwerIdleMoveSpeed: 3.2
+      throwerIdleDirectionChangeInterval: 5
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 32
+      throwerApproachTriggerRange: 20
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 5
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.7
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 120
+      throwerThrowSpeed: 14
+      throwerThrowArcHeight: 2
+      throwerPredictionStrength: 1
+      throwerThrowSpin: 4
+      throwerThrowCooldown: 5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.8
+      throwerThrownKnockbackForce: 25
+      throwerThrownLift: 3
+      throwerThrownTorque: 5
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     creatureSpacing: 35
-    maxActiveCreatures: 8
+    maxActiveCreatures: 20
     minSpawnDistanceAhead: 5
     maxSpawnDistanceAhead: 70
     initialPreSpawnDistance: 70
@@ -557,27 +764,27 @@ MonoBehaviour:
     lateralJitter: 2.63
     forwardJitter: 0
     destroyReward: 12
-    accuracyByProgress: {x: 0.3, y: 0.9}
-    maxMissLateral: 6
-    maxMissForward: 5
-    explosionChanceByProgress: {x: 0.1, y: 0.3}
+    accuracyByProgress: {x: 0.5, y: 0.9}
+    maxMissLateral: 4
+    maxMissForward: 3
+    explosionChanceByProgress: {x: 0.2, y: 0.5}
     debugDraw: 1
   rollingLogs:
     overrideRollingLogs: 1
     rollingLogPrefab: {fileID: 5195131032568342935, guid: 2ebf02c668ee05645b310d7b75a039b3, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    enableSpawning: 0
+    enableSpawning: 1
     minSpawnIntervalSeconds: 10
-    maxSpawnIntervalSeconds: 20
-    maxActiveLogs: 2
+    maxSpawnIntervalSeconds: 15
+    maxActiveLogs: 3
     allowBothTravelDirections: 1
     towardPlayerDirectionWeight: 0.9
-    towardPlayerSpawnMinAhead: 20
-    towardPlayerSpawnMaxAhead: 35
-    withPlayerSpawnMinBehind: 15
-    withPlayerSpawnMaxBehind: 35
-    speedRange: {x: 4, y: 9}
+    towardPlayerSpawnMinAhead: 40
+    towardPlayerSpawnMaxAhead: 70
+    withPlayerSpawnMinBehind: 25
+    withPlayerSpawnMaxBehind: 40
+    speedRange: {x: 6, y: 14}
     lateralFraction: 0.8
     edgeInnerMargin: 0.1
     roadLayer:
@@ -595,16 +802,16 @@ MonoBehaviour:
     minLeadDistance: 5
     maxLeadDistance: 29
     maxCurvatureHorizonScale: 0.65
-    crossSpeedRange: {x: 6, y: 10}
+    crossSpeedRange: {x: 6, y: 14}
     crossSpeedMulByProgress: {x: 1, y: 1}
     obstacleScaleRange: {x: 2, y: 2.7}
     sizeMulByProgress: {x: 1, y: 1}
-    yawErrorDegreesByProgress: {x: 22, y: 4}
-    missAmountByProgress: {x: 0.6, y: 0.05}
+    yawErrorDegreesByProgress: {x: 12, y: 4}
+    missAmountByProgress: {x: 0.4, y: 0.05}
     spawnCooldownRandomRange: {x: 2.37, y: 5.84}
     initialSpawnDelayRange: {x: 4, y: 7}
     useActualPathLengthForPrediction: 1
-    offRoadPadding: 7
+    offRoadPadding: 10
     avoidRampRadius: 4
     rampCheckLayers:
       serializedVersion: 2
@@ -613,7 +820,7 @@ MonoBehaviour:
     highCurvatureThreshold: 0.35
     enableYawWeightedMisses: 1
     yawSpeedImpactMax: 0.4
-    yawDistanceImpactMax: 19.4
+    yawDistanceImpactMax: 10
     yawAngleAmplifyMax: 0.6
     debugGizmos: 1
     verboseLog: 0
@@ -653,8 +860,8 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     enableSpawning: 1
-    minSpawnIntervalSeconds: 7
-    maxSpawnIntervalSeconds: 14
+    minSpawnIntervalSeconds: 4
+    maxSpawnIntervalSeconds: 10
     maxActive: 10
     minSpawnDistanceAhead: 40
     maxSpawnDistanceAhead: 120
@@ -669,3 +876,17 @@ MonoBehaviour:
     raycastStartHeight: 6
     raycastDownDistance: 24
     minNormalizedProgressToSpawn: 0.02
+  spawnQueue:
+    overrideSpawnQueue: 1
+    enableQueue: 1
+    takeoverAutonomousSpawning: 1
+    playbackMode: 0
+    loop: 1
+    startDelay: 3
+    intervalSeconds: 3
+    intervalJitter: {x: 0.5, y: 1}
+    scaleJitterByProgress: 1
+    intervalJitterAtFullProgress: {x: 1, y: 2}
+    failedSpawnRetryDelay: 0.35
+    waveStaggerSeconds: 0.15
+    minNormalizedProgress: 0

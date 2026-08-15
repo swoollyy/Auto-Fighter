@@ -47,7 +47,7 @@ Material:
     - _DrawOrder: 0
     - _emissionIntensity: 1.22
     m_Colors:
-    - _emissionColor: {r: 0.11691353, g: 2.9056604, b: 0, a: 1}
+    - _emissionColor: {r: 0.46765408, g: 11.622641, b: 0, a: 1}
   m_BuildTextureStacks: []
 --- !u!114 &5508079344999301762
 MonoBehaviour:
