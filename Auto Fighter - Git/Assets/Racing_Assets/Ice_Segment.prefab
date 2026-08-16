@@ -103,9 +103,9 @@ MonoBehaviour:
   accelerationMultiplier: 0.13
   turnSpeedMultiplier: 1.2
   dragMultiplier: 0.27
-  iceDynamicFrictionMultiplier: 0.7
-  iceStaticFrictionMultiplier: 0.7
-  iceHandlingMultiplier: 0.8
+  iceDynamicFrictionMultiplier: 0.3
+  iceStaticFrictionMultiplier: 0.2
+  iceHandlingMultiplier: 0.3
   autoAccelerate: 1
   boostAcceleration: 15
   boostMaxSpeed: 0

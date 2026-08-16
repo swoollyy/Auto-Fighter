@@ -347,6 +347,15 @@ public class ProceduralTrackGenerator : MonoBehaviour
         trackRadiusMultiplier = s.trackRadiusMultiplier;
         recentIgnoreCount = s.recentIgnoreCount;
 
+        softTrackClearanceMeters = s.softTrackClearanceMeters;
+        softProximityPenalty = s.softProximityPenalty;
+        foldAvoidLookAheadMeters = s.foldAvoidLookAheadMeters;
+        foldInAimPenalty = s.foldInAimPenalty;
+        parallelRejectRoadWidths = s.parallelRejectRoadWidths;
+        minSelfClearanceRoadWidths = s.minSelfClearanceRoadWidths;
+        minSelfClearanceExtraMeters = s.minSelfClearanceExtraMeters;
+        selfCollisionLookAheadSegments = s.selfCollisionLookAheadSegments;
+
         enforceMinStartEndSeparation = s.enforceMinStartEndSeparation;
         minStartEndDistance = s.minStartEndDistance;
         minStartEndDistancePathFraction = s.minStartEndDistancePathFraction;
@@ -355,7 +364,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
         startRegionKeepOutAfterNormalized = s.startRegionKeepOutAfterNormalized;
         startKeepOutEarlyPathFraction = s.startKeepOutEarlyPathFraction;
     }
-
+    
     public TrialConfig.TrackSettings CaptureConfig()
     {
         return new TrialConfig.TrackSettings
@@ -392,6 +401,14 @@ public class ProceduralTrackGenerator : MonoBehaviour
             collisionPadding = collisionPadding,
             trackRadiusMultiplier = trackRadiusMultiplier,
             recentIgnoreCount = recentIgnoreCount,
+            softTrackClearanceMeters = softTrackClearanceMeters,
+            softProximityPenalty = softProximityPenalty,
+            foldAvoidLookAheadMeters = foldAvoidLookAheadMeters,
+            foldInAimPenalty = foldInAimPenalty,
+            parallelRejectRoadWidths = parallelRejectRoadWidths,
+            minSelfClearanceRoadWidths = minSelfClearanceRoadWidths,
+            minSelfClearanceExtraMeters = minSelfClearanceExtraMeters,
+            selfCollisionLookAheadSegments = selfCollisionLookAheadSegments,
             enforceMinStartEndSeparation = enforceMinStartEndSeparation,
             minStartEndDistance = minStartEndDistance,
             minStartEndDistancePathFraction = minStartEndDistancePathFraction,

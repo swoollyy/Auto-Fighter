@@ -227,7 +227,7 @@ MonoBehaviour:
   obstacleTags:
   - Creature
   aggressiveCrushMassThreshold: 9
-  obstacleLaunchCorpseMass: 85
+  obstacleLaunchCorpseMass: 25
   obstacleLaunchBaseVelocityChange: 9
   obstacleLaunchSpeedScale: 0.45
   obstacleLaunchMaxVelocityChange: 34

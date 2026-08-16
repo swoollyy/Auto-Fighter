@@ -236,19 +236,19 @@ MonoBehaviour:
   heightOffset: 0.02
   sideMode: 1
   faceDownTrackBias: 0.15
-  engageRange: 50
-  disengageRange: 85
-  minAimDot: 0.2
-  aimAccuracy: 0.85
+  engageRange: 40
+  disengageRange: 50
+  minAimDot: 0.218
+  aimAccuracy: 1
   aimErrorMaxDegrees: 14
   leadBleedOff: 0.85
   muzzle: {fileID: 1870283948420639043}
   projectilePrefab: {fileID: 7703661668217724740, guid: 0397b252c98d0004e97f209520adeaad, type: 3}
-  projectileSpeed: 12
+  projectileSpeed: 13
   fireCooldown: 7
   extraLeadTime: 0
-  maxShotRange: 70
-  projectileLifetime: 3.5
+  maxShotRange: 40
+  projectileLifetime: 6
   firstShotDelayRange: {x: 0.15, y: 0.6}
   hitHpDamage: 12
   hitFuelPercent: 0.25

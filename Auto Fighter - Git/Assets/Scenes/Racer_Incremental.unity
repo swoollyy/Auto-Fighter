@@ -8114,7 +8114,7 @@ MonoBehaviour:
   maxWiggleAngle: 11.58
   wiggleOverDistance: 0.885
   useAvoidance: 1
-  avoidanceRadius: 40
+  avoidanceRadius: 13.38
   avoidanceStrength: 0.828
   avoidanceFalloff: 1
   constrainToGlobalDirection: 1
@@ -8766,6 +8766,36 @@ MonoBehaviour:
     bullRushImpactMultiplier: 1.5
     despawnAfterHit: 1
     despawnDelay: 0.3
+    spawnOffroadOnHills: 0
+    minHillHeightAboveRoad: 5
+    hillSpawnMinDistanceFromRoad: 10
+    hillSpawnMaxDistanceFromCenterline: 55
+    hillSpawnAttempts: 8
+    throwerIdleMoveSpeed: 1.8
+    throwerIdleDirectionChangeInterval: 2.4
+    throwerIdleWanderRadius: 8
+    throwerObstacleSeekRadius: 16
+    throwerApproachTriggerRange: 16
+    throwerGrabRange: 1.8
+    throwerRunToObstacleSpeed: 7
+    throwerObstacleLayers:
+      serializedVersion: 2
+      m_Bits: 1048576
+    throwerLiftDuration: 0.55
+    throwerLiftHeight: 2.2
+    throwerMaxPlayerRange: 80
+    throwerThrowSpeed: 22
+    throwerThrowArcHeight: 4
+    throwerPredictionStrength: 0.85
+    throwerThrowSpin: 8
+    throwerThrowCooldown: 3.5
+    throwerThrownPropLifetime: 12
+    throwerThrownPropLayer: 7
+    throwerThrownCrashSeverity: 0.55
+    throwerThrownKnockbackForce: 10
+    throwerThrownLift: 2.5
+    throwerThrownTorque: 5
+    throwerLandingTelegraphPrefab: {fileID: 0}
   - id: Critter
     prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
     behaviorType: 1
@@ -8857,6 +8887,36 @@ MonoBehaviour:
     bullRushImpactMultiplier: 1.5
     despawnAfterHit: 1
     despawnDelay: 0.3
+    spawnOffroadOnHills: 0
+    minHillHeightAboveRoad: 5
+    hillSpawnMinDistanceFromRoad: 10
+    hillSpawnMaxDistanceFromCenterline: 55
+    hillSpawnAttempts: 8
+    throwerIdleMoveSpeed: 1.8
+    throwerIdleDirectionChangeInterval: 2.4
+    throwerIdleWanderRadius: 8
+    throwerObstacleSeekRadius: 16
+    throwerApproachTriggerRange: 16
+    throwerGrabRange: 1.8
+    throwerRunToObstacleSpeed: 7
+    throwerObstacleLayers:
+      serializedVersion: 2
+      m_Bits: 1048576
+    throwerLiftDuration: 0.55
+    throwerLiftHeight: 2.2
+    throwerMaxPlayerRange: 80
+    throwerThrowSpeed: 22
+    throwerThrowArcHeight: 4
+    throwerPredictionStrength: 0.85
+    throwerThrowSpin: 8
+    throwerThrowCooldown: 3.5
+    throwerThrownPropLifetime: 12
+    throwerThrownPropLayer: 7
+    throwerThrownCrashSeverity: 0.55
+    throwerThrownKnockbackForce: 10
+    throwerThrownLift: 2.5
+    throwerThrownTorque: 5
+    throwerLandingTelegraphPrefab: {fileID: 0}
   - id: Beast
     prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
     behaviorType: 2
@@ -8948,6 +9008,36 @@ MonoBehaviour:
     bullRushImpactMultiplier: 1.14
     despawnAfterHit: 0
     despawnDelay: 0.7
+    spawnOffroadOnHills: 0
+    minHillHeightAboveRoad: 5
+    hillSpawnMinDistanceFromRoad: 10
+    hillSpawnMaxDistanceFromCenterline: 55
+    hillSpawnAttempts: 8
+    throwerIdleMoveSpeed: 1.8
+    throwerIdleDirectionChangeInterval: 2.4
+    throwerIdleWanderRadius: 8
+    throwerObstacleSeekRadius: 16
+    throwerApproachTriggerRange: 16
+    throwerGrabRange: 1.8
+    throwerRunToObstacleSpeed: 7
+    throwerObstacleLayers:
+      serializedVersion: 2
+      m_Bits: 1048576
+    throwerLiftDuration: 0.55
+    throwerLiftHeight: 2.2
+    throwerMaxPlayerRange: 80
+    throwerThrowSpeed: 22
+    throwerThrowArcHeight: 4
+    throwerPredictionStrength: 0.85
+    throwerThrowSpin: 8
+    throwerThrowCooldown: 3.5
+    throwerThrownPropLifetime: 12
+    throwerThrownPropLayer: 7
+    throwerThrownCrashSeverity: 0.55
+    throwerThrownKnockbackForce: 10
+    throwerThrownLift: 2.5
+    throwerThrownTorque: 5
+    throwerLandingTelegraphPrefab: {fileID: 0}
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   creatureSpacing: 15
@@ -22976,8 +23066,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   surfaceType: 1
-  maxSpeedMultiplier: 0.45
-  accelerationMultiplier: 0.766
+  maxSpeedMultiplier: 0.25
+  accelerationMultiplier: 0.4
   turnSpeedMultiplier: 1.2
   dragMultiplier: 0.73
   iceDynamicFrictionMultiplier: 0.15

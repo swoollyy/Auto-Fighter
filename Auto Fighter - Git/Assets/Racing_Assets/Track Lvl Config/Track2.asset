@@ -21,21 +21,21 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 240
+    segmentCount: 190
     autoDetectSegmentLength: 1
     segmentLength: 15
-    minTurnAngle: 15
-    startMaxTurnAngle: 60
-    endMaxTurnAngle: 100
-    startTurnChance: 0.2
-    endTurnChance: 0.7
-    maxWiggleAngle: 18
-    wiggleOverDistance: 0.607
+    minTurnAngle: 5
+    startMaxTurnAngle: 15
+    endMaxTurnAngle: 70
+    startTurnChance: 0.17
+    endTurnChance: 0.5
+    maxWiggleAngle: 0
+    wiggleOverDistance: 0
     useAvoidance: 1
-    avoidanceRadius: 16.9
-    avoidanceStrength: 0.9
+    avoidanceRadius: 45
+    avoidanceStrength: 1.601
     avoidanceFalloff: 1
-    constrainToGlobalDirection: 1
+    constrainToGlobalDirection: 0
     globalAlignmentStrength: 0.085
     maxHeadingDeviation: 113.66
     useRandomSeed: 1
@@ -48,12 +48,20 @@ MonoBehaviour:
     smoothingSubdivisionsPerSegment: 6
     preventSelfIntersections: 1
     yawSearchSamples: 72
-    collisionPadding: 1
-    trackRadiusMultiplier: 1.6
+    collisionPadding: 9.08
+    trackRadiusMultiplier: 3
     recentIgnoreCount: 2
+    softTrackClearanceMeters: 120
+    softProximityPenalty: 10
+    foldAvoidLookAheadMeters: 90
+    foldInAimPenalty: 7.27
+    parallelRejectRoadWidths: 2.75
+    minSelfClearanceRoadWidths: 7
+    minSelfClearanceExtraMeters: 7
+    selfCollisionLookAheadSegments: 2
     enforceMinStartEndSeparation: 1
-    minStartEndDistance: 120
-    minStartEndDistancePathFraction: 0.28
+    minStartEndDistance: 378
+    minStartEndDistancePathFraction: 0.502
     startSeparationEnforceAfterNormalized: 0.3
     startRegionKeepOutMeters: 90
     startRegionKeepOutAfterNormalized: 0.12
@@ -82,7 +90,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Shuttle Track Obstacle
       prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
-      baseWeight: 3
+      baseWeight: 0.2
       startAtNormalizedDist: 0.05
       fullWeightNormalizedDist: 0.6
       stopAtNormalizedDist: 1
@@ -107,7 +115,7 @@ MonoBehaviour:
     - id: Track Shooter
       prefab: {fileID: 8446397723576863354, guid: 8d36c50c36a1f8b42a807941a19e8ef9, type: 3}
       baseWeight: 3
-      startAtNormalizedDist: 0.3
+      startAtNormalizedDist: 0.1
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
@@ -512,9 +520,9 @@ MonoBehaviour:
     - id: Gorilla
       prefab: {fileID: 3874382558013832276, guid: c4e8a91b7d3f42a0b6e1f8c2d5a09734, type: 3}
       behaviorType: 3
-      baseWeight: 2
-      startAtNormalizedDist: 0
-      fullWeightNormalizedDist: 0.05
+      baseWeight: 1
+      startAtNormalizedDist: 0.3
+      fullWeightNormalizedDist: 0.7
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
@@ -601,15 +609,15 @@ MonoBehaviour:
       despawnAfterHit: 0
       despawnDelay: 0.3
       spawnOffroadOnHills: 1
-      minHillHeightAboveRoad: 8
-      hillSpawnMinDistanceFromRoad: 18
-      hillSpawnMaxDistanceFromCenterline: 40
+      minHillHeightAboveRoad: 3
+      hillSpawnMinDistanceFromRoad: 15
+      hillSpawnMaxDistanceFromCenterline: 33
       hillSpawnAttempts: 24
       throwerIdleMoveSpeed: 3.2
       throwerIdleDirectionChangeInterval: 5
       throwerIdleWanderRadius: 8
-      throwerObstacleSeekRadius: 32
-      throwerApproachTriggerRange: 20
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 10
       throwerGrabRange: 1.8
       throwerRunToObstacleSpeed: 5
       throwerObstacleLayers:
@@ -617,15 +625,15 @@ MonoBehaviour:
         m_Bits: 1048576
       throwerLiftDuration: 0.7
       throwerLiftHeight: 2.2
-      throwerMaxPlayerRange: 120
-      throwerThrowSpeed: 14
-      throwerThrowArcHeight: 2
+      throwerMaxPlayerRange: 50
+      throwerThrowSpeed: 15
+      throwerThrowArcHeight: 1.2
       throwerPredictionStrength: 1
       throwerThrowSpin: 4
       throwerThrowCooldown: 5
       throwerThrownPropLifetime: 12
       throwerThrownPropLayer: 7
-      throwerThrownCrashSeverity: 0.8
+      throwerThrownCrashSeverity: 0.6
       throwerThrownKnockbackForce: 25
       throwerThrownLift: 3
       throwerThrownTorque: 5
@@ -663,7 +671,7 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    carSpacing: 10
+    carSpacing: 25
     maxActiveCars: 7
     minSpawnDistanceAhead: 25
     maxSpawnDistanceAhead: 70
@@ -674,7 +682,7 @@ MonoBehaviour:
     despawnBehindDistance: 60
     despawnCrashedAfter: 10
     distanceJitter: 0.4
-    spawnChanceByProgress: {x: 0.5, y: 0.9}
+    spawnChanceByProgress: {x: 0.2, y: 0.6}
     lateralFraction: 0.817
     edgeMargin: 0.89
     preferLanes: 1
@@ -768,17 +776,17 @@ MonoBehaviour:
     lateralJitter: 2.63
     forwardJitter: 0
     destroyReward: 12
-    accuracyByProgress: {x: 0.5, y: 0.9}
+    accuracyByProgress: {x: 0.8, y: 1}
     maxMissLateral: 4
     maxMissForward: 3
-    explosionChanceByProgress: {x: 0.2, y: 0.5}
+    explosionChanceByProgress: {x: 0.1, y: 0.4}
     debugDraw: 1
   rollingLogs:
     overrideRollingLogs: 1
     rollingLogPrefab: {fileID: 5195131032568342935, guid: 2ebf02c668ee05645b310d7b75a039b3, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    enableSpawning: 1
+    enableSpawning: 0
     minSpawnIntervalSeconds: 10
     maxSpawnIntervalSeconds: 15
     maxActiveLogs: 3
@@ -837,7 +845,7 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 12
     sectionSpacing: 210
-    maxActiveSections: 2
+    maxActiveSections: 1
     minSpawnDistanceAhead: 40
     maxSpawnDistanceAhead: 220
     initialPreSpawnDistance: 250
@@ -863,7 +871,7 @@ MonoBehaviour:
     bounceBackPrefab: {fileID: 7218115627756473360, guid: c79e89c8e2e15ee4ca4a516065c5e520, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    enableSpawning: 1
+    enableSpawning: 0
     minSpawnIntervalSeconds: 4
     maxSpawnIntervalSeconds: 10
     maxActive: 10
@@ -886,8 +894,8 @@ MonoBehaviour:
     takeoverAutonomousSpawning: 1
     playbackMode: 0
     loop: 1
-    startDelay: 3
-    intervalSeconds: 3
+    startDelay: 4
+    intervalSeconds: 4
     intervalJitter: {x: 0.5, y: 1}
     scaleJitterByProgress: 1
     intervalJitterAtFullProgress: {x: 1, y: 2}

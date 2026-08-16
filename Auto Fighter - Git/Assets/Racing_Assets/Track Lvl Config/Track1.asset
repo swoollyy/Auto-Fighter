@@ -51,10 +51,21 @@ MonoBehaviour:
     collisionPadding: 1
     trackRadiusMultiplier: 1.6
     recentIgnoreCount: 2
+    softTrackClearanceMeters: 18
+    softProximityPenalty: 2.8
+    foldAvoidLookAheadMeters: 40
+    foldInAimPenalty: 6
+    parallelRejectRoadWidths: 2.75
+    minSelfClearanceRoadWidths: 2
+    minSelfClearanceExtraMeters: 4
+    selfCollisionLookAheadSegments: 2
     enforceMinStartEndSeparation: 1
     minStartEndDistance: 120
     minStartEndDistancePathFraction: 0.28
     startSeparationEnforceAfterNormalized: 0.3
+    startRegionKeepOutMeters: 90
+    startRegionKeepOutAfterNormalized: 0.12
+    startKeepOutEarlyPathFraction: 0.22
   obstacles:
     overrideObstacles: 1
     preSpawnOnInitialize: 1
@@ -119,7 +130,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacingByProgress: {x: 20, y: 6}
+    obstacleSpacingByProgress: {x: 10, y: 6}
     maxActiveObstacles: 120
     minSpawnDistanceAhead: 80
     maxSpawnDistanceAhead: 100
@@ -242,6 +253,36 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.5
       despawnAfterHit: 1
       despawnDelay: 0.3
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Critter
       prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
       behaviorType: 1
@@ -333,6 +374,36 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.5
       despawnAfterHit: 1
       despawnDelay: 0.3
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Beast
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
@@ -424,6 +495,36 @@ MonoBehaviour:
       bullRushImpactMultiplier: 1.14
       despawnAfterHit: 0
       despawnDelay: 0.7
+      spawnOffroadOnHills: 0
+      minHillHeightAboveRoad: 5
+      hillSpawnMinDistanceFromRoad: 10
+      hillSpawnMaxDistanceFromCenterline: 55
+      hillSpawnAttempts: 8
+      throwerIdleMoveSpeed: 1.8
+      throwerIdleDirectionChangeInterval: 2.4
+      throwerIdleWanderRadius: 8
+      throwerObstacleSeekRadius: 16
+      throwerApproachTriggerRange: 16
+      throwerGrabRange: 1.8
+      throwerRunToObstacleSpeed: 7
+      throwerObstacleLayers:
+        serializedVersion: 2
+        m_Bits: 1048576
+      throwerLiftDuration: 0.55
+      throwerLiftHeight: 2.2
+      throwerMaxPlayerRange: 80
+      throwerThrowSpeed: 22
+      throwerThrowArcHeight: 4
+      throwerPredictionStrength: 0.85
+      throwerThrowSpin: 8
+      throwerThrowCooldown: 3.5
+      throwerThrownPropLifetime: 12
+      throwerThrownPropLayer: 7
+      throwerThrownCrashSeverity: 0.55
+      throwerThrownKnockbackForce: 10
+      throwerThrownLift: 2.5
+      throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Gorilla
       prefab: {fileID: 3874382558013832276, guid: c4e8a91b7d3f42a0b6e1f8c2d5a09734, type: 3}
       behaviorType: 3

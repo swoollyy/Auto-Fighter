@@ -122,6 +122,24 @@ public class TrialConfig : ScriptableObject
         public float trackRadiusMultiplier = 1.3f;
         public int recentIgnoreCount = 0;
 
+        [Header("Existing-Road Clearance")]
+        [Tooltip("Soft clearance from existing track (meters). Closer than this is heavily penalized when scoring yaws.")]
+        [Min(1f)] public float softTrackClearanceMeters = 22f;
+        [Tooltip("Penalty strength for soft clearance violations (higher = less folding into yourself).")]
+        [Min(0f)] public float softProximityPenalty = 4.5f;
+        [Tooltip("Extra soft look-ahead distance for avoiding headings that aim into existing track.")]
+        [Min(0f)] public float foldAvoidLookAheadMeters = 40f;
+        [Tooltip("How strongly to punish aiming toward nearby existing road (anti fold-in).")]
+        [Min(0f)] public float foldInAimPenalty = 6.0f;
+        [Tooltip("Hard-reject anti-parallel switchbacks closer than this many road widths (centerline).")]
+        [Min(1.5f)] public float parallelRejectRoadWidths = 2.4f;
+        [Tooltip("Minimum centerline separation for parallel stretches, as a multiple of roadWidth. 1.0 = edges touching, 2.0 = one road-width of dirt between them.")]
+        [Min(1f)] public float minSelfClearanceRoadWidths = 2.0f;
+        [Tooltip("Extra meters added on top of minSelfClearanceRoadWidths * roadWidth for parallel / nearby stretches.")]
+        [Min(0f)] public float minSelfClearanceExtraMeters = 4f;
+        [Tooltip("How many extra straight segments to simulate ahead when validating a yaw (catches fold-ins early).")]
+        [Range(0, 4)] public int selfCollisionLookAheadSegments = 2;
+
         [Header("Start / End Separation")]
         [Tooltip("Reject tracks whose finish sits too close to the start (XZ), so players can't cut offroad to the end.")]
         public bool enforceMinStartEndSeparation = true;
