@@ -131,7 +131,7 @@ public class TrialConfig : ScriptableObject
         [Min(0f)] public float foldAvoidLookAheadMeters = 40f;
         [Tooltip("How strongly to punish aiming toward nearby existing road (anti fold-in).")]
         [Min(0f)] public float foldInAimPenalty = 6.0f;
-        [Tooltip("Hard-reject anti-parallel switchbacks closer than this many road widths (centerline).")]
+        [Tooltip("Hard-reject packed parallels (same-direction cuts and reverse paperclips) closer than this many road widths.")]
         [Min(1.5f)] public float parallelRejectRoadWidths = 2.4f;
         [Tooltip("Minimum centerline separation for parallel stretches, as a multiple of roadWidth. 1.0 = edges touching, 2.0 = one road-width of dirt between them.")]
         [Min(1f)] public float minSelfClearanceRoadWidths = 2.0f;

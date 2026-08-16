@@ -113,7 +113,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("Main terrain the track should start on and stay on. If empty, uses the single active terrain.")]
     [SerializeField] private Terrain preferredTerrain;
 
-    [Tooltip("Start generation at an inset corner of the preferred terrain, facing inward.")]
+    [Tooltip("Start generation at an inset corner of the preferred terrain, facing the opposite corner.")]
     [SerializeField] private bool startAtPreferredTerrainCorner = true;
 
     [SerializeField] private TerrainCorner preferredStartCorner = TerrainCorner.Random;
@@ -182,13 +182,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("Penalty for huge yaw jumps vs previous committed turn (smoothness).")]
     [SerializeField, Min(0f)] private float yawJerkPenalty = 0.02f;
 
-    [Tooltip("Mild reward for long-range travel direction. Keep modest so curves still happen.")]
+    [Tooltip("Soft pull toward the opposite terrain corner. Not a heading cap — turns still happen, but aiming away is penalized.")]
     [SerializeField, Min(0f)] private float flowProgressWeight = 2.2f;
 
     [Tooltip("Penalty for reversing into yourself (paperclip folds). Only strong when near existing road.")]
     [SerializeField, Min(0f)] private float reverseHeadingPenalty = 4.0f;
 
-    [Tooltip("Hard-reject anti-parallel switchbacks closer than this many road widths (centerline).")]
+    [Tooltip("Hard-reject packed parallels (same-direction cuts and reverse paperclips) closer than this many road widths.")]
     [SerializeField, Min(1.5f)] private float parallelRejectRoadWidths = 2.4f;
 
 
@@ -459,6 +459,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
     private Vector3 _globalForwardRef;
     private Vector3 _globalHeadingSmoothed;
     private float _lastCommittedYaw;
+    private int _heldTurnSegmentsLeft;
+    private float _heldTurnYaw;
 
     private bool _abortedGeneration = false;
     private string _lastBuildFailReason = "";
@@ -473,6 +475,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
     private readonly List<Vector2> _guideWaypoints = new List<Vector2>(16);
     private int _guideWaypointIndex;
     private float _arcYawRate;
+    private bool _usedBoxRoute;
 
     // For noise-based wiggle
     private float _noiseOffset;
@@ -798,54 +801,38 @@ public class ProceduralTrackGenerator : MonoBehaviour
         _globalForwardRef = transform.forward;
 
         ApplyPreferredTerrainStartPlacement();
+        UpdateFlowGoalFromStart();
+        Vector3 startFwd = _currentRotation * Vector3.forward;
+        _recentFlowHeadingXZ = new Vector2(startFwd.x, startFwd.z);
+        if (_recentFlowHeadingXZ.sqrMagnitude > 1e-8f)
+            _recentFlowHeadingXZ.Normalize();
+        else
+            _recentFlowHeadingXZ = Vector2.up;
+        _lastCommittedYaw = 0f;
+        _heldTurnSegmentsLeft = 0;
+        _heldTurnYaw = 0f;
+        _usedBoxRoute = false;
 
         float effLength = Mathf.Max(0.001f, segmentLength);
         bool requireTerrain = ShouldRequirePreferredTerrain();
 
-        for (int i = 0; i < segmentCount && !_abortedGeneration; i++)
-        {
-            float tNorm = (segmentCount <= 1) ? 0f : (float)i / (segmentCount - 1);
+        bool built = _hasPreferredTerrainBounds
+            ? TryBuildBoxRouteTrack(effLength)
+            : TryBuildCruiseTrack(effLength, requireTerrain);
 
-            float difficultyT = difficultyCurve != null ? difficultyCurve.Evaluate(tNorm) : tNorm;
-            float maxTurnAngle = Mathf.Lerp(startMaxTurnAngle, endMaxTurnAngle, difficultyT);
-            maxTurnAngle = Mathf.Max(minTurnAngle, maxTurnAngle);
-
-            float frequencyT = turnFrequencyCurve != null ? turnFrequencyCurve.Evaluate(tNorm) : tNorm;
-            float turnChance = Mathf.Lerp(startTurnChance, endTurnChance, frequencyT);
-
-            float preferredYaw = ComputeTurnYawSimple(i, tNorm, maxTurnAngle, turnChance);
-
-            if (constrainToGlobalDirection)
-                preferredYaw = ApplyGlobalDirectionBias(preferredYaw, maxTurnAngle);
-
-            float turnBudget = maxTurnAngle;
-            if (requireTerrain)
-            {
-                turnBudget = GetEdgePeelTurnBudget(maxTurnAngle);
-                preferredYaw = ApplyPreferredTerrainStayBias(preferredYaw, turnBudget);
-            }
-
-            float chosenYaw = preferredYaw;
-
-            if (preventSelfIntersections || enforceMinStartEndSeparation || requireTerrain)
-            {
-                if (!TryFindCollisionFreeYaw(preferredYaw, turnBudget, effLength, out chosenYaw))
-                {
-                    _lastBuildFailReason = requireTerrain
-                        ? "no valid segment yaw (terrain, intersection, or start proximity)"
-                        : "no valid segment yaw (intersection or start proximity)";
-                    _abortedGeneration = true;
-                    break;
-                }
-            }
-
-            CommitSegment(chosenYaw, effLength);
-        }
-
-        if (!_abortedGeneration && preventSelfIntersections && !PassesSelfClearancePathCheck())
-        {
-            _lastBuildFailReason = "path packed too close to itself";
+        if (!built)
             _abortedGeneration = true;
+
+        if (!_abortedGeneration && preventSelfIntersections)
+        {
+            bool packed = _usedBoxRoute
+                ? !PassesSelfIntersectionPathCheck()
+                : !PassesSelfClearancePathCheck();
+            if (packed)
+            {
+                _lastBuildFailReason = "path packed too close to itself";
+                _abortedGeneration = true;
+            }
         }
 
         if (!_abortedGeneration && requireTerrain && !PassesPreferredTerrainPathCheck())
@@ -866,6 +853,873 @@ public class ProceduralTrackGenerator : MonoBehaviour
         {
             if (_meshFilter != null) _meshFilter.sharedMesh = null;
             if (_meshCollider != null) _meshCollider.sharedMesh = null;
+        }
+
+        return !_abortedGeneration && _pathPoints.Count > 1;
+    }
+
+    // ================================================================
+    //  CONFIG TURNS — straight until a real held turn from TrackSettings
+    // ================================================================
+    /// <summary>
+    /// Starts in a playable corner facing the opposite corner, then walks with
+    /// yaw 0 on straights and multi-segment held turns using turn chance / max
+    /// turn angle from the active track config. No per-segment wiggle.
+    /// </summary>
+    private bool TryBuildBoxRouteTrack(float segLength)
+    {
+        if (!TryGetBoxPlayableRect(out float minX, out float maxX, out float minZ, out float maxZ))
+        {
+            _lastBuildFailReason = "no playable terrain rect";
+            return false;
+        }
+
+        TerrainCorner corner = preferredStartCorner;
+        if (corner == TerrainCorner.Random)
+            corner = (TerrainCorner)Random.Range(1, 5);
+
+        Vector2 start = CornerOnRect(corner, minX, maxX, minZ, maxZ);
+        Vector2 opposite = CornerOnRect(OppositeTerrainCorner(corner), minX, maxX, minZ, maxZ);
+        Vector2 toOpp = opposite - start;
+        if (toOpp.sqrMagnitude < 1e-4f)
+        {
+            _lastBuildFailReason = "opposite corner collapsed";
+            return false;
+        }
+
+        Vector3 start3 = new Vector3(start.x, transform.position.y, start.y);
+        Vector3 toOpp3 = new Vector3(toOpp.x, 0f, toOpp.y);
+        _currentEndPosition = start3;
+        _trackStartPosition = start3;
+        _currentRotation = Quaternion.LookRotation(toOpp3.normalized, Vector3.up);
+        _globalForwardRef = _currentRotation * Vector3.forward;
+        _hasInitializedHeading = false;
+        _flowGoalXZ = opposite;
+
+        List<Vector2> spaced = BuildConfigTurnPath(
+            start, opposite, minX, maxX, minZ, maxZ, segLength);
+        if (spaced == null || spaced.Count < 8)
+        {
+            _lastBuildFailReason = "config turn path too short";
+            return false;
+        }
+
+        if (ShouldRequirePreferredTerrain() && !PolylineStaysOnPreferredTerrain(spaced))
+        {
+            _lastBuildFailReason = "turn path left preferred terrain";
+            return false;
+        }
+
+        if (preventSelfIntersections && !PolylineClearsItself(spaced, true))
+        {
+            _lastBuildFailReason = "turn path self-overlap";
+            return false;
+        }
+
+        if (enforceMinStartEndSeparation)
+        {
+            float minSep = GetEffectiveMinStartEndDistance(segLength);
+            if ((spaced[spaced.Count - 1] - spaced[0]).sqrMagnitude < minSep * minSep)
+            {
+                _lastBuildFailReason = "finish too close to start";
+                return false;
+            }
+        }
+
+        float y = start3.y;
+        Vector2 d0 = spaced[1] - spaced[0];
+        if (d0.sqrMagnitude > 1e-8f)
+            _currentRotation = Quaternion.LookRotation(new Vector3(d0.x, 0f, d0.y).normalized, Vector3.up);
+        _currentEndPosition = new Vector3(spaced[0].x, y, spaced[0].y);
+        _trackStartPosition = _currentEndPosition;
+
+        for (int i = 0; i < spaced.Count - 1; i++)
+            CommitSegmentTo(spaced[i], spaced[i + 1], y);
+
+        _usedBoxRoute = true;
+        _abortedGeneration = false;
+        _lastBuildFailReason = "";
+        return _segments2D.Count >= 2;
+    }
+
+    private bool TryGetBoxPlayableRect(out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        minX = maxX = minZ = maxZ = 0f;
+        if (!TryGetPreferredInsetRect(out minX, out maxX, out minZ, out maxZ))
+            return false;
+
+        float extra = Mathf.Max(roadWidth * 0.65f, 8f);
+        minX += extra;
+        maxX -= extra;
+        minZ += extra;
+        maxZ -= extra;
+        return (maxX - minX) > 90f && (maxZ - minZ) > 90f;
+    }
+
+    private static Vector2 CornerOnRect(
+        TerrainCorner corner, float minX, float maxX, float minZ, float maxZ)
+    {
+        switch (corner)
+        {
+            case TerrainCorner.SouthEast: return new Vector2(maxX, minZ);
+            case TerrainCorner.NorthWest: return new Vector2(minX, maxZ);
+            case TerrainCorner.NorthEast: return new Vector2(maxX, maxZ);
+            case TerrainCorner.SouthWest:
+            default: return new Vector2(minX, minZ);
+        }
+    }
+
+    private List<Vector2> BuildConfigTurnPath(
+        Vector2 start,
+        Vector2 opposite,
+        float minX, float maxX, float minZ, float maxZ,
+        float segLength)
+    {
+        segLength = Mathf.Max(0.25f, segLength);
+        int needPts = Mathf.Max(8, segmentCount + 1);
+        var pts = new List<Vector2>(needPts) { start };
+
+        Vector2 pos = start;
+        Vector2 heading = opposite - start;
+        if (heading.sqrMagnitude < 1e-6f)
+            heading = Vector2.up;
+        heading.Normalize();
+
+        Vector2 goal = opposite;
+        _flowGoalXZ = goal;
+        float turnSign = Random.value < 0.5f ? -1f : 1f;
+        int heldLeft = 0;
+        float heldYaw = 0f;
+        float straightLeft = NextStraightMeters(0f, segLength);
+
+        float pack = GetHardPackClearanceMeters();
+        int skipTail = Mathf.Clamp(Mathf.CeilToInt(pack / segLength) + 2, 4, 10);
+
+        for (int i = 0; i < segmentCount; i++)
+        {
+            float tNorm = (segmentCount <= 1) ? 1f : (float)i / (segmentCount - 1);
+            float difficultyT = difficultyCurve != null ? difficultyCurve.Evaluate(tNorm) : tNorm;
+            float maxTurn = Mathf.Max(minTurnAngle, Mathf.Lerp(startMaxTurnAngle, endMaxTurnAngle, difficultyT));
+
+            if (heldLeft <= 0)
+            {
+                if (StepLeavesPlayable(pos, heading, segLength, minX, maxX, minZ, maxZ)
+                    || HeadingRunsOutOfPlayable(pos, heading, minX, maxX, minZ, maxZ))
+                {
+                    BeginConfigHeldTurnToward(
+                        heading,
+                        AlongEdgeTowardGoal(pos, heading, goal, minX, maxX, minZ, maxZ),
+                        maxTurn,
+                        95f,
+                        ref heldYaw,
+                        ref heldLeft);
+                }
+                else if (StepPacksOldPath(pos, heading, segLength, pts, skipTail, pack))
+                {
+                    Vector2 away = OpenHeadingAwayFromPath(pos, heading, pts, skipTail, goal);
+                    BeginConfigHeldTurnToward(heading, away, maxTurn, 80f, ref heldYaw, ref heldLeft);
+                }
+                else if (straightLeft <= 0f)
+                {
+                    Vector2 toGoal = goal - pos;
+                    float goalAng = 0f;
+                    if (toGoal.sqrMagnitude > 1e-4f)
+                        goalAng = SignedAngle2D(heading, toGoal.normalized);
+
+                    if (Random.value < 0.32f)
+                        turnSign = -turnSign;
+                    if (Mathf.Abs(goalAng) > 14f)
+                        turnSign = Mathf.Sign(goalAng);
+
+                    float mag = Random.Range(
+                        Mathf.Max(minTurnAngle, maxTurn * 0.45f),
+                        maxTurn);
+                    float wantBend = Mathf.Lerp(48f, 92f, Mathf.Clamp01(maxTurn / 70f));
+                    heldLeft = Mathf.Clamp(Mathf.RoundToInt(wantBend / Mathf.Max(6f, mag)), 3, 8);
+                    mag = Mathf.Min(mag, 100f / heldLeft);
+                    heldYaw = turnSign * mag;
+                    straightLeft = NextStraightMeters(tNorm, segLength);
+                }
+                else
+                {
+                    Vector2 toGoal = goal - pos;
+                    if (toGoal.sqrMagnitude > 1e-4f)
+                    {
+                        float err = SignedAngle2D(heading, toGoal.normalized);
+                        if (Mathf.Abs(err) > 42f)
+                        {
+                            BeginConfigHeldTurnToward(
+                                heading, toGoal.normalized, maxTurn, Mathf.Min(80f, Mathf.Abs(err)),
+                                ref heldYaw, ref heldLeft);
+                        }
+                    }
+                    if (heldLeft <= 0)
+                        straightLeft -= segLength;
+                }
+            }
+
+            if (heldLeft > 0)
+            {
+                heading = Rotate2(heading, heldYaw);
+                if (heading.sqrMagnitude > 1e-8f) heading.Normalize();
+                heldLeft--;
+            }
+
+            Vector2 next = pos + heading * segLength;
+            if (!InPlayable(next, minX, maxX, minZ, maxZ))
+            {
+                heading = AlongEdgeTowardGoal(pos, heading, goal, minX, maxX, minZ, maxZ);
+                next = pos + heading * segLength;
+                next.x = Mathf.Clamp(next.x, minX, maxX);
+                next.y = Mathf.Clamp(next.y, minZ, maxZ);
+            }
+
+            pts.Add(next);
+            pos = next;
+
+            if ((pos - goal).sqrMagnitude < 70f * 70f)
+            {
+                Vector2 nextGoal = FarthestPlayableCorner(pos, start, minX, maxX, minZ, maxZ);
+                if ((nextGoal - goal).sqrMagnitude > 1f)
+                {
+                    goal = nextGoal;
+                    _flowGoalXZ = goal;
+                }
+            }
+        }
+
+        return pts;
+    }
+
+    private float NextStraightMeters(float tNorm, float segLength)
+    {
+        float frequencyT = turnFrequencyCurve != null ? turnFrequencyCurve.Evaluate(tNorm) : tNorm;
+        float chance = Mathf.Lerp(startTurnChance, endTurnChance, frequencyT);
+        chance = Mathf.Clamp(chance, 0.08f, 0.92f);
+        // Config chance is "per segment". We batch those into held turns, so
+        // average straight length is (1/chance - held) segments.
+        float heldGuess = 5f;
+        float cycleSegs = Mathf.Clamp(heldGuess / chance, heldGuess + 3f, 20f);
+        float straightSegs = Mathf.Max(3f, cycleSegs - heldGuess);
+        return straightSegs * Mathf.Max(0.25f, segLength) * Random.Range(0.7f, 1.25f);
+    }
+
+    private static void BeginConfigHeldTurnToward(
+        Vector2 heading,
+        Vector2 wantDir,
+        float maxTurn,
+        float wantBendDeg,
+        ref float heldYaw,
+        ref int heldLeft)
+    {
+        if (wantDir.sqrMagnitude < 1e-6f)
+            return;
+        wantDir.Normalize();
+        float err = Vector2.SignedAngle(heading, wantDir);
+        if (Mathf.Abs(err) < 6f)
+            return;
+        float mag = Mathf.Clamp(Mathf.Abs(err) / 5f, 8f, Mathf.Max(8f, maxTurn));
+        mag = Mathf.Min(mag, Mathf.Max(8f, maxTurn));
+        heldLeft = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(wantBendDeg, Mathf.Abs(err)) / mag), 3, 8);
+        heldYaw = Mathf.Sign(err) * mag;
+    }
+
+    private static bool InPlayable(Vector2 p, float minX, float maxX, float minZ, float maxZ)
+    {
+        return p.x >= minX && p.x <= maxX && p.y >= minZ && p.y <= maxZ;
+    }
+
+    private static bool StepLeavesPlayable(
+        Vector2 pos, Vector2 heading, float segLength,
+        float minX, float maxX, float minZ, float maxZ)
+    {
+        Vector2 probe = pos + heading * (segLength * 1.35f);
+        return !InPlayable(probe, minX, maxX, minZ, maxZ);
+    }
+
+    private static bool HeadingRunsOutOfPlayable(
+        Vector2 pos, Vector2 heading,
+        float minX, float maxX, float minZ, float maxZ)
+    {
+        float dist = DistToPlayableEdge(pos, minX, maxX, minZ, maxZ);
+        if (dist > 28f)
+            return false;
+        Vector2 inward = PlayableInwardNormal(pos, minX, maxX, minZ, maxZ);
+        return Vector2.Dot(heading, inward) < 0.12f;
+    }
+
+    private static Vector2 PlayableInwardNormal(
+        Vector2 pos, float minX, float maxX, float minZ, float maxZ)
+    {
+        float dl = pos.x - minX;
+        float dr = maxX - pos.x;
+        float db = pos.y - minZ;
+        float dt = maxZ - pos.y;
+        float m = Mathf.Min(dl, dr, db, dt);
+        if (m <= dl + 0.01f) return Vector2.right;
+        if (m <= dr + 0.01f) return Vector2.left;
+        if (m <= db + 0.01f) return Vector2.up;
+        return Vector2.down;
+    }
+
+    private static float DistToPlayableEdge(
+        Vector2 pos, float minX, float maxX, float minZ, float maxZ)
+    {
+        return Mathf.Min(pos.x - minX, maxX - pos.x, pos.y - minZ, maxZ - pos.y);
+    }
+
+    private static Vector2 AlongEdgeTowardGoal(
+        Vector2 pos, Vector2 heading, Vector2 goal,
+        float minX, float maxX, float minZ, float maxZ)
+    {
+        float dl = pos.x - minX;
+        float dr = maxX - pos.x;
+        float db = pos.y - minZ;
+        float dt = maxZ - pos.y;
+        float m = Mathf.Min(dl, dr, db, dt);
+        Vector2 inward = Vector2.up;
+        if (m <= dl + 0.01f) inward = Vector2.right;
+        else if (m <= dr + 0.01f) inward = Vector2.left;
+        else if (m <= db + 0.01f) inward = Vector2.up;
+        else inward = Vector2.down;
+
+        Vector2 alongA = new Vector2(-inward.y, inward.x);
+        Vector2 alongB = -alongA;
+        Vector2 toGoal = goal - pos;
+        if (toGoal.sqrMagnitude < 1e-4f)
+            toGoal = inward;
+        else
+            toGoal.Normalize();
+
+        Vector2 along = Vector2.Dot(alongA, toGoal) >= Vector2.Dot(alongB, toGoal) ? alongA : alongB;
+        if (heading.sqrMagnitude > 1e-6f && Mathf.Abs(Vector2.Dot(alongA, toGoal) - Vector2.Dot(alongB, toGoal)) < 0.2f)
+            along = Vector2.Dot(heading, alongA) >= Vector2.Dot(heading, alongB) ? alongA : alongB;
+        Vector2 probe = pos + along * 24f;
+        if (!InPlayable(probe, minX, maxX, minZ, maxZ))
+            along = -along;
+        return along.sqrMagnitude > 1e-6f ? along.normalized : inward;
+    }
+
+    private static Vector2 FarthestPlayableCorner(
+        Vector2 pos, Vector2 start,
+        float minX, float maxX, float minZ, float maxZ)
+    {
+        Vector2[] corners =
+        {
+            new Vector2(minX, minZ),
+            new Vector2(maxX, minZ),
+            new Vector2(minX, maxZ),
+            new Vector2(maxX, maxZ)
+        };
+        Vector2 best = corners[0];
+        float bestScore = float.NegativeInfinity;
+        for (int i = 0; i < corners.Length; i++)
+        {
+            float dPos = (corners[i] - pos).sqrMagnitude;
+            float dStart = (corners[i] - start).sqrMagnitude;
+            if (dPos < 80f * 80f)
+                continue;
+            float score = dPos + dStart * 0.25f;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = corners[i];
+            }
+        }
+        return best;
+    }
+
+    private bool StepPacksOldPath(
+        Vector2 pos, Vector2 heading, float segLength,
+        List<Vector2> pts, int skipTail, float pack)
+    {
+        if (pts == null || pts.Count < skipTail + 2)
+            return false;
+        Vector2 nxt = pos + heading * segLength;
+        float packSq = pack * pack;
+        int last = pts.Count - skipTail;
+        for (int i = 0; i < last - 1; i++)
+        {
+            if (SegmentSegmentDistanceSq(pos, nxt, pts[i], pts[i + 1]) < packSq)
+                return true;
+        }
+        return false;
+    }
+
+    private static Vector2 OpenHeadingAwayFromPath(
+        Vector2 pos, Vector2 heading, List<Vector2> pts, int skipTail, Vector2 goal)
+    {
+        Vector2 left = new Vector2(-heading.y, heading.x);
+        Vector2 right = -left;
+        float leftClear = 0f;
+        float rightClear = 0f;
+        int last = Mathf.Max(1, pts.Count - skipTail);
+        for (int i = 0; i < last; i++)
+        {
+            Vector2 to = pts[i] - pos;
+            float d = to.magnitude;
+            if (d < 1f) continue;
+            leftClear += Mathf.Max(0f, Vector2.Dot(left, to.normalized)) / d;
+            rightClear += Mathf.Max(0f, Vector2.Dot(right, to.normalized)) / d;
+        }
+
+        Vector2 toGoal = goal - pos;
+        if (toGoal.sqrMagnitude > 1e-4f)
+        {
+            toGoal.Normalize();
+            leftClear += Vector2.Dot(left, toGoal) * 0.15f;
+            rightClear += Vector2.Dot(right, toGoal) * 0.15f;
+        }
+
+        return leftClear >= rightClear ? left : right;
+    }
+
+    private float ComputeBoxRoutePitch(float w, float h)
+    {
+        float span = Mathf.Min(w, h);
+        float pack = GetHardPackClearanceMeters();
+        float minPitch = Mathf.Max(pack * 2.4f, roadWidth * 8f, 70f);
+        minPitch = Mathf.Min(minPitch, span * 0.34f);
+        float maxPitch = Mathf.Clamp(span * 0.38f, minPitch, span * 0.45f);
+
+        float target = Mathf.Max(1f, segmentCount * Mathf.Max(0.001f, segmentLength));
+        float lo = minPitch;
+        float hi = maxPitch;
+        for (int i = 0; i < 10; i++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            float len = EstimateBoxSpiralLength(w, h, mid);
+            // Largest pitch that still reaches target length (widest grass strips).
+            if (len >= target)
+                lo = mid;
+            else
+                hi = mid;
+        }
+
+        float pitch = lo;
+        if (EstimateBoxSpiralLength(w, h, pitch) < target * 0.92f)
+            pitch = minPitch;
+        return pitch;
+    }
+
+    private static float EstimateBoxSpiralLength(float w, float h, float pitch)
+    {
+        if (pitch < 1f) return w + h;
+        float len = w + h;
+        float cw = Mathf.Max(0f, w - pitch);
+        float ch = Mathf.Max(0f, h - pitch);
+        int guard = 0;
+        while (cw > pitch * 0.7f && ch > pitch * 0.7f && guard++ < 24)
+        {
+            len += cw + ch;
+            cw = Mathf.Max(0f, cw - pitch);
+            ch = Mathf.Max(0f, ch - pitch);
+        }
+        return len;
+    }
+
+    private List<Vector2> BuildBoxRouteCorners(
+        Vector2 start,
+        Vector2 opposite,
+        float minX, float maxX, float minZ, float maxZ,
+        float pitch,
+        float targetLen)
+    {
+        var corners = new List<Vector2>(24) { start };
+        var xRails = new List<float>(16);
+        var zRails = new List<float>(16);
+        Vector2 pos = start;
+        float pathLen = 0f;
+
+        Vector2 xDir = new Vector2(Mathf.Sign(opposite.x - start.x), 0f);
+        Vector2 zDir = new Vector2(0f, Mathf.Sign(opposite.y - start.y));
+        if (Mathf.Abs(opposite.x - start.x) < 1f) xDir = Vector2.zero;
+        if (Mathf.Abs(opposite.y - start.y) < 1f) zDir = Vector2.zero;
+
+        bool xFirst = Random.value < 0.5f;
+        if (xDir.sqrMagnitude < 0.5f) xFirst = false;
+        if (zDir.sqrMagnitude < 0.5f) xFirst = true;
+        Vector2 dirA = xFirst ? xDir : zDir;
+        Vector2 dirB = xFirst ? zDir : xDir;
+
+        float manhattanA = xFirst
+            ? Mathf.Abs(opposite.x - start.x)
+            : Mathf.Abs(opposite.y - start.y);
+        float manhattanB = xFirst
+            ? Mathf.Abs(opposite.y - start.y)
+            : Mathf.Abs(opposite.x - start.x);
+
+        void AddLeg(Vector2 heading, float dist)
+        {
+            heading = QuantizeAxis(heading);
+            if (heading.sqrMagnitude < 0.5f || dist < 1f)
+                return;
+            Vector2 next = pos + heading * dist;
+            if (Mathf.Abs(heading.x) > 0.5f)
+                next.y = pos.y;
+            else
+                next.x = pos.x;
+            next.x = Mathf.Clamp(next.x, minX, maxX);
+            next.y = Mathf.Clamp(next.y, minZ, maxZ);
+            dist = Vector2.Distance(pos, next);
+            if (dist < 0.75f)
+                return;
+            corners.Add(next);
+            pathLen += dist;
+            pos = next;
+            if (Mathf.Abs(heading.x) > 0.5f)
+                zRails.Add(pos.y);
+            else
+                xRails.Add(pos.x);
+        }
+
+        float avgChance = Mathf.Clamp01((startTurnChance + endTurnChance) * 0.5f);
+        int jogs = 0;
+        if (manhattanA > pitch * 2.8f && avgChance > 0.08f)
+            jogs = Random.Range(0, avgChance > 0.45f ? 3 : 2);
+        int maxJogsByB = Mathf.Max(0, Mathf.FloorToInt((manhattanB * 0.45f) / Mathf.Max(1f, pitch)));
+        jogs = Mathf.Min(jogs, maxJogsByB);
+
+        if (jogs <= 0 || dirB.sqrMagnitude < 0.5f)
+        {
+            AddLeg(dirA, manhattanA);
+        }
+        else
+        {
+            float remaining = manhattanA;
+            for (int j = 0; j < jogs && remaining > pitch * 1.8f; j++)
+            {
+                float run = remaining * Random.Range(0.34f, 0.52f);
+                run = Mathf.Min(run, remaining - pitch * 1.05f);
+                AddLeg(dirA, run);
+                remaining -= run;
+                AddLeg(dirB, pitch);
+            }
+            AddLeg(dirA, remaining);
+        }
+
+        float remainB = xFirst ? (opposite.y - pos.y) : (opposite.x - pos.x);
+        Vector2 finishB = xFirst
+            ? new Vector2(0f, Mathf.Sign(remainB))
+            : new Vector2(Mathf.Sign(remainB), 0f);
+        if (Mathf.Abs(remainB) > 1f && Vector2.Dot(finishB, dirB) > 0.5f)
+            AddLeg(dirB, Mathf.Abs(remainB));
+
+        Vector2 heading = corners.Count >= 2
+            ? QuantizeAxis(corners[corners.Count - 1] - corners[corners.Count - 2])
+            : (dirB.sqrMagnitude > 0.5f ? dirB : dirA);
+        Vector2 center = new Vector2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f);
+
+        for (int leg = 0; leg < 40 && pathLen < targetLen; leg++)
+        {
+            Vector2 incoming = heading;
+            Vector2 turn = PickBoxInwardHeading(
+                pos, incoming, center, minX, maxX, minZ, maxZ);
+            turn = QuantizeAxis(turn);
+            if (turn.sqrMagnitude < 0.5f || Vector2.Dot(turn, incoming) < -0.5f)
+                break;
+
+            Vector2 left = QuantizeAxis(new Vector2(-incoming.y, incoming.x));
+            Vector2 right = QuantizeAxis(-left);
+            heading = turn;
+            float dist = AxisDriveDistance(
+                pos, heading, minX, maxX, minZ, maxZ, pitch, xRails, zRails);
+            if (dist < pitch * 0.62f)
+            {
+                Vector2 alt = Vector2.Dot(turn, left) > 0.5f ? right : left;
+                if (Vector2.Dot(alt, incoming) < -0.5f)
+                    break;
+                float altDist = AxisDriveDistance(
+                    pos, alt, minX, maxX, minZ, maxZ, pitch, xRails, zRails);
+                if (altDist < pitch * 0.62f)
+                    break;
+                heading = alt;
+                dist = altDist;
+            }
+
+            if (pathLen + dist > targetLen)
+                dist = targetLen - pathLen;
+            if (dist < 1f)
+                break;
+            AddLeg(heading, dist);
+        }
+
+        return corners;
+    }
+
+    private static Vector2 QuantizeAxis(Vector2 h)
+    {
+        if (h.sqrMagnitude < 1e-8f)
+            return Vector2.zero;
+        if (Mathf.Abs(h.x) >= Mathf.Abs(h.y))
+            return new Vector2(Mathf.Sign(h.x), 0f);
+        return new Vector2(0f, Mathf.Sign(h.y));
+    }
+
+    private static Vector2 PickBoxInwardHeading(
+        Vector2 pos, Vector2 heading, Vector2 center,
+        float minX, float maxX, float minZ, float maxZ)
+    {
+        heading = QuantizeAxis(heading);
+        Vector2 left = QuantizeAxis(new Vector2(-heading.y, heading.x));
+        Vector2 right = QuantizeAxis(-left);
+
+        bool LeftOk(Vector2 dir)
+        {
+            Vector2 probe = pos + dir * 36f;
+            return probe.x >= minX - 0.5f && probe.x <= maxX + 0.5f
+                   && probe.y >= minZ - 0.5f && probe.y <= maxZ + 0.5f
+                   && Vector2.Dot(dir, heading) > -0.5f;
+        }
+
+        bool lOk = LeftOk(left);
+        bool rOk = LeftOk(right);
+        if (lOk && !rOk) return left;
+        if (rOk && !lOk) return right;
+        if (!lOk && !rOk) return left;
+
+        Vector2 toC = center - pos;
+        if (toC.sqrMagnitude < 1e-4f)
+            return left;
+        toC.Normalize();
+        return Vector2.Dot(left, toC) >= Vector2.Dot(right, toC) ? left : right;
+    }
+
+    private static float AxisDriveDistance(
+        Vector2 pos,
+        Vector2 heading,
+        float minX, float maxX, float minZ, float maxZ,
+        float pitch,
+        List<float> xRails,
+        List<float> zRails)
+    {
+        const float eps = 1.5f;
+        heading = QuantizeAxis(heading);
+        if (Mathf.Abs(heading.x) >= 0.5f)
+        {
+            if (heading.x > 0f)
+            {
+                float x = maxX;
+                for (int i = 0; i < xRails.Count; i++)
+                {
+                    if (xRails[i] > pos.x + eps)
+                        x = Mathf.Min(x, xRails[i] - pitch);
+                }
+                return Mathf.Max(0f, x - pos.x);
+            }
+
+            float xNeg = minX;
+            for (int i = 0; i < xRails.Count; i++)
+            {
+                if (xRails[i] < pos.x - eps)
+                    xNeg = Mathf.Max(xNeg, xRails[i] + pitch);
+            }
+            return Mathf.Max(0f, pos.x - xNeg);
+        }
+
+        if (heading.y > 0f)
+        {
+            float z = maxZ;
+            for (int i = 0; i < zRails.Count; i++)
+            {
+                if (zRails[i] > pos.y + eps)
+                    z = Mathf.Min(z, zRails[i] - pitch);
+            }
+            return Mathf.Max(0f, z - pos.y);
+        }
+
+        float zNeg = minZ;
+        for (int i = 0; i < zRails.Count; i++)
+        {
+            if (zRails[i] < pos.y - eps)
+                zNeg = Mathf.Max(zNeg, zRails[i] + pitch);
+        }
+        return Mathf.Max(0f, pos.y - zNeg);
+    }
+
+    private static List<Vector2> FilletSharpCorners(List<Vector2> corners, float radius)
+    {
+        var result = new List<Vector2>(corners.Count * 4);
+        if (corners == null || corners.Count == 0)
+            return result;
+        if (corners.Count < 3)
+        {
+            result.AddRange(corners);
+            return result;
+        }
+
+        result.Add(corners[0]);
+        for (int i = 1; i < corners.Count - 1; i++)
+        {
+            Vector2 prev = corners[i - 1];
+            Vector2 curr = corners[i];
+            Vector2 next = corners[i + 1];
+            Vector2 inDir = curr - prev;
+            Vector2 outDir = next - curr;
+            float inLen = inDir.magnitude;
+            float outLen = outDir.magnitude;
+            if (inLen < 1e-3f || outLen < 1e-3f)
+            {
+                result.Add(curr);
+                continue;
+            }
+            inDir /= inLen;
+            outDir /= outLen;
+            float ang = Vector2.SignedAngle(inDir, outDir);
+            if (Mathf.Abs(ang) < 14f)
+            {
+                result.Add(curr);
+                continue;
+            }
+
+            float r = Mathf.Min(radius, inLen * 0.42f, outLen * 0.42f);
+            if (r < 8f)
+            {
+                result.Add(curr);
+                continue;
+            }
+
+            Vector2 a = curr - inDir * r;
+            Vector2 b = curr + outDir * r;
+            Vector2 n = new Vector2(-inDir.y, inDir.x);
+            if (ang < 0f) n = -n;
+            Vector2 center = a + n * r;
+            int steps = Mathf.Clamp(Mathf.RoundToInt(Mathf.Abs(ang) / 16f), 3, 12);
+            result.Add(a);
+            Vector2 from = a - center;
+            Vector2 to = b - center;
+            float a0 = Mathf.Atan2(from.y, from.x);
+            float a1 = Mathf.Atan2(to.y, to.x);
+            float da = Mathf.DeltaAngle(a0 * Mathf.Rad2Deg, a1 * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+            for (int s = 1; s < steps; s++)
+            {
+                float t = s / (float)steps;
+                float angT = a0 + da * t;
+                result.Add(center + new Vector2(Mathf.Cos(angT), Mathf.Sin(angT)) * r);
+            }
+            result.Add(b);
+        }
+
+        result.Add(corners[corners.Count - 1]);
+        return result;
+    }
+
+    private bool ExtendBoxRouteToCount(
+        List<Vector2> spaced,
+        int needPts,
+        float segLength,
+        float minX, float maxX, float minZ, float maxZ,
+        float pitch)
+    {
+        if (spaced.Count < 2)
+            return false;
+
+        var xRails = new List<float>(16);
+        var zRails = new List<float>(16);
+        for (int i = 0; i < spaced.Count - 1; i++)
+        {
+            Vector2 d = spaced[i + 1] - spaced[i];
+            if (Mathf.Abs(d.x) >= Mathf.Abs(d.y) * 4f)
+                zRails.Add(spaced[i].y);
+            else if (Mathf.Abs(d.y) >= Mathf.Abs(d.x) * 4f)
+                xRails.Add(spaced[i].x);
+        }
+
+        Vector2 pos = spaced[spaced.Count - 1];
+        Vector2 heading = QuantizeAxis(pos - spaced[spaced.Count - 2]);
+        Vector2 center = new Vector2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f);
+        int guard = 0;
+        while (spaced.Count < needPts && guard++ < 80)
+        {
+            Vector2 turn = QuantizeAxis(
+                PickBoxInwardHeading(pos, heading, center, minX, maxX, minZ, maxZ));
+            if (turn.sqrMagnitude < 0.5f)
+                break;
+            heading = turn;
+            float dist = AxisDriveDistance(
+                pos, heading, minX, maxX, minZ, maxZ, pitch, xRails, zRails);
+            if (dist < Mathf.Max(segLength, pitch * 0.5f))
+                break;
+
+            int steps = Mathf.Max(1, Mathf.FloorToInt(dist / segLength));
+            for (int s = 0; s < steps && spaced.Count < needPts; s++)
+            {
+                pos += heading * segLength;
+                pos.x = Mathf.Clamp(pos.x, minX, maxX);
+                pos.y = Mathf.Clamp(pos.y, minZ, maxZ);
+                spaced.Add(pos);
+            }
+            if (Mathf.Abs(heading.x) > 0.5f)
+                zRails.Add(pos.y);
+            else
+                xRails.Add(pos.x);
+        }
+
+        return spaced.Count >= needPts;
+    }
+
+    private static void SnapNearlyAxisAligned(List<Vector2> pts)
+    {
+        if (pts == null || pts.Count < 2)
+            return;
+        for (int i = 1; i < pts.Count; i++)
+        {
+            Vector2 d = pts[i] - pts[i - 1];
+            if (Mathf.Abs(d.x) >= Mathf.Abs(d.y) * 18f)
+            {
+                Vector2 p = pts[i];
+                p.y = pts[i - 1].y;
+                pts[i] = p;
+            }
+            else if (Mathf.Abs(d.y) >= Mathf.Abs(d.x) * 18f)
+            {
+                Vector2 p = pts[i];
+                p.x = pts[i - 1].x;
+                pts[i] = p;
+            }
+        }
+    }
+
+    private bool TryBuildCruiseTrack(float effLength, bool requireTerrain)
+    {
+        for (int i = 0; i < segmentCount && !_abortedGeneration; i++)
+        {
+            float tNorm = (segmentCount <= 1) ? 0f : (float)i / (segmentCount - 1);
+
+            float difficultyT = difficultyCurve != null ? difficultyCurve.Evaluate(tNorm) : tNorm;
+            float maxTurnAngle = Mathf.Lerp(startMaxTurnAngle, endMaxTurnAngle, difficultyT);
+            maxTurnAngle = Mathf.Max(minTurnAngle, maxTurnAngle);
+
+            float frequencyT = turnFrequencyCurve != null ? turnFrequencyCurve.Evaluate(tNorm) : tNorm;
+            float turnChance = Mathf.Lerp(startTurnChance, endTurnChance, frequencyT);
+
+            float preferredYaw = ComputeCruiseYaw(i, tNorm, maxTurnAngle, turnChance);
+
+            float turnBudget = maxTurnAngle;
+            if (requireTerrain && NeedsEdgePeel())
+                turnBudget = Mathf.Max(maxTurnAngle, 28f);
+
+            float chosenYaw = preferredYaw;
+            if (!TryFindCollisionFreeYaw(preferredYaw, turnBudget, effLength, out chosenYaw))
+            {
+                _lastBuildFailReason = requireTerrain
+                    ? "no valid segment yaw (terrain, intersection, or start proximity)"
+                    : "no valid segment yaw (intersection or start proximity)";
+                _abortedGeneration = true;
+                return false;
+            }
+
+            if (Mathf.Abs(chosenYaw) < 1.1f)
+                chosenYaw = 0f;
+
+            if (Mathf.Abs(Mathf.DeltaAngle(chosenYaw, preferredYaw)) > 2.5f
+                && Mathf.Abs(chosenYaw) > 1.5f
+                && _heldTurnSegmentsLeft < 2)
+            {
+                BeginHeldTurn(chosenYaw, Random.Range(3, 6));
+            }
+
+            CommitSegment(chosenYaw, effLength);
         }
 
         return !_abortedGeneration && _pathPoints.Count > 1;
@@ -932,10 +1786,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
         while (spaced.Count > needPts)
             spaced.RemoveAt(spaced.Count - 1);
 
-        // Shape macros first, then continuous sine sway (Perlin clumps into "wiggle then flat").
-        SoftSmoothPolyline(spaced, passes: 1, strength: 0.22f);
-        LimitMaxTurnPerSegment(spaced, segLength);
-        ApplyContinuousHeadingWiggle(spaced, segLength);
+        // Shape macros only. Do not add heading wiggle — that is the sawtooth road.
+        SoftSmoothPolyline(spaced, passes: 1, strength: 0.18f);
 
         if (ShouldRequirePreferredTerrain() && !PolylineStaysOnPreferredTerrain(spaced))
         {
@@ -1347,6 +2199,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         _currentEndPosition = segmentEnd;
         _currentRotation = segmentRot;
+        _lastCommittedYaw = yawDeg;
+        RefreshRecentFlowHeading();
+        RefreshFlowGoalIfReached();
     }
 
     // ================================================================
@@ -1904,7 +2759,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
     }
 
     // ================================================================
-    //  ADVANCED SCORED YAW PICKER (legacy fallback helpers still used by scoring utils)
+    //  ADVANCED SCORED YAW PICKER (live path: clearance + far-corner flow)
     // ================================================================
     private bool TryPickBestAdvancedYaw(
         int index,
@@ -1959,7 +2814,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
         ref float bestScore,
         ref float bestYaw)
     {
-        bool requireTerrain = preferStayOnPreferredTerrain && _stuckRelaxLevel < 3;
+        bool requireTerrain = ShouldRequirePreferredTerrain();
         if (!IsYawValid(yaw, segLength, requireTerrain))
             return false;
 
@@ -2009,7 +2864,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
                 if (curFwd.sqrMagnitude > 1e-6f)
                     curFwd.Normalize();
                 float desiredYaw = Vector2.SignedAngle(curFwd, toGoal);
-                yaw = Mathf.LerpAngle(yaw, desiredYaw, 0.12f);
+                yaw = Mathf.LerpAngle(yaw, desiredYaw, 0.26f);
             }
         }
 
@@ -2105,7 +2960,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
             {
                 toGoal.Normalize();
                 float alignGoal = Vector2.Dot(fwdXZ, toGoal);
-                score += flowProgressWeight * Mathf.Max(0f, alignGoal) * 2.0f;
+                score += flowProgressWeight * Mathf.Max(0f, alignGoal) * 4.0f;
+                if (alignGoal < 0f)
+                    score -= flowProgressWeight * alignGoal * alignGoal * 5.0f;
             }
         }
 
@@ -2197,9 +3054,15 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         int count = _segments2D.Count;
         int lastExclusive = Mathf.Max(0, count - 2); // ignore live tip + previous
+        int sameChainSkip = GetSameChainSkipCount();
         for (int i = 0; i < lastExclusive; i++)
         {
             Segment2D s = _segments2D[i];
+            Vector2 sdir = s.b - s.a;
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, forward, sdir, sameChainSkip))
+                continue;
+
             Vector2 mid = (s.a + s.b) * 0.5f;
             float d = Vector2.Distance(origin, mid);
             if (d < best)
@@ -2230,20 +3093,63 @@ public class ProceduralTrackGenerator : MonoBehaviour
         Vector2 start = new Vector2(_trackStartPosition.x, _trackStartPosition.z);
         if (_hasPreferredTerrainBounds)
         {
-            // Aim across the tile toward the opposite side from the start corner.
-            Vector2 away = start - _preferredCenterXZ;
-            if (away.sqrMagnitude < 1e-4f)
-                away = new Vector2(1f, 1f);
-            away.Normalize();
-            _flowGoalXZ = _preferredCenterXZ - away * Mathf.Max(
-                (_preferredMaxX - _preferredMinX),
-                (_preferredMaxZ - _preferredMinZ)) * 0.42f;
+            // Opposite corner from wherever we spawned — soft long-range goal, not a heading cap.
+            bool east = start.x > _preferredCenterXZ.x;
+            bool north = start.y > _preferredCenterXZ.y;
+            TerrainCorner startCorner = east
+                ? (north ? TerrainCorner.NorthEast : TerrainCorner.SouthEast)
+                : (north ? TerrainCorner.NorthWest : TerrainCorner.SouthWest);
+            _flowGoalXZ = CornerPositionOnPreferred(OppositeTerrainCorner(startCorner));
+            ClampFlowGoalToPreferredInset();
         }
         else
         {
             Vector3 fwd = _currentRotation * Vector3.forward;
-            _flowGoalXZ = start + new Vector2(fwd.x, fwd.z).normalized * 400f;
+            Vector2 fwdXZ = new Vector2(fwd.x, fwd.z);
+            if (fwdXZ.sqrMagnitude < 1e-8f) fwdXZ = Vector2.up;
+            _flowGoalXZ = start + fwdXZ.normalized * 400f;
         }
+    }
+
+    /// <summary>
+    /// After reaching the far-side goal, rotate to the next far quadrant so the
+    /// road keeps touring instead of hairpinning back along itself.
+    /// </summary>
+    private void RefreshFlowGoalIfReached()
+    {
+        Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        float reach = Mathf.Max(roadWidth * 8f, 55f);
+        if ((_flowGoalXZ - pos).sqrMagnitude > reach * reach)
+            return;
+
+        if (_hasPreferredTerrainBounds)
+        {
+            Vector2 fromCenter = _flowGoalXZ - _preferredCenterXZ;
+            if (fromCenter.sqrMagnitude < 1e-4f)
+                fromCenter = pos - _preferredCenterXZ;
+            if (fromCenter.sqrMagnitude < 1e-4f)
+                fromCenter = Vector2.right;
+            fromCenter.Normalize();
+
+            float sign = _currentTurnDirectionSign >= 0f ? 1f : -1f;
+            Vector2 rotated = new Vector2(-fromCenter.y * sign, fromCenter.x * sign);
+            float span = Mathf.Max(_preferredMaxX - _preferredMinX, _preferredMaxZ - _preferredMinZ) * 0.42f;
+            _flowGoalXZ = _preferredCenterXZ + rotated * span;
+            ClampFlowGoalToPreferredInset();
+        }
+        else
+        {
+            Vector2 recent = _recentFlowHeadingXZ.sqrMagnitude > 1e-6f ? _recentFlowHeadingXZ : Vector2.up;
+            _flowGoalXZ = pos + recent.normalized * 400f;
+        }
+    }
+
+    private void ClampFlowGoalToPreferredInset()
+    {
+        if (!_hasPreferredTerrainBounds) return;
+        float inset = Mathf.Max(40f, preferredTerrainEdgeInset * 0.35f, roadWidth * 4f);
+        _flowGoalXZ.x = Mathf.Clamp(_flowGoalXZ.x, _preferredMinX + inset, _preferredMaxX - inset);
+        _flowGoalXZ.y = Mathf.Clamp(_flowGoalXZ.y, _preferredMinZ + inset, _preferredMaxZ - inset);
     }
 
     private void RefreshRecentFlowHeading()
@@ -2275,6 +3181,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
         float rejectDist = Mathf.Max(GetHardSelfClearanceMeters() * 1.35f, roadWidth * parallelRejectRoadWidths);
         float penalty = 0f;
         int lastExclusive = Mathf.Max(0, _segments2D.Count - 2);
+        int sameChainSkip = GetSameChainSkipCount();
+        int count = _segments2D.Count;
 
         for (int i = 0; i < lastExclusive; i++)
         {
@@ -2283,17 +3191,21 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (sdir.sqrMagnitude < 1e-8f) continue;
             sdir.Normalize();
 
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, dir, sdir, sameChainSkip))
+                continue;
+
             float align = Vector2.Dot(dir, sdir);
-            // Soft-penalize close reverse folds most; mild on same-direction parallels.
             float anti = Mathf.Max(0f, -align);
+            float same = Mathf.Max(0f, align);
             float parallel = Mathf.Abs(align);
-            if (parallel < 0.78f) continue;
+            if (parallel < 0.72f) continue;
 
             float dist = Mathf.Sqrt(SegmentSegmentDistanceSq(a, b, s.a, s.b));
             if (dist >= rejectDist) continue;
 
             float prox = 1f - Mathf.Clamp01(dist / rejectDist);
-            penalty += prox * prox * (3f + anti * 12f);
+            penalty += prox * prox * (4f + anti * 12f + same * 10f);
         }
 
         return penalty;
@@ -2306,10 +3218,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
             return false;
         dir.Normalize();
 
-        // Only hard-reject anti-parallel (U-turn paperclips), not same-direction neighbors.
         float rejectDist = Mathf.Max(GetHardSelfClearanceMeters() * 1.25f, roadWidth * parallelRejectRoadWidths);
         float rejectDistSq = rejectDist * rejectDist;
         int lastExclusive = Mathf.Max(0, _segments2D.Count - 2);
+        int sameChainSkip = GetSameChainSkipCount();
+        int count = _segments2D.Count;
 
         for (int i = 0; i < lastExclusive; i++)
         {
@@ -2318,8 +3231,12 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (sdir.sqrMagnitude < 1e-8f) continue;
             sdir.Normalize();
 
-            float anti = Vector2.Dot(dir, sdir);
-            if (anti > -0.75f) continue; // not a reverse-parallel fold
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, dir, sdir, sameChainSkip))
+                continue;
+
+            // Packed same-direction neighbors (red-arrow cuts) AND reverse paperclips.
+            if (Mathf.Abs(Vector2.Dot(dir, sdir)) < 0.72f) continue;
 
             if (SegmentSegmentDistanceSq(a, b, s.a, s.b) < rejectDistSq)
                 return true;
@@ -2338,11 +3255,16 @@ public class ProceduralTrackGenerator : MonoBehaviour
         Vector2 probe = origin + forward * (sense * 0.75f);
 
         int count = _segments2D.Count;
-        // Skip only the live tip segment.
         int lastExclusive = Mathf.Max(0, count - 1);
+        int sameChainSkip = GetSameChainSkipCount();
         for (int i = 0; i < lastExclusive; i++)
         {
             Segment2D s = _segments2D[i];
+            Vector2 sdir = s.b - s.a;
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, forward, sdir, sameChainSkip))
+                continue;
+
             float d = Mathf.Sqrt(SegmentSegmentDistanceSq(origin, probe, s.a, s.b));
             if (d < best) best = d;
         }
@@ -2358,12 +3280,18 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         float best = float.PositiveInfinity;
         int count = _segments2D.Count;
-        // Skip only the previous connected segment (shared vertex).
         int lastExclusive = Mathf.Max(0, count - 1);
+        Vector2 adir = b - a;
+        int sameChainSkip = GetSameChainSkipCount();
 
         for (int i = 0; i < lastExclusive; i++)
         {
             Segment2D s = _segments2D[i];
+            Vector2 bdir = s.b - s.a;
+            int age = (count - 1) - i;
+            if (IsSameChainContinuation(age, adir, bdir, sameChainSkip))
+                continue;
+
             float d = Mathf.Sqrt(SegmentSegmentDistanceSq(a, b, s.a, s.b));
             if (d < best) best = d;
         }
@@ -2372,28 +3300,83 @@ public class ProceduralTrackGenerator : MonoBehaviour
     }
 
     // ================================================================
-    //  LEGACY TURN / AVOIDANCE HELPERS (intent + repulsion)
+    //  CRUISE STEERING — straight unless a held turn is in progress
     // ================================================================
-    private float ComputeTurnYawSimple(int index, float tNorm, float maxTurnAngle, float turnChance)
+    private float ComputeCruiseYaw(int index, float tNorm, float maxTurnAngle, float turnChance)
     {
-        float wiggleScale = Mathf.Lerp(1f, 1f + wiggleOverDistance, tNorm);
-        float noiseT = _noiseOffset + index * 0.15f;
-        float noise = Mathf.PerlinNoise(noiseT, 0.1234f) * 2f - 1f;
-        float wiggle = noise * maxWiggleAngle * wiggleScale;
+        maxTurnAngle = Mathf.Max(minTurnAngle, maxTurnAngle);
 
-        float avoidanceBias = ComputeAvoidanceYawBias(maxTurnAngle);
-
-        float yaw = wiggle + avoidanceBias;
-
-        if (Random.value < turnChance)
+        if (_heldTurnSegmentsLeft > 0)
         {
-            float sign = Random.value < 0.5f ? -1f : 1f;
-            float bigTurn = Random.Range(minTurnAngle, maxTurnAngle);
-            yaw += sign * bigTurn;
-            _currentTurnDirectionSign = sign;
+            _heldTurnSegmentsLeft--;
+            return Mathf.Clamp(_heldTurnYaw, -maxTurnAngle, maxTurnAngle);
         }
 
-        return Mathf.Clamp(yaw, -maxTurnAngle, maxTurnAngle);
+        Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        Vector3 fwd3 = _currentRotation * Vector3.forward;
+        Vector2 fwd = new Vector2(fwd3.x, fwd3.z);
+        if (fwd.sqrMagnitude > 1e-8f) fwd.Normalize();
+        else fwd = Vector2.up;
+
+        // Tile edge: 90° along-edge box turn, not a 180° hairpin back into yourself.
+        if (NeedsEdgePeel())
+        {
+            Vector2 travel = GetEdgeTravelHeading(pos, fwd);
+            float peel = SignedAngle2D(fwd, travel);
+            if (Mathf.Abs(peel) > 10f)
+            {
+                float mag = Mathf.Clamp(Mathf.Abs(peel) / 5.5f, 10f, Mathf.Min(22f, maxTurnAngle));
+                int segs = Mathf.Clamp(Mathf.CeilToInt(Mathf.Abs(peel) / mag), 4, 8);
+                BeginHeldTurn(Mathf.Sign(peel) * mag, segs);
+                return _heldTurnYaw;
+            }
+        }
+
+        // Avoid older road with a held turn, not a 1–3° twitch.
+        float avoid = ComputeAvoidanceYawBias(maxTurnAngle);
+        if (Mathf.Abs(avoid) > 6f)
+        {
+            BeginHeldTurn(avoid, Random.Range(3, 6));
+            return _heldTurnYaw;
+        }
+
+        // Occasional personality turn (lasts several segments so the road is
+        // straight, then a real bend, then straight again).
+        float startTurnScale = Mathf.Lerp(0.22f, 0.48f, tNorm);
+        if (Random.value < turnChance * startTurnScale)
+        {
+            float sign = Random.value < 0.35f ? -_currentTurnDirectionSign : _currentTurnDirectionSign;
+            if (Mathf.Abs(sign) < 0.1f) sign = Random.value < 0.5f ? -1f : 1f;
+            _currentTurnDirectionSign = sign;
+            float mag = Random.Range(minTurnAngle, maxTurnAngle);
+            BeginHeldTurn(sign * mag, Random.Range(3, 8));
+            return _heldTurnYaw;
+        }
+
+        // If we have drifted off the opposite-corner heading, recover with an arc
+        // — never a per-segment lerp (that is the sawtooth).
+        Vector2 toGoal = _flowGoalXZ - pos;
+        if (toGoal.sqrMagnitude > 1e-4f)
+        {
+            toGoal.Normalize();
+            float err = SignedAngle2D(fwd, toGoal);
+            if (Mathf.Abs(err) > 32f)
+            {
+                float mag = Mathf.Clamp(Mathf.Abs(err) * 0.4f, minTurnAngle, maxTurnAngle * 0.75f);
+                BeginHeldTurn(Mathf.Sign(err) * mag, Random.Range(3, 7));
+                return _heldTurnYaw;
+            }
+        }
+
+        return 0f;
+    }
+
+    private void BeginHeldTurn(float yawDeg, int segments)
+    {
+        _heldTurnYaw = yawDeg;
+        _heldTurnSegmentsLeft = Mathf.Max(0, segments - 1);
+        if (Mathf.Abs(yawDeg) > 0.5f)
+            _currentTurnDirectionSign = Mathf.Sign(yawDeg);
     }
 
     // ================================================================
@@ -2411,9 +3394,17 @@ public class ProceduralTrackGenerator : MonoBehaviour
         Vector2 repulsion = Vector2.zero;
 
         int count = _segments2D.Count;
+        int sameChainSkip = GetSameChainSkipCount();
+        Vector2 heading = forward2D;
         for (int i = 0; i < count; i++)
         {
             Segment2D s = _segments2D[i];
+            Vector2 sdir = s.b - s.a;
+            int age = (count - 1) - i;
+            // Own tail is this road continuing, not a neighbor to dodge.
+            // Repelling from it at the start produces a left-right snake.
+            if (IsSameChainContinuation(age, heading, sdir, sameChainSkip))
+                continue;
 
             Vector2 closest = ClosestPointOnSegment2D(pos, s.a, s.b);
             Vector2 toMe = pos - closest;
@@ -2437,6 +3428,29 @@ public class ProceduralTrackGenerator : MonoBehaviour
         float bias = signedAngle * avoidanceStrength;
 
         return Mathf.Clamp(bias, -maxTurnAngle, maxTurnAngle);
+    }
+
+    /// <summary>
+    /// Stops small opposite-sign flicks (start sawtooth) without slowing real turns.
+    /// </summary>
+    private float DampenMicroZigZag(float yaw, float maxTurnAngle)
+    {
+        if (_segments2D.Count < 1)
+            return yaw;
+
+        float prev = _lastCommittedYaw;
+        bool microFlip = Mathf.Abs(yaw) < 10f
+            && Mathf.Abs(prev) < 10f
+            && Mathf.Abs(prev) > 0.35f
+            && Mathf.Sign(yaw) != Mathf.Sign(prev)
+            && Mathf.Abs(yaw) > 0.35f;
+
+        if (microFlip)
+            yaw = Mathf.LerpAngle(prev, yaw, 0.18f);
+        else if (Mathf.Abs(yaw) < 6f && Mathf.Abs(prev) < 6f)
+            yaw = Mathf.LerpAngle(prev, yaw, 0.55f);
+
+        return Mathf.Clamp(yaw, -maxTurnAngle, maxTurnAngle);
     }
 
     private Vector2 ClosestPointOnSegment2D(Vector2 p, Vector2 a, Vector2 b)
@@ -2505,8 +3519,6 @@ public class ProceduralTrackGenerator : MonoBehaviour
             }
         }
 
-        // Hugging the border: pick the valid heading that turns back into the tile,
-        // not the smallest yaw that merely stays legal (that slides along the wall).
         if (peel && TryPickBestPeelYaw(maxTurnAngle, segLength, requireTerrain, out resultYaw))
             return true;
 
@@ -2517,21 +3529,80 @@ public class ProceduralTrackGenerator : MonoBehaviour
         if (TrySearchYawBand(preferredYawDeg, maxTurnAngle, segLength, requireTerrain, samples, out resultYaw))
             return true;
 
-        // Near a tile edge the intended turn may be too small to stay on the terrain.
-        // Allow a sharper bounce rather than leaving the active tile.
+        // Stay on the tile with a moderate bounce — not a 150° hairpin.
         if (requireTerrain)
         {
-            float bounceTurn = Mathf.Max(maxTurnAngle, 95f);
+            float bounceTurn = Mathf.Min(Mathf.Max(maxTurnAngle, 55f), 75f);
             if (peel && TryPickBestPeelYaw(bounceTurn, segLength, requireTerrain, out resultYaw))
                 return true;
             if (TrySearchYawBand(preferredYawDeg, bounceTurn, segLength, requireTerrain, 48, out resultYaw))
-                return true;
-            if (TrySearchYawBand(0f, 150f, segLength, requireTerrain, 60, out resultYaw))
                 return true;
         }
 
         resultYaw = preferredYawDeg;
         return false;
+    }
+
+    /// <summary>
+    /// Among legal yaws, prefer headings that close distance to the opposite corner.
+    /// Personality/smoothness stay strong so this does not sawtooth every segment.
+    /// Soft 120m clearance is NOT in this score — that caused high-frequency waves.
+    /// </summary>
+    private bool TryPickBestProgressYaw(
+        float preferredYawDeg,
+        float maxTurnAngle,
+        float segLength,
+        bool requireTerrain,
+        bool peel,
+        out float resultYaw)
+    {
+        resultYaw = preferredYawDeg;
+        float bestScore = float.NegativeInfinity;
+        bool found = false;
+        int samples = Mathf.Max(24, yawSearchSamples);
+        if (requireTerrain)
+            samples = Mathf.Max(samples, 36);
+
+        for (int i = 0; i <= samples; i++)
+        {
+            float yaw = Mathf.Lerp(-maxTurnAngle, maxTurnAngle, i / (float)samples);
+            if (!IsYawValid(yaw, segLength, requireTerrain))
+                continue;
+
+            float score = ScoreProgressYaw(yaw, preferredYawDeg, segLength);
+            if (peel)
+                score += ScoreEdgePeelYaw(yaw, segLength);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                resultYaw = yaw;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    private float ScoreProgressYaw(float yaw, float preferredYaw, float segLength)
+    {
+        float progress = ProgressTowardGoalMeters(yaw, segLength);
+        float score = progress * 3.4f;
+        if (progress < 0f)
+            score += progress * 5.5f;
+
+        score -= Mathf.Abs(Mathf.DeltaAngle(yaw, preferredYaw)) * 1.15f;
+        score -= Mathf.Abs(Mathf.DeltaAngle(yaw, _lastCommittedYaw)) * 0.9f;
+        return score;
+    }
+
+    private float ProgressTowardGoalMeters(float yawDeg, float segLength)
+    {
+        Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        float distNow = Vector2.Distance(pos, _flowGoalXZ);
+        Quaternion testRot = _currentRotation * Quaternion.Euler(0f, yawDeg, 0f);
+        Vector3 fwd = testRot * Vector3.forward;
+        Vector2 end = pos + new Vector2(fwd.x, fwd.z) * segLength;
+        return distNow - Vector2.Distance(end, _flowGoalXZ);
     }
 
     private bool TryFindYaw(float preferredYawDeg, float maxTurnAngle, float segLength, bool requirePreferredTerrain, out float resultYaw)
@@ -2635,23 +3706,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
             }
         }
 
-        // Late path must stay outside a start exclusion bubble so the finish can't curl back for a grass cut.
-        if (enforceMinStartEndSeparation && minStartEndDistance > 0.01f && segmentCount > 1)
-        {
-            float builtNorm = (float)_segments2D.Count / (segmentCount - 1);
-            if (builtNorm >= startSeparationEnforceAfterNormalized)
-            {
-                Vector2 startXZ = new Vector2(_trackStartPosition.x, _trackStartPosition.z);
-                float minSepSq = minStartEndDistance * minStartEndDistance;
-                if ((a - startXZ).sqrMagnitude < minSepSq
-                    || (b - startXZ).sqrMagnitude < minSepSq
-                    || PointSegmentDistanceSq(startXZ, a, b) < minSepSq)
-                {
-                    return false;
-                }
-            }
-        }
-
+        // Finish-vs-start distance is checked after the path is built, not as a mid-build
+        // yaw reject (large minStartEndDistance values made every heading illegal).
         return true;
     }
 
@@ -2694,19 +3750,29 @@ public class ProceduralTrackGenerator : MonoBehaviour
         return 1f - Mathf.Clamp01(best / keepOut);
     }
 
+    /// <summary>
+    /// Hard centerline gap so asphalt does not pack. Capped so a long road can still
+    /// fold on one tile. Wider values (e.g. 7 road-widths) are a soft preference, not a wall.
+    /// </summary>
+    private float GetHardPackClearanceMeters()
+    {
+        float wanted = GetParallelSelfClearanceMeters();
+        float cap = roadWidth * 3.1f + 8f;
+        return Mathf.Clamp(wanted, roadWidth + 8f, cap);
+    }
+
     private float GetHardSelfClearanceMeters()
     {
-        return GetParallelSelfClearanceMeters();
+        return GetHardPackClearanceMeters();
     }
 
     private float GetMinSelfClearanceMeters()
     {
-        return GetParallelSelfClearanceMeters();
+        return GetHardPackClearanceMeters();
     }
 
     /// <summary>
-    /// Centerline gap required when two stretches run alongside each other.
-    /// 2.0 * roadWidth + extra ≈ one full road-width of dirt between asphalt edges.
+    /// Centerline gap requested for parallel stretches (may be larger than the hard cap).
     /// </summary>
     private float GetParallelSelfClearanceMeters()
     {
@@ -2715,37 +3781,56 @@ public class ProceduralTrackGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Corners may sit closer; parallel / anti-parallel stretches need a real off-road strip.
+    /// Corners may sit closer; packed parallels need a strip of dirt, not a 50m no-build zone.
     /// </summary>
     private float GetRequiredClearanceMeters(Vector2 dirA, Vector2 dirB)
     {
+        float pack = GetHardPackClearanceMeters();
         if (dirA.sqrMagnitude < 1e-8f || dirB.sqrMagnitude < 1e-8f)
-            return GetParallelSelfClearanceMeters();
+            return pack;
 
         dirA.Normalize();
         dirB.Normalize();
         float absDot = Mathf.Abs(Vector2.Dot(dirA, dirB));
-        float parallelT = Mathf.SmoothStep(0.3f, 0.82f, absDot);
-        float cornerNeed = roadWidth * 1.08f;
-        return Mathf.Lerp(cornerNeed, GetParallelSelfClearanceMeters(), parallelT);
+        float parallelT = Mathf.SmoothStep(0.35f, 0.85f, absDot);
+        float cornerNeed = Mathf.Max(roadWidth * 1.55f, 12f);
+        return Mathf.Lerp(cornerNeed, pack, parallelT);
     }
 
     /// <summary>
-    /// How many recent same-heading segments still count as "this road continuing",
-    /// not a second nearby stretch. Must be past the parallel-gap distance along the path.
+    /// Along-path distance before two stretches count as a possible grass-cut.
+    /// </summary>
+    private float GetShortcutPathSeparationMeters()
+    {
+        float along = GetSameChainSkipCount() * Mathf.Max(1f, segmentLength) + Mathf.Max(12f, roadWidth * 3f);
+        return Mathf.Max(along, 36f);
+    }
+
+    /// <summary>
+    /// Hard planar gap for far-apart-in-path segments. Matches pack clearance so
+    /// the road can turn at a far edge without aborting the whole track.
+    /// </summary>
+    private float GetGrassCutClearanceMeters()
+    {
+        return GetHardPackClearanceMeters();
+    }
+
+    /// <summary>
+    /// How many recent same-heading segments still count as "this road continuing".
     /// </summary>
     private int GetSameChainSkipCount()
     {
         float spacing = Mathf.Max(1f, segmentLength);
-        int skip = Mathf.CeilToInt(GetParallelSelfClearanceMeters() / spacing) + 1;
-        return Mathf.Clamp(skip, 3, 8);
+        int skip = Mathf.CeilToInt(GetHardPackClearanceMeters() / spacing) + 1;
+        return Mathf.Clamp(skip, 3, 6);
     }
 
     /// <summary>
     /// Returns true if segment AB is too close to / intersects existing track.
     /// When skipConnectedTail, ignores the immediately previous segment (shared vertex).
     /// Recent same-direction segments are the current road, not a packed neighbor.
-    /// Anti-parallel folds are always tested so U-turns can't run 1m beside themselves.
+    /// Folds that come back near older road (same-direction cuts or reverse paperclips)
+    /// are always tested.
     /// </summary>
     private bool SegmentCollidesWithExistingTrack(Vector2 a, Vector2 b, bool skipConnectedTail)
     {
@@ -2771,8 +3856,12 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (IsSameChainContinuation(age, adir, bdir, sameChainSkip))
                 continue;
 
-            float need = GetRequiredClearanceMeters(adir, bdir);
             float distSq = SegmentSegmentDistanceSq(a, b, s.a, s.b);
+            float need = GetRequiredClearanceMeters(adir, bdir);
+            float pathSep = Mathf.Max(0, age) * Mathf.Max(1f, segmentLength);
+            if (pathSep >= GetShortcutPathSeparationMeters())
+                need = Mathf.Max(need, GetGrassCutClearanceMeters());
+
             if (distSq < need * need)
                 return true;
         }
@@ -2827,6 +3916,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
                     continue;
 
                 float need = GetRequiredClearanceMeters(adir, bdir);
+                float pathSep = age * Mathf.Max(1f, segmentLength);
+                if (pathSep >= GetShortcutPathSeparationMeters())
+                    need = Mathf.Max(need, GetGrassCutClearanceMeters());
+
                 if (SegmentSegmentDistanceSq(a.a, a.b, b.a, b.b) < need * need)
                     return false;
             }
@@ -2873,58 +3966,64 @@ public class ProceduralTrackGenerator : MonoBehaviour
             _preferredMinZ + keepInset,
             _preferredMaxZ - keepInset);
 
-        // Keep the restored start pose when it already sits on the active tile.
-        if (startAlreadyInside)
-            return;
-
         if (!startAtPreferredTerrainCorner)
         {
-            SnapStartOntoPreferredTerrain(keepInset);
+            if (!startAlreadyInside)
+                SnapStartOntoPreferredTerrain(keepInset);
             return;
         }
-
-        // Start ~25% in from the corner toward center so generation isn't hugging the tile edge.
-        float frac = Mathf.Clamp(preferredStartCornerInsetFraction, 0.05f, 0.45f);
-        float insetX = sz.x * frac;
-        float insetZ = sz.z * frac;
 
         TerrainCorner corner = preferredStartCorner;
         if (corner == TerrainCorner.Random)
             corner = (TerrainCorner)Random.Range(1, 5); // SW..NE
 
-        float x;
-        float z;
-        switch (corner)
-        {
-            case TerrainCorner.SouthEast:
-                x = _preferredMaxX - insetX;
-                z = _preferredMinZ + insetZ;
-                break;
-            case TerrainCorner.NorthWest:
-                x = _preferredMinX + insetX;
-                z = _preferredMaxZ - insetZ;
-                break;
-            case TerrainCorner.NorthEast:
-                x = _preferredMaxX - insetX;
-                z = _preferredMaxZ - insetZ;
-                break;
-            case TerrainCorner.SouthWest:
-            default:
-                x = _preferredMinX + insetX;
-                z = _preferredMinZ + insetZ;
-                break;
-        }
-
-        Vector3 start = new Vector3(x, transform.position.y, z);
-        Vector3 toCenter = new Vector3(_preferredCenterXZ.x - x, 0f, _preferredCenterXZ.y - z);
-        if (toCenter.sqrMagnitude < 1e-4f)
-            toCenter = transform.forward;
+        Vector2 start2 = CornerPositionOnPreferred(corner);
+        Vector2 goal2 = CornerPositionOnPreferred(OppositeTerrainCorner(corner));
+        Vector3 start = new Vector3(start2.x, transform.position.y, start2.y);
+        Vector3 toOpposite = new Vector3(goal2.x - start2.x, 0f, goal2.y - start2.y);
+        if (toOpposite.sqrMagnitude < 1e-4f)
+            toOpposite = new Vector3(_preferredCenterXZ.x - start2.x, 0f, _preferredCenterXZ.y - start2.y);
+        if (toOpposite.sqrMagnitude < 1e-4f)
+            toOpposite = transform.forward;
 
         _currentEndPosition = start;
         _trackStartPosition = start;
-        _currentRotation = Quaternion.LookRotation(toCenter.normalized, Vector3.up);
+        _currentRotation = Quaternion.LookRotation(toOpposite.normalized, Vector3.up);
         _globalForwardRef = _currentRotation * Vector3.forward;
         _hasInitializedHeading = false;
+        _flowGoalXZ = goal2;
+        ClampFlowGoalToPreferredInset();
+    }
+
+    private Vector2 CornerPositionOnPreferred(TerrainCorner corner)
+    {
+        float frac = Mathf.Clamp(preferredStartCornerInsetFraction, 0.05f, 0.45f);
+        float insetX = (_preferredMaxX - _preferredMinX) * frac;
+        float insetZ = (_preferredMaxZ - _preferredMinZ) * frac;
+        switch (corner)
+        {
+            case TerrainCorner.SouthEast:
+                return new Vector2(_preferredMaxX - insetX, _preferredMinZ + insetZ);
+            case TerrainCorner.NorthWest:
+                return new Vector2(_preferredMinX + insetX, _preferredMaxZ - insetZ);
+            case TerrainCorner.NorthEast:
+                return new Vector2(_preferredMaxX - insetX, _preferredMaxZ - insetZ);
+            case TerrainCorner.SouthWest:
+            default:
+                return new Vector2(_preferredMinX + insetX, _preferredMinZ + insetZ);
+        }
+    }
+
+    private static TerrainCorner OppositeTerrainCorner(TerrainCorner corner)
+    {
+        switch (corner)
+        {
+            case TerrainCorner.SouthEast: return TerrainCorner.NorthWest;
+            case TerrainCorner.NorthWest: return TerrainCorner.SouthEast;
+            case TerrainCorner.NorthEast: return TerrainCorner.SouthWest;
+            case TerrainCorner.SouthWest:
+            default: return TerrainCorner.NorthEast;
+        }
     }
 
     private void SnapStartOntoPreferredTerrain(float inset)
@@ -3078,13 +4177,47 @@ public class ProceduralTrackGenerator : MonoBehaviour
         return align < 0.28f || dist < Mathf.Min(32f, zone * 0.28f);
     }
 
+    /// <summary>
+    /// Heading that runs along the nearest border toward the opposite-corner goal.
+    /// Used instead of turning 180° into the inward normal (that packed a skippable U).
+    /// </summary>
+    private Vector2 GetEdgeTravelHeading(Vector2 pos, Vector2 fwd)
+    {
+        Vector2 inward = GetNearestEdgeInwardNormal(pos);
+        if (inward.sqrMagnitude < 1e-6f)
+            return fwd.sqrMagnitude > 1e-6f ? fwd : Vector2.up;
+
+        Vector2 alongA = new Vector2(-inward.y, inward.x);
+        if (alongA.sqrMagnitude < 1e-6f) return inward;
+        alongA.Normalize();
+        Vector2 alongB = -alongA;
+
+        Vector2 toGoal = _flowGoalXZ - pos;
+        if (toGoal.sqrMagnitude < 1e-4f)
+            toGoal = inward;
+        else
+            toGoal.Normalize();
+
+        float a = Vector2.Dot(alongA, toGoal);
+        float b = Vector2.Dot(alongB, toGoal);
+        Vector2 along = a >= b ? alongA : alongB;
+
+        if (fwd.sqrMagnitude > 1e-6f && Mathf.Abs(a - b) < 0.2f)
+            along = Vector2.Dot(fwd, alongA) >= Vector2.Dot(fwd, alongB) ? alongA : alongB;
+
+        return along;
+    }
+
     private bool YawPeelsOffEdge(float yawDeg, float segLength)
     {
         GetYawSegmentXZ(yawDeg, segLength, out Vector2 startXZ, out Vector2 endXZ, out Vector2 fwdXZ);
         float distStart = MinDistanceToPreferredInsetEdge(startXZ);
         float distEnd = MinDistanceToPreferredInsetEdge(endXZ);
-        float align = Vector2.Dot(fwdXZ, GetNearestEdgeInwardNormal(startXZ));
-        return distEnd > distStart + 0.4f || align > 0.22f;
+        Vector2 inward = GetNearestEdgeInwardNormal(startXZ);
+        float aimingOut = Vector2.Dot(fwdXZ, -inward);
+        Vector2 travel = GetEdgeTravelHeading(startXZ, fwdXZ);
+        float along = Vector2.Dot(fwdXZ, travel);
+        return aimingOut < 0.2f && (distEnd + 0.25f >= distStart || along > 0.4f);
     }
 
     private bool TryPickBestPeelYaw(float maxTurnAngle, float segLength, bool requireTerrain, out float resultYaw)
@@ -3119,15 +4252,16 @@ public class ProceduralTrackGenerator : MonoBehaviour
             return 0f;
 
         Vector2 inward = GetNearestEdgeInwardNormal(startXZ);
-        float align = Vector2.Dot(fwdXZ, inward);
+        Vector2 travel = GetEdgeTravelHeading(startXZ, fwdXZ);
         float distEnd = MinDistanceToPreferredInsetEdge(endXZ);
 
-        float score = align * 18f;
-        score += (distEnd - distStart) * 2.2f;
-        score += distEnd * 0.04f;
-        if (align < 0.12f)
-            score -= 12f;
-        score -= Mathf.Abs(yaw) * 0.015f;
+        float score = Vector2.Dot(fwdXZ, travel) * 22f;
+        score += (distEnd - distStart) * 2.4f;
+        score += distEnd * 0.03f;
+        float outAlign = Vector2.Dot(fwdXZ, -inward);
+        if (outAlign > 0.1f)
+            score -= outAlign * 16f;
+        score -= Mathf.Abs(Mathf.DeltaAngle(yaw, _lastCommittedYaw)) * 0.45f;
         return score;
     }
 
@@ -3275,7 +4409,18 @@ public class ProceduralTrackGenerator : MonoBehaviour
     {
         float pathLen = Mathf.Max(1, segmentCount) * Mathf.Max(0.001f, segLength);
         float fromFraction = pathLen * Mathf.Clamp01(minStartEndDistancePathFraction);
-        return Mathf.Max(0f, minStartEndDistance, fromFraction);
+        float minSep = Mathf.Max(0f, minStartEndDistance, fromFraction);
+
+        // Path-fraction rules like 0.50 * 2.8km are larger than any tile diagonal.
+        if (_hasPreferredTerrainBounds)
+        {
+            float dx = _preferredMaxX - _preferredMinX;
+            float dz = _preferredMaxZ - _preferredMinZ;
+            float diag = Mathf.Sqrt(dx * dx + dz * dz);
+            minSep = Mathf.Min(minSep, diag * 0.38f);
+        }
+
+        return minSep;
     }
 
     private bool PassesStartEndSeparationCheck(float segLength)
@@ -3622,8 +4767,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
     {
         var res = new List<Vector3>();
         int n = raw.Count;
+        if (n < 2) return new List<Vector3>(raw);
 
         res.Add(raw[0]);
+        subdivisions = Mathf.Max(1, subdivisions);
 
         for (int i = 0; i < n - 1; i++)
         {
@@ -3635,24 +4782,67 @@ public class ProceduralTrackGenerator : MonoBehaviour
             for (int s = 1; s <= subdivisions; s++)
             {
                 float t = s / (float)subdivisions;
-                res.Add(CatmullRom(p0, p1, p2, p3, t));
+                if (SpanIsStraight(p0, p1, p2, p3, 0.08f))
+                    res.Add(Vector3.Lerp(p1, p2, t));
+                else
+                    res.Add(CentripetalCatmullRom(p0, p1, p2, p3, t));
             }
         }
 
         return res;
     }
 
-    private Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    private static bool SpanIsStraight(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float maxOffset)
     {
-        float t2 = t * t;
-        float t3 = t2 * t;
+        Vector3 span = p2 - p1;
+        span.y = 0f;
+        if (span.sqrMagnitude < 1e-8f)
+            return true;
+        Vector3 dir = span.normalized;
+        return PerpOffset(p0, p1, dir) <= maxOffset
+               && PerpOffset(p2, p1, dir) <= maxOffset
+               && PerpOffset(p3, p1, dir) <= maxOffset;
+    }
 
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
+    private static float PerpOffset(Vector3 p, Vector3 origin, Vector3 dir)
+    {
+        Vector3 v = p - origin;
+        v.y = 0f;
+        return Vector3.Cross(dir, v).magnitude;
+    }
+
+    /// <summary>
+    /// Centripetal Catmull-Rom (alpha 0.5). Uniform CR overshoots shallow zigs and
+    /// scallops the road edges, especially on the near-straight opening stretch.
+    /// </summary>
+    private static Vector3 CentripetalCatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t0 = 0f;
+        float t1 = CatmullKnot(t0, p0, p1);
+        float t2 = CatmullKnot(t1, p1, p2);
+        float t3 = CatmullKnot(t2, p2, p3);
+        if (t2 - t1 < 1e-5f)
+            return Vector3.Lerp(p1, p2, Mathf.Clamp01(t));
+
+        float tVal = Mathf.Lerp(t1, t2, Mathf.Clamp01(t));
+        Vector3 a1 = CatmullLerp(p0, p1, t0, t1, tVal);
+        Vector3 a2 = CatmullLerp(p1, p2, t1, t2, tVal);
+        Vector3 a3 = CatmullLerp(p2, p3, t2, t3, tVal);
+        Vector3 b1 = CatmullLerp(a1, a2, t0, t2, tVal);
+        Vector3 b2 = CatmullLerp(a2, a3, t1, t3, tVal);
+        return CatmullLerp(b1, b2, t1, t2, tVal);
+    }
+
+    private static float CatmullKnot(float t, Vector3 a, Vector3 b)
+    {
+        return t + Mathf.Pow(Mathf.Max(Vector3.SqrMagnitude(b - a), 1e-8f), 0.25f);
+    }
+
+    private static Vector3 CatmullLerp(Vector3 a, Vector3 b, float ta, float tb, float t)
+    {
+        float d = tb - ta;
+        if (Mathf.Abs(d) < 1e-6f) return a;
+        return ((tb - t) / d) * a + ((t - ta) / d) * b;
     }
 
     // ================================================================
@@ -3705,8 +4895,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
     // ================================================================
     private void OnDrawGizmosSelected()
     {
+        var pts = _junctionPathPoints.Count >= 2 ? _junctionPathPoints : _pathPoints;
         Gizmos.color = Color.yellow;
-        for (int i = 0; i < _pathPoints.Count - 1; i++)
-            Gizmos.DrawLine(_pathPoints[i], _pathPoints[i + 1]);
+        for (int i = 0; i < pts.Count - 1; i++)
+            Gizmos.DrawLine(pts[i], pts[i + 1]);
     }
 }

@@ -23,16 +23,16 @@ MonoBehaviour:
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
     segmentCount: 190
     autoDetectSegmentLength: 1
-    segmentLength: 15
-    minTurnAngle: 5
-    startMaxTurnAngle: 15
+    segmentLength: 10
+    minTurnAngle: 15
+    startMaxTurnAngle: 25
     endMaxTurnAngle: 70
     startTurnChance: 0.17
     endTurnChance: 0.5
     maxWiggleAngle: 0
     wiggleOverDistance: 0
     useAvoidance: 1
-    avoidanceRadius: 45
+    avoidanceRadius: 10
     avoidanceStrength: 1.601
     avoidanceFalloff: 1
     constrainToGlobalDirection: 0
@@ -47,7 +47,7 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     preventSelfIntersections: 1
-    yawSearchSamples: 72
+    yawSearchSamples: 24
     collisionPadding: 9.08
     trackRadiusMultiplier: 3
     recentIgnoreCount: 2
@@ -56,11 +56,11 @@ MonoBehaviour:
     foldAvoidLookAheadMeters: 90
     foldInAimPenalty: 7.27
     parallelRejectRoadWidths: 2.75
-    minSelfClearanceRoadWidths: 7
-    minSelfClearanceExtraMeters: 7
-    selfCollisionLookAheadSegments: 2
+    minSelfClearanceRoadWidths: 30
+    minSelfClearanceExtraMeters: 30
+    selfCollisionLookAheadSegments: 4
     enforceMinStartEndSeparation: 1
-    minStartEndDistance: 378
+    minStartEndDistance: 120
     minStartEndDistancePathFraction: 0.502
     startSeparationEnforceAfterNormalized: 0.3
     startRegionKeepOutMeters: 90
