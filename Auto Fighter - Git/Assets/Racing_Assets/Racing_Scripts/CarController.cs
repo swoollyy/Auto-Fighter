@@ -996,8 +996,8 @@ public class CarController : MonoBehaviour
 
     private bool _airborneForTricks;
 
-    // Drift-held boost runtime (per-direction)
-    private float _driftHoldTimeSeconds;        // accumulates while drifting with stable direction
+    // Drift-held boost runtime (sticky across steer flips while drift stays held)
+    private float _driftHoldTimeSeconds;        // accumulates while drift + a steer direction are held
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
     private bool _driftWasActiveLastFrame;
     /// <summary>Banked hold time when release was blocked (crash lockout / post-crash) — retry until applied or cleared.</summary>
@@ -3843,7 +3843,6 @@ public class CarController : MonoBehaviour
         }
 
         bool wasDrifting = isDrifting;
-        int prevHoldDirectionSign = _driftHoldDirectionSign;
 
         // Crash / upright recovery / mash: no driving gameplay input (accel, brake, boost, drift).
         if (_inCrash || _isReorienting || _flipMashActive)
@@ -3944,9 +3943,7 @@ public class CarController : MonoBehaviour
                             _driftFlipBlockUntil = Time.time + steerFlipRebuildDelay;
                             _driftSteerFlipPendingTimer = 0f;
                             _driftCurrentSteerSign = currentSign;
-
-                            if (enableDriftHeldBoost)
-                                ResetDriftHeldTimer();
+                            // Held-boost bar stays; swapping turn mid-drift should not dump charge.
                         }
                         // else: keep established sign until grace expires
                     }

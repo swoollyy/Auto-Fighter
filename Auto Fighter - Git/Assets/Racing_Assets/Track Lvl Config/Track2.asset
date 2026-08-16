@@ -21,15 +21,15 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 140
+    segmentCount: 240
     autoDetectSegmentLength: 1
     segmentLength: 15
-    minTurnAngle: 0
-    startMaxTurnAngle: 45
-    endMaxTurnAngle: 80
-    startTurnChance: 0.1
-    endTurnChance: 0.6
-    maxWiggleAngle: 16
+    minTurnAngle: 15
+    startMaxTurnAngle: 60
+    endMaxTurnAngle: 100
+    startTurnChance: 0.2
+    endTurnChance: 0.7
+    maxWiggleAngle: 18
     wiggleOverDistance: 0.607
     useAvoidance: 1
     avoidanceRadius: 16.9
@@ -266,6 +266,7 @@ MonoBehaviour:
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
       throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Critter
       prefab: {fileID: 3874382558013832276, guid: 0155c824ac4d4954d8bded107f8521be, type: 3}
       behaviorType: 1
@@ -386,6 +387,7 @@ MonoBehaviour:
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
       throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Beast
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
@@ -506,6 +508,7 @@ MonoBehaviour:
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
       throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 0}
     - id: Gorilla
       prefab: {fileID: 3874382558013832276, guid: c4e8a91b7d3f42a0b6e1f8c2d5a09734, type: 3}
       behaviorType: 3
@@ -626,6 +629,7 @@ MonoBehaviour:
       throwerThrownKnockbackForce: 25
       throwerThrownLift: 3
       throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 4108758772899792739, guid: e4b91c7a6d825f449c3e1a08b5f27d46, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     creatureSpacing: 35

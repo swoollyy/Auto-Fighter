@@ -130,10 +130,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
     [Tooltip("If true, never leave the preferred terrain — abort and retry instead of spilling onto neighbors.")]
     [SerializeField] private bool hardClampToPreferredTerrain = true;
 
-    [Tooltip("When near the edge, steer toward the terrain center. 0 = off.")]
+    [Tooltip("When the road nears the terrain border, peel inward instead of sliding along the edge. 0 = off.")]
     [SerializeField, Range(0f, 1f)] private float preferredTerrainStayBias = 0.85f;
 
-    [Tooltip("Begin inward edge-steering when this close to the preferred-terrain inset boundary.")]
+    [Tooltip("Begin peeling away from the border when this close to the preferred-terrain inset boundary.")]
     [SerializeField, Min(5f)] private float preferredTerrainEdgeSteerMeters = 120f;
 
     [Tooltip("Extra XZ margin so the road width (not just the centerline) stays inside the preferred terrain.")]
@@ -801,14 +801,18 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (constrainToGlobalDirection)
                 preferredYaw = ApplyGlobalDirectionBias(preferredYaw, maxTurnAngle);
 
+            float turnBudget = maxTurnAngle;
             if (requireTerrain)
-                preferredYaw = ApplyPreferredTerrainStayBias(preferredYaw, maxTurnAngle);
+            {
+                turnBudget = GetEdgePeelTurnBudget(maxTurnAngle);
+                preferredYaw = ApplyPreferredTerrainStayBias(preferredYaw, turnBudget);
+            }
 
             float chosenYaw = preferredYaw;
 
             if (preventSelfIntersections || enforceMinStartEndSeparation || requireTerrain)
             {
-                if (!TryFindCollisionFreeYaw(preferredYaw, maxTurnAngle, effLength, out chosenYaw))
+                if (!TryFindCollisionFreeYaw(preferredYaw, turnBudget, effLength, out chosenYaw))
                 {
                     _lastBuildFailReason = requireTerrain
                         ? "no valid segment yaw (terrain, intersection, or start proximity)"
@@ -1017,6 +1021,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
                 dir = Rotate2(dir, ang);
             }
 
+            SteerDirOffPreferredEdge(pos, ref dir);
             pos = pos + dir * spacing;
             if (_hasPreferredTerrainBounds)
                 pos = ClampToPreferredInset(pos);
@@ -1179,19 +1184,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
             float s = Mathf.Sin(turn);
             dir = new Vector2(dir.x * c - dir.y * s, dir.x * s + dir.y * c);
 
-            Vector2 next = poly[poly.Count - 1] + dir * spacing;
+            Vector2 prev = poly[poly.Count - 1];
+            SteerDirOffPreferredEdge(prev, ref dir);
+            Vector2 next = prev + dir * spacing;
             if (_hasPreferredTerrainBounds)
-            {
-                Vector2 toCenter = _preferredCenterXZ - next;
-                float edgeDist = MinDistanceToPreferredInsetEdge(next);
-                if (edgeDist < edgeComfortZoneMeters && toCenter.sqrMagnitude > 1e-4f)
-                {
-                    Vector2 pull = toCenter.normalized;
-                    dir = Vector2.Lerp(dir, pull, 0.18f).normalized;
-                    next = poly[poly.Count - 1] + dir * spacing;
-                }
                 next = ClampToPreferredInset(next);
-            }
             poly.Add(next);
         }
     }
@@ -1383,20 +1380,16 @@ public class ProceduralTrackGenerator : MonoBehaviour
             }
         }
 
-        // Edge: bend inward before escaping the tile.
-        if (_hasPreferredTerrainBounds)
+        // Edge: peel away from the nearest border instead of sliding along it.
+        if (_hasPreferredTerrainBounds && NeedsEdgePeel())
         {
-            float edgeDist = MinDistanceToPreferredInsetEdge(pos);
-            if (edgeDist < edgeComfortZoneMeters * 0.55f)
+            Vector2 inward = GetNearestEdgeInwardNormal(pos);
+            if (inward.sqrMagnitude > 1e-4f)
             {
-                Vector2 toCenter = _preferredCenterXZ - pos;
-                if (toCenter.sqrMagnitude > 1e-4f)
-                {
-                    toCenter.Normalize();
-                    float centerYaw = Vector2.SignedAngle(curFwd, toCenter);
-                    float edgeT = 1f - Mathf.Clamp01(edgeDist / Mathf.Max(1f, edgeComfortZoneMeters * 0.55f));
-                    intent = Mathf.LerpAngle(intent, centerYaw, 0.35f + edgeT * 0.5f);
-                }
+                float edgeDist = MinDistanceToPreferredInsetEdge(pos);
+                float edgeT = 1f - Mathf.Clamp01(edgeDist / Mathf.Max(1f, preferredTerrainEdgeSteerMeters));
+                float peelYaw = SignedAngle2D(curFwd, inward);
+                intent = Mathf.LerpAngle(intent, peelYaw, 0.45f + edgeT * 0.5f);
             }
         }
 
@@ -1475,6 +1468,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         score -= ScoreParallelSwitchbackPenalty(startXZ, endXZ) * 12f;
         score -= ScoreFoldInAimPenalty(endXZ, fwdXZ) * 4f;
+
+        if (_hasPreferredTerrainBounds)
+            score += ScoreEdgePeelYaw(yaw, segLength);
 
         // Follow waypoint / progress.
         if (_guideWaypointIndex < _guideWaypoints.Count)
@@ -1594,6 +1590,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
             dir = Rotate2(dir, sway * peakYaw * ampScale);
             if (dir.sqrMagnitude > 1e-8f) dir.Normalize();
 
+            SteerDirOffPreferredEdge(pos, ref dir);
             pos += dir * spacing;
             if (_hasPreferredTerrainBounds)
                 pos = ClampToPreferredInset(pos);
@@ -1775,12 +1772,21 @@ public class ProceduralTrackGenerator : MonoBehaviour
                 heading = Rotate2(heading.normalized, turnSign * Random.Range(15f, 35f));
                 Vector2 toMid = center - pos;
                 if (toMid.sqrMagnitude > 1e-4f)
-                    heading = Vector2.Lerp(heading, toMid.normalized, 0.45f).normalized;
-                next = pos + heading * step;
+                    heading = Vector2.Lerp(heading, toMid.normalized, 0.7f).normalized;
+                next = pos + heading * step * 0.85f;
             }
 
             next.x = Mathf.Clamp(next.x, minX, maxX);
             next.y = Mathf.Clamp(next.y, minZ, maxZ);
+            // Don't leave waypoints sitting on the border — that makes the spline hug the wall.
+            if (MinDistanceToPreferredInsetEdge(next) < Mathf.Min(24f, span * 0.06f))
+            {
+                Vector2 pull = center - next;
+                if (pull.sqrMagnitude > 1e-4f)
+                    next += pull.normalized * Random.Range(span * 0.08f, span * 0.16f);
+                next.x = Mathf.Clamp(next.x, minX, maxX);
+                next.y = Mathf.Clamp(next.y, minZ, maxZ);
+            }
 
             if ((next - pos).sqrMagnitude < (minStep * 0.35f) * (minStep * 0.35f))
                 continue;
@@ -2028,15 +2034,16 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (approach > 0f)
                 score -= edgeApproachPenalty * approach * (0.35f + edgeNorm * 1.65f);
 
-            // Near edge: strongly reward pointing toward terrain center.
-            Vector2 toCenter = _preferredCenterXZ - endXZ;
-            if (toCenter.sqrMagnitude > 1e-6f)
+            // Near edge: strongly reward peeling away from the nearest border.
+            Vector2 inward = GetNearestEdgeInwardNormal(endXZ);
+            if (inward.sqrMagnitude > 1e-6f)
             {
-                toCenter.Normalize();
-                float align = Vector2.Dot(fwdXZ, toCenter); // -1..1
+                float align = Vector2.Dot(fwdXZ, inward); // -1..1
                 score += centerSeekReward * Mathf.Max(0f, align) * edgeNorm * 10f;
-                // Extra punish aiming into the edge.
+                // Extra punish aiming into the edge / sliding along it.
                 score -= centerSeekReward * Mathf.Max(0f, -align) * edgeNorm * 8f;
+                if (align < 0.15f)
+                    score -= centerSeekReward * edgeNorm * 6f;
             }
 
             // Mild reward for staying deep in the interior.
@@ -2427,10 +2434,11 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private float SignedAngle2D(Vector2 from, Vector2 to)
     {
-        float cross = from.x * to.y - from.y * to.x;
-        float dot = Vector2.Dot(from, to);
-        float angle = Mathf.Atan2(cross, dot) * Mathf.Rad2Deg;
-        return angle;
+        Vector3 from3 = new Vector3(from.x, 0f, from.y);
+        Vector3 to3 = new Vector3(to.x, 0f, to.y);
+        if (from3.sqrMagnitude < 1e-8f || to3.sqrMagnitude < 1e-8f)
+            return 0f;
+        return Vector3.SignedAngle(from3, to3, Vector3.up);
     }
 
     // ================================================================
@@ -2469,12 +2477,21 @@ public class ProceduralTrackGenerator : MonoBehaviour
     {
         bool requireTerrain = ShouldRequirePreferredTerrain();
         preferredYawDeg = Mathf.Clamp(preferredYawDeg, -maxTurnAngle, maxTurnAngle);
+        bool peel = requireTerrain && NeedsEdgePeel();
 
         if (IsYawValid(preferredYawDeg, segLength, requireTerrain))
         {
-            resultYaw = preferredYawDeg;
-            return true;
+            if (!peel || YawPeelsOffEdge(preferredYawDeg, segLength))
+            {
+                resultYaw = preferredYawDeg;
+                return true;
+            }
         }
+
+        // Hugging the border: pick the valid heading that turns back into the tile,
+        // not the smallest yaw that merely stays legal (that slides along the wall).
+        if (peel && TryPickBestPeelYaw(maxTurnAngle, segLength, requireTerrain, out resultYaw))
+            return true;
 
         int samples = Mathf.Max(1, yawSearchSamples);
         if (requireTerrain)
@@ -2488,6 +2505,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
         if (requireTerrain)
         {
             float bounceTurn = Mathf.Max(maxTurnAngle, 95f);
+            if (peel && TryPickBestPeelYaw(bounceTurn, segLength, requireTerrain, out resultYaw))
+                return true;
             if (TrySearchYawBand(preferredYawDeg, bounceTurn, segLength, requireTerrain, 48, out resultYaw))
                 return true;
             if (TrySearchYawBand(0f, 150f, segLength, requireTerrain, 60, out resultYaw))
@@ -2980,13 +2999,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
         float distToEdge = MinDistanceToPreferredInsetEdge(pos);
-        if (distToEdge >= preferredTerrainEdgeSteerMeters)
+        float zone = Mathf.Max(1f, preferredTerrainEdgeSteerMeters);
+        if (distToEdge >= zone)
             return yaw;
 
-        Vector2 inward = (_preferredCenterXZ - pos);
+        Vector2 inward = GetNearestEdgeInwardNormal(pos);
         if (inward.sqrMagnitude < 1e-6f)
             return yaw;
-        inward.Normalize();
 
         Vector3 forward = (_currentRotation * Vector3.forward);
         Vector2 fwd = new Vector2(forward.x, forward.z);
@@ -2994,25 +3013,190 @@ public class ProceduralTrackGenerator : MonoBehaviour
             return yaw;
         fwd.Normalize();
 
-        float desiredYaw = SignedAngle2D(fwd, inward);
-        float strength = (1f - Mathf.Clamp01(distToEdge / Mathf.Max(1f, preferredTerrainEdgeSteerMeters)))
-                         * preferredTerrainStayBias;
-        yaw = Mathf.LerpAngle(yaw, desiredYaw, strength);
+        float align = Vector2.Dot(fwd, inward);
+        float edgeT = 1f - Mathf.Clamp01(distToEdge / zone);
+        float peelYaw = SignedAngle2D(fwd, inward);
+
+        // Already heading back into the tile with room to spare: keep organic turns.
+        bool hugging = align < 0.28f || distToEdge < Mathf.Min(32f, zone * 0.28f);
+        float strength = hugging
+            ? Mathf.Clamp01(Mathf.Lerp(0.55f, 1f, edgeT) * Mathf.Max(0.5f, preferredTerrainStayBias))
+            : edgeT * preferredTerrainStayBias * 0.22f;
+
+        yaw = Mathf.LerpAngle(yaw, peelYaw, strength);
         return Mathf.Clamp(yaw, -maxTurnAngle, maxTurnAngle);
     }
 
-    private bool SegmentStaysOnPreferredTerrain(Vector2 a, Vector2 b)
+    private float GetEdgePeelTurnBudget(float maxTurnAngle)
+    {
+        if (!NeedsEdgePeel())
+            return maxTurnAngle;
+
+        Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        float dist = MinDistanceToPreferredInsetEdge(pos);
+        float zone = Mathf.Max(1f, preferredTerrainEdgeSteerMeters);
+        float edgeT = 1f - Mathf.Clamp01(dist / zone);
+        float peelCap = Mathf.Max(maxTurnAngle, Mathf.Min(36f, Mathf.Max(endMaxTurnAngle, 24f)));
+        return Mathf.Lerp(maxTurnAngle, peelCap, edgeT);
+    }
+
+    private bool NeedsEdgePeel()
     {
         if (!_hasPreferredTerrainBounds)
-            return true;
+            return false;
 
-        // Keep the full road width inside the tile, not just the centerline.
+        Vector2 pos = new Vector2(_currentEndPosition.x, _currentEndPosition.z);
+        float dist = MinDistanceToPreferredInsetEdge(pos);
+        float zone = Mathf.Max(1f, preferredTerrainEdgeSteerMeters);
+        if (dist >= zone)
+            return false;
+
+        Vector3 forward = _currentRotation * Vector3.forward;
+        Vector2 fwd = new Vector2(forward.x, forward.z);
+        if (fwd.sqrMagnitude < 1e-6f)
+            return dist < 24f;
+        fwd.Normalize();
+
+        float align = Vector2.Dot(fwd, GetNearestEdgeInwardNormal(pos));
+        return align < 0.28f || dist < Mathf.Min(32f, zone * 0.28f);
+    }
+
+    private bool YawPeelsOffEdge(float yawDeg, float segLength)
+    {
+        GetYawSegmentXZ(yawDeg, segLength, out Vector2 startXZ, out Vector2 endXZ, out Vector2 fwdXZ);
+        float distStart = MinDistanceToPreferredInsetEdge(startXZ);
+        float distEnd = MinDistanceToPreferredInsetEdge(endXZ);
+        float align = Vector2.Dot(fwdXZ, GetNearestEdgeInwardNormal(startXZ));
+        return distEnd > distStart + 0.4f || align > 0.22f;
+    }
+
+    private bool TryPickBestPeelYaw(float maxTurnAngle, float segLength, bool requireTerrain, out float resultYaw)
+    {
+        resultYaw = 0f;
+        float best = float.NegativeInfinity;
+        bool found = false;
+        int samples = 48;
+        maxTurnAngle = Mathf.Max(1f, maxTurnAngle);
+        for (int i = 0; i <= samples; i++)
+        {
+            float yaw = Mathf.Lerp(-maxTurnAngle, maxTurnAngle, i / (float)samples);
+            if (!IsYawValid(yaw, segLength, requireTerrain))
+                continue;
+            float score = ScoreEdgePeelYaw(yaw, segLength);
+            if (score > best)
+            {
+                best = score;
+                resultYaw = yaw;
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private float ScoreEdgePeelYaw(float yaw, float segLength)
+    {
+        GetYawSegmentXZ(yaw, segLength, out Vector2 startXZ, out Vector2 endXZ, out Vector2 fwdXZ);
+        float distStart = MinDistanceToPreferredInsetEdge(startXZ);
+        float zone = Mathf.Max(1f, preferredTerrainEdgeSteerMeters);
+        if (distStart >= zone)
+            return 0f;
+
+        Vector2 inward = GetNearestEdgeInwardNormal(startXZ);
+        float align = Vector2.Dot(fwdXZ, inward);
+        float distEnd = MinDistanceToPreferredInsetEdge(endXZ);
+
+        float score = align * 18f;
+        score += (distEnd - distStart) * 2.2f;
+        score += distEnd * 0.04f;
+        if (align < 0.12f)
+            score -= 12f;
+        score -= Mathf.Abs(yaw) * 0.015f;
+        return score;
+    }
+
+    private void GetYawSegmentXZ(float yawDeg, float segLength, out Vector2 startXZ, out Vector2 endXZ, out Vector2 fwdXZ)
+    {
+        Quaternion testRot = _currentRotation * Quaternion.Euler(0f, yawDeg, 0f);
+        Vector3 forward3D = testRot * Vector3.forward;
+        Vector3 start3D = _currentEndPosition;
+        Vector3 end3D = start3D + forward3D * segLength;
+        startXZ = new Vector2(start3D.x, start3D.z);
+        endXZ = new Vector2(end3D.x, end3D.z);
+        fwdXZ = new Vector2(forward3D.x, forward3D.z);
+        if (fwdXZ.sqrMagnitude > 1e-8f)
+            fwdXZ.Normalize();
+    }
+
+    /// <summary>
+    /// Inward normal of the nearest preferred-terrain border(s). Corners blend both axes
+    /// so the road peels diagonally instead of sliding along one wall toward the other.
+    /// </summary>
+    private Vector2 GetNearestEdgeInwardNormal(Vector2 p)
+    {
+        if (!TryGetPreferredInsetRect(out float minX, out float maxX, out float minZ, out float maxZ))
+            return Vector2.zero;
+
+        float zone = Mathf.Max(1f, preferredTerrainEdgeSteerMeters);
+        float dLeft = p.x - minX;
+        float dRight = maxX - p.x;
+        float dBottom = p.y - minZ;
+        float dTop = maxZ - p.y;
+
+        Vector2 n = Vector2.zero;
+        if (dLeft < zone) n.x += 1f - Mathf.Clamp01(dLeft / zone);
+        if (dRight < zone) n.x -= 1f - Mathf.Clamp01(dRight / zone);
+        if (dBottom < zone) n.y += 1f - Mathf.Clamp01(dBottom / zone);
+        if (dTop < zone) n.y -= 1f - Mathf.Clamp01(dTop / zone);
+
+        if (n.sqrMagnitude < 1e-6f)
+        {
+            Vector2 toCenter = _preferredCenterXZ - p;
+            if (toCenter.sqrMagnitude < 1e-6f)
+                return Vector2.zero;
+            return toCenter.normalized;
+        }
+        return n.normalized;
+    }
+
+    /// <summary>
+    /// Rotate a 2D heading away from the nearest terrain border so polylines don't clamp-slide along it.
+    /// </summary>
+    private void SteerDirOffPreferredEdge(Vector2 pos, ref Vector2 dir)
+    {
+        if (!_hasPreferredTerrainBounds || dir.sqrMagnitude < 1e-8f)
+            return;
+
+        float dist = MinDistanceToPreferredInsetEdge(pos);
+        float zone = Mathf.Max(40f, preferredTerrainEdgeSteerMeters);
+        if (dist >= zone)
+            return;
+
+        Vector2 inward = GetNearestEdgeInwardNormal(pos);
+        if (inward.sqrMagnitude < 1e-6f)
+            return;
+
+        float align = Vector2.Dot(dir.normalized, inward);
+        if (align >= 0.3f && dist > 20f)
+            return;
+
+        float edgeT = 1f - Mathf.Clamp01(dist / zone);
+        dir = Vector2.Lerp(dir, inward, Mathf.Lerp(0.2f, 0.65f, edgeT));
+        if (dir.sqrMagnitude > 1e-8f)
+            dir.Normalize();
+    }
+
+    private bool TryGetPreferredInsetRect(out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        minX = maxX = minZ = maxZ = 0f;
+        if (!_hasPreferredTerrainBounds)
+            return false;
+
         float roadPad = roadWidth * 0.5f + preferredTerrainRoadHalfPadding;
         float inset = Mathf.Max(roadPad, preferredTerrainEdgeInset * 0.25f);
-        float minX = _preferredMinX + inset;
-        float maxX = _preferredMaxX - inset;
-        float minZ = _preferredMinZ + inset;
-        float maxZ = _preferredMaxZ - inset;
+        minX = _preferredMinX + inset;
+        maxX = _preferredMaxX - inset;
+        minZ = _preferredMinZ + inset;
+        maxZ = _preferredMaxZ - inset;
         if (maxX <= minX || maxZ <= minZ)
         {
             minX = _preferredMinX + roadPad;
@@ -3020,9 +3204,13 @@ public class ProceduralTrackGenerator : MonoBehaviour
             minZ = _preferredMinZ + roadPad;
             maxZ = _preferredMaxZ - roadPad;
         }
+        return maxX > minX && maxZ > minZ;
+    }
 
-        if (maxX <= minX || maxZ <= minZ)
-            return false;
+    private bool SegmentStaysOnPreferredTerrain(Vector2 a, Vector2 b)
+    {
+        if (!TryGetPreferredInsetRect(out float minX, out float maxX, out float minZ, out float maxZ))
+            return true;
 
         // Sample start, mid, end so long segments can't clip a corner.
         Vector2 mid = (a + b) * 0.5f;
@@ -3048,17 +3236,8 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
     private float MinDistanceToPreferredInsetEdge(Vector2 p)
     {
-        if (!_hasPreferredTerrainBounds)
+        if (!TryGetPreferredInsetRect(out float minX, out float maxX, out float minZ, out float maxZ))
             return edgeComfortZoneMeters;
-
-        float roadPad = roadWidth * 0.5f + preferredTerrainRoadHalfPadding;
-        float inset = Mathf.Max(roadPad, preferredTerrainEdgeInset * 0.25f);
-        float minX = _preferredMinX + inset;
-        float maxX = _preferredMaxX - inset;
-        float minZ = _preferredMinZ + inset;
-        float maxZ = _preferredMaxZ - inset;
-        if (maxX <= minX || maxZ <= minZ)
-            return 0f;
 
         if (p.x < minX || p.x > maxX || p.y < minZ || p.y > maxZ)
             return 0f;

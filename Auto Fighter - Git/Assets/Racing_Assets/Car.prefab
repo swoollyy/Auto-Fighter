@@ -940,7 +940,6 @@ GameObject:
   - component: {fileID: 2006204842711436354}
   - component: {fileID: 3055004073125483376}
   - component: {fileID: 3332605381436512579}
-  - component: {fileID: 4449800069960607024}
   - component: {fileID: 121786672632953379}
   - component: {fileID: 4457387338141855682}
   - component: {fileID: 6905870851410593353}
@@ -1403,35 +1402,6 @@ MonoBehaviour:
   spatialize: 1
   spatialBlend: 1
   outputMixerGroup: {fileID: -5018588845661870095, guid: 261796ce193c2ca459a261d29b7256dc, type: 2}
---- !u!114 &4449800069960607024
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5657100606639614825}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6bee0a6fa1f5d4f4db481219040523c4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  version: 1073741824
-  graphMask:
-    value: -1
-  type: 3
-  mesh: {fileID: 0}
-  rectangleSize: {x: 1.35, y: 1.35}
-  circleRadius: 1
-  circleResolution: 6
-  height: 1
-  meshScale: 1
-  center: {x: 0, y: 0, z: 0}
-  updateDistance: 0.4
-  isDual: 0
-  radiusExpansionMode: 0
-  cutsAddedGeom: 1
-  updateRotationDistance: 10
-  useRotationAndScale: 1
 --- !u!114 &121786672632953379
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1653,9 +1623,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFuel: 100
-  fuelUsePerSecondAtFullThrottle: 0
-  fuelUsePerSecondBraking: 0
-  idleFuelUsePerSecond: 0
+  fuelUsePerSecondAtFullThrottle: 6
+  fuelUsePerSecondBraking: 6
+  idleFuelUsePerSecond: 2
   idleSpeedThreshold: 0.5
   enableLowHpExtraFuelDrain: 1
   extraFuelDrainPercentAtZeroHp: 100

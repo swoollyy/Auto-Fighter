@@ -319,7 +319,7 @@ public class CreatureTypeConfig
     [Tooltip("Extra upward loft added to the ballistic throw.")]
     [Min(0f)] public float throwerThrowArcHeight = 4f;
 
-    [Tooltip("0 = aim at the player's current position, 1 = full track-lead prediction.")]
+    [Tooltip("0 = aim at the player's current lane on the road. 1 = full along-track lead, keeping the same left/right fraction and following turns.")]
     [Range(0f, 1f)] public float throwerPredictionStrength = 0.85f;
 
     [Tooltip("Spin applied to the thrown prop.")]
@@ -338,5 +338,9 @@ public class CreatureTypeConfig
     [Min(0f)] public float throwerThrownKnockbackForce = 10f;
     [Min(0f)] public float throwerThrownLift = 2.5f;
     [Min(0f)] public float throwerThrownTorque = 5f;
+
+    [Header("Thrower (Gorilla) - Landing Telegraph")]
+    [Tooltip("Ground landing decal, same setup as ThrownObstacleDirector.groundRingPrefab and bounce-back landingTelegraphPrefab. Assign LandingRingDecalGorilla (ThrownMatGorilla).")]
+    public GameObject throwerLandingTelegraphPrefab;
 
 }

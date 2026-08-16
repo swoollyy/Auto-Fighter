@@ -544,6 +544,7 @@ MonoBehaviour:
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
       throwerThrownTorque: 5
+      throwerLandingTelegraphPrefab: {fileID: 4108758772899792739, guid: e4b91c7a6d825f449c3e1a08b5f27d46, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     creatureSpacing: 0

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -322,6 +323,9 @@ public partial class TrackCreature
 
         Vector3 origin = _throwerProp.position;
         PredictThrowerImpact(origin, out Vector3 impact);
+        float flightTime = EstimateThrowerFlightTime(origin, impact);
+        float telegraphRadius = EstimateThrowerTelegraphRadius(_throwerProp);
+        SpawnThrowerLandingTelegraph(impact, telegraphRadius, flightTime);
 
         _throwerProp.SetParent(null, true);
         RestoreThrowerPropColliders();
@@ -348,78 +352,237 @@ public partial class TrackCreature
         _throwerHasWorldMove = false;
     }
 
+    private const float ThrowerMaxLaneFraction = 0.95f;
+
     private void PredictThrowerImpact(Vector3 origin, out Vector3 impact)
     {
         impact = playerTransform != null ? playerTransform.position : origin + transform.forward * 10f;
 
-        if (playerTransform == null || spawner == null)
+        if (playerTransform == null || spawner == null || spawner.GetTotalLength() <= 0.01f)
+        {
+            impact = ProjectThrowerLandingToRoad(impact);
             return;
+        }
 
-        float horiz = HorizontalDistanceXZ(origin, playerTransform.position);
-        float speed = Mathf.Max(0.1f, config.throwerThrowSpeed);
-        float flightTime = Mathf.Clamp(horiz / speed, 0.2f, 4.5f);
+        float total = spawner.GetTotalLength();
+        float carDist = Mathf.Clamp(spawner.GetDistanceAlongPath(playerTransform.position), 0f, total);
+        float flightTime = EstimateThrowerFlightTime(origin, playerTransform.position);
+        float carSpeed = GetThrowerCarSpeedAlongTrack(carDist);
 
-        float carDist = spawner.GetDistanceAlongPath(playerTransform.position);
-        float carSpeed = 0f;
+        impact = BuildOnTrackImpact(carDist, carSpeed, flightTime);
+
+        float refinedTime = EstimateThrowerFlightTime(origin, impact);
+        if (!Mathf.Approximately(refinedTime, flightTime))
+            impact = BuildOnTrackImpact(carDist, carSpeed, refinedTime);
+    }
+
+    private Vector3 BuildOnTrackImpact(float carDist, float carSpeed, float flightTime)
+    {
+        float total = spawner.GetTotalLength();
+        float leadScale = config != null ? Mathf.Clamp01(config.throwerPredictionStrength) : 1f;
+        float predictedDist = carDist + Mathf.Max(0f, carSpeed) * flightTime * leadScale;
+        predictedDist = Mathf.Clamp(predictedDist, 0f, Mathf.Max(0f, total - 0.25f));
+
+        spawner.SamplePath(carDist, out Vector3 pathNow, out Vector3 fwdNow);
+        fwdNow.y = 0f;
+        if (fwdNow.sqrMagnitude < 1e-6f)
+            fwdNow = playerTransform != null ? playerTransform.forward : Vector3.forward;
+        fwdNow.y = 0f;
+        if (fwdNow.sqrMagnitude < 1e-6f)
+            fwdNow = Vector3.forward;
+        fwdNow.Normalize();
+        Vector3 rightNow = Vector3.Cross(Vector3.up, fwdNow).normalized;
+
+        float halfWidth = Mathf.Max(0.1f, GetRoadHalfWidth());
+        Vector3 carPos = playerTransform != null ? playerTransform.position : pathNow;
+        float laneFraction = Vector3.Dot(carPos - pathNow, rightNow) / halfWidth;
+        laneFraction = Mathf.Clamp(laneFraction, -ThrowerMaxLaneFraction, ThrowerMaxLaneFraction);
+
+        spawner.SamplePath(predictedDist, out Vector3 pathPos, out Vector3 pathFwd);
+        pathFwd.y = 0f;
+        if (pathFwd.sqrMagnitude < 1e-6f)
+            pathFwd = fwdNow;
+        pathFwd.Normalize();
+        Vector3 pathRight = Vector3.Cross(Vector3.up, pathFwd).normalized;
+
+        return SnapThrowerImpactOntoRoad(pathPos, pathRight, laneFraction * halfWidth);
+    }
+
+    private float GetThrowerCarSpeedAlongTrack(float carDist)
+    {
+        if (playerTransform == null)
+            return 0f;
+
         var carRb = playerTransform.GetComponent<Rigidbody>();
-        if (carRb != null)
-        {
-            Vector3 fwd = playerTransform.forward;
-            fwd.y = 0f;
-            if (fwd.sqrMagnitude > 1e-6f)
-            {
-                fwd.Normalize();
-                carSpeed = Mathf.Max(0f, Vector3.Dot(carRb.velocity, fwd));
-            }
-            if (carSpeed < 0.25f)
-                carSpeed = Mathf.Max(0f, carRb.velocity.magnitude);
-        }
+        if (carRb == null)
+            return 0f;
 
-        float predictedDist = carDist + carSpeed * flightTime;
-        predictedDist = Mathf.Clamp(predictedDist, 0f, spawner.GetTotalLength());
-
-        Vector3 predicted = playerTransform.position;
-        if (spawner.GetTotalLength() > 0f)
+        spawner.SamplePath(carDist, out _, out Vector3 pathFwd);
+        pathFwd.y = 0f;
+        if (pathFwd.sqrMagnitude > 1e-6f)
         {
-            spawner.SamplePath(predictedDist, out Vector3 pathPos, out Vector3 pathFwd);
-            pathFwd.y = 0f;
-            if (pathFwd.sqrMagnitude < 1e-6f)
-                pathFwd = playerTransform.forward;
             pathFwd.Normalize();
-            Vector3 pathRight = Vector3.Cross(Vector3.up, pathFwd).normalized;
-
-            float lateral = 0f;
-            spawner.SamplePath(carDist, out Vector3 pathNow, out Vector3 fwdNow);
-            fwdNow.y = 0f;
-            if (fwdNow.sqrMagnitude > 1e-6f)
-            {
-                fwdNow.Normalize();
-                Vector3 rightNow = Vector3.Cross(Vector3.up, fwdNow).normalized;
-                lateral = Vector3.Dot(playerTransform.position - pathNow, rightNow);
-            }
-
-            predicted = pathPos + pathRight * lateral;
-            if (carRb != null && carRb.velocity.sqrMagnitude > 0.25f)
-            {
-                Vector3 velPred = playerTransform.position + carRb.velocity * flightTime;
-                predicted = Vector3.Lerp(predicted, velPred, 0.25f);
-            }
+            float along = Vector3.Dot(carRb.velocity, pathFwd);
+            if (along > 0.25f)
+                return along;
         }
 
-        impact = Vector3.Lerp(playerTransform.position, predicted, Mathf.Clamp01(config.throwerPredictionStrength));
+        return Mathf.Max(0f, carRb.velocity.magnitude);
     }
 
     private Vector3 ComputeThrowerBallisticVelocity(Vector3 origin, Vector3 impact)
     {
         Vector3 toTarget = impact - origin;
-        float horiz = new Vector3(toTarget.x, 0f, toTarget.z).magnitude;
-        float speed = Mathf.Max(0.1f, config.throwerThrowSpeed);
-        float flightTime = Mathf.Clamp(horiz / speed, 0.2f, 4.5f);
+        float flightTime = EstimateThrowerFlightTime(origin, impact);
 
         Vector3 vel = toTarget / flightTime;
         vel.y = (toTarget.y / flightTime) + 0.5f * Mathf.Abs(Physics.gravity.y) * flightTime;
         vel.y += config.throwerThrowArcHeight / Mathf.Max(0.2f, flightTime);
         return vel;
+    }
+
+    private float EstimateThrowerFlightTime(Vector3 origin, Vector3 impact)
+    {
+        float horiz = HorizontalDistanceXZ(origin, impact);
+        float speed = Mathf.Max(0.1f, config.throwerThrowSpeed);
+        return Mathf.Clamp(horiz / speed, 0.2f, 4.5f);
+    }
+
+    private static float EstimateThrowerTelegraphRadius(Transform prop)
+    {
+        float r = 1.5f;
+        if (prop == null)
+            return r;
+
+        var sc = prop.GetComponentInChildren<SphereCollider>(true);
+        if (sc != null)
+        {
+            r = sc.radius * Mathf.Max(prop.lossyScale.x, prop.lossyScale.z);
+        }
+        else
+        {
+            var col = prop.GetComponentInChildren<Collider>(true);
+            if (col != null)
+                r = Mathf.Max(col.bounds.extents.x, col.bounds.extents.z);
+            else
+            {
+                var rend = prop.GetComponentInChildren<Renderer>(true);
+                if (rend != null)
+                    r = Mathf.Max(rend.bounds.extents.x, rend.bounds.extents.z);
+            }
+        }
+
+        return Mathf.Clamp(r, 0.75f, 4.0f);
+    }
+
+    private Vector3 SnapThrowerImpactOntoRoad(Vector3 pathPos, Vector3 pathRight, float lateral)
+    {
+        Vector3 candidate = pathPos + pathRight * lateral;
+        if (TryRaycastRoadSurface(candidate, out Vector3 hit))
+            return hit;
+
+        for (int i = 1; i <= 4; i++)
+        {
+            float t = 1f - i * 0.2f;
+            candidate = pathPos + pathRight * (lateral * t);
+            if (TryRaycastRoadSurface(candidate, out hit))
+                return hit;
+        }
+
+        if (TryRaycastRoadSurface(pathPos, out hit))
+            return hit;
+
+        return pathPos;
+    }
+
+    private Vector3 ProjectThrowerLandingToRoad(Vector3 worldPos)
+    {
+        if (TryRaycastRoadSurface(worldPos, out Vector3 hit))
+            return hit;
+        return worldPos;
+    }
+
+    private static bool TryRaycastRoadSurface(Vector3 worldPos, out Vector3 roadPoint)
+    {
+        roadPoint = worldPos;
+        LayerMask roadMask = LayerMask.GetMask("RoadSurface", "Road");
+        if (roadMask.value == 0)
+            roadMask = LayerMask.GetMask("RoadSurface");
+
+        const float up = 12f;
+        const float down = 50f;
+        Vector3 origin = worldPos + Vector3.up * up;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, up + down, roadMask, QueryTriggerInteraction.Ignore))
+        {
+            roadPoint = hit.point;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void SpawnThrowerLandingTelegraph(Vector3 impactPos, float telegraphRadius, float flightTime)
+    {
+        GameObject prefab = config != null ? config.throwerLandingTelegraphPrefab : null;
+        if (prefab == null)
+            return;
+
+        impactPos = ProjectThrowerLandingToRoad(impactPos);
+        float holdSeconds = Mathf.Max(0.05f, flightTime - 0.05f);
+
+        GameObject tele = null;
+        bool pooled = ProjectilePool.Instance != null;
+        if (pooled)
+            tele = ProjectilePool.Instance.Get(prefab);
+        else
+            tele = Instantiate(prefab);
+
+        if (tele == null)
+            return;
+
+        tele.transform.position = impactPos;
+        tele.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        tele.SetActive(true);
+
+        var decalTele = tele.GetComponent<URPDecalTelegraph>();
+        if (decalTele != null)
+        {
+            decalTele.SetWorldPose(impactPos);
+            decalTele.Play(
+                radius: telegraphRadius,
+                seconds: holdSeconds,
+                onComplete: () => ReturnThrowerTelegraph(prefab, tele, pooled));
+            return;
+        }
+
+        var gr = tele.GetComponent<GroundRing>();
+        if (gr != null)
+        {
+            gr.Play(
+                telegraphRadius,
+                onComplete: () => ReturnThrowerTelegraph(prefab, tele, pooled),
+                holdOverride: holdSeconds);
+            return;
+        }
+
+        StartCoroutine(ReturnThrowerTelegraphLater(prefab, tele, Mathf.Max(0.1f, holdSeconds), pooled));
+    }
+
+    private static void ReturnThrowerTelegraph(GameObject prefab, GameObject tele, bool pooled)
+    {
+        if (tele == null)
+            return;
+
+        if (pooled && prefab != null && ProjectilePool.Instance != null)
+            ProjectilePool.Instance.Return(prefab, tele);
+        else
+            Destroy(tele);
+    }
+
+    private IEnumerator ReturnThrowerTelegraphLater(GameObject prefab, GameObject tele, float delay, bool pooled)
+    {
+        yield return new WaitForSeconds(delay);
+        ReturnThrowerTelegraph(prefab, tele, pooled);
     }
 
     private bool TryFindNearestThrowableProp(float radius, out Transform prop, out float distance)

@@ -257,7 +257,7 @@ public class ThrownObstacleDirector : MonoBehaviour, ITrackSpawnQueueSource
                         UnityEngine.Random.Range(spawnCooldownRandomRange.x, spawnCooldownRandomRange.y);
             return;
         }
-
+                
         float carSpeed = GetCarSpeedAlongTrack();
         float lead = Mathf.Lerp(leadDistanceRange.x, leadDistanceRange.y, UnityEngine.Random.value);
         lead += UnityEngine.Random.Range(-forwardJitter, forwardJitter);
