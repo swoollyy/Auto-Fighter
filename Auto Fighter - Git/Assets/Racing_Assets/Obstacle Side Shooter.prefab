@@ -240,11 +240,11 @@ MonoBehaviour:
   disengageRange: 50
   minAimDot: 0.218
   aimAccuracy: 1
-  aimErrorMaxDegrees: 14
+  aimErrorMaxDegrees: 13.3
   leadBleedOff: 0.85
   muzzle: {fileID: 1870283948420639043}
   projectilePrefab: {fileID: 7703661668217724740, guid: 0397b252c98d0004e97f209520adeaad, type: 3}
-  projectileSpeed: 13
+  projectileSpeed: 9
   fireCooldown: 7
   extraLeadTime: 0
   maxShotRange: 40

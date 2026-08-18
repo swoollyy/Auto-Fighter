@@ -9098,7 +9098,7 @@ MonoBehaviour:
   spawnMode: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  spacing: 7
+  spacing: 4
   maxActive: 1200
   lateralsPerSide: 3
   minSeparationMeters: 3.2
@@ -9108,15 +9108,15 @@ MonoBehaviour:
   fillEmptyGaps: 0
   streamSpawnDuringRun: 1
   updateInterval: 0.15
-  maxSpawnDistanceAhead: 330
+  maxSpawnDistanceAhead: 120
   maxSpawnDistanceBehind: 100
   despawnBehindDistance: 220
   maxSpawnsPerUpdate: 20
   preloadAheadMeters: 180
   preloadSpawnsPerFrame: 28
   minDistanceFromRoad: 1
-  maxDistanceFromCenterline: 70
-  sideBias: 0.92
+  maxDistanceFromCenterline: 35
+  sideBias: 0.376
   placementAttempts: 4
   autoGroundUsingBounds: 1
   extraGroundPadding: 0
@@ -9151,7 +9151,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a616aa6ca49671643913a5b0b1b3fa94, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  roadClearPaddingMeters: 2.5
+  roadClearPaddingMeters: 0
   maskResolution: 1024
   metersPerTexel: 0.5
   debugLogBounds: 1
@@ -9375,7 +9375,7 @@ MonoBehaviour:
   initFinishedStoryFlag: init_finish
   firstSkillTreeEntryStoryFlag: skilltree_first_entry
   debugForceStartTrial: 1
-  debugStartTrialIndex: 1
+  debugStartTrialIndex: 0
   debugMaxPreviousTrialSkills: 1
 --- !u!4 &804777575
 Transform:
