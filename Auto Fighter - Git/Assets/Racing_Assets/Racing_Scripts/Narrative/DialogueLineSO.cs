@@ -9,6 +9,7 @@ public enum DialogueSpeakerTag
     Overseer = 0,
     Player = 1,
     Mechanic = 2,
+    Taskmaster = 3,
 }
 
 /// <summary>
@@ -66,6 +67,17 @@ public class DialogueBlobColorSet
             blob1RimColor = new Color(0.30980393f, 0.53333336f, 0.6431373f, 1f),
             blob2FillColor = new Color(0.08f, 0.14f, 0.18f, 0.85f),
             blob2RimColor = new Color(0.45f, 0.75f, 0.95f, 1f),
+        };
+    }
+
+    public static DialogueBlobColorSet DefaultTaskmaster()
+    {
+        return new DialogueBlobColorSet
+        {
+            blob1FillColor = new Color(0.18f, 0.11f, 0.01f, 1f),
+            blob1RimColor = new Color(0.925f, 0.706f, 0f, 1f),
+            blob2FillColor = new Color(0.25f, 0.16f, 0.02f, 0.85f),
+            blob2RimColor = new Color(1f, 0.84f, 0.25f, 1f),
         };
     }
 }

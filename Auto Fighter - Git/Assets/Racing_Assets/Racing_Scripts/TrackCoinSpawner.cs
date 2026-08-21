@@ -48,6 +48,10 @@ public class TrackCoinSpawner : MonoBehaviour
     [Tooltip("Chance a coin slot fills (0–1). X = at track start, Y = at track end.")]
     [SerializeField] private Vector2 spawnChanceByProgress = new Vector2(0.85f, 0.98f);
 
+    [Header("Progress Gate")]
+    [Tooltip("Coins will not spawn before this fraction of track length (0.02 = 2% from start). Prevents coins sitting beside the player at spawn.")]
+    [SerializeField, Range(0f, 0.95f)] private float minNormalizedProgressToSpawn = 0.02f;
+
     [Header("Skill Integration")]
     [SerializeField] private bool applySkillSpawnRate = true;
 
@@ -104,6 +108,7 @@ public class TrackCoinSpawner : MonoBehaviour
         initialPreSpawnDistance = s.initialPreSpawnDistance;
 
         spawnChanceByProgress = s.spawnChanceByProgress;
+        minNormalizedProgressToSpawn = s.minNormalizedProgressToSpawn;
         applySkillSpawnRate = s.applySkillSpawnRate;
 
         coinHeightOffset = s.coinHeightOffset;
@@ -137,6 +142,7 @@ public class TrackCoinSpawner : MonoBehaviour
             despawnBehindDistance = despawnBehindDistance,
             initialPreSpawnDistance = initialPreSpawnDistance,
             spawnChanceByProgress = spawnChanceByProgress,
+            minNormalizedProgressToSpawn = minNormalizedProgressToSpawn,
             applySkillSpawnRate = applySkillSpawnRate,
             coinHeightOffset = coinHeightOffset,
             lateralFractionOfHalfWidth = lateralFractionOfHalfWidth,
@@ -205,9 +211,11 @@ public class TrackCoinSpawner : MonoBehaviour
 
         float playerDist = GetPlayerDistance();
         float aheadLimit = Mathf.Min(playerDist + initialPreSpawnDistance, _totalLength);
+        float minAllowed = MinAllowedSpawnDistance();
 
         for (float d = playerDist; d < aheadLimit; d += coinSpacing)
         {
+            if (d < minAllowed) continue;
             int slot = Mathf.FloorToInt(d / coinSpacing);
             if (!_coinsBySlot.ContainsKey(slot))
                 SpawnCoinAtSlot(slot, d);
@@ -221,10 +229,12 @@ public class TrackCoinSpawner : MonoBehaviour
         float playerDist = GetPlayerDistance();
         float minD = playerDist + minSpawnDistanceAhead;
         float maxD = Mathf.Min(playerDist + maxSpawnDistanceAhead, _totalLength);
+        float minAllowed = MinAllowedSpawnDistance();
 
         // Spawn ahead
         for (float d = minD; d < maxD; d += coinSpacing)
         {
+            if (d < minAllowed) continue;
             int slot = Mathf.FloorToInt(d / coinSpacing);
             if (slot < 0 || slot > _maxSlotIndex) continue;
             if (_coinsBySlot.ContainsKey(slot)) continue;
@@ -295,6 +305,8 @@ public class TrackCoinSpawner : MonoBehaviour
     {
         float jitter = distanceJitter > 0f ? UnityEngine.Random.Range(-distanceJitter, distanceJitter) : 0f;
         float dist = Mathf.Clamp(distanceAlongTrack + jitter, 0f, _totalLength);
+        if (!IsPastProgressGate(dist))
+            return;
 
         float spawnChance = ComputeSpawnChance(dist);
         if (UnityEngine.Random.value > spawnChance)
@@ -411,6 +423,20 @@ public class TrackCoinSpawner : MonoBehaviour
         }
 
         return weights[weights.Count - 1].data;
+    }
+
+    private float MinAllowedSpawnDistance()
+    {
+        if (minNormalizedProgressToSpawn <= 0f || _totalLength <= 0f)
+            return 0f;
+        return minNormalizedProgressToSpawn * _totalLength;
+    }
+
+    private bool IsPastProgressGate(float distanceAlongTrack)
+    {
+        if (minNormalizedProgressToSpawn <= 0f)
+            return true;
+        return TrackProgressRange.NormalizedDistance(distanceAlongTrack, _totalLength) >= minNormalizedProgressToSpawn;
     }
 
     private float ComputeSpawnChance(float distance)

@@ -100,6 +100,7 @@ public class RacingSkillUI : MonoBehaviour
         DestroyLegacyTreeViewportRaycastFillIfPresent();
         AttemptBuild(); // builds only revealed
         RefreshAll();
+        SyncHelpPatronButtons();
         ApplyDefaultTreeZoom();
         AutoOpenFirstIfNeeded();
     }
@@ -176,8 +177,7 @@ public class RacingSkillUI : MonoBehaviour
             _isPanning = false;
 
         if (playButton) playButton.interactable = !locked;
-        if (questButton) questButton.interactable = !locked;
-        if (inventoryButton) inventoryButton.interactable = !locked;
+        SyncHelpPatronButtons();
     }
 
     private void BindPlayButton()
@@ -252,6 +252,7 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnQuestClicked()
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return;
         if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
         if (Time.frameCount == _lastPanelToggleFrame) return;
         _lastPanelToggleFrame = Time.frameCount;
@@ -269,6 +270,7 @@ public class RacingSkillUI : MonoBehaviour
 
     private void OnInventoryClicked()
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return;
         if (GameplayUIInputGuard.IsGameplayUiNavigationBlocked || _tutorialInputLocked) return;
         if (Time.frameCount == _lastPanelToggleFrame) return;
         _lastPanelToggleFrame = Time.frameCount;
@@ -338,18 +340,38 @@ public class RacingSkillUI : MonoBehaviour
                 playButton.targetGraphic.raycastTarget = allowPlay;
         }
 
+        SyncHelpPatronButtons();
+    }
+
+    private void SyncHelpPatronButtons()
+    {
+        bool unlocked = HelpPatronProgress.AreQuestsAndInventoryUnlocked;
+        bool allow = unlocked && !_tutorialInputLocked;
+
+        if (!unlocked)
+        {
+            if (!questsPanelUI)
+                questsPanelUI = FindObjectOfType<RacingQuestsPanelUI>(true);
+            if (!inventoryPanelUI)
+                inventoryPanelUI = FindObjectOfType<RacingRunInventoryPanelUI>(true);
+            questsPanelUI?.HidePanel();
+            inventoryPanelUI?.HidePanel();
+        }
+
         if (questButton != null)
         {
-            questButton.interactable = true;
+            questButton.gameObject.SetActive(unlocked);
+            questButton.interactable = allow;
             if (questButton.targetGraphic != null)
-                questButton.targetGraphic.raycastTarget = true;
+                questButton.targetGraphic.raycastTarget = allow;
         }
 
         if (inventoryButton != null)
         {
-            inventoryButton.interactable = true;
+            inventoryButton.gameObject.SetActive(unlocked);
+            inventoryButton.interactable = allow;
             if (inventoryButton.targetGraphic != null)
-                inventoryButton.targetGraphic.raycastTarget = true;
+                inventoryButton.targetGraphic.raycastTarget = allow;
         }
     }
 
@@ -422,6 +444,9 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSkillAvailabilityChanged += HandleSkillAvailabilityChanged;
         if (questMgr != null)
             questMgr.OnQuestUnlocked += HandleQuestUnlocked;
+        HelpPatronProgress.OnChanged += HandleHelpPatronProgressChanged;
+        if (DialogueManager.Instance != null)
+            DialogueManager.Instance.OnSequenceCompleted += HandleHelpPatronDialogueCompleted;
     }
 
     private void UnwireEvents()
@@ -434,6 +459,9 @@ public class RacingSkillUI : MonoBehaviour
         mgr.OnSkillAvailabilityChanged -= HandleSkillAvailabilityChanged;
         if (questMgr != null)
             questMgr.OnQuestUnlocked -= HandleQuestUnlocked;
+        HelpPatronProgress.OnChanged -= HandleHelpPatronProgressChanged;
+        if (DialogueManager.Instance != null)
+            DialogueManager.Instance.OnSequenceCompleted -= HandleHelpPatronDialogueCompleted;
     }
 
     private void HandleCurrencyChanged(int _) => RefreshAll();
@@ -458,6 +486,17 @@ public class RacingSkillUI : MonoBehaviour
         RefreshAll();
         if (!TryRestoreSelectionAfterRebuild(previouslySelected))
             AutoOpenFirstIfNeeded();
+    }
+
+    private void HandleHelpPatronProgressChanged()
+    {
+        SyncHelpPatronButtons();
+    }
+
+    private void HandleHelpPatronDialogueCompleted(DialogueSequenceSO seq)
+    {
+        HelpPatronProgress.HandleDialogueSequenceCompleted(seq);
+        SyncHelpPatronButtons();
     }
 
     private void HandleQuestUnlocked(RacingQuestType _)
@@ -672,6 +711,7 @@ public class RacingSkillUI : MonoBehaviour
     {
         RefreshCurrency();
         foreach (var e in entries) e.Refresh();
+        SyncHelpPatronButtons();
     }
 
     private void RefreshCurrency()

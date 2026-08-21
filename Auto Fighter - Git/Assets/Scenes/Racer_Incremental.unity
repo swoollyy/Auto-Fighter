@@ -6733,9 +6733,9 @@ MonoBehaviour:
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 2
-  fovSpeedMax: 30
+  fovSpeedMax: 24
   fovAtMinSpeed: 24
-  fovAtMaxSpeed: 100
+  fovAtMaxSpeed: 90
   speedFovSmooth: 3.25
   positionFollowSpeed: 3.9
   rotationFollowSpeed: 7.5
@@ -8333,6 +8333,7 @@ MonoBehaviour:
   despawnBehindDistance: 25
   initialPreSpawnDistance: 70
   spawnChanceByProgress: {x: 0.85, y: 0.98}
+  minNormalizedProgressToSpawn: 0.02
   applySkillSpawnRate: 1
   coinHeightOffset: 0.5
   lateralFractionOfHalfWidth: 0.812
@@ -8787,6 +8788,10 @@ MonoBehaviour:
     throwerThrowSpeed: 22
     throwerThrowArcHeight: 4
     throwerPredictionStrength: 0.85
+    throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+    throwerAccuracyWiggle: 0.08
+    throwerMaxMissLateral: 4.5
+    throwerMaxMissForward: 5.5
     throwerThrowSpin: 8
     throwerThrowCooldown: 3.5
     throwerThrownPropLifetime: 12
@@ -8908,6 +8913,10 @@ MonoBehaviour:
     throwerThrowSpeed: 22
     throwerThrowArcHeight: 4
     throwerPredictionStrength: 0.85
+    throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+    throwerAccuracyWiggle: 0.08
+    throwerMaxMissLateral: 4.5
+    throwerMaxMissForward: 5.5
     throwerThrowSpin: 8
     throwerThrowCooldown: 3.5
     throwerThrownPropLifetime: 12
@@ -9029,6 +9038,10 @@ MonoBehaviour:
     throwerThrowSpeed: 22
     throwerThrowArcHeight: 4
     throwerPredictionStrength: 0.85
+    throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+    throwerAccuracyWiggle: 0.08
+    throwerMaxMissLateral: 4.5
+    throwerMaxMissForward: 5.5
     throwerThrowSpin: 8
     throwerThrowCooldown: 3.5
     throwerThrownPropLifetime: 12
@@ -9283,6 +9296,7 @@ MonoBehaviour:
   rollingLogSpawner: {fileID: 1950602004}
   trackFuelSpawner: {fileID: 796779776}
   trackHPSpawner: {fileID: 796779777}
+  helpPatronSpawner: {fileID: 0}
   icePathSpawner: {fileID: 796779778}
   npcCarSpawner: {fileID: 796779779}
   iceScreenFlashDriver: {fileID: 1843897590}
@@ -9453,9 +9467,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   tuning:
-    forcefieldNoHpDeathRunsRequired: 15
+    forcefieldNoHpDeathRunsRequired: 5
     turretMashCompletionsRequired: 15
-    coinFriendCoinsCollectedRequired: 200
+    coinFriendCoinsCollectedRequired: 50
   defaultUnlockedItemSlots: 1
   maxItemSlots: 5
   testAutoCompleteForcefieldQuest: 0
@@ -13413,7 +13427,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: -497.84967, w: -13.989655}
+  m_margin: {x: 0, y: 0, z: -1632.2799, w: -13.989655}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -16906,7 +16920,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1428109224
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16920,6 +16934,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   triggerEntries:
+  - sequence: {fileID: 11400000, guid: 4fe99818e5af5b4429936d048b4faa72, type: 2}
+    condition:
+      type: 5
+      runCountValue: 0
+      storyFlag: help_patron_taskmaster_collected
+    playOnce: 1
+    flagWhenPlayed: taskmaster_skilltree_shown
   - sequence: {fileID: 11400000, guid: c4f8e21a9b3d4e5f8a0716243bcd91ef, type: 2}
     condition:
       type: 5
@@ -16951,6 +16972,8 @@ MonoBehaviour:
   maxFuelPurchasedDialogue: {fileID: 11400000, guid: 3e8f2a91c5d647b0a4e9f1c2d7b83560, type: 2}
   maxFuelPurchasedFlag: tutorial_maxfuel_purchased
   firstUpgradeSkill: 21
+  taskmasterIntroDialogue: {fileID: 11400000, guid: be702224f618832c3a9e50b4d8f2c6b5, type: 2}
+  taskmasterSkillTreeDialogue: {fileID: 11400000, guid: 4fe99818e5af5b4429936d048b4faa72, type: 2}
   logTriggerChecks: 1
 --- !u!4 &1428109225
 Transform:
@@ -21181,7 +21204,7 @@ MonoBehaviour:
   defaultSoftness: 0.3
   intensityStackMultiplier: 1.25
   maxStackedIntensity: 4
-  sizeStackStrength: 0.85
+  sizeStackStrength: 0.35
   durationExtendOnStack: 1
   riseFraction: 0.3
   minRiseSeconds: 0.1

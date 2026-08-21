@@ -17,7 +17,7 @@ MonoBehaviour:
   dayLimit: 50
   targetProgress: 1
   restrictSkillsToAllowlist: 1
-  allowedSkills: 1500000011000000130000001b000000050000002b000000cc100000e0100000d6100000ea100000f41000002900000062110000c0120000190000002d00000032000000
+  allowedSkills: 1500000011000000130000001b000000050000002b000000cc100000e0100000d6100000ea100000f41000002900000062110000c0120000190000002d000000320000000410000024130000
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
@@ -266,6 +266,10 @@ MonoBehaviour:
       throwerThrowSpeed: 22
       throwerThrowArcHeight: 4
       throwerPredictionStrength: 0.85
+      throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+      throwerAccuracyWiggle: 0.08
+      throwerMaxMissLateral: 4.5
+      throwerMaxMissForward: 5.5
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
@@ -387,6 +391,10 @@ MonoBehaviour:
       throwerThrowSpeed: 22
       throwerThrowArcHeight: 4
       throwerPredictionStrength: 0.85
+      throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+      throwerAccuracyWiggle: 0.08
+      throwerMaxMissLateral: 4.5
+      throwerMaxMissForward: 5.5
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
@@ -508,6 +516,10 @@ MonoBehaviour:
       throwerThrowSpeed: 22
       throwerThrowArcHeight: 4
       throwerPredictionStrength: 0.85
+      throwerAccuracyByProgress: {x: 0.35, y: 0.85}
+      throwerAccuracyWiggle: 0.08
+      throwerMaxMissLateral: 4.5
+      throwerMaxMissForward: 5.5
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
@@ -629,6 +641,10 @@ MonoBehaviour:
       throwerThrowSpeed: 21
       throwerThrowArcHeight: 0
       throwerPredictionStrength: 1
+      throwerAccuracyByProgress: {x: 0.5, y: 0.9}
+      throwerAccuracyWiggle: 0.1
+      throwerMaxMissLateral: 4.5
+      throwerMaxMissForward: 5.5
       throwerThrowSpin: 4
       throwerThrowCooldown: 5
       throwerThrownPropLifetime: 12
@@ -730,6 +746,7 @@ MonoBehaviour:
     despawnBehindDistance: 25
     initialPreSpawnDistance: 70
     spawnChanceByProgress: {x: 0.85, y: 0.98}
+    minNormalizedProgressToSpawn: 0.02
     applySkillSpawnRate: 1
     coinHeightOffset: 0.5
     lateralFractionOfHalfWidth: 0.812
@@ -745,6 +762,28 @@ MonoBehaviour:
     smoothingSubdivisionsPerSegment: 6
     updateInterval: 0.2
     verboseDebug: 1
+  helpPatrons:
+    overrideHelpPatrons: 1
+    enableSpawning: 1
+    patrons:
+    - patronId: 0
+      enabled: 1
+      prefab: {fileID: 4645873251185170008, guid: ad6f4113e507721b2f8d49a3c7e1b5a4, type: 3}
+      normalizedProgress: 0.12
+      minNormalizedProgress: 0.02
+      lateralFractionOfHalfWidth: 0
+      lateralSign: 0
+    fallbackPrefab: {fileID: 4645873251185170008, guid: ad6f4113e507721b2f8d49a3c7e1b5a4, type: 3}
+    heightOffset: 0.85
+    edgeInnerMargin: 0.2
+    roadLayer:
+      serializedVersion: 2
+      m_Bits: 16384
+    raycastStartHeight: 6
+    raycastDownDistance: 20
+    alignToSurfaceNormal: 1
+    useSmoothing: 1
+    smoothingSubdivisionsPerSegment: 6
   thrown:
     overrideThrown: 1
     projectilePrefabPlain: {fileID: 3874382558013832276, guid: 2cbd9749ef64f374ba50adc8bd426f30, type: 3}

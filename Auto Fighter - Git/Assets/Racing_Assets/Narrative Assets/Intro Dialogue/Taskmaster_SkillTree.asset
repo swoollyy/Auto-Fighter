@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2f00befe1fee4a4bb665e496d2a78fc, type: 3}
+  m_Name: Taskmaster_SkillTree
+  m_EditorClassIdentifier: 
+  authoringColorReference: {r: 0.8018868, g: 0.8018868, b: 0.8018868, a: 1}
+  lines:
+  - speakerTag: 3
+    speakerName: <color=#ECB400><link="wave:.5">The Taskmaster</link>
+    text: <color=#CDCDCD><link="jitter:amp=2,spd=5">I... <link="hold:.4">I'm The
+      Taskmaster...</link></link>
+    portrait: {fileID: 0}
+    delayBeforeShow: 0
+    autoAdvance: 0
+    autoAdvanceSeconds: 0
+  setStoryFlagOnComplete: met_taskmaster
+  pauseGameWhilePlaying: 1
+  keepGameCanvasVisibleWhilePlaying: 1
+  overseerColors:
+    blob1FillColor: {r: 0.25490198, g: 0, b: 0.015, a: 1}
+    blob1RimColor: {r: 1, g: 0, b: 0, a: 1}
+    blob2FillColor: {r: 0.011764706, g: 0.011764706, b: 0.011764706, a: 1}
+    blob2RimColor: {r: 0, g: 0, b: 0, a: 1}
+  playerColors:
+    blob1FillColor: {r: 0.011764706, g: 0.019607844, b: 0.003921569, a: 1}
+    blob1RimColor: {r: 0.5529412, g: 0.7058824, b: 0.39607844, a: 1}
+    blob2FillColor: {r: 0.19607843, g: 0.28235295, b: 0.07450981, a: 1}
+    blob2RimColor: {r: 0.5529412, g: 0.8392157, b: 0.15294118, a: 1}
+  mechanicColors:
+    blob1FillColor: {r: 0.05, g: 0.09, b: 0.12, a: 1}
+    blob1RimColor: {r: 0.30980393, g: 0.53333336, b: 0.6431373, a: 1}
+    blob2FillColor: {r: 0.08, g: 0.14, b: 0.18, a: 0.85}
+    blob2RimColor: {r: 0.45, g: 0.75, b: 0.95, a: 1}
+  taskmasterColors:
+    blob1FillColor: {r: 0.18, g: 0.11, b: 0.01, a: 1}
+    blob1RimColor: {r: 0.9254902, g: 0.7058824, b: 0, a: 1}
+    blob2FillColor: {r: 0.25, g: 0.16, b: 0.02, a: 0.85}
+    blob2RimColor: {r: 1, g: 0.84, b: 0.25, a: 1}

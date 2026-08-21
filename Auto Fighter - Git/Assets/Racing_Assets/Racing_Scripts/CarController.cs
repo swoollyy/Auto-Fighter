@@ -4014,13 +4014,19 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    // Build while drift + steer are held — braking/decel does not wipe charge.
-                    if (driftButtonHeld && _driftCurrentSteerSign != 0)
+                    // Only bank hold time during a real drift at speed. After a crash the
+                    // crawl / early accel used to fill the bar with just drift+steer held.
+                    if (canDriftThisFrame && driftButtonHeld && _driftCurrentSteerSign != 0
+                        && !IsPostCrashRecoveryDriving)
                     {
                         // Keep boost charge across steer flips. Camera / driftCharge still
                         // use their own flip logic — only the held-boost timer is sticky.
                         _driftHoldDirectionSign = _driftCurrentSteerSign;
                         _driftHoldTimeSeconds += Time.deltaTime;
+                    }
+                    else if (!canDriftThisFrame && !isDrifting && !wasDrifting)
+                    {
+                        ClearDriftHeldBoostCharge();
                     }
 
                     // Trigger boost ONLY on drift key release. Also retry a banked pending boost.
@@ -10329,11 +10335,13 @@ public class CarController : MonoBehaviour
             ? Mathf.Clamp01(driftBoostMinHoldSeconds / driftBoostMaxHoldSeconds)
             : 0f;
 
-    /// <summary>Show a drift boost charge bar: feature on, drift unlocked, skill unlocked, drift button held, input live.</summary>
+    /// <summary>Show a drift boost charge bar: actually drifting at speed, skill unlocked, drift held.</summary>
     public bool DriftHeldBoostChargeBarVisible =>
         enableDriftHeldBoost &&
         driftUnlocked &&
         driftButtonHeld &&
+        IsDrifting &&
+        !IsPostCrashRecoveryDriving &&
         !_externalInputLocked &&
         !_inCrash &&
         !_isReorienting &&

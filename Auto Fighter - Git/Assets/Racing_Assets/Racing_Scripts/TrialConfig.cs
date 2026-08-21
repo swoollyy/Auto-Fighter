@@ -48,6 +48,7 @@ public class TrialConfig : ScriptableObject
     public CreatureSettings creatures = new();
     public NpcTrafficSettings npcTraffic = new();
     public CoinSettings coins = new();
+    public HelpPatronSettings helpPatrons = new();
     public ThrownSettings thrown = new();
     public RollingLogSettings rollingLogs = new();
     public CrossObstacleSettings crossObstacles = new();
@@ -373,6 +374,10 @@ public class TrialConfig : ScriptableObject
         [Tooltip("Chance a coin slot fills (0–1). X = at track start, Y = at track end.")]
         public Vector2 spawnChanceByProgress = new Vector2(0.85f, 0.98f);
 
+        [Header("Progress Gate")]
+        [Tooltip("Coins will not spawn before this fraction of track length (0.02 = 2% from start). Prevents coins sitting beside the player at spawn.")]
+        [Range(0f, 0.95f)] public float minNormalizedProgressToSpawn = 0.02f;
+
         [Header("Skill Integration")]
         public bool applySkillSpawnRate = true;
 
@@ -395,6 +400,60 @@ public class TrialConfig : ScriptableObject
 
         [Header("Debug")]
         public bool verboseDebug = false;
+    }
+
+    // =====================================================================
+    // HELP PATRONS — TrackHelpPatronSpawner (one or more pickups per trial)
+    // =====================================================================
+    [System.Serializable]
+    public class HelpPatronSpawnEntry
+    {
+        [Header("Patron")]
+        public HelpPatronId patronId = HelpPatronId.Taskmaster;
+        public bool enabled = true;
+        [Tooltip("Prefab for this patron (from Racing_Assets/Entities). Required per entry.")]
+        public GameObject prefab;
+
+        [Header("Spawn Progress")]
+        [Tooltip("Where on the track this patron appears. 0 = start, 1 = finish. 0.12 = 12%.")]
+        [Range(0.02f, 0.95f)] public float normalizedProgress = 0.12f;
+        [Tooltip("Never spawn earlier than this fraction of the track.")]
+        [Range(0f, 0.5f)] public float minNormalizedProgress = 0.02f;
+        [Tooltip("0 = center of the road. 1 = near the edge.")]
+        [Range(0f, 1f)] public float lateralFractionOfHalfWidth = 0f;
+        [Tooltip("Negative = left of center, positive = right.")]
+        [Range(-1f, 1f)] public float lateralSign = 0f;
+    }
+
+    [System.Serializable]
+    public class HelpPatronSettings
+    {
+        [Tooltip("Uncheck to use the scene TrackHelpPatronSpawner's own values for this trial.")]
+        public bool overrideHelpPatrons = true;
+
+        public bool enableSpawning = true;
+        [Tooltip("Every enabled, uncollected patron in this list spawns this run, each at its own Spawn Progress. Add extra rows for more Help patrons on this trial.")]
+        public List<HelpPatronSpawnEntry> patrons = new List<HelpPatronSpawnEntry>
+        {
+            new HelpPatronSpawnEntry()
+        };
+
+        [Tooltip("Used only if an entry has no prefab assigned.")]
+        public GameObject fallbackPrefab;
+
+        [Header("Placement")]
+        public float heightOffset = 0.85f;
+        public float edgeInnerMargin = 0.2f;
+
+        [Header("Raycast")]
+        public LayerMask roadLayer = ~0;
+        public float raycastStartHeight = 6f;
+        public float raycastDownDistance = 20f;
+        public bool alignToSurfaceNormal = true;
+
+        [Header("Path Sampling")]
+        public bool useSmoothing = true;
+        [Min(1)] public int smoothingSubdivisionsPerSegment = 6;
     }
 
     // =====================================================================

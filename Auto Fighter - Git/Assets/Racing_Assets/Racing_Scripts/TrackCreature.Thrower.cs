@@ -374,6 +374,71 @@ public partial class TrackCreature
         float refinedTime = EstimateThrowerFlightTime(origin, impact);
         if (!Mathf.Approximately(refinedTime, flightTime))
             impact = BuildOnTrackImpact(carDist, carSpeed, refinedTime);
+
+        impact = ApplyThrowerAimInaccuracy(impact, carDist, total);
+    }
+
+    /// <summary>
+    /// Offsets the predicted landing using track progress (more accurate later)
+    /// plus a small per-throw accuracy wiggle. Telegraph and ballistic aim share this point.
+    /// </summary>
+    private Vector3 ApplyThrowerAimInaccuracy(Vector3 perfectImpact, float carDist, float total)
+    {
+        if (config == null)
+            return perfectImpact;
+
+        float progress = TrackProgressRange.NormalizedDistance(carDist, total);
+        float accuracy = TrackProgressRange.Lerp01(config.throwerAccuracyByProgress, progress);
+        float wiggle = Mathf.Max(0f, config.throwerAccuracyWiggle);
+        accuracy = Mathf.Clamp01(accuracy + Random.Range(-wiggle, wiggle));
+
+        float miss = 1f - accuracy;
+        if (miss <= 0.001f)
+            return perfectImpact;
+
+        float impactDist = carDist;
+        if (spawner != null && total > 0.01f)
+            impactDist = Mathf.Clamp(spawner.GetDistanceAlongPath(perfectImpact), 0f, Mathf.Max(0f, total - 0.25f));
+
+        Vector3 pathPos = perfectImpact;
+        Vector3 pathFwd = playerTransform != null ? playerTransform.forward : Vector3.forward;
+        if (spawner != null)
+            spawner.SamplePath(impactDist, out pathPos, out pathFwd);
+
+        pathFwd.y = 0f;
+        if (pathFwd.sqrMagnitude < 1e-6f)
+            pathFwd = Vector3.forward;
+        pathFwd.Normalize();
+        Vector3 pathRight = Vector3.Cross(Vector3.up, pathFwd).normalized;
+
+        // Disk scatter is denser near the predicted hit, with occasional wider misses.
+        Vector2 scatter = Random.insideUnitCircle;
+        float along = scatter.y * config.throwerMaxMissForward * miss;
+        float lat = scatter.x * config.throwerMaxMissLateral * miss;
+
+        float newDist = impactDist + along;
+        if (total > 0.01f)
+            newDist = Mathf.Clamp(newDist, 0f, Mathf.Max(0f, total - 0.25f));
+
+        Vector3 newPathPos = pathPos;
+        Vector3 newFwd = pathFwd;
+        if (spawner != null)
+            spawner.SamplePath(newDist, out newPathPos, out newFwd);
+
+        newFwd.y = 0f;
+        if (newFwd.sqrMagnitude < 1e-6f)
+            newFwd = pathFwd;
+        newFwd.Normalize();
+        Vector3 newRight = Vector3.Cross(Vector3.up, newFwd).normalized;
+
+        float halfWidth = Mathf.Max(0.1f, GetRoadHalfWidth());
+        float currentLane = Vector3.Dot(perfectImpact - pathPos, pathRight);
+        float newLane = Mathf.Clamp(
+            currentLane + lat,
+            -halfWidth * ThrowerMaxLaneFraction,
+            halfWidth * ThrowerMaxLaneFraction);
+
+        return SnapThrowerImpactOntoRoad(newPathPos, newRight, newLane);
     }
 
     private Vector3 BuildOnTrackImpact(float carDist, float carSpeed, float flightTime)

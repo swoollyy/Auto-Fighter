@@ -1532,13 +1532,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   requireDriftUnlock: 1
   driftKey: 304
-  driftMinSpeed: 2
+  driftMinSpeed: 7
   maxDriftSteerMultiplier: 3.2
-  driftSteeringInputBuildupMultiplier: 0.46
-  driftBuildRate: 0.37
-  driftReleaseRate: 8.75
+  driftSteeringInputBuildupMultiplier: 0.43
+  driftBuildRate: 0.29
+  driftReleaseRate: 3.17
   driftSideForce: 0.47
-  driftSideForceWhileAccelerating: 0.25
+  driftSideForceWhileAccelerating: 0.4
   driftSideForceThrottleBlendRate: 3
   driftSpeedDecayPerSecond: 0.06
   driftHeldSpeedDecayPerSecond: 0

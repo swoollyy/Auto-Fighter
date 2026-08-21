@@ -177,6 +177,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public void RecordForcefieldEligibleRunCompletion(bool diedFromHp)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return;
         if (diedFromHp) return;
         _forcefieldNoHpDeathRunCompletions += 1;
         SaveState();
@@ -189,6 +190,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public void RecordCrashMashCompletion(int amount = 1)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return;
         if (amount <= 0) return;
         _turretMashCompletions += amount;
         SaveState();
@@ -198,6 +200,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public void RecordCoinsCollected(int amount)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return;
         if (amount <= 0) return;
         _coinFriendCoinsCollected += amount;
         SaveState();
@@ -249,6 +252,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public bool IsItemEquipped(RacingQuestRunItem item)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return false;
         if (equippedItems == null) return false;
         for (int i = 0; i < equippedItems.Length; i++)
         {
@@ -314,6 +318,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public bool TryEquipItem(RacingQuestRunItem item)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return false;
         if (!IsItemAvailableToEquip(item)) return false;
         if (IsItemEquipped(item)) return true;
 
@@ -334,6 +339,7 @@ public sealed class RacingQuestUnlockManager : MonoBehaviour
 
     public bool TryAssignItemToSlot(RacingQuestRunItem item, int slotIndex)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked) return false;
         if (!IsItemAvailableToEquip(item)) return false;
         EnsureEquippedArrayInitialized();
 

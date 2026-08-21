@@ -15,9 +15,10 @@ using UnityEngine;
 ///
 /// When the final trial is beaten, <see cref="OnAllTrialsCompleted"/> fires (endless mode hooks in here later).
 ///
-/// Persistence: day, trial index, completion flag, and the baseline snapshot all save to PlayerPrefs.
-/// While <see cref="persistAcrossSessions"/> is false (current testing setup, alongside the TEMP
-/// ClearAllData() in RacingSkillTreeManager.Awake), saved state is ignored and reset fresh on launch.
+/// Persistence: day, trial index, completion flag, the baseline snapshot, and Help Patron
+/// collection all save to PlayerPrefs. While <see cref="persistAcrossSessions"/> is false
+/// (current testing setup, alongside the TEMP ClearAllData() in RacingSkillTreeManager.Awake),
+/// saved state is ignored and reset fresh on launch.
 /// </summary>
 [DefaultExecutionOrder(-50)] // after RacingSkillTreeManager (-100) so its Instance + state exist
 public class DayTrialManager : MonoBehaviour
@@ -30,8 +31,11 @@ public class DayTrialManager : MonoBehaviour
     [SerializeField] private List<TrialConfig> trials = new();
 
     [Header("Persistence")]
-    [Tooltip("When true, day/trial/baseline load from the save file across sessions. Keep this FALSE while testing with the TEMP ClearAllData() in RacingSkillTreeManager.Awake; turn both on together for real persistence.")]
+    [Tooltip("When true, day/trial/baseline (and Help Patron collection) load from the save file across sessions. Keep this FALSE while testing with the TEMP ClearAllData() in RacingSkillTreeManager.Awake; turn both on together for real persistence.")]
     [SerializeField] private bool persistAcrossSessions = false;
+
+    /// <summary>True when day/trial/patron collection should survive Play Mode / app restarts.</summary>
+    public bool PersistAcrossSessions => persistAcrossSessions;
 
     [Header("Debug")]
     [SerializeField] private bool verboseLogging = true;
@@ -76,6 +80,9 @@ public class DayTrialManager : MonoBehaviour
 
         CaptureBaseline();
         SaveState();
+
+        if (clamped > 0)
+            NarrativeDirector.MarkEarlyNarrativePassedForTrial(clamped, markPriorTrialsCompleted: false);
 
         if (verboseLogging)
         {
@@ -135,7 +142,8 @@ public class DayTrialManager : MonoBehaviour
         CrossObstacleDirector crossObstacles = null,
         IcePathSpawner icePaths = null,
         BounceBackObstacleSpawner bounceObstacles = null,
-        TrackSpawnerQueue spawnQueue = null)
+        TrackSpawnerQueue spawnQueue = null,
+        TrackHelpPatronSpawner helpPatrons = null)
     {
         var cfg = CurrentConfig;
         if (cfg == null) return;
@@ -149,6 +157,7 @@ public class DayTrialManager : MonoBehaviour
         if (icePaths != null) icePaths.ApplyConfig(cfg.icePaths);
         if (bounceObstacles != null) bounceObstacles.ApplyConfig(cfg.bounceObstacles);
         if (spawnQueue != null) spawnQueue.ApplyConfig(cfg.spawnQueue);
+        if (helpPatrons != null) helpPatrons.ApplyConfig(cfg.helpPatrons);
     }
 
     private void Awake()
@@ -165,9 +174,16 @@ public class DayTrialManager : MonoBehaviour
     private void Start()
     {
         if (persistAcrossSessions && PlayerPrefs.HasKey(DayKey))
+        {
             LoadState();
+            HelpPatronProgress.LoadFromSave();
+            if (CurrentTrialIndex > 0)
+                NarrativeDirector.MarkEarlyNarrativePassedForTrial(CurrentTrialIndex, markPriorTrialsCompleted: true);
+        }
         else
+        {
             ResetProgressionToStart();
+        }
     }
 
     /// <summary>

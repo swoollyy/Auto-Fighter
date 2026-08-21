@@ -56,6 +56,7 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField] private RollingLogSpawner rollingLogSpawner;
     [SerializeField] private TrackFuelSpawner trackFuelSpawner;
     [SerializeField] private TrackHPSpawner trackHPSpawner;
+    [SerializeField] private TrackHelpPatronSpawner helpPatronSpawner;
     [SerializeField] private IcePathSpawner icePathSpawner;
     [SerializeField] private NPCTrafficCarSpawner npcCarSpawner;
     [SerializeField] private IcePathScreenFlashDriver iceScreenFlashDriver;
@@ -234,6 +235,7 @@ public class GameManager_Racing : MonoBehaviour
     /// <summary>Trial-complete results: no quick replay — skill tree only.</summary>
     private bool _blockQuickReplayThisRunEnd;
     private GameProgressState _progressState = GameProgressState.InitIntro;
+    private GameProgressState _progressStateBeforeDialogue = GameProgressState.SkillTree;
     [Tooltip("Story flag set when the player beats trial 1 (finish portal). Used for post-win skill-tree dialogue.")]
     [SerializeField] private string trial1CompleteStoryFlag = "trial1_complete";
     [Header("Loading Audio Gate")]
@@ -255,6 +257,11 @@ public class GameManager_Racing : MonoBehaviour
     [SerializeField, Min(0)] private int debugStartTrialIndex = 0;
     [Tooltip("When starting on trial > 0, max every skill from earlier trials' allowlists so the car is fully upgraded for those tracks.")]
     [SerializeField] private bool debugMaxPreviousTrialSkills = true;
+
+    /// <summary>Inspector debug: jump to a later trial on boot (skips opening narrative).</summary>
+    public bool IsDebugForceStartTrial => debugForceStartTrial;
+    /// <summary>0-based trial index used when <see cref="IsDebugForceStartTrial"/> is on.</summary>
+    public int DebugStartTrialIndex => debugStartTrialIndex;
 
     public float DistanceAlongTrack => runDistanceMeters;
     public bool IsGameplayLive => !_loadingGameplayGateActive && runStarted && !runEnded;
@@ -307,6 +314,27 @@ public class GameManager_Racing : MonoBehaviour
 
         // Scene may not have a DayTrialManager wired yet — create one so days advance on every run.
         DayTrialManager.EnsureExists();
+        EnsureNarrativeDirectorActive();
+
+        // Must run in Awake: NarrativeDirector.Start / ReturnToSkillTree can CheckTriggers
+        // before the debug trial jump coroutine, which would play Init on Track 2.
+        NarrativeDirector.ApplyOpeningNarrativeSkipFromProgress();
+
+        // Before any Start() CheckTriggers: cover dialogue so Trial 1 / Taskmaster / Max Fuel
+        // paint under goo. Same reveal as Init → skill tree.
+        if (GooIrisScreenTransition.PendingOpenAfterSceneLoad)
+            GooIrisScreenTransition.EnsureExists().CoverDialogueForReveal();
+    }
+
+    /// <summary>
+    /// Narrative Director is sometimes left inactive in the scene; Awake/Start never run then,
+    /// so Taskmaster intro and other garage triggers never fire.
+    /// </summary>
+    private static void EnsureNarrativeDirectorActive()
+    {
+        var director = FindObjectOfType<NarrativeDirector>(true);
+        if (director != null && !director.gameObject.activeInHierarchy)
+            director.gameObject.SetActive(true);
     }
 
     void Start()
@@ -330,7 +358,7 @@ public class GameManager_Racing : MonoBehaviour
 
         bool pendingIrisOpen = GooIrisScreenTransition.PendingOpenAfterSceneLoad;
         if (pendingIrisOpen)
-            GooIrisScreenTransition.EnsureExists().SnapSealed();
+            GooIrisScreenTransition.EnsureExists().CoverDialogueForReveal();
 
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
         {
@@ -377,45 +405,26 @@ public class GameManager_Racing : MonoBehaviour
 
     private IEnumerator CoOpenIrisAfterSceneLoadIfPending()
     {
-        // Let skill tree / canvas settle one frame under sealed black.
-        yield return null;
-        yield return null;
-
         var iris = GooIrisScreenTransition.EnsureExists();
-
-        // Never run a boot iris open over live dialogue (iris sort 32000 would bury it).
-        if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
-        {
-            // Clear sealed-but-hidden leftovers without flashing black.
-            if (iris.IsSealed && !iris.IsVisuallyActive)
-                iris.SnapOpenHidden();
-            GooIrisScreenTransition.PendingOpenAfterSceneLoad = false;
+        if (!GooIrisScreenTransition.PendingOpenAfterSceneLoad && !iris.IsSealed && !iris.IsBlockingScreen())
             yield break;
-        }
 
-        // Only open when we intentionally covered the screen (pending reload, or visible block).
-        // Do NOT treat sealed-but-hidden (HideVisualKeepSealed) as needing an open — that was
-        // flashing black goo over the skill tree / dialogue on every boot after a run.
-        bool needsOpen =
-            GooIrisScreenTransition.PendingOpenAfterSceneLoad ||
-            iris.IsBlockingScreen();
+        // One garage reveal: cover dialogue, paint skill tree + CheckTriggers under goo, open onto it.
+        iris.CoverDialogueForReveal();
+        uiManager?.HideLoading();
+        if (skillTreeRoot != null)
+            skillTreeRoot.SetActive(true);
+        uiManager?.SetGameCanvasVisible(true);
+        uiManager?.SetSection(UIManager_Racing.UISection.SkillTree);
 
-        if (!needsOpen)
-        {
-            if (iris.IsSealed && !iris.IsVisuallyActive)
-                iris.SnapOpenHidden();
-            yield break;
-        }
-
-        yield return iris.CoOpen();
-
-        // Hard failsafe — never leave Cross→reload on permanent black.
-        if (iris.IsBlockingScreen() || iris.IsSealed)
-            iris.SnapOpenHidden();
-
-        // Garage / Init_SkillTree after reveal (deferred from Start when pending).
         TryRaiseFirstSkillTreeEntryNarrativeFlag();
+        HelpPatronProgress.PrepareForTriggerCheck();
         NarrativeDirector.NotifyReturnedToSkillTree();
+
+        yield return null;
+        yield return null;
+
+        yield return iris.CoOpenRevealingDialogue();
     }
 
     private System.Collections.IEnumerator CoEnsureSkillTreeVisibleIfNoDialogue()
@@ -721,9 +730,9 @@ public class GameManager_Racing : MonoBehaviour
         GameplayUIInputGuard.IsTutorialHighlightActive = true;
 
         // Iris already ~50% from controls. Do NOT SetSection(SkillTree) — that flashes the garage.
-        // CONTROLS overlay stays opaque on top until we destroy it after full seal.
+        // CONTROLS stays opaque behind the goo; closing the hole swallows the text.
         iris.RestoreDefaultSortOrder();
-        Coroutine closeCr = iris.StartCoroutine(iris.CoCloseAndHold());
+        Coroutine closeCr = iris.StartCoroutine(iris.CoCloseAndHold(restoreDefaultSort: false));
 
         if (closeCr != null)
             yield return closeCr;
@@ -862,7 +871,7 @@ public class GameManager_Racing : MonoBehaviour
         // Run on the DDOL iris so close state can't be abandoned mid-busy when this GM dies.
         yield return iris.StartCoroutine(iris.CoCloseAndHold());
         GooIrisScreenTransition.PendingOpenAfterSceneLoad = true;
-        iris.SnapSealed();
+        iris.CoverDialogueForReveal();
 
         // Do NOT reset Vintage TV here — results are still on screen. Scene reload +
         // VintageTVController.Awake restores defaults once the skill tree is up.
@@ -1119,8 +1128,8 @@ public class GameManager_Racing : MonoBehaviour
         // are tallied for this run.
         DayTrialManager.Instance?.NotifyRunCompleted(_maxRunNormalizedProgress);
 
-        if (beatTrial1ViaPortal && !string.IsNullOrEmpty(trial1CompleteStoryFlag))
-            NarrativeDirector.SetStoryFlag(trial1CompleteStoryFlag);
+        if (beatTrial1ViaPortal)
+            NarrativeDirector.MarkTrial1Complete();
     }
 
 
@@ -1733,7 +1742,9 @@ public class GameManager_Racing : MonoBehaviour
             TryRaiseFirstSkillTreeEntryNarrativeFlag();
         // Post-run garage dialogue (e.g. can-afford Max Fuel) — not during results.
         if (notifySkillTreeNarrative)
+        {
             NarrativeDirector.NotifyReturnedToSkillTree();
+        }
 
         // Hide run UI if present
         uiManager?.HideRunComplete();
@@ -1774,6 +1785,7 @@ public class GameManager_Racing : MonoBehaviour
         if (trackCoinSpawner == null) trackCoinSpawner = FindObjectOfType<TrackCoinSpawner>(true);
         if (trackFuelSpawner == null) trackFuelSpawner = FindObjectOfType<TrackFuelSpawner>(true);
         if (trackHPSpawner == null) trackHPSpawner = FindObjectOfType<TrackHPSpawner>(true);
+        if (helpPatronSpawner == null) helpPatronSpawner = TrackHelpPatronSpawner.EnsureExists();
         if (icePathSpawner == null) icePathSpawner = FindObjectOfType<IcePathSpawner>(true);
         if (npcCarSpawner == null) npcCarSpawner = FindObjectOfType<NPCTrafficCarSpawner>(true);
         if (creatureSpawner == null) creatureSpawner = FindObjectOfType<TrackCreatureSpawner>(true);
@@ -1830,6 +1842,9 @@ public class GameManager_Racing : MonoBehaviour
         _deathStopBurstPlayed = false;
         yield return null;
 
+        if (helpPatronSpawner == null)
+            helpPatronSpawner = TrackHelpPatronSpawner.EnsureExists();
+
         // Apply the active trial's spawner settings before each spawner initializes for this run.
         DayTrialManager.Instance?.ApplyCurrentTrialToSpawners(
             trackObstacleSpawner,
@@ -1841,7 +1856,8 @@ public class GameManager_Racing : MonoBehaviour
             crossObstacleDirector,
             icePathSpawner,
             bounceBackObstacleSpawner,
-            trackSpawnerQueue);
+            trackSpawnerQueue,
+            helpPatronSpawner);
 
         uiManager?.SetLoadingState("Spawning creatures...", 0.76f);
         creatureSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
@@ -1864,6 +1880,7 @@ public class GameManager_Racing : MonoBehaviour
         uiManager?.SetLoadingState("Spawning pickups...", 0.86f);
         trackFuelSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         trackHPSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
+        helpPatronSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
         yield return null;
         uiManager?.SetLoadingState("Spawning hazards...", 0.89f);
         icePathSpawner?.InitializeForRun(trackGenerator, carInstance.transform);
@@ -2114,6 +2131,7 @@ public class GameManager_Racing : MonoBehaviour
             _progressState == GameProgressState.RunEnd ||
             _progressState == GameProgressState.InRun)
         {
+            _progressStateBeforeDialogue = _progressState;
             SetProgressState(GameProgressState.Dialogue);
         }
     }
@@ -2149,6 +2167,13 @@ public class GameManager_Racing : MonoBehaviour
             return;
         }
 
+        // In-run pickup dialogue (Taskmaster): unpause and keep racing.
+        if (_progressStateBeforeDialogue == GameProgressState.InRun)
+        {
+            SetProgressState(GameProgressState.InRun);
+            return;
+        }
+
         // Non-init dialogue that kept the skill tree visible (e.g. Init_SkillTree overlay):
         // return to SkillTree state without requiring init_finish again.
         // Never steal the Loading section mid begin-run.
@@ -2166,10 +2191,9 @@ public class GameManager_Racing : MonoBehaviour
     {
         var iris = GooIrisScreenTransition.EnsureExists();
 
-        // Dialogue canvas sorts at 32150 — raise iris above it so goo covers the last line
-        // while bubbles keep animating underneath.
         iris.EnsureReadyToCloseOverScreen();
-        iris.SetSortOrder(32500);
+        iris.SetSortOrder(GooIrisScreenTransition.SortOverDialogue);
+        DialogueUI.RefreshHostSortForIris();
         yield return iris.CoCloseAndHold(restoreDefaultSort: false);
 
         // Sealed black: tear down held init dialogue, show skill tree, start Init_SkillTree
@@ -2180,17 +2204,10 @@ public class GameManager_Racing : MonoBehaviour
         TryRaiseFirstSkillTreeEntryNarrativeFlag();
         NarrativeDirector.NotifyReturnedToSkillTree();
 
-        // Let PlaySequence Show + first line paint under sealed black.
         yield return null;
         yield return null;
 
-        if (!iris.IsSealed)
-            iris.SnapSealed();
-        // Stay above dialogue (32150) so the hole reveals tree + dialogue together.
-        iris.SetSortOrder(32500);
-        yield return iris.CoOpen(restoreDefaultSort: false);
-
-        iris.RestoreDefaultSortOrder();
+        yield return iris.CoOpenRevealingDialogue();
         _flowIrisCr = null;
     }
 

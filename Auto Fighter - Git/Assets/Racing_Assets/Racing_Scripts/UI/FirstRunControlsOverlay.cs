@@ -6,8 +6,9 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Full-screen controls explainer shown once on first Play.
-/// Goo creeps to ~50% behind CONTROLS text. On dismiss the overlay stays opaque while
-/// GameManager finishes the iris seal and starts loading — then tears this overlay down.
+/// Goo creeps to ~50% over CONTROLS text (text reads through the iris hole).
+/// On dismiss the overlay stays opaque behind the goo while GameManager finishes
+/// the iris seal — text disappears under the closing goo, then this overlay is torn down.
 /// UI is generated entirely in code (same pattern as <see cref="TutorialUIHighlightCoach"/>).
 /// </summary>
 public class FirstRunControlsOverlay : MonoBehaviour
@@ -19,9 +20,11 @@ public class FirstRunControlsOverlay : MonoBehaviour
     private const float MinShowSeconds = 0.6f;
     private const float FadeInSeconds = 0.25f;
     private const float FadeOutSeconds = 0.15f;
-    /// <summary>Above GooIrisScreenTransition so CONTROLS text sits in the clear iris hole.</summary>
-    private const int OverlaySortOrder = 32100;
-    private const int IrisUnderOverlaySort = 32050;
+    /// <summary>
+    /// Below <see cref="GooIrisScreenTransition"/> (32000) so goo sits on top:
+    /// text is visible only through the iris hole and gets covered as the hole closes.
+    /// </summary>
+    private const int OverlaySortOrder = 31950;
 
     // Matches the tutorial highlight's yellow accent.
     private static readonly Color AccentColor = new Color(1f, 0.847f, 0.302f, 1f);
@@ -88,7 +91,7 @@ public class FirstRunControlsOverlay : MonoBehaviour
         _dismissed = true;
 
         NarrativeDirector.SetStoryFlag(ShownStoryFlag);
-        // Keep CONTROLS fully opaque until GameManager finishes the iris seal.
+        // Keep CONTROLS fully opaque behind the goo until GameManager finishes the iris seal.
         // Fading here would flash the skill tree through the half-open goo hole.
         if (_group != null)
             _group.alpha = 1f;
@@ -162,9 +165,9 @@ public class FirstRunControlsOverlay : MonoBehaviour
         // Freeze the skill-tree chrome behind us (pan/zoom, buttons) while the overlay is up.
         GameplayUIInputGuard.IsTutorialHighlightActive = true;
 
-        // Goo creeps from edges to ~50% behind the text.
+        // Goo creeps from the edges to ~50% on TOP of this overlay (text reads through the hole).
         var iris = GooIrisScreenTransition.EnsureExists();
-        iris.SetSortOrder(IrisUnderOverlaySort);
+        iris.RestoreDefaultSortOrder();
         iris.BeginCloseToHoleAndHold();
 
         StartCoroutine(CoFadeIn());

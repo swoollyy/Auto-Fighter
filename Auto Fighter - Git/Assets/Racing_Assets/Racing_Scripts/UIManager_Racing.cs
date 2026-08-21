@@ -155,7 +155,10 @@ public class UIManager_Racing : MonoBehaviour
         // Only hide the game canvas when intro/dialogue is actually covering the screen.
         // After a run restart (scene reload) or when narrative is skipped, no dialogue plays —
         // leaving the canvas off would blank the skill tree forever.
+        // Garage return: keep the skill tree up under sealed goo + dialogue.
+        bool pendingIrisOpen = GooIrisScreenTransition.PendingOpenAfterSceneLoad;
         bool dialogueCoveringScreen =
+            !pendingIrisOpen &&
             DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying;
         SetGameCanvasVisible(!dialogueCoveringScreen);
 
@@ -669,7 +672,7 @@ public class UIManager_Racing : MonoBehaviour
 
     public void SetLoadingState(string message, float progress01)
     {
-        SetLoadingMessage(message);
+        SetLoadingMessage("Loading...");
         SetLoadingProgress(progress01);
     }
 

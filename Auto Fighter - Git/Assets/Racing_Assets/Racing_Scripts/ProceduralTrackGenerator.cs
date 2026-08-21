@@ -894,10 +894,19 @@ public class ProceduralTrackGenerator : MonoBehaviour
             _lastBuildFailReason = "path left preferred terrain";
             return false;
         }
-
+        
         if (preventSelfIntersections && !PolylineClearsItself(spaced, requireProximityClearance: false))
         {
             _lastBuildFailReason = "path self-overlap";
+            return false;
+        }
+
+        // Border clamp can fold a sketch into a V on the playable edge. Far-apart
+        // self-intersection already passed; this only rejects local overlapping
+        // segments at that pinch so the attempt retries instead of spawning stacked road.
+        if (PolylineHasEdgePinchOverlap(spaced, minX, maxX, minZ, maxZ))
+        {
+            _lastBuildFailReason = "border pinch overlap";
             return false;
         }
 
@@ -3396,6 +3405,63 @@ public class ProceduralTrackGenerator : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// True when the path pinches against the playable border and nearby segments
+    /// overlap. 90° along-edge box turns stay legal; hairpin V-folds from clamping
+    /// a sketch onto the wall do not.
+    /// </summary>
+    private bool PolylineHasEdgePinchOverlap(
+        List<Vector2> poly, float minX, float maxX, float minZ, float maxZ)
+    {
+        if (poly == null || poly.Count < 4)
+            return false;
+
+        float edgeZone = Mathf.Max(roadWidth * 2.5f, 18f);
+        float foldDeg = Mathf.Max(100f, Mathf.Max(startMaxTurnAngle, endMaxTurnAngle) + 25f);
+        float overlapDist = Mathf.Max(0.5f, roadWidth * 0.92f);
+        float overlapDistSq = overlapDist * overlapDist;
+
+        for (int i = 1; i < poly.Count - 1; i++)
+        {
+            if (MinDistanceToRectEdge(poly[i], minX, maxX, minZ, maxZ) > edgeZone)
+                continue;
+
+            Vector2 inDir = poly[i] - poly[i - 1];
+            Vector2 outDir = poly[i + 1] - poly[i];
+            if (inDir.sqrMagnitude < 1e-8f || outDir.sqrMagnitude < 1e-8f)
+                continue;
+
+            if (Mathf.Abs(Vector2.SignedAngle(inDir, outDir)) >= foldDeg)
+                return true;
+        }
+
+        int nSeg = poly.Count - 1;
+        const int maxNearGap = 5;
+        for (int i = 0; i < nSeg; i++)
+        {
+            Vector2 a0 = poly[i];
+            Vector2 a1 = poly[i + 1];
+            if (MinDistanceToRectEdge(a0, minX, maxX, minZ, maxZ) > edgeZone
+                && MinDistanceToRectEdge(a1, minX, maxX, minZ, maxZ) > edgeZone)
+                continue;
+
+            int jMax = Mathf.Min(i + maxNearGap, nSeg - 1);
+            for (int j = i + 2; j <= jMax; j++)
+            {
+                Vector2 b0 = poly[j];
+                Vector2 b1 = poly[j + 1];
+                if (MinDistanceToRectEdge(b0, minX, maxX, minZ, maxZ) > edgeZone
+                    && MinDistanceToRectEdge(b1, minX, maxX, minZ, maxZ) > edgeZone)
+                    continue;
+
+                if (SegmentSegmentDistanceSq(a0, a1, b0, b1) < overlapDistSq)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool PolylineClearsItself(List<Vector2> poly, bool requireProximityClearance = true)
     {
         int minIndexGap = Mathf.Max(4, recentIgnoreCount + 3);
@@ -5721,6 +5787,18 @@ public class ProceduralTrackGenerator : MonoBehaviour
     private static bool PointInRect(Vector2 p, float minX, float maxX, float minZ, float maxZ)
     {
         return p.x >= minX && p.x <= maxX && p.y >= minZ && p.y <= maxZ;
+    }
+
+    private static float MinDistanceToRectEdge(Vector2 p, float minX, float maxX, float minZ, float maxZ)
+    {
+        if (p.x < minX || p.x > maxX || p.y < minZ || p.y > maxZ)
+            return 0f;
+
+        return Mathf.Min(
+            p.x - minX,
+            maxX - p.x,
+            p.y - minZ,
+            maxZ - p.y);
     }
 
     private float GetEffectiveMinStartEndDistance(float segLength)

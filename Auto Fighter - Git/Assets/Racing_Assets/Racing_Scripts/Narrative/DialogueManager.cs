@@ -161,7 +161,13 @@ public class DialogueManager : MonoBehaviour
         dialogueUI?.Show();
 
         // Per-sequence option: keep game canvas visible for skill-tree/tutorial dialogue.
-        if (!sequence.keepGameCanvasVisibleWhilePlaying)
+        // In-run pickups must NOT pull up the skill tree over the track.
+        bool keepCanvasVisible = sequence.keepGameCanvasVisibleWhilePlaying;
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && gm.ProgressState == GameManager_Racing.GameProgressState.InRun)
+            keepCanvasVisible = false;
+
+        if (!keepCanvasVisible)
         {
             _hidGameCanvasForCurrentSequence = true;
             if (uiManagerRacing != null)

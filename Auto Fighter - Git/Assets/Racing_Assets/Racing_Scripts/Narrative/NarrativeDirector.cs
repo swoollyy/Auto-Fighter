@@ -25,13 +25,37 @@ public class NarrativeDirector : MonoBehaviour
     [Tooltip("Skill that counts as the 'first upgrade' for the purchase dialogue.")]
     [SerializeField] private SkillType firstUpgradeSkill = SkillType.MaxFuel_Add;
 
+    [Header("Help Patrons")]
+    [Tooltip("Played on the track when the player collects The Taskmaster.")]
+    [SerializeField] private DialogueSequenceSO taskmasterIntroDialogue;
+
+    [Tooltip("Played once on the skill tree after collecting The Taskmaster. Explains quests / inventory.")]
+    [SerializeField] private DialogueSequenceSO taskmasterSkillTreeDialogue;
+
     [Header("Debug")]
     [SerializeField] private bool logTriggerChecks;
+
+    /// <summary>On-track pickup sequence (inspector).</summary>
+    public DialogueSequenceSO TaskmasterIntroDialogue => taskmasterIntroDialogue;
+    /// <summary>Garage sequence after collecting The Taskmaster (inspector).</summary>
+    public DialogueSequenceSO TaskmasterSkillTreeDialogue => taskmasterSkillTreeDialogue;
 
     private static readonly HashSet<string> StoryFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private static int _totalRunsCompleted;
     private bool _pendingMaxFuelPurchaseDialogue;
     private bool _subscribedToDialogue;
+
+    public const string Trial1CompleteFlag = "trial1_complete";
+    public const string Trial1CompleteShownFlag = "trial1_complete_shown";
+    private const string PrefsPendingTrial1Key = "Narrative_PendingTrial1Complete";
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticsForPlayMode()
+    {
+        StoryFlags.Clear();
+        _totalRunsCompleted = 0;
+        PlayerPrefs.DeleteKey(PrefsPendingTrial1Key);
+    }
 
     private void Awake()
     {
@@ -41,6 +65,11 @@ public class NarrativeDirector : MonoBehaviour
             return;
         }
         Instance = this;
+        if (taskmasterIntroDialogue == null)
+            taskmasterIntroDialogue = Resources.Load<DialogueSequenceSO>(HelpPatronProgress.TaskmasterIntroResourcePath);
+        HelpPatronProgress.RegisterIntroSequence(taskmasterIntroDialogue);
+        HelpPatronProgress.RegisterSkillTreeSequence(taskmasterSkillTreeDialogue);
+        EnsureTaskmasterTriggerPresent();
     }
 
     private void OnDestroy()
@@ -49,10 +78,14 @@ public class NarrativeDirector : MonoBehaviour
         if (Instance == this)
             Instance = null;
     }
-
+    
     private void Start()
     {
         SubscribeDialogue();
+        ApplyOpeningNarrativeSkipFromProgress();
+        HelpPatronProgress.PrepareForTriggerCheck();
+        // Same as CanAfford Max Fuel: play on Start while the results-return goo is still
+        // sealed. GameManager / iris failsafe then opens onto the line.
         CheckTriggers();
     }
 
@@ -60,6 +93,37 @@ public class NarrativeDirector : MonoBehaviour
     {
         if (!_subscribedToDialogue)
             SubscribeDialogue();
+    }
+
+    /// <summary>
+    /// Make the Taskmaster skill-tree sequence show up in the same trigger list as other garage lines.
+    /// </summary>
+    private void EnsureTaskmasterTriggerPresent()
+    {
+        if (taskmasterSkillTreeDialogue == null) return;
+
+        for (int i = 0; i < triggerEntries.Length; i++)
+        {
+            if (triggerEntries[i] != null && triggerEntries[i].sequence == taskmasterSkillTreeDialogue)
+                return;
+        }
+
+        var extra = new NarrativeTriggerEntry
+        {
+            sequence = taskmasterSkillTreeDialogue,
+            playOnce = true,
+            flagWhenPlayed = HelpPatronProgress.TaskmasterSkillTreeShownFlag,
+            condition = new NarrativeTriggerCondition
+            {
+                type = NarrativeTriggerCondition.TriggerType.HasStoryFlag,
+                storyFlag = HelpPatronProgress.TaskmasterCollectedFlag
+            }
+        };
+
+        var list = new List<NarrativeTriggerEntry>(triggerEntries.Length + 1);
+        list.Add(extra);
+        list.AddRange(triggerEntries);
+        triggerEntries = list.ToArray();
     }
 
     private void SubscribeDialogue()
@@ -78,8 +142,10 @@ public class NarrativeDirector : MonoBehaviour
         _subscribedToDialogue = false;
     }
 
-    private void HandleDialogueSequenceCompleted(DialogueSequenceSO _)
+    private void HandleDialogueSequenceCompleted(DialogueSequenceSO completed)
     {
+        HelpPatronProgress.HandleDialogueSequenceCompleted(completed);
+
         if (!_pendingMaxFuelPurchaseDialogue) return;
         _pendingMaxFuelPurchaseDialogue = false;
         TryPlayFirstUpgradePurchasedDialogue(firstUpgradeSkill, 1);
@@ -92,11 +158,98 @@ public class NarrativeDirector : MonoBehaviour
         StoryFlags.Add(flag.Trim());
     }
 
+    /// <summary>Clear a single story flag.</summary>
+    public static void ClearStoryFlag(string flag)
+    {
+        if (string.IsNullOrEmpty(flag)) return;
+        StoryFlags.Remove(flag.Trim());
+    }
+
+    /// <summary>
+    /// Wipe session story flags + run count. Called with the TEMP skill-tree wipe so Play Mode
+    /// restarts do not keep tutorial / patron flags when Domain Reload is disabled.
+    /// </summary>
+    public static void ResetSessionState()
+    {
+        StoryFlags.Clear();
+        _totalRunsCompleted = 0;
+        PlayerPrefs.DeleteKey(PrefsPendingTrial1Key);
+    }
+
     /// <summary>Returns true if the flag has been set.</summary>
     public static bool HasStoryFlag(string flag)
     {
         if (string.IsNullOrEmpty(flag)) return false;
         return StoryFlags.Contains(flag.Trim());
+    }
+
+    /// <summary>
+    /// Treat opening-tutorial dialogue as already seen when starting past trial 1
+    /// (debug jump to Track 2, or a loaded save that already cleared those gates).
+    /// Call from Awake so <see cref="CheckTriggers"/> cannot play Init first.
+    /// </summary>
+    public static void ApplyOpeningNarrativeSkipFromProgress()
+    {
+        int trialIndex = 0;
+        bool markPriorTrialsCompleted = false;
+
+        var gm = GameManager_Racing.Instance;
+        if (gm != null && gm.IsDebugForceStartTrial && gm.DebugStartTrialIndex > 0)
+        {
+            trialIndex = gm.DebugStartTrialIndex;
+        }
+        else if (DayTrialManager.Instance != null)
+        {
+            trialIndex = DayTrialManager.Instance.CurrentTrialIndex;
+            markPriorTrialsCompleted = DayTrialManager.Instance.PersistAcrossSessions && trialIndex > 0;
+        }
+
+        if (trialIndex <= 0) return;
+        MarkEarlyNarrativePassedForTrial(trialIndex, markPriorTrialsCompleted);
+    }
+
+    /// <summary>
+    /// Skip Init / skill-tree intro / max-fuel tutorial / first-run controls when the player
+    /// is already on a later trial. Does not invent "you beat trial 1" dialogue unless
+    /// <paramref name="markPriorTrialsCompleted"/> is true (real save).
+    /// </summary>
+    public static void MarkEarlyNarrativePassedForTrial(int trialIndex, bool markPriorTrialsCompleted)
+    {
+        if (trialIndex <= 0) return;
+
+        SetStoryFlag("init_finish");
+        SetStoryFlag("init_shown");
+        SetStoryFlag("skilltree_first_entry");
+        SetStoryFlag("skilltree_first_shown");
+        SetStoryFlag("tutorial_maxfuel_purchased");
+        SetStoryFlag("can_afford_maxfuel_shown");
+        SetStoryFlag("tutorial_maxfuel_clicked");
+        SetStoryFlag("tutorial_maxfuel_cost_shown");
+        SetStoryFlag(FirstRunControlsOverlay.ShownStoryFlag);
+
+        if (!markPriorTrialsCompleted) return;
+
+        for (int i = 0; i < trialIndex; i++)
+        {
+            int trialNumber = i + 1;
+            SetStoryFlag($"trial{trialNumber}_complete");
+            // Same as Taskmaster: a pending garage line must still play on the return
+            // from beating the trial. Don't stamp _shown until CheckTriggers plays it.
+            if (trialNumber == 1 && PlayerPrefs.GetInt(PrefsPendingTrial1Key, 0) == 1)
+                continue;
+            SetStoryFlag($"trial{trialNumber}_complete_shown");
+        }
+    }
+
+    /// <summary>
+    /// Same pattern as collecting The Taskmaster: set the garage trigger flag and
+    /// remember it across the results→skill-tree scene reload.
+    /// </summary>
+    public static void MarkTrial1Complete()
+    {
+        SetStoryFlag(Trial1CompleteFlag);
+        PlayerPrefs.SetInt(PrefsPendingTrial1Key, 1);
+        PlayerPrefs.Save();
     }
 
     /// <summary>
@@ -155,6 +308,11 @@ public class NarrativeDirector : MonoBehaviour
         if (DialogueManager.Instance == null) return;
 
         SetStoryFlag(flagWhenDone);
+        if (string.Equals(flagWhenDone, Trial1CompleteShownFlag, StringComparison.OrdinalIgnoreCase))
+        {
+            PlayerPrefs.DeleteKey(PrefsPendingTrial1Key);
+            PlayerPrefs.Save();
+        }
         DialogueManager.Instance.PlaySequence(sequence);
     }
 
@@ -182,6 +340,10 @@ public class NarrativeDirector : MonoBehaviour
     /// <summary>Evaluate trigger entries and play the first matching sequence (once per condition).</summary>
     public void CheckTriggers()
     {
+        HelpPatronProgress.PrepareForTriggerCheck();
+        if (PlayerPrefs.GetInt(PrefsPendingTrial1Key, 0) == 1)
+            SetStoryFlag(Trial1CompleteFlag);
+
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsPlaying)
             return;
 

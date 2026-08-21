@@ -17,7 +17,28 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
     /// <summary>Set before LoadScene; opened after the new scene boots to skill tree.</summary>
     public static bool PendingOpenAfterSceneLoad { get; set; }
 
-    private const int CanvasSortOrder = 32000;
+    /// <summary>Default iris canvas while covering the screen.</summary>
+    public const int DefaultSort = 32000;
+    /// <summary>Dialogue overlay when the iris is hidden (above skill tree, below a covering iris).</summary>
+    public const int DialogueSort = 32150;
+    /// <summary>Dialogue overlay while goo is sealed or opening so the box cannot composite over slime.</summary>
+    public const int SortUnderIris = 31000;
+    /// <summary>Iris sort while revealing onto dialogue (belt-and-suspenders with <see cref="SortUnderIris"/>).</summary>
+    public const int SortOverDialogue = 32500;
+
+    /// <summary>
+    /// True while garage/init goo should hide the dialogue box: pending scene-load reveal,
+    /// or the iris is currently drawing over the screen.
+    /// </summary>
+    public static bool ShouldCoverDialogue()
+    {
+        if (PendingOpenAfterSceneLoad)
+            return true;
+        var iris = Instance;
+        return iris != null && iris.IsVisuallyActive;
+    }
+
+    private const int CanvasSortOrder = DefaultSort;
     private static readonly int HoleId = Shader.PropertyToID("_HoleRadius");
     private static readonly int AspectId = Shader.PropertyToID("_Aspect");
     private static readonly int AnimTimeId = Shader.PropertyToID("_AnimTime");
@@ -148,7 +169,9 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         // in a way that desyncs flags — and must not wipe a pending open.
         if (PendingOpenAfterSceneLoad || _sealed)
         {
-            SnapSealed();
+            SnapSealed(restoreDefaultSort: !PendingOpenAfterSceneLoad);
+            if (PendingOpenAfterSceneLoad)
+                SetSortOrder(SortOverDialogue);
             return;
         }
 
@@ -201,13 +224,32 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         }
 
         if (PendingOpenAfterSceneLoad || IsBlockingScreen() || IsSealed)
-        {
-            yield return CoOpen();
-            if (IsBlockingScreen() || IsSealed)
-                SnapOpenHidden();
-        }
+            yield return CoOpenRevealingDialogue();
 
         _sceneOpenCr = null;
+    }
+
+    /// <summary>
+    /// Seal the iris above the dialogue canvas so garage lines paint under goo.
+    /// Used by every results→skill-tree return (Trial 1, Taskmaster, Max Fuel, Init).
+    /// </summary>
+    public void CoverDialogueForReveal()
+    {
+        SnapSealed(restoreDefaultSort: false);
+        SetSortOrder(SortOverDialogue);
+        DialogueUI.RefreshHostSortForIris();
+    }
+
+    /// <summary>Open the hole onto whatever is under the sealed goo (skill tree + dialogue), then restore default sort.</summary>
+    public IEnumerator CoOpenRevealingDialogue()
+    {
+        SetSortOrder(SortOverDialogue);
+        DialogueUI.RefreshHostSortForIris();
+        yield return CoOpen(restoreDefaultSort: false);
+        if (IsBlockingScreen() || IsSealed)
+            SnapOpenHidden();
+        RestoreDefaultSortOrder();
+        DialogueUI.RefreshHostSortForIris();
     }
 
     /// <summary>True when the iris is covering the screen (sealed black or mid-transition visible).</summary>
@@ -226,12 +268,15 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
     }
 
     /// <summary>
-    /// Drop canvas under UI that must stay readable in the iris hole (e.g. controls text).
+    /// Drop or raise canvas relative to other overlay UI.
+    /// Controls overlay sits below the default order so goo covers the text as the iris closes.
     /// </summary>
     public void SetSortOrder(int order)
     {
-        if (_canvas != null)
-            _canvas.sortingOrder = order;
+        if (_canvas == null)
+            return;
+        _canvas.overrideSorting = true;
+        _canvas.sortingOrder = order;
     }
 
     public void RestoreDefaultSortOrder()
@@ -639,12 +684,16 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         dur = Mathf.Max(0.05f, dur);
 
         PrepareForTransition();
-        // Skip when caller kept iris above dialogue so the open reveals tree + dialogue together.
-        if (restoreDefaultSort)
+        // Garage/init: keep goo above the box for the whole hole animation.
+        // Restoring DefaultSort here while dialogue is at DialogueSort draws the box on top of slime.
+        if (ShouldCoverDialogue() || !restoreDefaultSort)
+            SetSortOrder(SortOverDialogue);
+        else
             RestoreDefaultSortOrder();
         SetVisible(true);
         SetHole(0f);
         _sealed = true;
+        DialogueUI.RefreshHostSortForIris();
 
         // End at visual clear (≈ closeStartHole). Do NOT lerp past into overscan
         // overbite — that reads as "already open" while still blocking Day/TV intro.
@@ -675,6 +724,7 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         SetVisible(false);
         PendingOpenAfterSceneLoad = false;
         _busy = false;
+        DialogueUI.RefreshHostSortForIris();
     }
 
     /// <summary>Close to black and stay sealed until <see cref="CoOpen"/>.</summary>
@@ -702,7 +752,7 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         yield return CoOpen(openDur);
     }
 
-    public void SnapSealed()
+    public void SnapSealed(bool restoreDefaultSort = true)
     {
         StopActiveTracked();
         PrepareForTransition();
@@ -710,7 +760,8 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         _sealed = true;
         _busy = false;
         _holdAnim = false;
-        RestoreDefaultSortOrder();
+        if (restoreDefaultSort)
+            RestoreDefaultSortOrder();
         SetVisible(true);
         ResetRumble();
     }

@@ -29,7 +29,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _AnimTime: 0
+    - _AnimTime: 5.920739
     - _Aspect: 5.15
     - _ColorMask: 15
     - _CornerRadius: 0.291
@@ -51,6 +51,6 @@ Material:
     - _WarpAmount: 0.45
     - _WarpDepth: 0.85
     m_Colors:
-    - _Color: {r: 0.08, g: 0.14, b: 0.18, a: 0.85}
-    - _RimColor: {r: 0.45, g: 0.75, b: 0.95, a: 1}
+    - _Color: {r: 0.011764706, g: 0.011764706, b: 0.011764706, a: 1}
+    - _RimColor: {r: 0, g: 0, b: 0, a: 1}
   m_BuildTextureStacks: []

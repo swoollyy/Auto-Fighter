@@ -34,6 +34,9 @@ public class DialogueSequenceSO : ScriptableObject
     [Tooltip("Blob FX colors when a line uses Speaker Tag = Mechanic.")]
     public DialogueBlobColorSet mechanicColors = DialogueBlobColorSet.DefaultMechanic();
 
+    [Tooltip("Blob FX colors when a line uses Speaker Tag = Taskmaster.")]
+    public DialogueBlobColorSet taskmasterColors = DialogueBlobColorSet.DefaultTaskmaster();
+
     /// <summary>True if the sequence has at least one line.</summary>
     public bool HasLines => lines != null && lines.Length > 0;
 
@@ -49,6 +52,8 @@ public class DialogueSequenceSO : ScriptableObject
                 return overseerColors ?? DialogueBlobColorSet.DefaultOverseer();
             case DialogueSpeakerTag.Mechanic:
                 return mechanicColors ?? DialogueBlobColorSet.DefaultMechanic();
+            case DialogueSpeakerTag.Taskmaster:
+                return taskmasterColors ?? DialogueBlobColorSet.DefaultTaskmaster();
             case DialogueSpeakerTag.Player:
             default:
                 return playerColors ?? DialogueBlobColorSet.DefaultPlayer();
@@ -60,5 +65,6 @@ public class DialogueSequenceSO : ScriptableObject
         overseerColors = DialogueBlobColorSet.DefaultOverseer();
         playerColors = DialogueBlobColorSet.DefaultPlayer();
         mechanicColors = DialogueBlobColorSet.DefaultMechanic();
+        taskmasterColors = DialogueBlobColorSet.DefaultTaskmaster();
     }
 }

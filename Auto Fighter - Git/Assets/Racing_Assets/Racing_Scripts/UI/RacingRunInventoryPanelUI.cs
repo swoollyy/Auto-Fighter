@@ -157,6 +157,8 @@ public sealed class RacingRunInventoryPanelUI : MonoBehaviour
     /// </summary>
     public bool CheckPlayWarningGate(Action onContinueConfirmed = null)
     {
+        if (!HelpPatronProgress.AreQuestsAndInventoryUnlocked)
+            return true;
         if (!ShouldShowNoActiveItemsWarning())
             return true;
 

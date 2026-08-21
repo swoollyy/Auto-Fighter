@@ -112,6 +112,26 @@ public class DialogueUI : MonoBehaviour
     public Canvas HostCanvas => GetComponent<Canvas>();
 
     /// <summary>
+    /// Keep the box under sealed/opening goo; restore overlay sort once the iris is gone.
+    /// </summary>
+    public void ApplyHostSortForIris()
+    {
+        Canvas host = HostCanvas;
+        if (host == null)
+            return;
+        host.overrideSorting = true;
+        host.sortingOrder = GooIrisScreenTransition.ShouldCoverDialogue()
+            ? GooIrisScreenTransition.SortUnderIris
+            : GooIrisScreenTransition.DialogueSort;
+    }
+
+    public static void RefreshHostSortForIris()
+    {
+        var ui = FindObjectOfType<DialogueUI>(true);
+        ui?.ApplyHostSortForIris();
+    }
+
+    /// <summary>
     /// Toggle only the full-screen dim Image. Never deactivates the GameObject —
     /// the Dialogue Box goo lives as a child of that same object.
     /// </summary>
@@ -159,16 +179,10 @@ public class DialogueUI : MonoBehaviour
     /// <summary>Show the dialogue panel (and optionally set interactable/blockRaycasts).</summary>
     public void Show()
     {
+        gameObject.SetActive(true);
         if (panelRoot != null)
             panelRoot.SetActive(true);
-        // Sit above GooIrisScreenTransition (32000) so boot/load goo never buries dialogue.
-        Canvas host = HostCanvas;
-        if (host != null)
-        {
-            host.overrideSorting = true;
-            if (host.sortingOrder < 32150)
-                host.sortingOrder = 32150;
-        }
+        ApplyHostSortForIris();
         if (canvasGroup != null)
         {
             canvasGroup.alpha = 1f;
@@ -501,6 +515,9 @@ public class DialogueUI : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (panelRoot != null && panelRoot.activeInHierarchy && GooIrisScreenTransition.ShouldCoverDialogue())
+            ApplyHostSortForIris();
+
         if (!useTypewriterEffect || _typewriterComplete || dialogueText == null) return;
         // Do NOT ForceMeshUpdate here – it runs after link effects and would wipe their vertex changes.
         // Only mask unrevealed characters so effects stay visible on the revealed portion.

@@ -322,6 +322,19 @@ public class CreatureTypeConfig
     [Tooltip("0 = aim at the player's current lane on the road. 1 = full along-track lead, keeping the same left/right fraction and following turns.")]
     [Range(0f, 1f)] public float throwerPredictionStrength = 0.85f;
 
+    [Header("Thrower (Gorilla) - Accuracy")]
+    [Tooltip("Throw accuracy (0–1). X = at track start, Y = at track end. Higher = closer to the predicted player position.")]
+    public Vector2 throwerAccuracyByProgress = new Vector2(0.35f, 0.85f);
+
+    [Tooltip("Random +/- added to accuracy each throw so landings are never identical.")]
+    [Range(0f, 0.35f)] public float throwerAccuracyWiggle = 0.08f;
+
+    [Tooltip("Max left/right miss on the road (meters) at accuracy 0.")]
+    [Min(0f)] public float throwerMaxMissLateral = 4.5f;
+
+    [Tooltip("Max along-track miss (meters) at accuracy 0.")]
+    [Min(0f)] public float throwerMaxMissForward = 5.5f;
+
     [Tooltip("Spin applied to the thrown prop.")]
     [Min(0f)] public float throwerThrowSpin = 8f;
 
