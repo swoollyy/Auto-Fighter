@@ -342,9 +342,9 @@ public class CreatureTypeConfig
 
     [Tooltip("Seconds the thrown prop stays as physics debris before despawn (0 = leave it).")]
     [Min(0f)] public float throwerThrownPropLifetime = 12f;
-
-    [Tooltip("Layer assigned to a prop after it is thrown so it can hit the car. Default 7 = Wall.")]
-    public int throwerThrownPropLayer = 7;
+                
+    [Tooltip("Layer assigned to a prop after it is thrown so it can hit the car and be intercepted by the forcefield. Default 20 = Environment (must be in CarForcefield.obstacleLayers).")]
+    public int throwerThrownPropLayer = 20;
 
     [Header("Thrower (Gorilla) - Thrown Impact")]
     [Range(0f, 1f)] public float throwerThrownCrashSeverity = 0.55f;

@@ -65,6 +65,26 @@ public class GorillaThrownProp : MonoBehaviour
         if (car == null)
             return;
 
+        // Already flung by the forcefield — do not apply crash damage on residual contacts.
+        var immunity = GetComponentInParent<LaunchImmunityMarker>();
+        if (immunity != null && immunity.IsImmune)
+        {
+            _hasHitPlayer = true;
+            return;
+        }
+
+        // Match bounce-back / side-shooter: let an armed forcefield consume the hit first.
+        Collider selfCol = collision.contactCount > 0
+            ? collision.GetContact(0).thisCollider
+            : GetComponentInChildren<Collider>();
+        if (selfCol != null &&
+            car.TryGetComponent(out CarForcefield forcefield) &&
+            forcefield.TryInterceptObstacleForOverlapHit(selfCol))
+        {
+            _hasHitPlayer = true;
+            return;
+        }
+
         _hasHitPlayer = true;
 
         Vector3 hitDir = collision.relativeVelocity;

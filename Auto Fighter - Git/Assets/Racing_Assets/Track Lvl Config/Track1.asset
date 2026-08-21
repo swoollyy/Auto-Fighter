@@ -281,7 +281,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
@@ -406,7 +406,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
@@ -531,7 +531,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5

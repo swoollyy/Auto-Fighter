@@ -1968,7 +1968,7 @@ MonoBehaviour:
   enableAirTricks: 1
   airTurnSpeedMultiplier: 1.1
   airDriftSteerFeel: 0.72
-  airDriftSideForceScale: 0.55
+  airDriftSideForceScale: 0.7
   airYawRate: 30
   airYawInputDeadzone: 0.12
   airVelocityFollowNose: 0.45
@@ -1994,7 +1994,7 @@ MonoBehaviour:
   trickRotationDecel: 600
   suppressRampAlignmentInTrickMode: 1
   enableAirUprightRecovery: 1
-  airUprightRecoverSpeed: 2.75
+  airUprightRecoverSpeed: 5
   airUprightNearGroundBoost: 16
   airUprightMinAlignDot: 0.992
   airGravityMultiplier: 1

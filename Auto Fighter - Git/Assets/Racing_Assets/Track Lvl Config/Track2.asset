@@ -17,7 +17,7 @@ MonoBehaviour:
   dayLimit: 50
   targetProgress: 1
   restrictSkillsToAllowlist: 1
-  allowedSkills: 1500000011000000130000001b000000050000002b000000cc100000e0100000d6100000ea100000f41000002900000062110000c0120000190000002d000000320000000410000024130000
+  allowedSkills: 1500000011000000130000001b000000050000002b000000cc100000e0100000d6100000ea100000f41000002900000062110000c0120000190000002d0000003200000004100000241300002e00000030000000
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
@@ -273,7 +273,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
@@ -398,7 +398,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
@@ -523,7 +523,7 @@ MonoBehaviour:
       throwerThrowSpin: 8
       throwerThrowCooldown: 3.5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.55
       throwerThrownKnockbackForce: 10
       throwerThrownLift: 2.5
@@ -648,7 +648,7 @@ MonoBehaviour:
       throwerThrowSpin: 4
       throwerThrowCooldown: 5
       throwerThrownPropLifetime: 12
-      throwerThrownPropLayer: 7
+      throwerThrownPropLayer: 20
       throwerThrownCrashSeverity: 0.6
       throwerThrownKnockbackForce: 25
       throwerThrownLift: 3
