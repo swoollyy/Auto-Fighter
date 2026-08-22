@@ -32,6 +32,8 @@ public class CarBoostConfig : MonoBehaviour
     [SerializeField] private Vector2 driftBoostMaxSpeedMultRange = new Vector2(1.25f, 1.25f);
     [SerializeField] private float driftBoostFuelCost = 0f;
     [SerializeField] private float driftBoostCooldown = 3.3f;
+    [Tooltip("Charge gain at the lightest real steer (0–1). Full steer always gains at 1. Banked charge never drains from easing off.")]
+    [SerializeField, Range(0.05f, 1f)] private float driftBoostChargeMinGainRate = 0.35f;
 
     public bool RequireBoostUnlock => requireBoostUnlock;
     public float BoostFlashSpeedThreshold => boostFlashSpeedThreshold;
@@ -53,4 +55,5 @@ public class CarBoostConfig : MonoBehaviour
     public Vector2 DriftBoostMaxSpeedMultRange => driftBoostMaxSpeedMultRange;
     public float DriftBoostFuelCost => driftBoostFuelCost;
     public float DriftBoostCooldown => driftBoostCooldown;
+    public float DriftBoostChargeMinGainRate => driftBoostChargeMinGainRate;
 }

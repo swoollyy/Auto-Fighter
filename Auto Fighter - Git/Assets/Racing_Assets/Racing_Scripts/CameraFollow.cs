@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 /// <summary>
 /// Camera follow with yaw‑only tracking, optional screen shake,
@@ -94,17 +96,16 @@ public class CameraFollow : MonoBehaviour
     [SerializeField, Min(0.5f)] private float trickCameraBlendInSpeed = 12f;
     [Tooltip("Unused for release (release uses catch-up lag). Kept so existing scene values don't warn.")]
     [SerializeField, Min(0.5f)] private float trickCameraBlendOutSpeed = 3.5f;
-    [Tooltip("Heading catch-up rate after landing from a trick (higher = faster ease off the lock). Then settles to normal Rotation Lag.")]
+    [Tooltip("Heading catch-up rate after a trick ends (in air or on landing). Higher = faster ease off the lock. Then settles to normal Rotation Lag.")]
     [SerializeField, Min(0.5f)] private float trickReleaseCatchupLag = 9f;
     [Tooltip("How quickly post-trick catch-up lag blends down to the normal Rotation Lag.")]
     [SerializeField, Min(0.5f)] private float trickReleaseLagReturnSpeed = 6f;
-
+            
     private Vector3 smoothedForward = Vector3.zero;
     private float _trickCameraBlend;
     private Vector3 _trickLockForward = Vector3.forward;
     private Quaternion _trickLockRotation;
     private bool _wasInAirTrickMode;
-    private bool _holdTrickCameraUntilLand;
     private bool _postTrickReleaseActive;
     private float _postTrickLag;
 
@@ -153,6 +154,40 @@ public class CameraFollow : MonoBehaviour
     private float boostFovRampOut = 0.35f;
     [Tooltip("At high speed, reduce boost FOV offset so velocity-based zoom and boost presentation do not stack.")]
     [SerializeField, Range(0f, 1f)] private float boostFovOffsetSpeedFalloff = 0.85f;
+
+    [Header("Drift Vignette")]
+    [SerializeField] private bool enableDriftVignette = true;
+    [Tooltip("Optional URP Volume used for the drift vignette. If empty, the first Volume in the scene is used.")]
+    [SerializeField] private Volume driftVignetteVolume;
+    [Tooltip("Vignette intensity when a drift starts (boost charge = 0).")]
+    [SerializeField, Range(0f, 1f)] private float driftVignetteAtZeroCharge = 0.16f;
+    [Tooltip("Vignette intensity at full drift-held boost charge.")]
+    [SerializeField, Range(0f, 1f)] private float driftVignetteAtFullCharge = 0.48f;
+    [SerializeField, Range(0.01f, 1f)] private float driftVignetteSmoothness = 0.38f;
+    [SerializeField] private Color driftVignetteColor = Color.black;
+    [SerializeField] private bool driftVignetteRounded = false;
+    [SerializeField, Min(0.01f)] private float driftVignetteRampIn = 0.16f;
+    [SerializeField, Min(0.01f)] private float driftVignetteRampOut = 0.28f;
+
+    [Header("Drift Speed Lines")]
+    [SerializeField] private bool enableDriftSpeedLines = true;
+    [Tooltip("Optional particle object for drift lines. If empty, a white/bigger copy of Boost VFX is created at runtime.")]
+    [SerializeField] private GameObject driftVFXObject;
+    [Tooltip("How much larger the drift streaks are versus the cloned boost lines.")]
+    [SerializeField, Min(0.1f)] private float driftLineSizeMultiplier = 2.15f;
+    [SerializeField] private Color driftLineColor = Color.white;
+    [Tooltip("Particle start speed at boost charge 0.")]
+    [SerializeField, Min(0f)] private float driftLineSpeedAtZeroCharge = 24f;
+    [Tooltip("Particle start speed at full boost charge.")]
+    [SerializeField, Min(0f)] private float driftLineSpeedAtFullCharge = 78f;
+    [Tooltip("Particle simulation speed at boost charge 0 (also speeds already-spawned lines).")]
+    [SerializeField, Min(0.05f)] private float driftLineSimSpeedAtZeroCharge = 0.7f;
+    [Tooltip("Particle simulation speed at full boost charge.")]
+    [SerializeField, Min(0.05f)] private float driftLineSimSpeedAtFullCharge = 1.55f;
+    [SerializeField, Min(0f)] private float driftLineEmissionAtZeroCharge = 10f;
+    [SerializeField, Min(0f)] private float driftLineEmissionAtFullCharge = 28f;
+    [SerializeField, Tooltip("Keep emitting drift lines this long after the drift ends so they trail off.")]
+    private float driftVfxLingerSeconds = 0.22f;
 
     private ParticleSystem _boostPS;
     private CarController _subscribedCar;
@@ -218,6 +253,13 @@ public class CameraFollow : MonoBehaviour
     private Vector3 _prevTargetForwardFlat = Vector3.forward;
     private bool _boostVfxPlaying;
     private float _boostVfxLingerTimer;
+    private ParticleSystem _driftPS;
+    private bool _driftVfxPlaying;
+    private float _driftVfxLingerTimer;
+    private float _driftVignetteCurrent;
+    private float _driftChargeSmoothed;
+    private Vignette _driftVignette;
+    private bool _driftVignetteReady;
     // Map peek cached values (prevents stacking)
     private float _mapPeekPressBaseline;
     private float _mapPeekPressTarget;
@@ -248,6 +290,10 @@ public class CameraFollow : MonoBehaviour
         else if (boostVFXObject != null)
             boostVFXObject.SetActive(false);
 
+        EnsureDriftPresentation();
+        StopDriftVfxParticles();
+        ApplyDriftVignette(0f);
+
         _speedFovCurrent = defaultFOV;
 
         // initialize prev forward
@@ -265,6 +311,8 @@ public class CameraFollow : MonoBehaviour
     private void OnDisable()
     {
         UnsubscribeFromCarBoosts();
+        StopDriftVfxParticles();
+        ApplyDriftVignette(0f);
     }
 
     private void SubscribeToCarBoosts()
@@ -298,6 +346,10 @@ public class CameraFollow : MonoBehaviour
     {
         _boostFovOffsetTarget = 0f;
         StopBoostVfxParticles();
+        _driftVignetteCurrent = 0f;
+        _driftChargeSmoothed = 0f;
+        StopDriftVfxParticles();
+        ApplyDriftVignette(0f);
     }
 
     private void SyncBoostPresentation(bool wantPresentation, float dt)
@@ -355,6 +407,160 @@ public class CameraFollow : MonoBehaviour
         {
             boostVFXObject.SetActive(false);
         }
+    }
+
+    private void UpdateDriftPresentation(float dt)
+    {
+        EnsureDriftPresentation();
+
+        bool drifting = car != null && car.IsDrifting;
+        float charge = drifting ? Mathf.Clamp01(car.DriftHeldBoostHoldFillNormalized) : 0f;
+        if (drifting)
+            _driftChargeSmoothed = charge;
+
+        float vigTarget = 0f;
+        if (enableDriftVignette && drifting)
+            vigTarget = Mathf.Lerp(driftVignetteAtZeroCharge, driftVignetteAtFullCharge, _driftChargeSmoothed);
+
+        float vigRamp = vigTarget > _driftVignetteCurrent
+            ? Mathf.Max(0.01f, driftVignetteRampIn)
+            : Mathf.Max(0.01f, driftVignetteRampOut);
+        _driftVignetteCurrent = Mathf.Lerp(_driftVignetteCurrent, vigTarget, 1f - Mathf.Exp(-dt / vigRamp));
+        ApplyDriftVignette(_driftVignetteCurrent);
+
+        bool wantLines = enableDriftSpeedLines && drifting;
+        if (wantLines)
+        {
+            _driftVfxLingerTimer = Mathf.Max(0f, driftVfxLingerSeconds);
+            ApplyDriftLineParams(_driftChargeSmoothed);
+
+            if (!_driftVfxPlaying && _driftPS != null)
+            {
+                _driftVfxPlaying = true;
+                if (driftVFXObject != null && !driftVFXObject.activeSelf)
+                    driftVFXObject.SetActive(true);
+                _driftPS.Play(true);
+            }
+            return;
+        }
+
+        if (!_driftVfxPlaying)
+            return;
+
+        if (_driftVfxLingerTimer > 0f)
+        {
+            _driftVfxLingerTimer -= dt;
+            ApplyDriftLineParams(_driftChargeSmoothed);
+            return;
+        }
+
+        StopDriftVfxParticles(hardClear: false);
+    }
+
+    private void EnsureDriftPresentation()
+    {
+        if (enableDriftVignette && !_driftVignetteReady)
+            TryBindDriftVignette();
+
+        if (!enableDriftSpeedLines || _driftPS != null)
+            return;
+
+        if (driftVFXObject == null && boostVFXObject != null)
+        {
+            Transform parent = boostVFXObject.transform.parent;
+            driftVFXObject = Instantiate(boostVFXObject, parent);
+            driftVFXObject.name = "DriftVFX";
+            driftVFXObject.hideFlags = HideFlags.DontSave;
+            driftVFXObject.transform.localPosition = boostVFXObject.transform.localPosition;
+            driftVFXObject.transform.localRotation = boostVFXObject.transform.localRotation;
+            driftVFXObject.transform.localScale = boostVFXObject.transform.localScale;
+        }
+
+        if (driftVFXObject == null)
+            return;
+
+        _driftPS = driftVFXObject.GetComponent<ParticleSystem>();
+        if (_driftPS == null)
+            return;
+
+        _driftPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ApplyDriftLineParams(0f);
+    }
+
+    private void TryBindDriftVignette()
+    {
+        if (_driftVignetteReady)
+            return;
+
+        Volume volume = driftVignetteVolume;
+        if (volume == null)
+            volume = FindObjectOfType<Volume>();
+        if (volume == null)
+            return;
+
+        VolumeProfile profile = volume.profile;
+        if (profile == null)
+            return;
+
+        if (!profile.TryGet(out _driftVignette))
+            _driftVignette = profile.Add<Vignette>(true);
+
+        if (_driftVignette == null)
+            return;
+
+        _driftVignette.active = true;
+        _driftVignette.intensity.overrideState = true;
+        _driftVignette.smoothness.overrideState = true;
+        _driftVignette.color.overrideState = true;
+        _driftVignette.rounded.overrideState = true;
+        _driftVignetteReady = true;
+        driftVignetteVolume = volume;
+    }
+
+    private void ApplyDriftLineParams(float charge01)
+    {
+        if (_driftPS == null)
+            return;
+
+        charge01 = Mathf.Clamp01(charge01);
+
+        var main = _driftPS.main;
+        main.startColor = driftLineColor;
+        main.startSpeed = Mathf.Lerp(driftLineSpeedAtZeroCharge, driftLineSpeedAtFullCharge, charge01);
+        main.simulationSpeed = Mathf.Lerp(driftLineSimSpeedAtZeroCharge, driftLineSimSpeedAtFullCharge, charge01);
+        main.startSize3D = true;
+        main.startSizeXMultiplier = driftLineSizeMultiplier;
+        main.startSizeYMultiplier = driftLineSizeMultiplier;
+        main.startSizeZMultiplier = driftLineSizeMultiplier;
+
+        var emission = _driftPS.emission;
+        emission.rateOverTime = Mathf.Lerp(driftLineEmissionAtZeroCharge, driftLineEmissionAtFullCharge, charge01);
+    }
+
+    private void ApplyDriftVignette(float intensity)
+    {
+        if (!_driftVignetteReady && enableDriftVignette)
+            TryBindDriftVignette();
+        if (_driftVignette == null)
+            return;
+
+        _driftVignette.intensity.value = Mathf.Clamp01(intensity);
+        _driftVignette.smoothness.value = Mathf.Clamp(driftVignetteSmoothness, 0.01f, 1f);
+        _driftVignette.color.value = driftVignetteColor;
+        _driftVignette.rounded.value = driftVignetteRounded;
+    }
+
+    private void StopDriftVfxParticles(bool hardClear = true)
+    {
+        _driftVfxPlaying = false;
+        _driftVfxLingerTimer = 0f;
+
+        if (_driftPS == null)
+            return;
+
+        _driftPS.Stop(true, hardClear
+            ? ParticleSystemStopBehavior.StopEmittingAndClear
+            : ParticleSystemStopBehavior.StopEmitting);
     }
 
     private float ComputeSpeedFovTarget()
@@ -431,34 +637,16 @@ public class CameraFollow : MonoBehaviour
             smoothedForward = targetForwardFlat;
 
         bool inAirTrickMode = enableTrickCameraFreeze && car != null && car.IsInAirTrickMode;
-        bool airborneForTricks = car != null && car.IsAirborneForTricks;
 
         if (inAirTrickMode && !_wasInAirTrickMode)
             CaptureTrickCameraLock();
 
         if (!inAirTrickMode && _wasInAirTrickMode)
-        {
-            // Released trick stick: stay locked until landing if still airborne.
-            if (airborneForTricks)
-            {
-                _holdTrickCameraUntilLand = true;
-                _trickCameraBlend = 1f;
-            }
-            else
-            {
-                BeginTrickCameraRelease(targetForwardFlat);
-            }
-        }
-
-        if (_holdTrickCameraUntilLand && !airborneForTricks)
-        {
             BeginTrickCameraRelease(targetForwardFlat);
-            _holdTrickCameraUntilLand = false;
-        }
 
         _wasInAirTrickMode = inAirTrickMode;
 
-        bool useTrickLockPose = inAirTrickMode || _holdTrickCameraUntilLand;
+        bool useTrickLockPose = inAirTrickMode;
 
         // Only blend INTO trick lock while actively tricking.
         if (inAirTrickMode)
@@ -490,7 +678,7 @@ public class CameraFollow : MonoBehaviour
         }
         else
         {
-            // Normal follow (including post-landing trick release).
+            // Normal follow (including mid-air / post-landing trick release).
             ComputeNormalFollow(targetForwardFlat, out basePos, out baseRot);
         }
 
@@ -500,6 +688,7 @@ public class CameraFollow : MonoBehaviour
         transform.rotation = baseRot;
 
         UpdateFOV(Time.deltaTime);
+        UpdateDriftPresentation(Time.deltaTime);
 
         if (cam != null && car != null)
             UpdateUnifiedAutoFov(Time.deltaTime);
@@ -541,6 +730,7 @@ public class CameraFollow : MonoBehaviour
     /// <summary>
     /// Leave trick lock without a hard snap: start from the locked heading, use a fast
     /// catch-up lag briefly, then settle back into the default Rotation Lag.
+    /// Used as soon as tricking stops — including still airborne.
     /// </summary>
     private void BeginTrickCameraRelease(Vector3 targetForwardFlat)
     {
@@ -599,8 +789,8 @@ public class CameraFollow : MonoBehaviour
         float effectiveRotationFollow = rotationFollowSpeed * sharpness;
         float effectiveRollSmoothing = rollSmoothing * sharpness;
 
-        // While entering trick lock (or holding it until landing), keep orbit heading on the freeze basis.
-        if (enableTrickCameraFreeze && car != null && (car.IsInAirTrickMode || _holdTrickCameraUntilLand))
+        // While entering / holding trick lock, keep orbit heading on the freeze basis.
+        if (enableTrickCameraFreeze && car != null && car.IsInAirTrickMode)
         {
             smoothedForward = _trickLockForward;
             _postTrickReleaseActive = false;
@@ -817,7 +1007,6 @@ public class CameraFollow : MonoBehaviour
         smoothedForward = Vector3.zero;
         _trickCameraBlend = 0f;
         _wasInAirTrickMode = false;
-        _holdTrickCameraUntilLand = false;
         _postTrickReleaseActive = false;
         if (car == null && t != null)
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
@@ -863,7 +1052,6 @@ public class CameraFollow : MonoBehaviour
         _driftTremorBlend = 0f;
         _trickCameraBlend = 0f;
         _wasInAirTrickMode = false;
-        _holdTrickCameraUntilLand = false;
         _postTrickReleaseActive = false;
 
         if (car == null)

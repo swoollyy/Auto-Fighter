@@ -1535,7 +1535,7 @@ MonoBehaviour:
   driftMinSpeed: 7
   maxDriftSteerMultiplier: 3.2
   driftSteeringInputBuildupMultiplier: 0.43
-  driftBuildRate: 0.29
+  driftBuildRate: 0.43
   driftReleaseRate: 3.17
   driftSideForce: 0.47
   driftSideForceWhileAccelerating: 0.4
@@ -1603,13 +1603,14 @@ MonoBehaviour:
   boostFuelCost: 15
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
-  driftBoostMinHoldSeconds: 0.8
-  driftBoostMaxHoldSeconds: 1.5
+  driftBoostMinHoldSeconds: 0.2
+  driftBoostMaxHoldSeconds: 1
   driftBoostForceRange: {x: 0.5, y: 0.9}
-  driftBoostDurationRange: {x: 0.4, y: 0.9}
+  driftBoostDurationRange: {x: 0.6, y: 1.1}
   driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.4}
   driftBoostFuelCost: 0
   driftBoostCooldown: 3.3
+  driftBoostChargeFollowRate: 0.1
 --- !u!114 &8275495873616421884
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -707,6 +707,7 @@ public class CarController : MonoBehaviour
     private Vector2 driftBoostMaxSpeedMultRange;
     private float driftBoostFuelCost;
     private float driftBoostCooldown;
+    private float driftBoostChargeMinGainRate;
 
     [Header("Screen Shake / Ramp / Death (from CarVFXAudioConfig, CarRampConfig)")]
     private Transform cameraShakeTarget;
@@ -997,7 +998,7 @@ public class CarController : MonoBehaviour
     private bool _airborneForTricks;
 
     // Drift-held boost runtime (sticky across steer flips while drift stays held)
-    private float _driftHoldTimeSeconds;        // accumulates while drift + a steer direction are held
+    private float _driftHoldTimeSeconds;        // banks while drifting; gain rate scales with steer strength, never drains from easing off
     private int _driftHoldDirectionSign;        // +1/-1/0 current tracked direction
     private bool _driftWasActiveLastFrame;
     /// <summary>Banked hold time when release was blocked (crash lockout / post-crash) — retry until applied or cleared.</summary>
@@ -1572,6 +1573,7 @@ public class CarController : MonoBehaviour
             driftBoostMaxSpeedMultRange = _boostConfig.DriftBoostMaxSpeedMultRange;
             driftBoostFuelCost = _boostConfig.DriftBoostFuelCost;
             driftBoostCooldown = _boostConfig.DriftBoostCooldown;
+            driftBoostChargeMinGainRate = _boostConfig.DriftBoostChargeMinGainRate;
         }
         else
         {
@@ -1579,7 +1581,7 @@ public class CarController : MonoBehaviour
             boostKey = KeyCode.Space; boostForce = 30f; boostSustainAcceleration = 30f; boostDuration = 0.35f;
             boostMaxSpeedMultiplier = 1.65f; postBoostSlowdownDuration = 2f; boostCooldown = 5f; boostFuelCost = 15f;
             driftBoostSustainAcceleration = 30f; enableDriftHeldBoost = true; driftBoostMinHoldSeconds = 0.8f;
-            driftBoostMaxHoldSeconds = 2.5f; driftBoostCooldown = 3.3f;
+            driftBoostMaxHoldSeconds = 2.5f; driftBoostCooldown = 3.3f; driftBoostChargeMinGainRate = 0.35f;
         }
 
         if (_fuelConfig != null)
@@ -4014,20 +4016,7 @@ public class CarController : MonoBehaviour
                 }
                 else
                 {
-                    // Only bank hold time during a real drift at speed. After a crash the
-                    // crawl / early accel used to fill the bar with just drift+steer held.
-                    if (canDriftThisFrame && driftButtonHeld && _driftCurrentSteerSign != 0
-                        && !IsPostCrashRecoveryDriving)
-                    {
-                        // Keep boost charge across steer flips. Camera / driftCharge still
-                        // use their own flip logic — only the held-boost timer is sticky.
-                        _driftHoldDirectionSign = _driftCurrentSteerSign;
-                        _driftHoldTimeSeconds += Time.deltaTime;
-                    }
-                    else if (!canDriftThisFrame && !isDrifting && !wasDrifting)
-                    {
-                        ClearDriftHeldBoostCharge();
-                    }
+                    TickDriftHeldBoostCharge(rawHorizontal, canDriftThisFrame, wasDrifting);
 
                     // Trigger boost ONLY on drift key release. Also retry a banked pending boost.
                     if (!driftButtonHeld && prevDriftKeyHeld)
@@ -4273,6 +4262,40 @@ public class CarController : MonoBehaviour
         // Drift-held boost is FREE: no fuel deduction here.
         _boostRequested = true;
         Debug.Log($"[CarController] Drift-held boost REQUESTED -> force={force:F2}, duration={duration:F2}, maxMult={maxMult:F2}");
+    }
+
+    private void TickDriftHeldBoostCharge(float rawHorizontal, bool canDriftThisFrame, bool wasDrifting)
+    {
+        bool liveDrift = driftButtonHeld && (canDriftThisFrame || isDrifting) && !IsPostCrashRecoveryDriving;
+        if (!liveDrift)
+        {
+            if (!canDriftThisFrame && !isDrifting && !wasDrifting)
+                ClearDriftHeldBoostCharge();
+            return;
+        }
+
+        if (_driftCurrentSteerSign != 0)
+            _driftHoldDirectionSign = _driftCurrentSteerSign;
+
+        // Banked charge never drains from easing off. Strength only scales how fast it gains.
+        float strength01 = GetDriftHeldBoostStrength01(rawHorizontal);
+        if (strength01 <= 0.001f)
+            return;
+
+        float minGain = Mathf.Clamp01(driftBoostChargeMinGainRate);
+        float gain01 = Mathf.Lerp(minGain, 1f, strength01);
+        float maxHold = Mathf.Max(0.01f, driftBoostMaxHoldSeconds);
+        _driftHoldTimeSeconds = Mathf.Min(_driftHoldTimeSeconds + Time.deltaTime * gain01, maxHold);
+    }
+
+    /// <summary>
+    /// Current steer strength 0–1 used to scale drift-boost gain (not to cap or drain the bank).
+    /// </summary>
+    private float GetDriftHeldBoostStrength01(float rawHorizontal)
+    {
+        float raw = Mathf.Clamp01(Mathf.Abs(rawHorizontal));
+        float smoothed = Mathf.Clamp01(Mathf.Abs(steeringInput));
+        return Mathf.Max(raw, smoothed);
     }
 
     private void ResetDriftHeldTimer()
@@ -10323,7 +10346,7 @@ public class CarController : MonoBehaviour
     /// <summary>Hold time at which drift-held boost strength stops scaling (clamp cap).</summary>
     public float DriftHeldBoostMaxHoldSeconds => driftBoostMaxHoldSeconds;
 
-    /// <summary>Fill 0..1 for a bar: hold / max hold.</summary>
+    /// <summary>Fill 0..1 for a bar: built hold time / max hold. Gain rate scales with steer strength; banked fill does not drain.</summary>
     public float DriftHeldBoostHoldFillNormalized =>
         driftBoostMaxHoldSeconds > 1e-4f
             ? Mathf.Clamp01(_driftHoldTimeSeconds / driftBoostMaxHoldSeconds)
