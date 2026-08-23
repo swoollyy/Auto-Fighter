@@ -37,7 +37,7 @@ public enum CreatureKillSource
 /// COLLISION NOTES:
 /// - All creatures use TRIGGER colliders to avoid disrupting car physics
 /// - Passive/Scared: Car drives through them, they die, give coins
-/// - Aggressive (beast): Player contact applies crash/knockback only; beast keeps hunting. Cross/bounce/log/thrown hits fling it with physics, then it dies/despawns (see <see cref="LaunchAggressiveBeastByObstacleThenDie"/>).
+/// - Aggressive (beast): Player contact applies crash/knockback only; beast keeps hunting. Cross/bounce/log/thrown hits fling it with physics, then it dies/despawns (see <see cref="LaunchAggressiveBeastByObstacleThenDie"/>). Contact with a roadside shooter knocks that turret off its base.
 /// 
 /// REWARD SYSTEM:
 /// - Killed by CAR → Coins (handled here)
@@ -160,6 +160,13 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
     [Tooltip("Time flying before death/despawn is applied (lets the fling read clearly).")]
     [SerializeField, Min(0.05f)] private float obstacleLaunchDeathDelay = 0.42f;
 
+    [Header("Aggressive — side shooter knock")]
+    [Tooltip("Horizontal impulse when an aggressive beast rams a roadside shooter off its base.")]
+    [SerializeField, Min(0f)] private float sideShooterKnockBaseImpulse = 16f;
+    [SerializeField, Min(0f)] private float sideShooterKnockSpeedScale = 0.85f;
+    [SerializeField, Min(0f)] private float sideShooterKnockMaxImpulse = 34f;
+    [SerializeField, Min(0f)] private float sideShooterKnockUp = 7f;
+            
     [Header("Ground Snapping")]
     [SerializeField] private float groundRayHeight = 2f;
     [SerializeField] private float groundRayDistance = 5f;
@@ -653,6 +660,10 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
                 return;
             }
         }
+
+        // Aggressive beast rams roadside shooters off their base (they stop firing).
+        if (TryKnockSideShooterFlying(other))
+            return;
 
         if (IsCrushingCollider(other, out float otherMass, out float otherSpeed))
         {
@@ -2151,6 +2162,9 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
 
         transform.position = newPos;
 
+        if (obstacleClampBlocked)
+            TryKnockSideShooterFlying(obstacleClampHit.collider);
+
         if (isBullRushActive && obstacleClampBlocked && config != null && config.bullRushObstaclePushEnabled)
             TryBullRushDisplaceObstacle(obstacleClampHit, shoveDir, currentSpeed);
 
@@ -2289,6 +2303,7 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         if (hit.collider == null) return;
         if (IsPlayerCollider(hit.collider)) return;
         if (hit.collider.GetComponentInParent<NPCTrafficCar>() != null) return;
+        if (hit.collider.GetComponentInParent<TrackSideShooterObstacle>() != null) return;
 
         Rigidbody obstacleRb = hit.collider.attachedRigidbody;
         if (obstacleRb == null)
@@ -2313,6 +2328,40 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         if (dv <= 0f) return;
 
         obstacleRb.AddForce(planarShoveDir * dv, ForceMode.VelocityChange);
+    }
+
+    /// <summary>
+    /// Aggressive beasts ram roadside shooters off their base. Shooters stop firing once converted to physics.
+    /// </summary>
+    private bool TryKnockSideShooterFlying(Collider col)
+    {
+        if (behaviorType != CreatureBehaviorType.Aggressive || isDead || col == null)
+            return false;
+
+        var shooter = col.GetComponentInParent<TrackSideShooterObstacle>();
+        if (shooter == null || shooter.IsKnockedOffBase)
+            return false;
+
+        Vector3 planar = currentVelocity;
+        planar.y = 0f;
+        if (planar.sqrMagnitude < 0.04f)
+        {
+            planar = isBullRushActive && bullRushDirection.sqrMagnitude > 0.01f
+                ? bullRushDirection
+                : transform.forward;
+            planar.y = 0f;
+        }
+        if (planar.sqrMagnitude < 1e-6f)
+            planar = Vector3.forward;
+        planar.Normalize();
+
+        float speed = Mathf.Max(currentSpeed, currentVelocity.magnitude, 6f);
+        float horiz = Mathf.Min(
+            sideShooterKnockMaxImpulse,
+            sideShooterKnockBaseImpulse + speed * sideShooterKnockSpeedScale);
+
+        shooter.ConvertToPhysicsOnHit(planar * horiz + Vector3.up * sideShooterKnockUp);
+        return true;
     }
 
     private float SampleObstacleClearance(Vector3 origin, Vector3 dir, float look)

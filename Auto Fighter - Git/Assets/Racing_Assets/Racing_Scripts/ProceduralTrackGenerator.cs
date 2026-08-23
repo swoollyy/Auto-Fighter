@@ -889,12 +889,14 @@ public class ProceduralTrackGenerator : MonoBehaviour
             return false;
         }
 
+        SoftSmoothPolyline(spaced, passes: 1, strength: 0.12f);
+
         if (ShouldRequirePreferredTerrain() && !PolylineStaysOnPreferredTerrain(spaced))
         {
             _lastBuildFailReason = "path left preferred terrain";
             return false;
         }
-        
+
         if (preventSelfIntersections && !PolylineClearsItself(spaced, requireProximityClearance: false))
         {
             _lastBuildFailReason = "path self-overlap";
@@ -1009,7 +1011,9 @@ public class ProceduralTrackGenerator : MonoBehaviour
             ? 0f
             : Mathf.Lerp(28f, 12f, Mathf.Clamp01(avgMaxTurn / 70f));
 
-        int decisions = 20;
+        // Same turn logic the whole way. Do not snap the last point onto the
+        // start-finish axis — that snap is the long straight into the portal.
+        int decisions = 22;
         var ts = new List<float> { 0f };
         for (int i = 1; i <= decisions; i++)
         {
@@ -1017,12 +1021,15 @@ public class ProceduralTrackGenerator : MonoBehaviour
             float jitter = (1f / (decisions + 1)) * Random.Range(-0.4f, 0.4f);
             ts.Add(Mathf.Clamp(baseT + jitter, 0.04f, 0.96f));
         }
+
         ts.Add(1f);
         ts.Sort();
+        DedupSortedSketchTimes(ts, 0.008f);
+        ts[ts.Count - 1] = 1f;
 
         var lat = new float[ts.Count];
         float side = Random.value < 0.5f ? -1f : 1f;
-        for (int i = 1; i < ts.Count - 1; i++)
+        for (int i = 1; i < ts.Count; i++)
         {
             float tNorm = ts[i];
             float frequencyT = turnFrequencyCurve != null ? turnFrequencyCurve.Evaluate(tNorm) : tNorm;
@@ -1066,10 +1073,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
             if (fillet > 1f)
                 g = FilletSharpCorners(g, fillet);
             if (g.Count >= 2)
-            {
                 g[0] = start;
-                g[g.Count - 1] = finish;
-            }
 
             float len = PolylineLength(g);
             float err = Mathf.Abs(len - pathLen);
@@ -1087,6 +1091,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         if (best == null)
             return null;
+
+        SoftSmoothPolyline(best, passes: 1, strength: 0.14f);
+        if (best.Count >= 2)
+            best[0] = start;
 
         return ResamplePolylineToCount(best, needPts);
     }
@@ -1112,6 +1120,46 @@ public class ProceduralTrackGenerator : MonoBehaviour
         }
 
         return pts;
+    }
+
+    private static void DedupSortedSketchTimes(List<float> ts, float minDelta)
+    {
+        if (ts == null || ts.Count < 3)
+            return;
+
+        minDelta = Mathf.Max(1e-4f, minDelta);
+        for (int i = ts.Count - 2; i >= 1; i--)
+        {
+            if (ts[i] - ts[i - 1] < minDelta || ts[i + 1] - ts[i] < minDelta)
+                ts.RemoveAt(i);
+        }
+
+        ts[0] = 0f;
+    }
+
+    /// <summary>
+    /// Light Laplacian — removes micro zig-zag without flattening intentional sharp bends.
+    /// </summary>
+    private void SoftSmoothPolyline(List<Vector2> poly, int passes, float strength)
+    {
+        if (poly == null || poly.Count < 4) return;
+        passes = Mathf.Max(1, passes);
+        strength = Mathf.Clamp01(strength);
+
+        for (int pass = 0; pass < passes; pass++)
+        {
+            var tmp = new Vector2[poly.Count];
+            tmp[0] = poly[0];
+            tmp[poly.Count - 1] = poly[poly.Count - 1];
+            for (int i = 1; i < poly.Count - 1; i++)
+                tmp[i] = Vector2.Lerp(poly[i], (poly[i - 1] + poly[i + 1]) * 0.5f, strength);
+            for (int i = 1; i < poly.Count - 1; i++)
+            {
+                poly[i] = tmp[i];
+                if (_hasPreferredTerrainBounds)
+                    poly[i] = ClampToPreferredInset(poly[i]);
+            }
+        }
     }
 
     private List<Vector2> BuildShortConnectPath(
@@ -1292,8 +1340,10 @@ public class ProceduralTrackGenerator : MonoBehaviour
 
         Vector2 dir = toOpp / maxChord;
         Vector2 finish = start + dir * chord;
-        finish.x = Mathf.Clamp(finish.x, minX, maxX);
-        finish.y = Mathf.Clamp(finish.y, minZ, maxZ);
+        // Keep the far end off the playable wall so the road can still turn there.
+        float weaveRoom = Mathf.Max(42f, Mathf.Min(maxX - minX, maxZ - minZ) * 0.08f);
+        finish.x = Mathf.Clamp(finish.x, minX + weaveRoom, maxX - weaveRoom);
+        finish.y = Mathf.Clamp(finish.y, minZ + weaveRoom, maxZ - weaveRoom);
         return finish;
     }
 

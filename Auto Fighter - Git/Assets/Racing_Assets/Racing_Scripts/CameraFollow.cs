@@ -88,7 +88,7 @@ public class CameraFollow : MonoBehaviour
     [SerializeField, Min(0.01f)] private float driftFovRampIn = 0.15f;
     [Tooltip("Seconds to blend the drift zoom back out.")]
     [SerializeField, Min(0.01f)] private float driftFovRampOut = 0.25f;
-
+                                                        
     [Header("Air Trick Camera Lock")]
     [Tooltip("While tricking in the air: keep camera upright with a fixed heading, but still follow the car's position.")]
     [SerializeField] private bool enableTrickCameraFreeze = true;
@@ -97,9 +97,9 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Unused for release (release uses catch-up lag). Kept so existing scene values don't warn.")]
     [SerializeField, Min(0.5f)] private float trickCameraBlendOutSpeed = 3.5f;
     [Tooltip("Heading catch-up rate after a trick ends (in air or on landing). Higher = faster ease off the lock. Then settles to normal Rotation Lag.")]
-    [SerializeField, Min(0.5f)] private float trickReleaseCatchupLag = 9f;
+    [SerializeField, Min(0.1f)] private float trickReleaseCatchupLag = 9f;
     [Tooltip("How quickly post-trick catch-up lag blends down to the normal Rotation Lag.")]
-    [SerializeField, Min(0.5f)] private float trickReleaseLagReturnSpeed = 6f;
+    [SerializeField, Min(0.1f)] private float trickReleaseLagReturnSpeed = 6f;
             
     private Vector3 smoothedForward = Vector3.zero;
     private float _trickCameraBlend;

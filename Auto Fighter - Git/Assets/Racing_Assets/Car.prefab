@@ -1610,7 +1610,7 @@ MonoBehaviour:
   driftBoostMaxSpeedMultRange: {x: 1.25, y: 1.4}
   driftBoostFuelCost: 0
   driftBoostCooldown: 3.3
-  driftBoostChargeFollowRate: 0.1
+  driftBoostChargeMinGainRate: 0.35
 --- !u!114 &8275495873616421884
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1686,10 +1686,10 @@ MonoBehaviour:
     m_Bits: 90113
   samplesX: 6
   samplesZ: 6
-  raycastHeightOffset: 0.5
-  raycastExtraDistance: 0.6
+  raycastHeightOffset: 0.4
+  raycastExtraDistance: 0
   debugSurfaceRays: 1
-  surfaceSampleExtent: 1.13
+  surfaceSampleExtent: 0.6
   useTippedOverWorldDownSampler: 1
   tippedOverSurfaceUpDotThreshold: 0.55
   groundNormalBlendRate: 14
@@ -1988,14 +1988,14 @@ MonoBehaviour:
   trickYawSpinRate: 400
   trickRollRate: 490
   barrelModeBlendSpeed: 2.2
-  trickInputDeadzone: 0.074
+  trickInputDeadzone: 0.092
   trickInputSmoothRate: 26
   trickInputReleaseRate: 72
   trickRotationAccel: 550
   trickRotationDecel: 600
   suppressRampAlignmentInTrickMode: 1
   enableAirUprightRecovery: 1
-  airUprightRecoverSpeed: 5
+  airUprightRecoverSpeed: 2.5
   airUprightNearGroundBoost: 16
   airUprightMinAlignDot: 0.992
   airGravityMultiplier: 1

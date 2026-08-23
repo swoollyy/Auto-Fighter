@@ -27,8 +27,8 @@ MonoBehaviour:
     minTurnAngle: 25
     startMaxTurnAngle: 25
     endMaxTurnAngle: 50
-    startTurnChance: 0.399
-    endTurnChance: 0.952
+    startTurnChance: 0.6
+    endTurnChance: 1
     maxWiggleAngle: 0
     wiggleOverDistance: 0
     useAvoidance: 1

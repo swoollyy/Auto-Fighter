@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1870283948420639043}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: Muzzle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -47,7 +47,7 @@ GameObject:
   - component: {fileID: 3338287194770262728}
   - component: {fileID: 725829633842859502}
   - component: {fileID: 7282753961900330564}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: Obstacle Side Shooter
   m_TagString: Untagged
   m_Icon: {fileID: 0}

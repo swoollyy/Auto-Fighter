@@ -108,6 +108,7 @@ public class TrackSideShooterObstacle : MonoBehaviour
 
     private bool _initialized;
     private bool _engaged;
+    private bool _knockedOffBase;
     private float _nextFireTime;
     private int _sideSign = 1; // +1 = right edge, -1 = left edge
 
@@ -126,10 +127,19 @@ public class TrackSideShooterObstacle : MonoBehaviour
     }
 
     /// <summary>
-    /// Hit by another side-shooter projectile (or similar): stop firing and fling as a physics prop.
+    /// True once this turret has been knocked off its roadside base and can no longer fire.
+    /// </summary>
+    public bool IsKnockedOffBase => _knockedOffBase;
+
+    /// <summary>
+    /// Hit by a beast, projectile, or similar: stop firing and fling as a physics prop.
     /// </summary>
     public void ConvertToPhysicsOnHit(Vector3 worldImpulse)
     {
+        if (_knockedOffBase)
+            return;
+
+        _knockedOffBase = true;
         enabled = false;
         _engaged = false;
         KillPreShotTweens(true);
@@ -190,7 +200,7 @@ public class TrackSideShooterObstacle : MonoBehaviour
 
     private void Update()
     {
-        if (!_initialized || projectilePrefab == null || _player == null)
+        if (!_initialized || _knockedOffBase || projectilePrefab == null || _player == null)
             return;
 
         float dist = Vector3.Distance(transform.position, _player.position);
@@ -492,6 +502,10 @@ public class TrackSideShooterObstacle : MonoBehaviour
 
     private bool CanFireNow()
     {
+        if (_knockedOffBase)
+            return false;
+        if (_rb != null && !_rb.isKinematic)
+            return false;
         return TryResolveAim(out _, out _, out _);
     }
 
@@ -525,6 +539,10 @@ public class TrackSideShooterObstacle : MonoBehaviour
 
     private bool TryFire()
     {
+        if (_knockedOffBase)
+            return false;
+        if (_rb != null && !_rb.isKinematic)
+            return false;
         if (!TryResolveAim(out Vector3 aimDir, out Vector3 muzzlePos, out Vector3 targetPos))
             return false;
 
