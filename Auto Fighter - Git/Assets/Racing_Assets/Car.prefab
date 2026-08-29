@@ -1416,7 +1416,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   testAlwaysAccelerate: 0
   baseAcceleration: 4.3
-  baseMaxSpeed: 12
+  baseMaxSpeed: 15
   baseBrakingForce: 5
   baseDrag: 1
   coastLowDecelPerSecond: 1.88
@@ -1450,13 +1450,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3b650392f965134c887430e8a592a46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  turnSpeed: 46.3
+  turnSpeed: 54
   minSpeedToSteer: 0.15
   allowSteerWhenTryingToMove: 1
-  lowSpeedSteerMultiplier: 1.87
+  lowSpeedSteerMultiplier: 1.5
   highSpeedSteerMultiplier: 1
-  speedForSteerCurve: 2.69
-  steeringInputSmooth: 7.97
+  speedForSteerCurve: 4.1
+  steeringInputSmooth: 8.4
   steeringReturnSmooth: 3.8
   useAutoAlignToVelocity: 0
   autoAlignStrength: 3
@@ -1496,9 +1496,10 @@ MonoBehaviour:
   enableLandingCarrySpeed: 0
   landingExcessBleedPerSecond: 5.5
   landingNoClampGraceSeconds: 0.35
+  airHorizCoastDecayPerSecond: 0.45
   enableLandingBoost: 1
-  landingBoostStrength: 0.65
-  landingBoostDuration: 0.29
+  landingBoostStrength: 0.45
+  landingBoostDuration: 0.23
   landingBoostFalloff: 2.66
   enableLandingLateralBleed: 0
   landingLateralBleedPerSecond: 14
@@ -1533,9 +1534,9 @@ MonoBehaviour:
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 7
-  maxDriftSteerMultiplier: 3.2
+  maxDriftSteerMultiplier: 2.2
   driftSteeringInputBuildupMultiplier: 0.43
-  driftBuildRate: 0.43
+  driftBuildRate: 0.27
   driftReleaseRate: 3.17
   driftSideForce: 0.47
   driftSideForceWhileAccelerating: 0.4
@@ -1545,6 +1546,9 @@ MonoBehaviour:
   driftForwardAccelMultiplier: 0
   useFullAccelWhileDrifting: 1
   lockToDriftPeakSpeed: 1
+  driftAccelMultiplier: 0.65
+  driftAccelSpeedCapMultiplier: 1
+  driftBrakeDecelMultiplier: 0.45
   driftBrakeDecayPerSecond: 0
   requireDirectionalInputForDriftCharge: 0
   driftNeutralDrainRate: 2.55
@@ -1601,6 +1605,7 @@ MonoBehaviour:
   postBoostSlowdownDuration: 2
   boostCooldown: 5
   boostFuelCost: 15
+  airBoostForceMultiplier: 0.4
   driftBoostSustainAcceleration: 30
   enableDriftHeldBoost: 1
   driftBoostMinHoldSeconds: 0.2
@@ -1986,19 +1991,22 @@ MonoBehaviour:
   airTrajectoryHorizSpinMult: 0.55
   trickPitchRate: 360
   trickYawSpinRate: 400
-  trickRollRate: 490
-  barrelModeBlendSpeed: 2.2
-  trickInputDeadzone: 0.092
+  trickRollRate: 430
+  barrelModeBlendSpeed: 1
+  barrelModeReleaseSpeed: 4
+  trickInputDeadzone: 0.144
   trickInputSmoothRate: 26
-  trickInputReleaseRate: 72
+  trickInputReleaseRate: 16
   trickRotationAccel: 550
   trickRotationDecel: 600
   suppressRampAlignmentInTrickMode: 1
   enableAirUprightRecovery: 1
-  airUprightRecoverSpeed: 2.5
-  airUprightNearGroundBoost: 16
+  airUprightRecoverSpeed: 2.1
+  airUprightRecoverDelay: 0.15
+  airUprightRecoverBlendInSeconds: 0.2
+  airUprightNearGroundBoost: 2.2
   airUprightMinAlignDot: 0.992
-  airGravityMultiplier: 1
+  airGravityMultiplier: 1.17
 --- !u!1 &6041800278618126018
 GameObject:
   m_ObjectHideFlags: 0

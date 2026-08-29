@@ -21,19 +21,19 @@ MonoBehaviour:
   track:
     overrideTrack: 1
     segmentPrefab: {fileID: 3253188342474316155, guid: 4aed576c96eef9c4a94e354456d9171c, type: 3}
-    segmentCount: 80
+    segmentCount: 100
     autoDetectSegmentLength: 0
     segmentLength: 7
-    minTurnAngle: 25
-    startMaxTurnAngle: 25
-    endMaxTurnAngle: 50
+    minTurnAngle: 35
+    startMaxTurnAngle: 35
+    endMaxTurnAngle: 95
     startTurnChance: 0.6
     endTurnChance: 1
     maxWiggleAngle: 0
     wiggleOverDistance: 0
     useAvoidance: 1
     avoidanceRadius: 10
-    avoidanceStrength: 1.439
+    avoidanceStrength: 0.546
     avoidanceFalloff: 1
     constrainToGlobalDirection: 0
     globalAlignmentStrength: 0.085
@@ -165,7 +165,7 @@ MonoBehaviour:
     - id: Bug
       prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
       behaviorType: 0
-      baseWeight: 1.1
+      baseWeight: 0.9
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.2
       stopAtNormalizedDist: 1
@@ -570,10 +570,10 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    carSpacing: 20
-    maxActiveCars: 2
-    minSpawnDistanceAhead: 50
-    maxSpawnDistanceAhead: 70
+    carSpacing: 75
+    maxActiveCars: 1
+    minSpawnDistanceAhead: 200
+    maxSpawnDistanceAhead: 250
     allowSpawnBehind: 0
     minSpawnDistanceBehind: 3
     maxSpawnDistanceBehind: 7

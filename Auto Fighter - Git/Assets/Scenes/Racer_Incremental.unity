@@ -6734,9 +6734,9 @@ MonoBehaviour:
   useSpeedBasedFOV: 1
   car: {fileID: 0}
   fovSpeedMin: 2
-  fovSpeedMax: 24
+  fovSpeedMax: 32
   fovAtMinSpeed: 24
-  fovAtMaxSpeed: 90
+  fovAtMaxSpeed: 80
   speedFovSmooth: 3.25
   positionFollowSpeed: 3.9
   rotationFollowSpeed: 7.5
@@ -6749,17 +6749,20 @@ MonoBehaviour:
   turnLagTightenFull: 1
   turnLagSharpnessRampIn: 1
   turnLagSharpnessRampOut: 1
-  driftTremorStrength: 0.24
-  driftTremorFrequency: 95
-  driftTremorResponse: 4
+  driftTremorStrength: 0.18
+  driftTremorFrequency: 69
+  driftTremorResponse: 16
   driftZoomInDeltaFOV: 25
-  driftFovRampIn: 0.84
+  driftFovRampIn: 1.4
   driftFovRampOut: 1.78
   enableTrickCameraFreeze: 1
   trickCameraBlendInSpeed: 12
   trickCameraBlendOutSpeed: 3.5
   trickReleaseCatchupLag: 0.1
   trickReleaseLagReturnSpeed: 0.1
+  offCenterLagStart: 0.45
+  offCenterLagFull: 1.1
+  offCenterLagSharpness: 4
   boostVFXObject: {fileID: 115066103}
   boostVfxLingerSeconds: 1
   boostZoomOutDeltaFOV: 30
@@ -6768,13 +6771,13 @@ MonoBehaviour:
   boostFovOffsetSpeedFalloff: 0.85
   enableDriftVignette: 1
   driftVignetteVolume: {fileID: 828558044}
-  driftVignetteAtZeroCharge: 0.4
-  driftVignetteAtFullCharge: 0.55
+  driftVignetteAtZeroCharge: 0.15
+  driftVignetteAtFullCharge: 0.3
   driftVignetteSmoothness: 0.38
   driftVignetteColor: {r: 0, g: 0, b: 0, a: 1}
   driftVignetteRounded: 1
   driftVignetteRampIn: 0.07
-  driftVignetteRampOut: 0.16
+  driftVignetteRampOut: 2
   enableDriftSpeedLines: 1
   driftVFXObject: {fileID: 1204042542}
   driftLineSizeMultiplier: 2.15
@@ -9210,13 +9213,13 @@ MonoBehaviour:
   blendDistanceMeters: 22
   seamGuardBandMeters: 1.64
   seamGuardBelowRoadMeters: 0.12
-  noiseAmplitudeMeters: 16
-  noiseWorldScale: 0.05
+  noiseAmplitudeMeters: 10
+  noiseWorldScale: 0.02
   noiseOctaves: 1
   noisePersistence: 0.15
-  hillBias: 0.6
+  hillBias: 0.4
   noiseSpatialSmoothingMeters: 10
-  microDetailAmplitudeMeters: 0.25
+  microDetailAmplitudeMeters: 0.11
   microDetailWorldScale: 0.04
   randomizeNoiseSeedPerApply: 1
   fixedNoiseSeedOffset: {x: 0, y: 0}
@@ -22326,6 +22329,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1764de1de43cc4d19af52679d3eaae06, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  version: 1073741824
+  desiredSimulationFPS: 20
+  workerThreads: 2
+  doubleBuffering: 0
+  hardCollisions: 1
+  symmetryBreakingBias: 0.1
+  movementPlane: 0
+  useNavmeshAsObstacle: 0
+  drawQuadtree: 0
 --- !u!114 &1966057592
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22338,6 +22350,50 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 78396926cbbfc4ac3b48fc5fc34a87d1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  version: 1073741824
+  data:
+    dataString: 
+    file_cachedStartup: {fileID: 0}
+    cacheStartup: 0
+  showNavGraphs: 1
+  showUnwalkableNodes: 1
+  debugMode: 0
+  graphUpdateDebugMode: 0
+  debugFloor: 0
+  debugRoof: 1
+  manualDebugFloorRoof: 0
+  showSearchTree: 0
+  unwalkableNodeDebugSize: 0.3
+  logPathResults: 1
+  maxNearestNodeDistance: 100
+  scanOnStartup: 1
+  fullGetNearestSearch: 0
+  prioritizeGraphs: 0
+  prioritizeGraphsLimit: 1
+  colorSettings:
+    _SolidColor: {r: 0.11764706, g: 0.4, b: 0.7882353, a: 0.9}
+    _UnwalkableNode: {r: 1, g: 0, b: 0, a: 0.5}
+    _BoundsHandles: {r: 0.29, g: 0.454, b: 0.741, a: 0.9}
+    _ConnectionLowLerp: {r: 0, g: 1, b: 0, a: 0.5}
+    _ConnectionHighLerp: {r: 1, g: 0, b: 0, a: 0.5}
+    _MeshEdgeColor: {r: 0, g: 0, b: 0, a: 0.5}
+    _AreaColors: []
+  tagNames: []
+  heuristic: 2
+  heuristicScale: 1
+  threadCount: 1
+  maxFrameTime: 1
+  batchGraphUpdates: 0
+  graphUpdateBatchingInterval: 0.2
+  navmeshUpdates:
+    updateInterval: 0
+  euclideanEmbedding:
+    mode: 0
+    seed: 0
+    pivotPointRoot: {fileID: 0}
+    spreadOutCount: 10
+  showGraphs: 0
+  showGraphsInStandalonePlayer: 0
 --- !u!4 &1966057593
 Transform:
   m_ObjectHideFlags: 0

@@ -21,6 +21,8 @@ public class CarBoostConfig : MonoBehaviour
     [SerializeField] private float postBoostSlowdownDuration = 2f;
     [SerializeField] private float boostCooldown = 5f;
     [SerializeField] private float boostFuelCost = 15f;
+    [Tooltip("While airborne, multiply boost impulse and sustain (button boost, drift boost, and close-call). 1 = full ground strength, 0.4 = 40%.")]
+    [SerializeField, Range(0f, 1f)] private float airBoostForceMultiplier = 0.4f;
 
     [Header("Drift-held Boost")]
     [SerializeField] private float driftBoostSustainAcceleration = 30f;
@@ -46,6 +48,7 @@ public class CarBoostConfig : MonoBehaviour
     public float PostBoostSlowdownDuration => postBoostSlowdownDuration;
     public float BoostCooldown => boostCooldown;
     public float BoostFuelCost => boostFuelCost;
+    public float AirBoostForceMultiplier => airBoostForceMultiplier;
     public float DriftBoostSustainAcceleration => driftBoostSustainAcceleration;
     public bool EnableDriftHeldBoost => enableDriftHeldBoost;
     public float DriftBoostMinHoldSeconds => driftBoostMinHoldSeconds;

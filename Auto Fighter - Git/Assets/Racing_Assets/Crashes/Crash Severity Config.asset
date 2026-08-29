@@ -79,4 +79,4 @@ MonoBehaviour:
     extraScaleBonus: 0
   - kind: 6
     severityWeight: 5
-    extraScaleBonus: 1
+    extraScaleBonus: 0.3

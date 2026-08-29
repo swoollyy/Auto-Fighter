@@ -27,14 +27,22 @@ public class CarDriftConfig : MonoBehaviour
     [SerializeField] private bool useFullAccelWhileDrifting = true;
     [SerializeField] private bool lockToDriftPeakSpeed = true;
 
-    [Header("Drift Braking")]
-    [SerializeField] private float driftBrakeDecayPerSecond = 0.001f;
+    [Header("Drift Throttle / Brake")]
+    [Tooltip("While drifting, throttle strength as a fraction of normal grounded acceleration.")]
+    [SerializeField, Range(0.05f, 1f)] private float driftAccelMultiplier = 0.45f;
+    [Tooltip("While drifting and on throttle, max speed as a fraction of the normal speed cap. Already-faster slides are not yanked down.")]
+    [SerializeField, Range(0.05f, 1f)] private float driftAccelSpeedCapMultiplier = 1f;
+    [Tooltip("While drifting, brake strength as a fraction of normal grounded braking. Low enough to keep the slide, strong enough to bleed speed for tighter turns.")]
+    [SerializeField, Range(0.05f, 0.85f)] private float driftBrakeDecelMultiplier = 0.3f;
+    [Tooltip("Optional extra speed bled per second while braking in a drift, on top of the multiplier.")]
+    [SerializeField] private float driftBrakeDecayPerSecond = 0f;
 
     [Header("Drift Charge")]
     [Tooltip("If true, drift charge only builds while steering. Leave false to keep charging while holding drift with stick released (drift-held boost).")]
     [SerializeField] private bool requireDirectionalInputForDriftCharge = false;
     [SerializeField] private float driftNeutralDrainRate = 2.6f;
     [SerializeField] private float driftNeutralFullResetDelay = 3.65f;
+    [Tooltip("If true, changing steer direction reduces turn-feel drift charge (not the boost meter) so a swap is not a snap turn.")]
     [SerializeField] private bool resetDriftChargeOnSteerFlip = true;
     [SerializeField] private float steerFlipRetainedCharge = 0.055f;
     [SerializeField] private float steerFlipThreshold = 0.15f;
@@ -91,6 +99,9 @@ public class CarDriftConfig : MonoBehaviour
     public float DriftForwardAccelMultiplier => driftForwardAccelMultiplier;
     public bool UseFullAccelWhileDrifting => useFullAccelWhileDrifting;
     public bool LockToDriftPeakSpeed => lockToDriftPeakSpeed;
+    public float DriftAccelMultiplier => driftAccelMultiplier;
+    public float DriftAccelSpeedCapMultiplier => driftAccelSpeedCapMultiplier;
+    public float DriftBrakeDecelMultiplier => driftBrakeDecelMultiplier;
     public float DriftBrakeDecayPerSecond => driftBrakeDecayPerSecond;
     public bool RequireDirectionalInputForDriftCharge => requireDirectionalInputForDriftCharge;
     public float DriftNeutralDrainRate => driftNeutralDrainRate;

@@ -100,7 +100,15 @@ public class CameraFollow : MonoBehaviour
     [SerializeField, Min(0.1f)] private float trickReleaseCatchupLag = 9f;
     [Tooltip("How quickly post-trick catch-up lag blends down to the normal Rotation Lag.")]
     [SerializeField, Min(0.1f)] private float trickReleaseLagReturnSpeed = 6f;
-            
+
+    [Header("Off-Center Catch-Up")]
+    [Tooltip("How far from screen center (0 = center, 1 = edge) before follow lag starts tightening.")]
+    [SerializeField, Range(0f, 1f)] private float offCenterLagStart = 0.45f;
+    [Tooltip("Off-center amount where catch-up is strongest. 1 = the car is at the screen edge.")]
+    [SerializeField, Range(0.2f, 2f)] private float offCenterLagFull = 1.1f;
+    [Tooltip("Multiply position/rotation follow and heading catch-up when the car is fully off-center. Higher = less lag.")]
+    [SerializeField, Min(1f)] private float offCenterLagSharpness = 4f;
+
     private Vector3 smoothedForward = Vector3.zero;
     private float _trickCameraBlend;
     private Vector3 _trickLockForward = Vector3.forward;
@@ -108,6 +116,7 @@ public class CameraFollow : MonoBehaviour
     private bool _wasInAirTrickMode;
     private bool _postTrickReleaseActive;
     private float _postTrickLag;
+    private float _offCenterLagMul = 1f;
 
     // Screen shake state
     private float shakeTimer = 0f;
@@ -636,6 +645,8 @@ public class CameraFollow : MonoBehaviour
         if (smoothedForward == Vector3.zero)
             smoothedForward = targetForwardFlat;
 
+        _offCenterLagMul = ComputeOffCenterLagMultiplier();
+
         bool inAirTrickMode = enableTrickCameraFreeze && car != null && car.IsInAirTrickMode;
 
         if (inAirTrickMode && !_wasInAirTrickMode)
@@ -746,7 +757,8 @@ public class CameraFollow : MonoBehaviour
     {
         Quaternion lockYaw = Quaternion.LookRotation(_trickLockForward, Vector3.up);
         Vector3 desiredPos = target.position + lockYaw * offset;
-        return Vector3.Lerp(transform.position, desiredPos, positionFollowSpeed * Time.deltaTime);
+        float follow = positionFollowSpeed * _offCenterLagMul;
+        return Vector3.Lerp(transform.position, desiredPos, follow * Time.deltaTime);
     }
 
     private void ComputeNormalFollow(Vector3 targetForwardFlat, out Vector3 basePos, out Quaternion baseRot)
@@ -784,9 +796,9 @@ public class CameraFollow : MonoBehaviour
 
         // Drift + turn sharpness tighten every camera lag channel (position, heading, look, roll).
         float sharpness = driftSharpness * turnSharpness;
-        float effectiveRotationLag = rotationLag * sharpness;
-        float effectivePositionFollow = positionFollowSpeed * sharpness;
-        float effectiveRotationFollow = rotationFollowSpeed * sharpness;
+        float effectiveRotationLag = rotationLag * sharpness * _offCenterLagMul;
+        float effectivePositionFollow = positionFollowSpeed * sharpness * _offCenterLagMul;
+        float effectiveRotationFollow = rotationFollowSpeed * sharpness * _offCenterLagMul;
         float effectiveRollSmoothing = rollSmoothing * sharpness;
 
         // While entering / holding trick lock, keep orbit heading on the freeze basis.
@@ -907,6 +919,34 @@ public class CameraFollow : MonoBehaviour
         baseRot = Quaternion.Slerp(transform.rotation, desiredRot, effectiveRotationFollow * Time.deltaTime);
     }
 
+    /// <summary>
+    /// 1 = normal lag. Rises toward Off Center Lag Sharpness as the car moves away from
+    /// screen center (or behind the camera). Deadzone keeps typical racing framing untouched.
+    /// </summary>
+    private float ComputeOffCenterLagMultiplier()
+    {
+        Camera usedCam = cam != null ? cam : Camera.main;
+        if (usedCam == null || target == null)
+            return 1f;
+
+        Vector3 vp = usedCam.WorldToViewportPoint(target.position);
+        float off;
+        if (vp.z <= 0.05f)
+        {
+            off = 1f;
+        }
+        else
+        {
+            float dx = (vp.x - 0.5f) * 2f;
+            float dy = (vp.y - 0.5f) * 2f;
+            float dist = Mathf.Sqrt(dx * dx + dy * dy);
+            float full = Mathf.Max(offCenterLagStart + 0.01f, offCenterLagFull);
+            off = Mathf.InverseLerp(offCenterLagStart, full, dist);
+        }
+
+        return Mathf.Lerp(1f, Mathf.Max(1f, offCenterLagSharpness), off);
+    }
+
     private Vector3 ComputeShakeOffset(Quaternion baseRot)
     {
         if (shakeTimer <= 0f || shakeDuration <= 0f || shakeStrength <= 0f)
@@ -1008,6 +1048,7 @@ public class CameraFollow : MonoBehaviour
         _trickCameraBlend = 0f;
         _wasInAirTrickMode = false;
         _postTrickReleaseActive = false;
+        _offCenterLagMul = 1f;
         if (car == null && t != null)
             car = t.GetComponent<CarController>() ?? t.GetComponentInParent<CarController>();
 
@@ -1053,6 +1094,7 @@ public class CameraFollow : MonoBehaviour
         _trickCameraBlend = 0f;
         _wasInAirTrickMode = false;
         _postTrickReleaseActive = false;
+        _offCenterLagMul = 1f;
 
         if (car == null)
             car = target.GetComponent<CarController>() ?? target.GetComponentInParent<CarController>();

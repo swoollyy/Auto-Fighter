@@ -11,6 +11,8 @@ public class CarLandingConfig : MonoBehaviour
     [SerializeField, Min(0f)] private float landingExcessBleedPerSecond = 7.17f;
     [Tooltip("Seconds of soft no-clamp after land. Clamp eases in over the last half so mid-turn landings do not cliff.")]
     [SerializeField, Min(0f)] private float landingNoClampGraceSeconds = 0.35f;
+    [Tooltip("Horizontal speed bled per second while airborne (m/s). Throttle and brake are ignored in air; this is a gentle coast so jumps keep most takeoff speed.")]
+    [SerializeField, Min(0f)] private float airHorizCoastDecayPerSecond = 0.45f;
 
     [Header("Landing Boost (Ramp / Airborne)")]
     [Tooltip("When landing after being airborne, temporarily raise speed cap toward takeoff speed to reduce speed loss.")]
@@ -65,6 +67,7 @@ public class CarLandingConfig : MonoBehaviour
     public bool EnableLandingCarrySpeed => enableLandingCarrySpeed;
     public float LandingExcessBleedPerSecond => landingExcessBleedPerSecond;
     public float LandingNoClampGraceSeconds => landingNoClampGraceSeconds;
+    public float AirHorizCoastDecayPerSecond => airHorizCoastDecayPerSecond;
     public bool EnableLandingBoost => enableLandingBoost;
     public float LandingBoostStrength => landingBoostStrength;
     public float LandingBoostDuration => landingBoostDuration;

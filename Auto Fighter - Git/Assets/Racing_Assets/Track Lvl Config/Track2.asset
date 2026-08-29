@@ -98,7 +98,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Boost Ramp
       prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
-      baseWeight: 2.5
+      baseWeight: 1
       startAtNormalizedDist: 0.1
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
@@ -106,7 +106,7 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Boost Pad
       prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
-      baseWeight: 2
+      baseWeight: 1.2
       startAtNormalizedDist: 0.05
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
@@ -114,22 +114,22 @@ MonoBehaviour:
       extraLateralPadding: 0
     - id: Track Shooter
       prefab: {fileID: 8446397723576863354, guid: 8d36c50c36a1f8b42a807941a19e8ef9, type: 3}
-      baseWeight: 3
-      startAtNormalizedDist: 0.1
-      fullWeightNormalizedDist: 0.5
+      baseWeight: 1
+      startAtNormalizedDist: 0.4
+      fullWeightNormalizedDist: 0.8
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    obstacleSpacingByProgress: {x: 15, y: 5}
-    maxActiveObstacles: 220
+    obstacleSpacingByProgress: {x: 20, y: 10}
+    maxActiveObstacles: 180
     minSpawnDistanceAhead: 80
     maxSpawnDistanceAhead: 100
     initialPreSpawnDistance: 80
     despawnBehindDistance: 40
     distanceJitter: 1
-    spawnChanceByProgress: {x: 0.18, y: 0.45}
+    spawnChanceByProgress: {x: 0.18, y: 0.35}
     lateralFraction: 0.969
     edgeInnerMargin: 0.5
     stabilizeRigidbodiesOnSpawn: 1
@@ -157,7 +157,7 @@ MonoBehaviour:
     - id: Bug
       prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
       behaviorType: 0
-      baseWeight: 0.6
+      baseWeight: 0
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.2
       stopAtNormalizedDist: 1
@@ -649,15 +649,15 @@ MonoBehaviour:
       throwerThrowCooldown: 5
       throwerThrownPropLifetime: 12
       throwerThrownPropLayer: 20
-      throwerThrownCrashSeverity: 0.6
+      throwerThrownCrashSeverity: 0.25
       throwerThrownKnockbackForce: 25
       throwerThrownLift: 3
       throwerThrownTorque: 5
       throwerLandingTelegraphPrefab: {fileID: 4108758772899792739, guid: e4b91c7a6d825f449c3e1a08b5f27d46, type: 3}
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    creatureSpacing: 35
-    maxActiveCreatures: 20
+    creatureSpacing: 45
+    maxActiveCreatures: 12
     minSpawnDistanceAhead: 5
     maxSpawnDistanceAhead: 70
     initialPreSpawnDistance: 70
@@ -687,9 +687,9 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    carSpacing: 25
-    maxActiveCars: 7
-    minSpawnDistanceAhead: 25
+    carSpacing: 50
+    maxActiveCars: 1
+    minSpawnDistanceAhead: 50
     maxSpawnDistanceAhead: 70
     allowSpawnBehind: 0
     minSpawnDistanceBehind: 3
@@ -697,7 +697,7 @@ MonoBehaviour:
     initialPreSpawnDistance: 17.76
     despawnBehindDistance: 60
     despawnCrashedAfter: 10
-    distanceJitter: 0.4
+    distanceJitter: 0
     spawnChanceByProgress: {x: 0.2, y: 0.6}
     lateralFraction: 0.817
     edgeMargin: 0.89
@@ -709,7 +709,7 @@ MonoBehaviour:
     spawnProbeRadius: 0.5
     spawnBlockerLayers:
       serializedVersion: 2
-      m_Bits: 788481
+      m_Bits: 9177089
     roadLayer:
       serializedVersion: 2
       m_Bits: 24576

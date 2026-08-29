@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 4320
   displayName: Drift Boost Duration
-  description: Increases duration of drift boost by .1
+  description: Increases duration of drift boost by .075
   maxLevel: 5
   baseCost: 10
   costPerLevel: 5
   mode: 0
   baseValue: 0
-  perLevelAdd: 0.1
+  perLevelAdd: 0.075
   uiPosition: {x: 150, y: 225}
   revealedAtStart: 0
   revealOnFirstSprocket: 0
