@@ -15,7 +15,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
     static readonly int ClipMinMaxId = Shader.PropertyToID("_RacerRoadGrassClipMinMax");
 
     [Header("Road mask")]
-    [SerializeField, Min(0f)] private float roadClearPaddingMeters = 1.5f;
+    [Tooltip("Extra grass-free shoulder beyond the road mesh, in meters. 0 = grass at the asphalt edge.")]
+    [SerializeField, Min(0f)] private float roadClearPaddingMeters = 0f;
     [SerializeField, Min(64)] private int maskResolution = 1024;
     [SerializeField, Min(0.25f)] private float metersPerTexel = 0.5f;
     [SerializeField] private bool debugLogBounds = true;
@@ -68,8 +69,8 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
             yield break;
         }
 
-        float radius = Mathf.Max(0.5f, gen.RoadWidth * 0.5f + roadClearPaddingMeters);
-        BakeMask(_path, gen, radius);
+        float meshPad = Mathf.Max(0f, roadClearPaddingMeters);
+        BakeMask(_path, gen, meshPad);
         LastPaintedTerrainCount = 1;
         yield return null;
     }
@@ -89,7 +90,7 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         Shader.EnableKeyword(ClipKeyword);
     }
 
-    private void BakeMask(List<Vector3> path, ProceduralTrackGenerator gen, float radius)
+    private void BakeMask(List<Vector3> path, ProceduralTrackGenerator gen, float meshPad)
     {
         float minX = float.MaxValue, maxX = float.MinValue;
         float minZ = float.MaxValue, maxZ = float.MinValue;
@@ -102,10 +103,11 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
             if (p.z > maxZ) maxZ = p.z;
         }
 
-        minX -= radius + 2f;
-        maxX += radius + 2f;
-        minZ -= radius + 2f;
-        maxZ += radius + 2f;
+        float halfWidth = Mathf.Max(0.5f, gen.RoadWidth * 0.5f);
+        minX -= halfWidth + 2f;
+        maxX += halfWidth + 2f;
+        minZ -= halfWidth + 2f;
+        maxZ += halfWidth + 2f;
 
         float worldW = Mathf.Max(8f, maxX - minX);
         float worldH = Mathf.Max(8f, maxZ - minZ);
@@ -115,22 +117,29 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         EnsureMask(tw, th);
         System.Array.Clear(_pixels, 0, _pixels.Length);
 
-        float stampStep = Mathf.Max(metersPerTexel * 0.75f, 0.35f);
-        for (int i = 0; i < path.Count - 1; i++)
+        MeshFilter mf = gen != null ? gen.GetComponent<MeshFilter>() : null;
+        Mesh mesh = mf != null ? mf.sharedMesh : null;
+        if (mesh != null && mesh.vertexCount >= 3)
         {
-            Vector3 a = path[i];
-            Vector3 b = path[i + 1];
-            float len = Vector3.Distance(a, b);
-            if (len < 0.01f) continue;
-            int steps = Mathf.Max(1, Mathf.CeilToInt(len / stampStep));
-            for (int s = 0; s <= steps; s++)
+            StampRoadMesh(gen, meshPad, minX, minZ, worldW, worldH, tw, th);
+        }
+        else
+        {
+            float stampStep = Mathf.Max(metersPerTexel * 0.75f, 0.35f);
+            for (int i = 0; i < path.Count - 1; i++)
             {
-                Vector3 p = Vector3.Lerp(a, b, s / (float)steps);
-                StampCircle(p.x, p.z, radius, minX, minZ, worldW, worldH, tw, th);
+                Vector3 a = path[i];
+                Vector3 b = path[i + 1];
+                float len = Vector3.Distance(a, b);
+                if (len < 0.01f) continue;
+                int steps = Mathf.Max(1, Mathf.CeilToInt(len / stampStep));
+                for (int s = 0; s <= steps; s++)
+                {
+                    Vector3 p = Vector3.Lerp(a, b, s / (float)steps);
+                    StampCircle(p.x, p.z, halfWidth + meshPad, minX, minZ, worldW, worldH, tw, th);
+                }
             }
         }
-
-        StampRoadMesh(gen, radius, minX, minZ, worldW, worldH, tw, th);
 
         _mask.SetPixels32(_pixels);
         _mask.Apply(false, false);
@@ -142,7 +151,7 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         if (debugLogBounds)
         {
             Debug.Log(
-                $"[TerrainDetailGrassPainter] Road clip mask {tw}x{th} radius={radius:0.0}m " +
+                $"[TerrainDetailGrassPainter] Road clip mask {tw}x{th} meshPad={meshPad:0.00}m " +
                 $"bounds=({minX:0},{minZ:0})-({maxX:0},{maxZ:0})");
         }
     }
@@ -271,7 +280,7 @@ public sealed class TerrainDetailGrassPainter : MonoBehaviour
         {
             name = "RacerRoadGrassClip",
             wrapMode = TextureWrapMode.Clamp,
-            filterMode = FilterMode.Bilinear
+            filterMode = FilterMode.Point
         };
         _pixels = new Color32[tw * th];
     }

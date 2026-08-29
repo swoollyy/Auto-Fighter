@@ -76,15 +76,16 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [Header("Stream Settings (only if Spawn Mode = StreamAroundPlayer)")]
     [SerializeField] private bool streamSpawnDuringRun = true;
     [SerializeField] private float updateInterval = 0.15f;
-    [SerializeField] private float maxSpawnDistanceAhead = 220f;
+    [Tooltip("How far ahead of the player (along the track) environment props are spawned. Raise this to stop trees/rocks popping in.")]
+    [SerializeField] private float maxSpawnDistanceAhead = 400f;
     [SerializeField] private float maxSpawnDistanceBehind = 90f;
     [SerializeField] private float despawnBehindDistance = 50f;
     [Tooltip("Max new instances created in one Update tick. Keeps streaming off the hitch list.")]
     [SerializeField, Min(1)] private int maxSpawnsPerUpdate = 20;
     [Tooltip("How far ahead of the start to pre-fill during loading.")]
-    [SerializeField, Min(20f)] private float preloadAheadMeters = 180f;
+    [SerializeField, Min(20f)] private float preloadAheadMeters = 400f;
     [SerializeField, Min(1)] private int preloadSpawnsPerFrame = 28;
-
+                         
     [Header("Corridor Placement")]
     [Tooltip("Extra meters beyond the road edge (or from the centerline if Offset From Road Edge is off).")]
     [SerializeField, Min(0f)] private float minDistanceFromRoad = 2.5f;

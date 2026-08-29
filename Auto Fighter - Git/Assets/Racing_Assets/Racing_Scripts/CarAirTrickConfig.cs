@@ -56,6 +56,8 @@ public class CarAirTrickConfig : MonoBehaviour
     [SerializeField] private float trickRollRate = 220f;
     [Tooltip("How quickly disc spin cross-fades into barrel roll while the barrel button is held (0–1 per second).")]
     [SerializeField, Min(0.35f)] private float barrelModeBlendSpeed = 2.2f;
+    [Tooltip("How quickly barrel roll cross-fades back to disc spin when the barrel button is released (0–1 per second). Higher = snappier dump of leftover roll.")]
+    [SerializeField, Min(0.35f)] private float barrelModeReleaseSpeed = 8f;
     [SerializeField, Range(0f, 1f)] private float trickInputDeadzone = 0.15f;
     [Tooltip("How quickly trick stick input ramps in (higher = snappier, lower = softer).")]
     [SerializeField, Min(0.5f)] private float trickInputSmoothRate = 11f;
@@ -67,11 +69,15 @@ public class CarAirTrickConfig : MonoBehaviour
     [SerializeField, Min(10f)] private float trickRotationDecel = 240f;
     [Tooltip("While trick stick is held in the air — blocks auto-upright so flips are not fought.")]
     [SerializeField] private bool suppressRampAlignmentInTrickMode = true;
-
+                    
     [Header("Air Upright Recovery (trick stick released)")]
     [Tooltip("When airborne and not tricking, slowly align wheels toward the landing surface.")]
     [SerializeField] private bool enableAirUprightRecovery = true;
     [SerializeField, Min(0f)] private float airUprightRecoverSpeed = 2.75f;
+    [Tooltip("Seconds to wait after releasing the trick stick (and residual spin) before upright recovery starts.")]
+    [SerializeField, Min(0f)] private float airUprightRecoverDelay = 0.15f;
+    [Tooltip("Seconds to ease upright recovery from 0 to full after the delay. Lower = snappier straighten.")]
+    [SerializeField, Min(0.05f)] private float airUprightRecoverBlendInSeconds = 0.7f;
     [Tooltip("Extra align speed added when close to the ground (scaled by proximity²).")]
     [SerializeField, Min(0f)] private float airUprightNearGroundBoost = 16f;
     [Tooltip("Skip recovery when car up already aligns this closely with the target surface.")]
@@ -103,6 +109,7 @@ public class CarAirTrickConfig : MonoBehaviour
     public float TrickYawSpinRate => trickYawSpinRate;
     public float TrickRollRate => trickRollRate;
     public float BarrelModeBlendSpeed => barrelModeBlendSpeed;
+    public float BarrelModeReleaseSpeed => barrelModeReleaseSpeed;
     public float TrickInputDeadzone => trickInputDeadzone;
     public float TrickInputSmoothRate => trickInputSmoothRate;
     public float TrickInputReleaseRate => trickInputReleaseRate;
@@ -111,6 +118,8 @@ public class CarAirTrickConfig : MonoBehaviour
     public bool SuppressRampAlignmentInTrickMode => suppressRampAlignmentInTrickMode;
     public bool EnableAirUprightRecovery => enableAirUprightRecovery;
     public float AirUprightRecoverSpeed => airUprightRecoverSpeed;
+    public float AirUprightRecoverDelay => airUprightRecoverDelay;
+    public float AirUprightRecoverBlendInSeconds => airUprightRecoverBlendInSeconds;
     public float AirUprightNearGroundBoost => airUprightNearGroundBoost;
     public float AirUprightMinAlignDot => airUprightMinAlignDot;
     public float AirGravityMultiplier => airGravityMultiplier;

@@ -8455,8 +8455,8 @@ MonoBehaviour:
   obstacleSpacingByProgress: {x: 40, y: 18}
   maxActiveObstacles: 200
   minSpawnDistanceAhead: 80
-  maxSpawnDistanceAhead: 150
-  initialPreSpawnDistance: 80
+  maxSpawnDistanceAhead: 280
+  initialPreSpawnDistance: 200
   despawnBehindDistance: 20
   distanceJitter: 4.1
   spawnChanceByProgress: {x: 0.18, y: 0.45}
@@ -9145,11 +9145,11 @@ MonoBehaviour:
   fillEmptyGaps: 0
   streamSpawnDuringRun: 1
   updateInterval: 0.15
-  maxSpawnDistanceAhead: 120
+  maxSpawnDistanceAhead: 400
   maxSpawnDistanceBehind: 100
   despawnBehindDistance: 220
   maxSpawnsPerUpdate: 20
-  preloadAheadMeters: 180
+  preloadAheadMeters: 400
   preloadSpawnsPerFrame: 28
   minDistanceFromRoad: 1
   maxDistanceFromCenterline: 35

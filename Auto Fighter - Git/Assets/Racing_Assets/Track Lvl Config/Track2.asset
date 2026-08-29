@@ -125,8 +125,8 @@ MonoBehaviour:
     obstacleSpacingByProgress: {x: 20, y: 10}
     maxActiveObstacles: 180
     minSpawnDistanceAhead: 80
-    maxSpawnDistanceAhead: 100
-    initialPreSpawnDistance: 80
+    maxSpawnDistanceAhead: 280
+    initialPreSpawnDistance: 200
     despawnBehindDistance: 40
     distanceJitter: 1
     spawnChanceByProgress: {x: 0.18, y: 0.35}

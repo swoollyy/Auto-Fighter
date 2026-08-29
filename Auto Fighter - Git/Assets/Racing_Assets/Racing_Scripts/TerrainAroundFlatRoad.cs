@@ -488,7 +488,8 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             yield break;
         }
 
-        _roadCutRadius = gen.RoadWidth * 0.5f + extraHalfWidthMeters + 1.5f;
+        // Keep density on the shoulder; shader clip removes blades that sit on asphalt.
+        _roadCutRadius = Mathf.Max(0.5f, gen.RoadWidth * 0.5f - 1f);
 
         // Every run: clone authored TerrainData (same as the first Play). Tiles we painted
         // last run but do not sculpt this run still need that reset or leftover blades stay.

@@ -62,12 +62,12 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
     [SerializeField] private float minSpawnDistanceAhead = 60f;
 
     [Tooltip("Maximum distance in front of the player we bother filling with obstacles.")]
-    [SerializeField] private float maxSpawnDistanceAhead = 160f;
+    [SerializeField] private float maxSpawnDistanceAhead = 280f;
 
 
     [Header("Initial Pre-Spawn")]
     [Tooltip("How far ahead (from start) we pre-fill obstacles before the run begins.")]
-    [SerializeField] private float initialPreSpawnDistance = 120f;
+    [SerializeField] private float initialPreSpawnDistance = 200f;
 
     [Tooltip("Do not spawn any behind the player.")]
     [SerializeField] private float despawnBehindDistance = 10f;

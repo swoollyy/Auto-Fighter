@@ -183,10 +183,10 @@ public class TrialConfig : ScriptableObject
         public Vector2 obstacleSpacingByProgress = new Vector2(40f, 18f);
         public int maxActiveObstacles = 20;
         public float minSpawnDistanceAhead = 60f;
-        public float maxSpawnDistanceAhead = 160f;
+        public float maxSpawnDistanceAhead = 280f;
 
         [Header("Initial Pre-Spawn")]
-        public float initialPreSpawnDistance = 120f;
+        public float initialPreSpawnDistance = 200f;
         public float despawnBehindDistance = 10f;
 
         [Header("Randomization")]
