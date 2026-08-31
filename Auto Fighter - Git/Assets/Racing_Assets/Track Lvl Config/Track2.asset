@@ -189,6 +189,7 @@ MonoBehaviour:
       scaredMaxFleeSpeed: 0
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 0
       scaredIdleBugDirectionChangeInterval: 0.05
@@ -288,7 +289,7 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
-      coinReward: 4
+      coinReward: 15
       idleUseWalkPauseRhythm: 1
       idleWalkSegmentMinSec: 1.59
       idleWalkSegmentMaxSec: 3.45
@@ -309,11 +310,12 @@ MonoBehaviour:
       passiveIdleBugDirectionChangeInterval: 12.89
       passiveIdleBugLateralRadius: 2.64
       passiveIdleBugForwardRadius: 1.84
-      scaredDetectionRadius: 2.4
-      scaredBaseFleeSpeed: 2
-      scaredMaxFleeSpeed: 5.02
-      scaredSpeedBuildupRate: 1.5
-      scaredMaxOffRoadDistance: 14.12
+      scaredDetectionRadius: 24
+      scaredBaseFleeSpeed: 16
+      scaredMaxFleeSpeed: 20
+      scaredSpeedBuildupRate: 2.3
+      scaredMaxOffRoadDistance: 23
+      scaredPlayerTrackRunSpeed: 19
       scaredIdleUseBugMovement: 1
       scaredIdleBugMoveSpeed: 1.77
       scaredIdleBugDirectionChangeInterval: 10.38
@@ -439,6 +441,7 @@ MonoBehaviour:
       scaredMaxFleeSpeed: 0
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1
@@ -564,6 +567,7 @@ MonoBehaviour:
       scaredMaxFleeSpeed: 0
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1
@@ -687,10 +691,10 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
-    carSpacing: 50
-    maxActiveCars: 1
-    minSpawnDistanceAhead: 50
-    maxSpawnDistanceAhead: 70
+    carSpacing: 100
+    maxActiveCars: 2
+    minSpawnDistanceAhead: 125
+    maxSpawnDistanceAhead: 150
     allowSpawnBehind: 0
     minSpawnDistanceBehind: 3
     maxSpawnDistanceBehind: 7

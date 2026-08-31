@@ -295,8 +295,10 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
 
         float invX = w / terrainSize.x;
         float invZ = h / terrainSize.z;
-        float rSq = radius * radius;
-        float stamp = Mathf.Max(0.35f, radius * 0.35f);
+        float cell = 0.5f * Mathf.Max(terrainSize.x / w, terrainSize.z / h);
+        float cutR = radius + cell;
+        float rSq = cutR * cutR;
+        float stamp = Mathf.Max(0.35f, cutR * 0.35f);
 
         for (int layer = 0; layer < n; layer++)
         {
@@ -316,8 +318,8 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
                     float wz = a.z + (b.z - a.z) * u;
                     int cx = Mathf.FloorToInt((wx - terrainPos.x) * invX);
                     int cz = Mathf.FloorToInt((wz - terrainPos.z) * invZ);
-                    int radX = Mathf.CeilToInt(radius * invX) + 1;
-                    int radZ = Mathf.CeilToInt(radius * invZ) + 1;
+                    int radX = Mathf.CeilToInt(cutR * invX) + 1;
+                    int radZ = Mathf.CeilToInt(cutR * invZ) + 1;
                     int x0 = Mathf.Max(0, cx - radX);
                     int x1 = Mathf.Min(w - 1, cx + radX);
                     int z0 = Mathf.Max(0, cz - radZ);
@@ -414,6 +416,67 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
         CaptureBaselines();
     }
 
+    public float RoadClearPaddingMeters
+    {
+        get
+        {
+            TerrainDetailGrassPainter painter = GetComponent<TerrainDetailGrassPainter>();
+            return painter != null ? painter.RoadClearPaddingMeters : 1f;
+        }
+    }
+
+    /// <summary>
+    /// Re-applies authored grass, then cuts a corridor of <c>halfRoad + padding</c>.
+    /// Used when Road Clear Padding Meters changes in Play Mode.
+    /// </summary>
+    public void RecutGrassAlongRoad(ProceduralTrackGenerator gen, float paddingMeters)
+    {
+        if (!Application.isPlaying || gen == null || !gen.LastGenerateSucceeded)
+            return;
+
+        gen.FillRoadMeshCenterPath(_pathScratch);
+        if (_pathScratch.Count < 2)
+            return;
+
+        _roadCutRadius = Mathf.Max(0.5f, gen.RoadWidth * 0.5f + Mathf.Max(0f, paddingMeters));
+
+        EnsureAllSceneTerrainsPrepared();
+        for (int i = 0; i < _resolvedTerrains.Count; i++)
+        {
+            Terrain t = _resolvedTerrains[i];
+            if (t == null || t.terrainData == null) continue;
+            RestoreAuthoredDetails(t);
+            CutDetailsUnderPath(t.terrainData, t.transform.position, t.terrainData.size, _pathScratch, _roadCutRadius);
+            t.Flush();
+        }
+
+        Debug.Log($"[TerrainAroundFlatRoad] Recut grass along road radius={_roadCutRadius:0.00}m pad={paddingMeters:0.00}m terrains={_resolvedTerrains.Count}");
+    }
+
+    private float ComputeRoadCutRadius(ProceduralTrackGenerator gen)
+    {
+        float half = gen != null ? gen.RoadWidth * 0.5f : 2f;
+        return Mathf.Max(0.5f, half + Mathf.Max(0f, RoadClearPaddingMeters));
+    }
+
+    private void RestoreAuthoredDetails(Terrain t)
+    {
+        int[][,] authored;
+        if (t == null || t.terrainData == null)
+            return;
+        if (!_authoredDetails.TryGetValue(t, out authored) || authored == null || authored.Length == 0)
+            return;
+
+        TerrainData td = t.terrainData;
+        int proto = td.detailPrototypes != null ? td.detailPrototypes.Length : 0;
+        int n = Mathf.Min(authored.Length, proto);
+        for (int i = 0; i < n; i++)
+        {
+            if (authored[i] == null) continue;
+            td.SetDetailLayer(0, 0, i, (int[,])authored[i].Clone());
+        }
+    }
+
     public void ApplyFromTrackSync(ProceduralTrackGenerator gen)
     {
         IEnumerator e = ApplyFromTrackAsync(gen);
@@ -488,8 +551,9 @@ public sealed class TerrainAroundFlatRoad : MonoBehaviour
             yield break;
         }
 
-        // Keep density on the shoulder; shader clip removes blades that sit on asphalt.
-        _roadCutRadius = Mathf.Max(0.5f, gen.RoadWidth * 0.5f - 1f);
+        // Cut the authored detail map here. Shader clip is only a fringe backup — the
+        // blades the player sees are these terrain details, not the clip mask.
+        _roadCutRadius = ComputeRoadCutRadius(gen);
 
         // Every run: clone authored TerrainData (same as the first Play). Tiles we painted
         // last run but do not sculpt this run still need that reset or leftover blades stay.

@@ -603,7 +603,9 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
         flatForward.Normalize();
 
         Vector3 spawnPos;
-        if (chosenType.behaviorType == CreatureBehaviorType.Thrower || chosenType.spawnOffroadOnHills)
+        bool spawnOnHills = chosenType.behaviorType != CreatureBehaviorType.Scared
+            && (chosenType.behaviorType == CreatureBehaviorType.Thrower || chosenType.spawnOffroadOnHills);
+        if (spawnOnHills)
         {
             if (!TryPickHillSpawnPosition(pos, flatForward, chosenType, out spawnPos))
             {
@@ -617,6 +619,8 @@ public class TrackCreatureSpawner : MonoBehaviour, ITrackSpawnQueueSource
             // Lateral offset on the road
             float halfWidth = trackGenerator.RoadWidth * 0.5f;
             float usable = (halfWidth * lateralFraction) - edgeInnerMargin - chosenType.extraLateralPadding;
+            if (chosenType.behaviorType == CreatureBehaviorType.Scared)
+                usable = Mathf.Min(usable, halfWidth * 0.7f);
             if (usable <= 0f)
                 usable = halfWidth * 0.3f;
 

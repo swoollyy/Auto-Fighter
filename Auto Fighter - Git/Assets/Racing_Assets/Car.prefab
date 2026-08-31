@@ -1536,7 +1536,7 @@ MonoBehaviour:
   driftMinSpeed: 7
   maxDriftSteerMultiplier: 2.2
   driftSteeringInputBuildupMultiplier: 0.43
-  driftBuildRate: 0.27
+  driftBuildRate: 0.22
   driftReleaseRate: 3.17
   driftSideForce: 0.47
   driftSideForceWhileAccelerating: 0.4
@@ -1548,7 +1548,7 @@ MonoBehaviour:
   lockToDriftPeakSpeed: 1
   driftAccelMultiplier: 0.65
   driftAccelSpeedCapMultiplier: 1
-  driftBrakeDecelMultiplier: 0.45
+  driftBrakeDecelMultiplier: 0.7
   driftBrakeDecayPerSecond: 0
   requireDirectionalInputForDriftCharge: 0
   driftNeutralDrainRate: 2.55

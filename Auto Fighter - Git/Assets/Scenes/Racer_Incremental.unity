@@ -8735,6 +8735,7 @@ MonoBehaviour:
     scaredMaxFleeSpeed: 0
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
+    scaredPlayerTrackRunSpeed: 14
     scaredIdleUseBugMovement: 0
     scaredIdleBugMoveSpeed: 0
     scaredIdleBugDirectionChangeInterval: 0.05
@@ -8860,6 +8861,7 @@ MonoBehaviour:
     scaredMaxFleeSpeed: 5.02
     scaredSpeedBuildupRate: 1.5
     scaredMaxOffRoadDistance: 14.12
+    scaredPlayerTrackRunSpeed: 14
     scaredIdleUseBugMovement: 1
     scaredIdleBugMoveSpeed: 1.77
     scaredIdleBugDirectionChangeInterval: 5
@@ -8985,6 +8987,7 @@ MonoBehaviour:
     scaredMaxFleeSpeed: 0
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
+    scaredPlayerTrackRunSpeed: 14
     scaredIdleUseBugMovement: 0
     scaredIdleBugMoveSpeed: 1.25
     scaredIdleBugDirectionChangeInterval: 1
@@ -9136,11 +9139,11 @@ MonoBehaviour:
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
   spacing: 4
-  maxActive: 1200
+  maxActive: 2400
   lateralsPerSide: 3
   minSeparationMeters: 3.2
   offsetFromRoadEdge: 1
-  targetCount: 1200
+  targetCount: 2400
   maxAttemptsPerSlot: 4
   fillEmptyGaps: 0
   streamSpawnDuringRun: 1
@@ -9149,10 +9152,10 @@ MonoBehaviour:
   maxSpawnDistanceBehind: 100
   despawnBehindDistance: 220
   maxSpawnsPerUpdate: 20
-  preloadAheadMeters: 400
+  preloadAheadMeters: 900
   preloadSpawnsPerFrame: 28
   minDistanceFromRoad: 1
-  maxDistanceFromCenterline: 35
+  maxDistanceFromCenterline: 60
   sideBias: 0.376
   placementAttempts: 4
   autoGroundUsingBounds: 1
@@ -9189,8 +9192,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   roadClearPaddingMeters: 0
-  maskResolution: 1024
-  metersPerTexel: 0.5
+  maskResolution: 2048
+  metersPerTexel: 0.35
   debugLogBounds: 1
 --- !u!114 &796779783
 MonoBehaviour:

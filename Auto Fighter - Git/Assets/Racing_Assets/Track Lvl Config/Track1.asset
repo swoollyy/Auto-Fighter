@@ -165,7 +165,7 @@ MonoBehaviour:
     - id: Bug
       prefab: {fileID: 3874382558013832276, guid: 8c5a1ae466d4715488aaf50f45841e4c, type: 3}
       behaviorType: 0
-      baseWeight: 0.9
+      baseWeight: 0
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.2
       stopAtNormalizedDist: 1
@@ -197,6 +197,7 @@ MonoBehaviour:
       scaredMaxFleeSpeed: 0
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 0
       scaredIdleBugDirectionChangeInterval: 0.05
@@ -296,7 +297,7 @@ MonoBehaviour:
       stopAtNormalizedDist: 1
       extraHeightOffset: 0
       extraLateralPadding: 0
-      coinReward: 4
+      coinReward: 15
       idleUseWalkPauseRhythm: 1
       idleWalkSegmentMinSec: 1.59
       idleWalkSegmentMaxSec: 3.45
@@ -317,11 +318,12 @@ MonoBehaviour:
       passiveIdleBugDirectionChangeInterval: 12.89
       passiveIdleBugLateralRadius: 2.64
       passiveIdleBugForwardRadius: 1.84
-      scaredDetectionRadius: 2.4
+      scaredDetectionRadius: 16
       scaredBaseFleeSpeed: 2
       scaredMaxFleeSpeed: 5.02
       scaredSpeedBuildupRate: 1.5
       scaredMaxOffRoadDistance: 14.12
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 1
       scaredIdleBugMoveSpeed: 1.77
       scaredIdleBugDirectionChangeInterval: 10.38
@@ -415,7 +417,7 @@ MonoBehaviour:
     - id: Beast
       prefab: {fileID: 3874382558013832276, guid: 2816e69a76bb9de4d9880d3ca7347f97, type: 3}
       behaviorType: 2
-      baseWeight: 1
+      baseWeight: 0
       startAtNormalizedDist: 0.5
       fullWeightNormalizedDist: 0.8
       stopAtNormalizedDist: 1
@@ -447,6 +449,7 @@ MonoBehaviour:
       scaredMaxFleeSpeed: 0
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
+      scaredPlayerTrackRunSpeed: 14
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1
@@ -540,7 +543,7 @@ MonoBehaviour:
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
     creatureSpacing: 0
-    maxActiveCreatures: 0
+    maxActiveCreatures: 3
     minSpawnDistanceAhead: 5
     maxSpawnDistanceAhead: 70
     initialPreSpawnDistance: 70
@@ -572,8 +575,8 @@ MonoBehaviour:
     smoothingSubdivisionsPerSegment: 6
     carSpacing: 75
     maxActiveCars: 1
-    minSpawnDistanceAhead: 200
-    maxSpawnDistanceAhead: 250
+    minSpawnDistanceAhead: 125
+    maxSpawnDistanceAhead: 150
     allowSpawnBehind: 0
     minSpawnDistanceBehind: 3
     maxSpawnDistanceBehind: 7

@@ -2206,8 +2206,8 @@ public class CarController : MonoBehaviour
         bool brakeHeldNow = GetBrakeKeyOrTrigger();
         if (brakeHeldNow)
         {
-            // Kills button / pad-style boost. Charging a drift-held boost is cancelled separately
-            // (grounded brake while still holding drift). An already-firing drift boost is not cut here.
+            // Kills button / pad-style boost. Drift-held charge keeps building while braking;
+            // the boost itself is refused on release if brake is still held.
             bool driftBoostArmedOrActive = _overrideIsDriftBoost || _activeBoostIsDrift;
             if (!driftBoostArmedOrActive
                 && (_boostRequested || _isBoosting || _isPostBoost || _boostOverrideActive))
@@ -3164,8 +3164,8 @@ public class CarController : MonoBehaviour
         }
 
         // Decelerating: cancel button boost sustain so brake isn't fighting a rocket.
-        // An already-firing drift-held boost is not cut here. Charge is dumped while grounded
-        // and still holding drift (see TickDriftHeldBoostCharge).
+        // An already-firing drift-held boost is not cut here. Charge still builds while
+        // braking in a drift; release-while-braking refuses the boost.
         if (GetBrakeKeyOrTrigger()
             && !_overrideIsDriftBoost
             && !_activeBoostIsDrift
@@ -3913,7 +3913,7 @@ public class CarController : MonoBehaviour
                     _driftNeutralTimer += Time.deltaTime;
 
                     // Long-neutral: ease turn-feel charge into glide, but never dump the boost meter.
-                    // Boost charge only clears on drift release, grounded brake-cancel, crash, or cooldown.
+                    // Boost charge only clears on drift release, crash, or cooldown (brake does not dump it).
                     if (driftCharge > 0f && _driftNeutralTimer >= driftNeutralFullResetDelay)
                     {
                         driftCharge = 0f;
@@ -4189,7 +4189,7 @@ public class CarController : MonoBehaviour
 
         float held = Mathf.Max(_driftHoldTimeSeconds, _pendingDriftHeldBoostSeconds);
 
-        // Grounded brake-cancel: player bled speed instead of taking the boost.
+        // Still braking: keep the slide/charge, but do not fire the boost.
         if (IsGroundedDriftBrakeHeld())
         {
             ClearDriftHeldBoostCharge();
@@ -4291,14 +4291,7 @@ public class CarController : MonoBehaviour
         if (!driftButtonHeld || IsPostCrashRecoveryDriving)
             return;
 
-        // Brake while still holding drift dumps the meter so release will not fire a boost.
-        if (ShouldCancelDriftHeldBoostWithBrake())
-        {
-            ClearDriftHeldBoostCharge();
-            return;
-        }
-
-        // Keep banking across steer flips, throttle-off, and brief isDrifting flicker.
+        // Keep banking across steer flips, throttle-off, braking to slow the slide, and brief isDrifting flicker.
         bool liveDrift = canDriftThisFrame || isDrifting || _driftGlideActive;
         if (!liveDrift)
             return;
@@ -4318,8 +4311,8 @@ public class CarController : MonoBehaviour
     }
 
     /// <summary>
-    /// Grounded decelerate: used to dump pending drift-held boost. Air LT/S is ignored
-    /// so barrel-roll / trick inputs do not dump charge.
+    /// Grounded decelerate: used to refuse a drift-held boost on release. Air LT/S is ignored
+    /// so barrel-roll / trick inputs do not count as braking.
     /// </summary>
     private bool IsGroundedDriftBrakeHeld()
     {
@@ -4327,14 +4320,6 @@ public class CarController : MonoBehaviour
         if (_airborneForTricks || !CheckIfGrounded()) return false;
         if (_trickStickActive) return false;
         return true;
-    }
-
-    /// <summary>
-    /// Grounded decelerate while a drift/glide is live cancels pending drift-held boost.
-    /// </summary>
-    private bool ShouldCancelDriftHeldBoostWithBrake()
-    {
-        return IsGroundedDriftBrakeHeld() && (isDrifting || _driftGlideActive);
     }
 
     /// <summary>
@@ -5768,9 +5753,6 @@ public class CarController : MonoBehaviour
                     driftClampSpeed -= brakeDecel * driftDt;
                     if (driftClampSpeed < 0f) driftClampSpeed = 0f;
                     driftPeakSpeed = Mathf.Min(driftPeakSpeed, driftClampSpeed);
-
-                    if (enableDriftHeldBoost)
-                        ClearDriftHeldBoostCharge();
                 }
                 else if (holdingThrottle)
                 {

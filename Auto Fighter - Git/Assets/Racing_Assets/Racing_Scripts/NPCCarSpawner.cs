@@ -379,16 +379,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         float playerDist = GetPlayerDistance();
 
         // -------- Spawn AHEAD --------
-        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / carSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / carSpacing), 0, _maxSlotIndex);
-
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            TrySpawnAtSlot(slot, playerDist);
-        }
+        TrySpawnInAheadWindow(playerDist);
 
         // -------- Spawn BEHIND --------
         if (allowSpawnBehind)
@@ -415,19 +406,10 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             return false;
 
         float playerDist = GetPlayerDistance();
-        float spawnStartDist = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
-        float spawnEndDist = Mathf.Clamp(playerDist + maxSpawnDistanceAhead, 0f, _totalLength);
-
-        int startSlot = Mathf.Clamp(Mathf.FloorToInt(spawnStartDist / carSpacing), 0, _maxSlotIndex);
-        int endSlot = Mathf.Clamp(Mathf.FloorToInt(spawnEndDist / carSpacing), 0, _maxSlotIndex);
-
-        for (int slot = startSlot; slot <= endSlot; slot++)
-        {
-            int before = _carsBySlot.Count;
-            TrySpawnAtSlot(slot, playerDist);
-            if (_carsBySlot.Count > before)
-                return true;
-        }
+        int before = _carsBySlot.Count;
+        TrySpawnInAheadWindow(playerDist);
+        if (_carsBySlot.Count > before)
+            return true;
 
         if (allowSpawnBehind)
         {
@@ -439,14 +421,45 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
             for (int slot = behindStartSlot; slot <= behindEndSlot; slot++)
             {
-                int before = _carsBySlot.Count;
+                int countBefore = _carsBySlot.Count;
                 TrySpawnAtSlot(slot, playerDist);
-                if (_carsBySlot.Count > before)
+                if (_carsBySlot.Count > countBefore)
                     return true;
             }
         }
 
         return false;
+    }
+
+    private void TrySpawnInAheadWindow(float playerDist)
+    {
+        float minD = Mathf.Clamp(playerDist + minSpawnDistanceAhead, 0f, _totalLength);
+        float maxD = Mathf.Clamp(playerDist + Mathf.Max(minSpawnDistanceAhead, maxSpawnDistanceAhead), 0f, _totalLength);
+        if (minD >= _totalLength - 0.5f)
+            return;
+
+        float spacing = Mathf.Max(0.01f, carSpacing);
+        int startSlot = Mathf.Clamp(Mathf.CeilToInt(minD / spacing), 0, _maxSlotIndex);
+        int endSlot = Mathf.Clamp(Mathf.FloorToInt(maxD / spacing), 0, _maxSlotIndex);
+
+        for (int slot = startSlot; slot <= endSlot; slot++)
+            TrySpawnAtSlot(slot, playerDist);
+
+        // Tight windows (e.g. 50–70m with 50m slots) often contain no grid point.
+        // Still honor min-ahead by placing at the window start if that slot is free.
+        if (startSlot > endSlot && _carsBySlot.Count < maxActiveCars)
+        {
+            int slot = Mathf.Clamp(Mathf.RoundToInt(minD / spacing), 0, _maxSlotIndex);
+            if (_carsBySlot.ContainsKey(slot))
+                return;
+
+            float norm = _totalLength > 0f ? Mathf.Clamp01(minD / _totalLength) : 0f;
+            float chance = TrackProgressRange.Lerp01(spawnChanceByProgress, norm);
+            if (chance <= 0f || UnityEngine.Random.value > chance)
+                return;
+
+            TrySpawnCarAtDistance(slot, minD, playerDist);
+        }
     }
 
     private void TrySpawnAtSlot(int slot, float playerDist)
@@ -458,6 +471,8 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             return;
 
         float dist = slot * carSpacing;
+        if (dist < playerDist + minSpawnDistanceAhead)
+            return;
 
         // Check spawn chance
         float norm = _totalLength > 0f ? Mathf.Clamp01(dist / _totalLength) : 0f;
@@ -468,7 +483,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         if (UnityEngine.Random.value > effectiveChance)
             return;
 
-        TrySpawnCarAtDistance(slot, dist);
+        TrySpawnCarAtDistance(slot, dist, playerDist);
     }
 
     private void DespawnBehind(float playerDist)
@@ -546,7 +561,7 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         int endSlot = Mathf.FloorToInt(preSpawnEnd / carSpacing);
 
         // Start a bit ahead so cars aren't right at spawn
-        int startSlot = Mathf.Max(1, Mathf.FloorToInt(minSpawnDistanceAhead / carSpacing));
+        int startSlot = Mathf.Max(1, Mathf.CeilToInt(minSpawnDistanceAhead / Mathf.Max(0.01f, carSpacing)));
 
         for (int slot = startSlot; slot <= endSlot; slot++)
         {
@@ -563,7 +578,10 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             if (effectiveChance <= 0f) continue;
             if (UnityEngine.Random.value > effectiveChance) continue;
 
-            TrySpawnCarAtDistance(slot, dist);
+            if (dist < minSpawnDistanceAhead)
+                continue;
+
+            TrySpawnCarAtDistance(slot, dist, 0f);
         }
 
         if (verboseDebug)
@@ -572,10 +590,13 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     // -------- Spawning --------
 
-    private void TrySpawnCarAtDistance(int slot, float baseDist)
+    private void TrySpawnCarAtDistance(int slot, float baseDist, float playerDist)
     {
-        float jitter = UnityEngine.Random.Range(-distanceJitter, distanceJitter);
-        float sampleDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
+        float minAheadDist = playerDist + minSpawnDistanceAhead;
+        float jitter = UnityEngine.Random.Range(0f, Mathf.Max(0f, distanceJitter));
+        float sampleDist = Mathf.Clamp(baseDist + jitter, minAheadDist, _totalLength);
+        if (sampleDist + 0.05f < minAheadDist)
+            return;
 
         GameObject chosenPrefab = ChooseCarPrefab(sampleDist);
         if (chosenPrefab == null)
@@ -624,6 +645,13 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
         }
 
         pos += right * lateralOffset;
+
+        if (IsTooCloseInFrontOfPlayer(pos))
+        {
+            if (verboseDebug)
+                Debug.Log($"[NPCTrafficCarSpawner] Skipped slot {slot} - spawn is closer than {minSpawnDistanceAhead:0}m in front of the player");
+            return;
+        }
 
         // Raycast to ground
         Vector3 origin = pos + Vector3.up * raycastStartHeight;
@@ -742,12 +770,56 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     // -------- Path Utilities --------
 
+    private bool IsTooCloseInFrontOfPlayer(Vector3 spawnPos)
+    {
+        if (playerTransform == null || minSpawnDistanceAhead <= 0.01f)
+            return false;
+
+        Vector3 toSpawn = spawnPos - playerTransform.position;
+        toSpawn.y = 0f;
+        float planar = toSpawn.magnitude;
+        if (planar >= minSpawnDistanceAhead)
+            return false;
+
+        Vector3 pFwd = playerTransform.forward;
+        pFwd.y = 0f;
+        if (pFwd.sqrMagnitude < 1e-6f)
+            return planar < minSpawnDistanceAhead;
+
+        pFwd.Normalize();
+        return Vector3.Dot(toSpawn, pFwd) > 0f;
+    }
+
     private float GetPlayerDistance()
     {
-        Vector3 p = playerTransform.position;
-        float best = float.MaxValue;
+        if (playerTransform == null || _path.Count < 2 || _cumLengths == null)
+            return 0f;
 
-        for (int i = 0; i < _path.Count - 1; i++)
+        Vector3 p = playerTransform.position;
+
+        // Stay on the current stretch first so a nearby parallel/paperclip does not
+        // report the player as being far behind (which made min-ahead land on them).
+        int start = Mathf.Max(0, _lastClosestIdx - 10);
+        int end = Mathf.Min(_path.Count - 2, _lastClosestIdx + 28);
+        float best = FindClosestSegment(p, start, end, out int bestIdx);
+
+        if (best > 20f * 20f)
+        {
+            FindClosestSegment(p, 0, _path.Count - 2, out bestIdx);
+        }
+
+        _lastClosestIdx = Mathf.Clamp(bestIdx, 0, _path.Count - 2);
+        float segLen = Vector3.Distance(_path[_lastClosestIdx], _path[_lastClosestIdx + 1]);
+        Vector3 seg = _path[_lastClosestIdx + 1] - _path[_lastClosestIdx];
+        float prog = Mathf.Clamp01(Vector3.Dot(p - _path[_lastClosestIdx], seg) / (segLen * segLen + 0.0001f));
+        return _cumLengths[_lastClosestIdx] + prog * segLen;
+    }
+
+    private float FindClosestSegment(Vector3 p, int start, int end, out int bestIdx)
+    {
+        float best = float.MaxValue;
+        bestIdx = Mathf.Clamp(start, 0, Mathf.Max(0, _path.Count - 2));
+        for (int i = start; i <= end; i++)
         {
             Vector3 a = _path[i], b = _path[i + 1];
             Vector3 ab = b - a;
@@ -757,19 +829,13 @@ public class NPCTrafficCarSpawner : MonoBehaviour, ITrackSpawnQueueSource
             float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / abSqr);
             Vector3 proj = Vector3.Lerp(a, b, t);
             float d = (p - proj).sqrMagnitude;
-
             if (d < best)
             {
-                _lastClosestIdx = i;
                 best = d;
+                bestIdx = i;
             }
         }
-
-        float segLen = Vector3.Distance(_path[_lastClosestIdx], _path[_lastClosestIdx + 1]);
-        Vector3 seg = _path[_lastClosestIdx + 1] - _path[_lastClosestIdx];
-        float prog = Mathf.Clamp01(Vector3.Dot(p - _path[_lastClosestIdx], seg) / (segLen * segLen + 0.0001f));
-
-        return _cumLengths[_lastClosestIdx] + prog * segLen;
+        return best;
     }
 
     private void SampleAlongPath(float dist, out Vector3 pos, out Vector3 fwd)

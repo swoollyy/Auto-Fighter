@@ -10,7 +10,7 @@ public enum CreatureBehaviorType
     Passive,
 
     /// <summary>
-    /// Critter: flees player, NPC traffic, and beast; can hunt bugs (Passive).
+    /// Critter: on-road spawn/idle; sprints down the course from the player; old off-road flee from the beast.
     /// </summary>
     Scared,
 

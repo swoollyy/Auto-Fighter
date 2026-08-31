@@ -3,10 +3,8 @@
 
 TEXTURE2D(_RacerRoadGrassClipTex);
 SAMPLER(sampler_RacerRoadGrassClipTex);
-
-CBUFFER_START(RacerRoadGrassClip)
-    float4 _RacerRoadGrassClipMinMax;
-CBUFFER_END
+// Global (SetGlobalVector). Do not put this in a CBUFFER — URP will not pick up the value.
+float4 _RacerRoadGrassClipMinMax;
 
 void ClipIfOnRoad(float3 positionWS)
 {

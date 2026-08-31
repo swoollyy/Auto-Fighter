@@ -95,8 +95,11 @@ public class CreatureTypeConfig
     [Tooltip("How quickly the flee speed builds up (speed per second).")]
     [Min(0f)] public float scaredSpeedBuildupRate = 3f;
 
-    [Tooltip("How far off-road the scared creature can run.")]
+    [Tooltip("How far off-road the scared creature can run when fleeing a beast, or after it has lost all threats.")]
     [Min(0f)] public float scaredMaxOffRoadDistance = 3f;
+
+    [Tooltip("Along-track sprint when fleeing the player (stays on the asphalt so the player can chase).")]
+    [Min(0f)] public float scaredPlayerTrackRunSpeed = 14f;
 
     [Header("Scared - Idle Bug Movement (Before Detection)")]
     [Tooltip("If true, scared creatures use the same low-energy 'bug idle' movement until the player is within scaredDetectionRadius.")]

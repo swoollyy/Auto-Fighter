@@ -36,7 +36,8 @@ public enum CreatureKillSource
 /// 
 /// COLLISION NOTES:
 /// - All creatures use TRIGGER colliders to avoid disrupting car physics
-/// - Passive/Scared: Car drives through them, they die, give coins
+/// - Passive: Car drives through them, they die, give coins
+/// - Scared: spawn and idle on the road; player sighting sprints them down the course (large coin bounty); beast sighting uses the old off-road flee
 /// - Aggressive (beast): Player contact applies crash/knockback only; beast keeps hunting. Cross/bounce/log/thrown hits fling it with physics, then it dies/despawns (see <see cref="LaunchAggressiveBeastByObstacleThenDie"/>). Contact with a roadside shooter knocks that turret off its base.
 /// 
 /// REWARD SYSTEM:
@@ -241,6 +242,8 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
     protected Vector3 currentVelocity;
     protected float currentSpeed;
     protected float currentFleeSpeed; // For scared creatures - builds up over time
+    /// <summary>Scared: false until a threat is lost. Until then they stay on the asphalt.</summary>
+    private bool _scaredMayLeaveRoad;
     
     // Movement intent (used to prevent spin-in-place when velocity is clamped to ~0 by obstacles/edges)
     private Vector3 _intendedPlanarMoveDir;
@@ -440,6 +443,7 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
 
         // Initialize flee speed
         currentFleeSpeed = config.scaredBaseFleeSpeed;
+        _scaredMayLeaveRoad = false;
 
         // IMPORTANT: Make all colliders triggers to avoid physics disruption
         SetupColliders();
@@ -507,6 +511,9 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
         currentLateralOffset = Vector3.Dot(toCreature, right);
         targetLateralOffset = currentLateralOffset;
+
+        if (behaviorType == CreatureBehaviorType.Scared)
+            ClampScaredToRoadIfRequired(force: true);
     }
 
     #endregion
@@ -837,7 +844,8 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
     }
 
     /// <summary>
-    /// Scared behavior: aggressive threats override; otherwise may hunt passive bugs (ignoring cars until hunt ends), else flee from cars, else calm idle/wander.
+    /// Scared: stay on the road until spooked. Player/NPC → sprint down the course.
+    /// Beast → old off-road flee. After losing all threats they may leave the asphalt.
     /// </summary>
     protected virtual void UpdateScaredBehavior(float dt)
     {
@@ -857,7 +865,6 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         {
             case CreatureState.Idle:
             case CreatureState.Wandering:
-                // Scared gameplay: idle + flee only (no hunting).
                 chaseTargetTransform = null;
 
                 if (shouldFlee)
@@ -869,6 +876,11 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
                     {
                         currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
                                            Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
+                        UpdateFleeing(dt);
+                    }
+                    else
+                    {
+                        UpdateScaredOnTrackRun(dt);
                     }
                 }
                 else
@@ -878,7 +890,16 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
                 break;
 
             case CreatureState.Fleeing:
-                UpdateFleeing(dt);
+                if (hasAggressiveThreat)
+                {
+                    currentFleeSpeed = Mathf.Max(currentFleeSpeed, config.scaredBaseFleeSpeed) *
+                                       Mathf.Max(1f, config.scaredAggressiveFleeSpeedMultiplier);
+                    UpdateFleeing(dt);
+                }
+                else
+                {
+                    UpdateScaredOnTrackRun(dt);
+                }
 
                 bool playerFar = !playerDetected || playerDistance > config.scaredDetectionRadius * 2f;
                 bool aggroFar = !threatIsAggressive || threatTransform == null ||
@@ -887,7 +908,7 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
 
                 if (playerFar && aggroFar && npcFar && _activeThreatCount == 0)
                 {
-                    // Scared gameplay: return to idle only.
+                    _scaredMayLeaveRoad = true;
                     SetState(CreatureState.Idle);
                     currentFleeSpeed = config.scaredBaseFleeSpeed;
                     chaseTargetTransform = null;
@@ -895,7 +916,6 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
                 break;
 
             case CreatureState.Charging:
-                // Scared gameplay: never charges.
                 chaseTargetTransform = null;
                 SetState(CreatureState.Fleeing);
                 break;
@@ -941,10 +961,66 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         if (currentState != CreatureState.Idle)
             SetState(CreatureState.Idle);
 
+        float extraOffRoad = _scaredMayLeaveRoad ? config.scaredMaxOffRoadDistance : 0f;
+        float latR = config.scaredIdleBugLateralRadius;
+        if (!_scaredMayLeaveRoad)
+            latR = Mathf.Min(latR, GetScaredOnRoadLateralLimit());
+
         UpdateBugIdleMovement(dt, config.scaredIdleBugMoveSpeed,
             config.scaredIdleBugDirectionChangeInterval,
-            config.scaredIdleBugLateralRadius, config.scaredIdleBugForwardRadius,
-            config.scaredMaxOffRoadDistance);
+            latR, config.scaredIdleBugForwardRadius,
+            extraOffRoad);
+    }
+
+    private float GetScaredOnRoadLateralLimit()
+    {
+        return GetRoadHalfWidth() * 0.82f;
+    }
+
+    private void ClampScaredToRoadIfRequired(bool force)
+    {
+        if (behaviorType != CreatureBehaviorType.Scared) return;
+        if (!force && _scaredMayLeaveRoad) return;
+
+        float maxLat = GetScaredOnRoadLateralLimit();
+        currentLateralOffset = Mathf.Clamp(currentLateralOffset, -maxLat, maxLat);
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLat, maxLat);
+    }
+
+    /// <summary>
+    /// Sprint forward along the course so the player has to chase on the asphalt.
+    /// </summary>
+    private void UpdateScaredOnTrackRun(float dt)
+    {
+        if (spawner == null || config == null) return;
+
+        ClampScaredToRoadIfRequired(force: true);
+
+        float target = Mathf.Max(config.scaredBaseFleeSpeed, config.scaredPlayerTrackRunSpeed);
+        currentFleeSpeed = Mathf.MoveTowards(currentFleeSpeed, target, Mathf.Max(0.01f, config.scaredSpeedBuildupRate) * dt);
+        currentSpeed = currentFleeSpeed;
+
+        spawner.SamplePath(currentDistanceAlongTrack, out _, out Vector3 pathForward);
+        Vector3 flatForward = pathForward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 1e-6f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
+
+        Vector3 runDir = flatForward;
+        if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0)
+            runDir = ApplyAvoidanceToMoveDir(flatForward, currentSpeed * dt, flatForward, right);
+
+        float along = Mathf.Max(0.35f, Vector3.Dot(runDir, flatForward));
+        currentDistanceAlongTrack += currentSpeed * along * dt;
+        currentDistanceAlongTrack = Mathf.Clamp(currentDistanceAlongTrack, 0f, spawner.GetTotalLength());
+
+        float maxLat = GetScaredOnRoadLateralLimit();
+        targetLateralOffset += currentSpeed * Vector3.Dot(runDir, right) * dt;
+        targetLateralOffset = Mathf.Clamp(targetLateralOffset, -maxLat, maxLat);
+        currentLateralOffset = Mathf.MoveTowards(currentLateralOffset, targetLateralOffset, currentSpeed * dt);
+        currentLateralOffset = Mathf.Clamp(currentLateralOffset, -maxLat, maxLat);
     }
 
     /// <summary>
