@@ -276,6 +276,8 @@ public class SideShooterProjectile : MonoBehaviour
         if (rb == null) return false;
         if (rb.GetComponentInParent<CarController>() != null) return false;
 
+        if (SpawnUtils.IsEmbeddedLocked(rb)) return false;
+
         // Generic Obstacle-layer (or similar) prop with a rigidbody.
         if (rb.isKinematic)
         {
@@ -329,6 +331,8 @@ public class SideShooterProjectile : MonoBehaviour
             found = rootObj.AddComponent<Rigidbody>();
             found.mass = Mathf.Max(0.1f, defaultObstacleMass);
         }
+
+        if (SpawnUtils.IsEmbeddedLocked(found)) return null;
 
         found.constraints = RigidbodyConstraints.None;
         if (found.isKinematic) found.isKinematic = false;

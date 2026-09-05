@@ -476,6 +476,8 @@ public class ThrownObstacle : MonoBehaviour
         if (rb == null) return;
         if (rb.GetComponentInParent<CarController>() != null) return;
 
+        if (SpawnUtils.IsEmbeddedLocked(rb)) return;
+
         if (rb.isKinematic)
         {
             rb.isKinematic = false;
@@ -724,6 +726,8 @@ public class ThrownObstacle : MonoBehaviour
             found = rootObj.AddComponent<Rigidbody>();
             found.mass = Mathf.Max(0.1f, 10f);
         }
+
+        if (SpawnUtils.IsEmbeddedLocked(found)) return found;
 
         if (found.isKinematic) found.isKinematic = false;
         found.useGravity = true;

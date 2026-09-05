@@ -125,9 +125,49 @@ public static class CrashSeverityCalculator
 
     private static float AverageLossyScale(Transform root)
     {
-        if (root == null) return 1f;
-        Vector3 l = root.lossyScale;
-        return (l.x + l.y + l.z) / 3f;
+        Transform sample = FindScaleSampleTransform(root);
+        if (sample == null) return 1f;
+        Vector3 l = sample.lossyScale;
+        return (Mathf.Abs(l.x) + Mathf.Abs(l.y) + Mathf.Abs(l.z)) / 3f;
+    }
+
+    /// <summary>
+    /// Imported meshes are often tiny, then scaled 50–200 on a child to look right.
+    /// Using that child scale makes a small rock read as a giant obstacle and one-shot the car.
+    /// Climb past those import scales and sample the prefab wrapper instead.
+    /// </summary>
+    private static Transform FindScaleSampleTransform(Transform root)
+    {
+        if (root == null) return null;
+
+        var id = root.GetComponentInParent<CrashObstacleIdentity>();
+        if (id != null)
+            return id.transform;
+
+        Transform cur = root;
+        while (cur.parent != null && MeanAbsLocalScale(cur) > 8f)
+        {
+            Transform parent = cur.parent;
+            if (IsSpawnOrWorldContainer(parent))
+                break;
+            cur = parent;
+        }
+
+        return cur;
+    }
+
+    private static float MeanAbsLocalScale(Transform t)
+    {
+        Vector3 s = t.localScale;
+        return (Mathf.Abs(s.x) + Mathf.Abs(s.y) + Mathf.Abs(s.z)) / 3f;
+    }
+
+    private static bool IsSpawnOrWorldContainer(Transform t)
+    {
+        return t.GetComponent<TrackObstacleSpawner>() != null
+            || t.GetComponent<TrackEnvironmentSpawner>() != null
+            || t.GetComponent<TrackCreatureSpawner>() != null
+            || t.GetComponent<ProceduralTrackGenerator>() != null;
     }
 
     public static CrashObstacleKind DetectKind(Transform obstacleRoot, Rigidbody obstacleRb)

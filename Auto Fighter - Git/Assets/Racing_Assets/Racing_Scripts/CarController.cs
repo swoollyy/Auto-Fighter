@@ -2233,9 +2233,10 @@ public class CarController : MonoBehaviour
             _isReorienting = false;
             return;
         }
-
+                      
         // Out of HP: no scripted steering — let the Rigidbody tumble.
-        if (isOutOfHP)
+        // Stay out of this path while _inCrash so a post-death hit can still fling.
+        if (isOutOfHP && !_inCrash)
         {
             ReleaseHandsOffDrivingPhysics(resetDragToDefaults: false);
             if (carCollider != null)
@@ -2261,7 +2262,8 @@ public class CarController : MonoBehaviour
 
         // Out of fuel only: coast/slide with player yaw + steer traction (no throttle/boost).
         // Pitch/roll use real Rigidbody physics (ramps, landings) — do not freeze rotation.
-        if (isOutOfFuel)
+        // Stay out of this path while _inCrash so a post-fuel hit can still fling.
+        if (isOutOfFuel && !_inCrash)
         {
             // Unlock pitch/roll physics (same hands-off rotation as HP death). Coast path sets drag.
             ReleaseHandsOffDrivingPhysics(resetDragToDefaults: false);
@@ -2398,9 +2400,9 @@ public class CarController : MonoBehaviour
                 ApplySkillEffects();
                 SoftClampPlanarSpeedToRoadCapAfterCrash();
 
-                if (IsDeadForAutoUpright)
+                if (IsDeadForMashRecovery)
                 {
-                    // your end-run behavior
+                    // Out of fuel/HP: keep the landed pose and resume dead-car coast/tumble.
                     ForceStopCloseCallEffects();
                     return;
                 }
@@ -4528,12 +4530,6 @@ public class CarController : MonoBehaviour
     {
         if (rb == null)
             return;
-
-        if (isOutOfFuel || isOutOfHP)
-        {
-            NotifyCrashFeedbackOnly(severity);
-            return;
-        }
 
         if (_inCrash && !_flipMashActive)
             return;
@@ -10475,6 +10471,39 @@ public class CarController : MonoBehaviour
     public float EffectiveMaxSpeed => effectiveMaxSpeed;
     public bool IsOutOfFuel => isOutOfFuel;
     public bool IsOutOfHP => isOutOfHP;
+            
+    /// <summary>True while the crash fling is active (no control, waiting to settle).</summary>
+    public bool IsInCrash => _inCrash;
+    /// <summary>True while auto-uprighting after a crash fling.</summary>
+    public bool IsReorienting => _isReorienting;
+    /// <summary>True during the short post-upright crawl before full driving feel returns.</summary>
+    public bool IsPostCrashRecovery => IsPostCrashRecoveryDriving;
+    public float CrashReorientDuration => Mathf.Max(0.01f, reorientDuration);
+    public float CrashReorientProgress01 =>
+        _isReorienting && reorientDuration > 0.0001f
+            ? Mathf.Clamp01(_reorientElapsed / reorientDuration)
+            : 0f;
+    public float PostCrashRecoveryWindow => PostCrashRecoverySeconds;
+    public float PostCrashRecoveryRemaining => Mathf.Max(0f, _postCrashRecoveryUntil - Time.time);
+    public bool IsGrounded => _isGrounded;
+
+    /// <summary>
+    /// 0 when nearly settled, 1 when still clearly sliding/falling. Used to keep crash FX
+    /// alive while the car is moving even if recovery has started.
+    /// </summary>
+    public float CrashFxMotion01
+    {
+        get
+        {
+            if (rb == null) return 0f;
+            Vector3 v = rb.velocity;
+            float planar = new Vector3(v.x, 0f, v.z).magnitude;
+            float vert = Mathf.Abs(v.y);
+            float p = Mathf.InverseLerp(0.4f, 8f, planar);
+            float y = Mathf.InverseLerp(0.6f, 10f, vert);
+            return Mathf.Clamp01(Mathf.Max(p, y));
+        }
+    }
 
     /// <summary>Returns true if a malfunction burst is currently active (throttle is reduced).</summary>
     public bool IsMalfunctioning => _malfunctionTimer > 0f;

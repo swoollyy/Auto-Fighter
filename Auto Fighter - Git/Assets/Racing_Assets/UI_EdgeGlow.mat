@@ -31,7 +31,7 @@ Material:
     m_Floats:
     - _ColorMask: 15
     - _InnerRadius: 0.386
-    - _Intensity: 3.1
+    - _Intensity: 0.39
     - _OuterRadius: 1.5
     - _Softness: 0.428
     - _Stencil: 0

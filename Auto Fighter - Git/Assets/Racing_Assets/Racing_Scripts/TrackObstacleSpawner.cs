@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 
 [System.Serializable]
@@ -19,7 +20,9 @@ public class ObstacleType
     [Range(0f, 1f)] public float stopAtNormalizedDist = 1f;
 
     [Header("Per-Type Placement Tweaks (optional)")]
-    public float extraHeightOffset = 0f;       // good for tall trucks vs low cones
+    [Tooltip("Moves this type's parent this many meters up from the road hit. Negative sinks it and locks that parent so it cannot fall or be shoved through the mesh.")]
+    [FormerlySerializedAs("extraHeightOffset")]
+    public float extraGroundPadding = 0f;
     public float extraLateralPadding = 0f;     // shrink usable width if needed
 }
 
@@ -87,9 +90,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
     [Header("Raycast")]
     [SerializeField] private LayerMask roadLayer;
-    [SerializeField] private float raycastStartHeight = 6f;
-    [SerializeField] private float raycastDownDistance = 20f;
-    [SerializeField] private float obstacleHeightOffset = 0.2f;
+    [SerializeField] private float raycastStartHeight = 50f;
+    [SerializeField] private float raycastDownDistance = 80f;
 
     [Header("Timing")]
     [SerializeField] private float updateInterval = 0.5f;
@@ -135,7 +137,6 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         roadLayer = s.roadLayer;
         raycastStartHeight = s.raycastStartHeight;
         raycastDownDistance = s.raycastDownDistance;
-        obstacleHeightOffset = s.obstacleHeightOffset;
 
         updateInterval = s.updateInterval;
         verboseDebug = s.verboseDebug;
@@ -168,7 +169,7 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
             roadLayer = roadLayer,
             raycastStartHeight = raycastStartHeight,
             raycastDownDistance = raycastDownDistance,
-            obstacleHeightOffset = obstacleHeightOffset,
+            obstacleHeightOffset = 0f,
             updateInterval = updateInterval,
             verboseDebug = verboseDebug,
         };
@@ -428,7 +429,8 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         float jitter = Random.Range(-distanceJitter, distanceJitter);
         float sampleDist = Mathf.Clamp(baseDist + jitter, 0f, _totalLength);
 
-        GameObject chosenPrefab = ChooseObstaclePrefab(sampleDist);
+        ObstacleType chosenType = GetChosenTypeForDistance(sampleDist);
+        GameObject chosenPrefab = chosenType != null ? chosenType.prefab : null;
         if (chosenPrefab == null)
             return;
 
@@ -457,112 +459,52 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         flatForward.Normalize();
 
         Vector3 right = Vector3.Cross(Vector3.up, flatForward);
-        pos += right * Random.Range(-usable, usable);
 
-        Vector3 origin = pos + Vector3.up * raycastStartHeight;
-        float maxRay = raycastStartHeight + raycastDownDistance;
+        float extraPad = chosenType != null ? chosenType.extraLateralPadding : 0f;
+        float clampedUsable = usable;
+        if (extraPad != 0f)
+            clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
 
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, maxRay, roadLayer, QueryTriggerInteraction.Ignore))
-        {
-            ObstacleType t = GetChosenTypeForDistance(sampleDist);
-            float extraHeight = t != null ? t.extraHeightOffset : 0f;
-            float extraPad = t != null ? t.extraLateralPadding : 0f;
+        float finalLateral = Random.Range(-clampedUsable, clampedUsable);
+        bool isSideShooter = chosenPrefab.GetComponentInChildren<TrackSideShooterObstacle>(true) != null;
+        if (isSideShooter && clampedUsable > 0.01f)
+            finalLateral = (Random.value < 0.5f ? -1f : 1f) * clampedUsable;
 
-            Quaternion rot = Quaternion.LookRotation(flatForward, hit.normal);
-            Transform parent = obstacleParent ? obstacleParent : transform;
+        Vector3 xz = pos + right * finalLateral;
+        if (!SpawnUtils.TryRaycastDownFromHigh(xz, roadLayer, raycastStartHeight, raycastDownDistance, out RaycastHit hit))
+            return;
 
-            Vector3 centered = hit.point;
-            float rawLateral = Vector3.Dot((pos - centered), right);
-            float clampedUsable = usable;
-            if (extraPad != 0f)
-                clampedUsable = Mathf.Max(0f, usable - Mathf.Abs(extraPad));
+        float typePadding = chosenType != null ? chosenType.extraGroundPadding : 0f;
+        Quaternion rot = Quaternion.LookRotation(flatForward, Vector3.up);
+        Transform parent = obstacleParent ? obstacleParent : transform;
+        Vector3 spawnPos = hit.point + Vector3.up * typePadding;
 
-            float finalLateral = Mathf.Clamp(rawLateral, -clampedUsable, clampedUsable);
-
-            // Side shooters self-snap to the road edge; prefer spawning already at the edge.
-            bool isSideShooter = chosenPrefab.GetComponentInChildren<TrackSideShooterObstacle>(true) != null;
-            if (isSideShooter && clampedUsable > 0.01f)
-                finalLateral = (Random.value < 0.5f ? -1f : 1f) * clampedUsable;
-
-            Vector3 spawnPos = centered + right * finalLateral;
-
-            GameObject obstacle = Instantiate(chosenPrefab, spawnPos, rot, parent);
+        GameObject obstacle = Instantiate(chosenPrefab, spawnPos, rot, parent);
+        obstacle.transform.position = spawnPos;
+        if (typePadding < 0f && !ManagesOwnPhysics(obstacle))
+            SpawnUtils.LockEmbeddedInTerrain(obstacle);
+        else
             StabilizeObstacleRigidbodies(obstacle);
 
-            var shuttle = obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true);
-            if (shuttle != null && trackGenerator != null)
-                shuttle.SetGenerator(trackGenerator);
+        var shuttle = obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true);
+        if (shuttle != null && trackGenerator != null)
+            shuttle.SetGenerator(trackGenerator);
 
-            var shooter = obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true);
-            if (shooter != null)
-            {
-                if (trackGenerator != null)
-                    shooter.SetGenerator(trackGenerator);
-                if (playerTransform != null)
-                    shooter.SetPlayer(playerTransform);
-            }
-
-            // Get the parent object's renderer bounds (not children)
-            float parentBottomOffset = GetParentBottomOffset(obstacle);
-
-            // Position so the bottom of the parent sits exactly on the ground
-            obstacle.transform.position = hit.point + hit.normal * parentBottomOffset + right * finalLateral;
-
-            _obstaclesBySlot[slot] = obstacle;
-            _queueLastSpawn.Record(obstacle.transform.position, chosenPrefab.name);
-
-            if (TrackSurfaceSpawnUtil.TryGetBoostAlongTrackSpan(chosenPrefab, sampleDist, out reservedStart, out reservedEnd))
-                _surfaceReservationBySlot[slot] = TrackSurfaceSpawnRegistry.Register(reservedStart, reservedEnd);
-        }
-    }
-
-    /// <summary>
-    /// Gets the offset needed to place the parent object's bottom at world origin.
-    /// Only considers the parent's renderer/collider, not children.
-    /// </summary>
-    private float GetParentBottomOffset(GameObject obj)
-    {
-        if (obj == null) return 0f;
-
-        Transform root = obj.transform;
-        float lowestPoint = 0f;
-        bool foundAny = false;
-
-        // Check parent's renderer only
-        Renderer parentRenderer = root.GetComponent<Renderer>();
-        if (parentRenderer != null)
+        var shooter = obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true);
+        if (shooter != null)
         {
-            Bounds localBounds = parentRenderer.bounds;
-            float bottom = localBounds.min.y - root.position.y; // local space bottom
-            if (!foundAny || bottom < lowestPoint)
-            {
-                lowestPoint = bottom;
-                foundAny = true;
-            }
+            if (trackGenerator != null)
+                shooter.SetGenerator(trackGenerator);
+            if (playerTransform != null)
+                shooter.SetPlayer(playerTransform);
         }
 
-        // Check parent's colliders only
-        Collider[] parentColliders = root.GetComponents<Collider>();
-        foreach (var col in parentColliders)
-        {
-            if (col == null || col.isTrigger) continue;
+        _obstaclesBySlot[slot] = obstacle;
+        _queueLastSpawn.Record(obstacle.transform.position, chosenPrefab.name);
 
-            Bounds localBounds = col.bounds;
-            float bottom = localBounds.min.y - root.position.y; // local space bottom
-            if (!foundAny || bottom < lowestPoint)
-            {
-                lowestPoint = bottom;
-                foundAny = true;
-            }
-        }
-
-        // If nothing found, return a small default
-        if (!foundAny) return 0.05f;
-
-        // Return the absolute value (distance from pivot to bottom)
-        return Mathf.Abs(lowestPoint);
+        if (TrackSurfaceSpawnUtil.TryGetBoostAlongTrackSpan(chosenPrefab, sampleDist, out reservedStart, out reservedEnd))
+            _surfaceReservationBySlot[slot] = TrackSurfaceSpawnRegistry.Register(reservedStart, reservedEnd);
     }
-
 
     public void SetPlayerTransform(Transform player)
     {
@@ -749,15 +691,22 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
         Physics.SyncTransforms();
     }
 
+    private static bool ManagesOwnPhysics(GameObject obstacle)
+    {
+        if (obstacle == null) return false;
+        return obstacle.GetComponentInChildren<CrossTrackObstacle>(true) != null
+            || obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true) != null
+            || obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true) != null
+            || obstacle.GetComponentInChildren<RollingLogAlongTrack>(true) != null
+            || obstacle.GetComponentInChildren<NPCTrafficCar>(true) != null;
+    }
+
     private void StabilizeObstacleRigidbodies(GameObject obstacle)
     {
         if (!stabilizeRigidbodiesOnSpawn || obstacle == null) return;
 
         // Don’t mess with obstacles that manage their own kinematic/dynamic state
-        if (obstacle.GetComponentInChildren<CrossTrackObstacle>(true) != null) return;
-        if (obstacle.GetComponentInChildren<ShuttleTrackObstacle>(true) != null) return;
-        if (obstacle.GetComponentInChildren<TrackSideShooterObstacle>(true) != null) return;
-        if (obstacle.GetComponentInChildren<RollingLogAlongTrack>(true) != null) return;
+        if (ManagesOwnPhysics(obstacle)) return;
 
         var rbs = obstacle.GetComponentsInChildren<Rigidbody>(true);
         if (rbs == null || rbs.Length == 0) return;
@@ -771,6 +720,9 @@ public class TrackObstacleSpawner : MonoBehaviour, ITrackSpawnQueueSource
 
             rb.isKinematic = true;
             if (disableGravityWhileKinematic) rb.useGravity = false;
+
+            if (!SpawnUtils.CanSafelySimulateAgainstTerrain(obstacle))
+                continue;
 
             StartCoroutine(CoEnablePhysicsAfterDelay(rb, prevUseGravity, spawnKinematicDuration));
         }

@@ -244,6 +244,9 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
     protected float currentFleeSpeed; // For scared creatures - builds up over time
     /// <summary>Scared: false until a threat is lost. Until then they stay on the asphalt.</summary>
     private bool _scaredMayLeaveRoad;
+    private float _scaredRunVarianceDeg;
+    private float _scaredRunVarianceTargetDeg;
+    private float _scaredRunVarianceRetargetAt;
     
     // Movement intent (used to prevent spin-in-place when velocity is clamped to ~0 by obstacles/edges)
     private Vector3 _intendedPlanarMoveDir;
@@ -988,7 +991,8 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
     }
 
     /// <summary>
-    /// Sprint forward along the course so the player has to chase on the asphalt.
+    /// Sprint down the course so the player has to chase on the asphalt.
+    /// Veers away from the player's side and weaves a few degrees instead of running dead-straight.
     /// </summary>
     private void UpdateScaredOnTrackRun(float dt)
     {
@@ -1008,9 +1012,58 @@ public partial class TrackCreature : MonoBehaviour, IDamageable, ITurretDamageab
         flatForward.Normalize();
         Vector3 right = Vector3.Cross(Vector3.up, flatForward).normalized;
 
-        Vector3 runDir = flatForward;
+        float variance = Mathf.Max(0f, config.scaredTrackRunHeadingVariance);
+        if (Time.time >= _scaredRunVarianceRetargetAt)
+        {
+            _scaredRunVarianceTargetDeg = variance > 0.01f ? Random.Range(-variance, variance) : 0f;
+            float interval = Mathf.Max(0.05f, config.scaredTrackRunHeadingChangeInterval);
+            _scaredRunVarianceRetargetAt = Time.time + interval * Random.Range(0.7f, 1.3f);
+        }
+
+        float varianceSlew = Mathf.Max(25f, variance * 4f);
+        _scaredRunVarianceDeg = Mathf.MoveTowards(_scaredRunVarianceDeg, _scaredRunVarianceTargetDeg, varianceSlew * dt);
+
+        float dodgeDeg = 0f;
+        float awayMax = Mathf.Max(0f, config.scaredTrackRunAwayMaxAngle);
+        float awayStrength = Mathf.Clamp01(config.scaredTrackRunAwayFromPlayer);
+        if (playerTransform != null && awayMax > 0.01f && awayStrength > 0.01f)
+        {
+            Vector3 toPlayer = playerTransform.position - transform.position;
+            toPlayer.y = 0f;
+            float playerSide = Vector3.Dot(toPlayer, right);
+            float absSide = Mathf.Abs(playerSide);
+
+            float awaySign;
+            if (absSide > 0.25f)
+            {
+                awaySign = -Mathf.Sign(playerSide);
+            }
+            else
+            {
+                float maxLatForDodge = GetScaredOnRoadLateralLimit();
+                float roomRight = maxLatForDodge - currentLateralOffset;
+                float roomLeft = maxLatForDodge + currentLateralOffset;
+                awaySign = roomRight >= roomLeft ? 1f : -1f;
+            }
+
+            float detect = Mathf.Max(0.01f, config.scaredDetectionRadius);
+            float closeness = Mathf.Clamp01(1f - (playerDistance / (detect * 1.25f)));
+            float sideMag = Mathf.Clamp01(absSide / Mathf.Max(1.2f, GetRoadHalfWidth() * 0.65f));
+            float dodgeAmt = Mathf.Lerp(0.4f, 1f, Mathf.Max(closeness, sideMag));
+            dodgeDeg = awaySign * awayMax * awayStrength * dodgeAmt;
+        }
+
+        float maxYaw = Mathf.Max(awayMax, variance);
+        float yawDeg = Mathf.Clamp(_scaredRunVarianceDeg + dodgeDeg, -maxYaw, maxYaw);
+        Vector3 runDir = Quaternion.AngleAxis(yawDeg, Vector3.up) * flatForward;
+        runDir.y = 0f;
+        if (runDir.sqrMagnitude < 1e-6f)
+            runDir = flatForward;
+        else
+            runDir.Normalize();
+
         if (enableMovementAvoidance && GetAvoidanceLayerMask().value != 0)
-            runDir = ApplyAvoidanceToMoveDir(flatForward, currentSpeed * dt, flatForward, right);
+            runDir = ApplyAvoidanceToMoveDir(runDir, currentSpeed * dt, flatForward, right);
 
         float along = Mathf.Max(0.35f, Vector3.Dot(runDir, flatForward));
         currentDistanceAlongTrack += currentSpeed * along * dt;

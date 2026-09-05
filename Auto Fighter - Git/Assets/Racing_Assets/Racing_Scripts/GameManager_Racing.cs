@@ -109,6 +109,12 @@ public class GameManager_Racing : MonoBehaviour
     [Tooltip("Press Start (Options) on PS5 controller to spawn one NPC traffic car ahead.")]
     [SerializeField] private bool enableTestSpawnCar = false;
 
+    [Header("Ambient Particles")]
+    [Tooltip("World-space motes streamed along the track around the car (not parented to it).")]
+    [SerializeField] private GameObject ambientParticlesPrefab;
+
+    private AmbientTrackParticles _ambientTrackParticles;
+
 
     private Coroutine _crashSlowMoRoutine;
     private bool _ownsCrashSlowMo;
@@ -1256,7 +1262,8 @@ public class GameManager_Racing : MonoBehaviour
         // Mid-run crash coin penalty only — not after fuel/HP are gone (run ending / settle).
         if (enableCurrencyLossOnCrash && !_currencyAwarded && !_finalizePending)
         {
-            if (carController != null && (carController.IsOutOfFuel || carController.IsOutOfHP))
+            bool runEnding = carController != null && (carController.IsOutOfFuel || carController.IsOutOfHP);
+            if (runEnding)
                 return;
 
             int runCoins = _pickupCoinsThisRun + _obstacleCoinsThisRun;
@@ -1925,9 +1932,32 @@ public class GameManager_Racing : MonoBehaviour
         if (uiManager != null && carController != null)
             uiManager.BindCar(carController);
 
+        EnsureAmbientParticles(trackGenerator, carInstance.transform);
+
         ApplyLoadingUiState("Ready!", 0.99f);
     }
 
+    private void EnsureAmbientParticles(ProceduralTrackGenerator generator, Transform car)
+    {
+        if (car == null)
+            return;
+
+        if (_ambientTrackParticles == null)
+        {
+            _ambientTrackParticles = FindObjectOfType<AmbientTrackParticles>();
+            if (_ambientTrackParticles == null && ambientParticlesPrefab != null)
+            {
+                GameObject go = Instantiate(ambientParticlesPrefab);
+                go.name = ambientParticlesPrefab.name;
+                _ambientTrackParticles = go.GetComponent<AmbientTrackParticles>();
+                if (_ambientTrackParticles == null)
+                    _ambientTrackParticles = go.AddComponent<AmbientTrackParticles>();
+            }
+        }
+
+        if (_ambientTrackParticles != null)
+            _ambientTrackParticles.Initialize(generator, car);
+    }
 
     private bool RestartAllowedNow()
     {

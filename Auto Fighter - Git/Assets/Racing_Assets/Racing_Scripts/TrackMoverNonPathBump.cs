@@ -46,6 +46,8 @@ public static class TrackMoverNonPathBump
         float scale = Mathf.Lerp(speedScaleMin, speedScaleMax, t);
         float dv = baseUpVelocityChange * scale;
 
+        if (SpawnUtils.IsEmbeddedLocked(otherRb)) return;
+
         if (otherRb.isKinematic)
         {
             if (!wakeKinematicObstacles) return;

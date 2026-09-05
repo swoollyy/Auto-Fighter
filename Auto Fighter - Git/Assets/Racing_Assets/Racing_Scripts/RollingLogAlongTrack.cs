@@ -722,7 +722,7 @@ public class RollingLogAlongTrack : MonoBehaviour
         if (racing != null)
         {
             Rigidbody orb = o.attachedRigidbody != null ? o.attachedRigidbody : o.GetComponentInParent<Rigidbody>();
-            if (orb != null)
+            if (orb != null && !SpawnUtils.IsEmbeddedLocked(orb))
             {
                 if (orb.isKinematic)
                 {

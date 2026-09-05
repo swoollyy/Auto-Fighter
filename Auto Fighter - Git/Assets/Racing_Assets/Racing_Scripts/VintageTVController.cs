@@ -52,8 +52,10 @@ public class VintageTVController : MonoBehaviour
     [SerializeField] private float crashVisualSeverityFloor = 0.5f;
     [Tooltip("At severity 1.0, intensity/noise scale by (1 + this). E.g. 3 => up to 4× material defaults.")]
     [SerializeField, Min(0f)] private float crashIntensityAdd = 0.8f;
-    [Tooltip("How fast crash contribution eases back to zero after a non-lethal crash.")]
+    [Tooltip("Fallback ease rate if the car isn't available to sync fade length. Unused while a crash fling/recovery is driving the envelope.")]
     [SerializeField] private float crashEaseOutSpeed = 1.8f;
+    [Tooltip("After the crash fling settles, CRT + color-flip take at least this long to ease out (scaled seconds).")]
+    [SerializeField, Min(0.05f)] private float minCrashFxFadeSeconds = 0.55f;
     [Tooltip("Non-fatal crashes always spike to this CRT severity (same peak as a full burst), then ease out. Can exceed 1.")]
     [SerializeField, Min(0.01f)] private float nonFatalBurstSeverity = 2f;
     [Tooltip("Multiplier on top of crash spike for lethal / run-ending crash (can exceed 1).")]
@@ -92,6 +94,14 @@ public class VintageTVController : MonoBehaviour
     private float _crash01; // 0..1+, from severity (CRT intensity/noise)
     private float _crashHoldUntil; // unscaledTime — don't ease crash flare before this
     private float _crashEaseOutSpeedOverride = -1f; // >= 0 overrides crashEaseOutSpeed until flare settles
+    private float _crashFxPeak;
+    private float _colorFlipPeak;
+    private bool _crashFxOwnsColorFlip;
+    private bool _crashFxFading;
+    private float _crashFxFadeElapsed;
+    private float _crashFxFadeDuration = 0.55f;
+    private float _crashFxFadeFrom;
+    private float _colorFlipFadeFrom;
     private bool _wasDrivingEffects;
     private float _colorFlip01; // 0..1 — separate from CRT so fuel punch can skip flip
     private float _colorFlipHoldUntil;
@@ -228,23 +238,15 @@ public class VintageTVController : MonoBehaviour
         if (_boost01 > 0f)
             _boost01 = Mathf.MoveTowards(_boost01, 0f, boostEaseOutSpeed * Time.deltaTime);
 
-        // Hold crash flare (e.g. out-of-fuel), then ease — optionally slower than normal crashes.
-        if (_crash01 > 0f && Time.unscaledTime >= _crashHoldUntil)
-        {
-            float ease = _crashEaseOutSpeedOverride >= 0f ? _crashEaseOutSpeedOverride : crashEaseOutSpeed;
-            _crash01 = Mathf.MoveTowards(_crash01, 0f, ease * dt);
-            if (_crash01 <= 0.0001f)
-            {
-                _crash01 = 0f;
-                _crashEaseOutSpeedOverride = -1f;
-            }
-        }
+        // Hold crash flare while tumbling, then fade with recovery (not a fixed snap-off).
+        TickCrashVisual();
 
         PushToMaterial();
     }
 
     private void TickColorFlip(float dt)
     {
+        if (_crashFxOwnsColorFlip) return;
         if (_colorFlip01 <= 0f) return;
         if (Time.unscaledTime < _colorFlipHoldUntil) return;
 
@@ -278,6 +280,7 @@ public class VintageTVController : MonoBehaviour
         _introOverrideActive = true;
         _boost01 = 0f;
         _crash01 = 0f;
+        ClearCrashFxEnvelope();
         ClearColorFlip();
         ApplyIntroLookToMaterial();
     }
@@ -460,6 +463,7 @@ public class VintageTVController : MonoBehaviour
         _crash01 = 0f;
         _crashHoldUntil = 0f;
         _crashEaseOutSpeedOverride = -1f;
+        ClearCrashFxEnvelope();
         ClearColorFlip();
         _wasDrivingEffects = false;
         // Don't clear an active intro override / blend from crash/unbind paths.
@@ -537,7 +541,147 @@ public class VintageTVController : MonoBehaviour
         _crash01 = 0f;
         _crashHoldUntil = 0f;
         _crashEaseOutSpeedOverride = -1f;
+        ClearCrashFxEnvelope();
         ClearColorFlip();
+    }
+
+    private void ClearCrashFxEnvelope()
+    {
+        _crashFxPeak = 0f;
+        _colorFlipPeak = 0f;
+        _crashFxOwnsColorFlip = false;
+        _crashFxFading = false;
+        _crashFxFadeElapsed = 0f;
+        _crashFxFadeDuration = Mathf.Max(0.05f, minCrashFxFadeSeconds);
+        _crashFxFadeFrom = 0f;
+        _colorFlipFadeFrom = 0f;
+    }
+
+    private void BeginCrashFxBurst(float crashPeak, bool includeColorFlip)
+    {
+        float peak = Mathf.Max(0.01f, crashPeak);
+        _crashFxPeak = Mathf.Max(_crashFxPeak, peak);
+        _crash01 = Mathf.Max(_crash01, _crashFxPeak);
+        _crashFxFading = false;
+        _crashFxFadeElapsed = 0f;
+
+        if (!includeColorFlip)
+            return;
+
+        _crashFxOwnsColorFlip = true;
+        _colorFlipPeak = Mathf.Max(_colorFlipPeak, Mathf.Clamp01(crashColorFlip));
+        _colorFlip01 = Mathf.Max(_colorFlip01, _colorFlipPeak);
+    }
+
+    /// <summary>
+    /// Hold CRT/color-flip at full crash strength while the car is still tumbling/falling,
+    /// then smoothstep back to the regular look over recovery (reorient + post-crash crawl).
+    /// Remaining motion (hill fall, obstacle slide) slows the fade so it doesn't die off first.
+    /// </summary>
+    private void TickCrashVisual()
+    {
+        bool timedHold = Time.unscaledTime < _crashHoldUntil;
+        bool inFling = _car != null && _car.IsInCrash;
+
+        if (inFling)
+        {
+            if (_crashFxPeak < 0.01f)
+                _crashFxPeak = Mathf.Max(_crash01, 0.01f);
+            _crash01 = Mathf.Max(_crash01, _crashFxPeak);
+            if (_crashFxOwnsColorFlip)
+            {
+                if (_colorFlipPeak < 0.01f)
+                    _colorFlipPeak = Mathf.Max(_colorFlip01, Mathf.Clamp01(crashColorFlip));
+                _colorFlip01 = Mathf.Max(_colorFlip01, _colorFlipPeak);
+            }
+            _crashFxFading = false;
+            _crashFxFadeElapsed = 0f;
+            return;
+        }
+
+        if (timedHold)
+            return;
+
+        if (_crash01 <= 0.0001f && (!_crashFxOwnsColorFlip || _colorFlip01 <= 0.0001f))
+        {
+            FinishCrashFxFade();
+            return;
+        }
+
+        if (!_crashFxFading)
+        {
+            _crashFxFading = true;
+            _crashFxFadeElapsed = 0f;
+            _crashFxFadeFrom = Mathf.Max(_crash01, _crashFxPeak);
+            _colorFlipFadeFrom = _crashFxOwnsColorFlip ? Mathf.Max(_colorFlip01, _colorFlipPeak) : _colorFlip01;
+            _crashFxFadeDuration = ResolveCrashFxFadeDuration();
+        }
+
+        float fadeDt = Time.deltaTime;
+        if (fadeDt < 0.00001f)
+            fadeDt = Time.unscaledDeltaTime;
+
+        if (_car != null)
+        {
+            float motion01 = _car.CrashFxMotion01;
+            bool stillInRecovery = _car.IsReorienting || _car.IsPostCrashRecovery;
+            bool stillAirborne = !_car.IsGrounded;
+            if ((stillInRecovery || stillAirborne) && motion01 > 0.05f)
+                fadeDt *= Mathf.Lerp(1f, 0.12f, motion01);
+        }
+
+        _crashFxFadeElapsed += fadeDt;
+        float u = _crashFxFadeDuration > 0.0001f
+            ? Mathf.Clamp01(_crashFxFadeElapsed / _crashFxFadeDuration)
+            : 1f;
+        float w = u * u * (3f - 2f * u);
+
+        _crash01 = Mathf.Lerp(_crashFxFadeFrom, 0f, w);
+        if (_crashFxOwnsColorFlip)
+            _colorFlip01 = Mathf.Lerp(_colorFlipFadeFrom, 0f, w);
+
+        if (u >= 1f)
+            FinishCrashFxFade();
+    }
+
+    private float ResolveCrashFxFadeDuration()
+    {
+        float minFade = Mathf.Max(0.05f, minCrashFxFadeSeconds);
+        float duration = minFade;
+
+        if (_car != null)
+        {
+            float reorientLeft = _car.IsReorienting
+                ? _car.CrashReorientDuration * (1f - _car.CrashReorientProgress01)
+                : 0f;
+            float postLeft = _car.IsPostCrashRecovery
+                ? _car.PostCrashRecoveryRemaining
+                : (_car.IsReorienting ? _car.PostCrashRecoveryWindow : 0f);
+            duration = Mathf.Max(duration, reorientLeft + postLeft);
+        }
+
+        if (_crashEaseOutSpeedOverride >= 0.01f)
+        {
+            float from = Mathf.Max(_crashFxFadeFrom, 0.01f);
+            duration = Mathf.Max(duration, from / _crashEaseOutSpeedOverride);
+        }
+
+        return duration;
+    }
+
+    private void FinishCrashFxFade()
+    {
+        _crash01 = 0f;
+        _crashFxPeak = 0f;
+        _crashFxFading = false;
+        _crashFxFadeElapsed = 0f;
+        _crashEaseOutSpeedOverride = -1f;
+        if (_crashFxOwnsColorFlip)
+        {
+            _colorFlip01 = 0f;
+            _crashFxOwnsColorFlip = false;
+            _colorFlipPeak = 0f;
+        }
     }
 
     private void ClearColorFlip()
@@ -545,6 +689,8 @@ public class VintageTVController : MonoBehaviour
         _colorFlip01 = 0f;
         _colorFlipHoldUntil = 0f;
         _colorFlipEaseOutSpeed = crashColorFlipEaseOutSpeed;
+        _crashFxOwnsColorFlip = false;
+        _colorFlipPeak = 0f;
     }
 
     private void PulseColorFlip(float amount, float easeOutSpeed, float holdSeconds)
@@ -574,12 +720,11 @@ public class VintageTVController : MonoBehaviour
         if (Time.unscaledTime < _suppressCrashColorFlipUntil)
             return;
 
-        // Non-fatal: full CRT burst + color flip, then fade (no permanent hold).
+        // Hold at full burst for the whole fling, then fade with recovery (TickCrashVisual).
         float peak = Mathf.Max(0.01f, nonFatalBurstSeverity);
         if (crashVisualSeverityFloor > 0f)
             peak = Mathf.Max(peak, Mathf.Clamp01(crashVisualSeverityFloor));
-        _crash01 = Mathf.Max(_crash01, peak);
-        PulseColorFlip(crashColorFlip, crashColorFlipEaseOutSpeed, 0f);
+        BeginCrashFxBurst(peak, includeColorFlip: true);
     }
 
     private void HandleLethalCrash(float severity01)
@@ -587,8 +732,7 @@ public class VintageTVController : MonoBehaviour
         // Run-ending CRT spike. Color flip comes from hit feel + final explosion separately.
         float floor = Mathf.Max(1f, lethalCrashMultiplier);
         float fromSev = Mathf.Clamp01(severity01) * Mathf.Max(1f, lethalCrashMultiplier);
-        _crash01 = Mathf.Max(_crash01, Mathf.Max(floor, fromSev));
-        PulseColorFlip(crashColorFlip, crashColorFlipEaseOutSpeed, 0f);
+        BeginCrashFxBurst(Mathf.Max(floor, fromSev), includeColorFlip: true);
     }
 
     /// <summary>
@@ -600,6 +744,9 @@ public class VintageTVController : MonoBehaviour
         float severity = Mathf.Max(0f, outOfFuelFlareSeverity);
 
         _crash01 = Mathf.Max(_crash01, severity);
+        _crashFxPeak = Mathf.Max(_crashFxPeak, severity);
+        _crashFxFading = false;
+        _crashFxFadeElapsed = 0f;
         _crashHoldUntil = Time.unscaledTime + Mathf.Max(0f, outOfFuelFlareHoldSeconds);
         _crashEaseOutSpeedOverride = outOfFuelFlareEaseOutSpeed > 0f
             ? outOfFuelFlareEaseOutSpeed
@@ -623,6 +770,9 @@ public class VintageTVController : MonoBehaviour
         if (crashVisualSeverityFloor > 0f)
             peak = Mathf.Max(peak, Mathf.Clamp01(crashVisualSeverityFloor));
         _crash01 = Mathf.Max(_crash01, peak);
+        _crashFxPeak = Mathf.Max(_crashFxPeak, peak);
+        _crashFxFading = false;
+        _crashFxFadeElapsed = 0f;
         _crashHoldUntil = Time.unscaledTime + Mathf.Max(0f, deathExplosionColorFlipHoldSeconds);
         _crashEaseOutSpeedOverride = deathExplosionColorFlipEaseOutSpeed > 0f
             ? deathExplosionColorFlipEaseOutSpeed
@@ -632,6 +782,8 @@ public class VintageTVController : MonoBehaviour
             crashColorFlip,
             deathExplosionColorFlipEaseOutSpeed,
             deathExplosionColorFlipHoldSeconds);
+        // Death explosion owns the invert fade; don't let crash-recovery envelope cut it short.
+        _crashFxOwnsColorFlip = false;
 
         if (!IsIntroOverrideActive)
             PushToMaterial();

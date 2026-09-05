@@ -190,6 +190,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 0
       scaredIdleBugDirectionChangeInterval: 0.05
@@ -310,12 +314,16 @@ MonoBehaviour:
       passiveIdleBugDirectionChangeInterval: 12.89
       passiveIdleBugLateralRadius: 2.64
       passiveIdleBugForwardRadius: 1.84
-      scaredDetectionRadius: 24
-      scaredBaseFleeSpeed: 16
-      scaredMaxFleeSpeed: 20
-      scaredSpeedBuildupRate: 2.3
+      scaredDetectionRadius: 12
+      scaredBaseFleeSpeed: 8
+      scaredMaxFleeSpeed: 15
+      scaredSpeedBuildupRate: 0.8
       scaredMaxOffRoadDistance: 23
-      scaredPlayerTrackRunSpeed: 19
+      scaredPlayerTrackRunSpeed: 12
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 11.3
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 1
       scaredIdleBugMoveSpeed: 1.77
       scaredIdleBugDirectionChangeInterval: 10.38
@@ -442,6 +450,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1
@@ -464,8 +476,8 @@ MonoBehaviour:
       aggressiveIdleBugLateralRadius: 13.3
       aggressiveIdleBugForwardRadius: 12.9
       aggressiveHuntScaredCreatures: 1
-      aggressiveHuntRadius: 10
-      aggressiveHuntSpeedMultiplier: 2
+      aggressiveHuntRadius: 8
+      aggressiveHuntSpeedMultiplier: 1.3
       aggressiveHuntNpcTraffic: 1
       aggressiveNpcTrafficDetectRadius: 6
       aggressiveDetectionRadius: 6
@@ -568,6 +580,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1

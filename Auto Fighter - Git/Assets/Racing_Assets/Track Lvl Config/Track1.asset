@@ -78,7 +78,7 @@ MonoBehaviour:
       startAtNormalizedDist: 0.1
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: -0.2
       extraLateralPadding: 0
     - id: Rock
       prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
@@ -86,7 +86,7 @@ MonoBehaviour:
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.3
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: -0.3
       extraLateralPadding: 0
     - id: Barrier
       prefab: {fileID: 3874382558013832276, guid: b3d9c63f4edc44242a107ccad0185dd0, type: 3}
@@ -94,7 +94,7 @@ MonoBehaviour:
       startAtNormalizedDist: 0.01
       fullWeightNormalizedDist: 0.4
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: 0
       extraLateralPadding: 0
     - id: Tree
       prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
@@ -102,7 +102,7 @@ MonoBehaviour:
       startAtNormalizedDist: 0.03
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: 0
       extraLateralPadding: 0
     - id: Shuttle Track Obstacle
       prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
@@ -110,15 +110,15 @@ MonoBehaviour:
       startAtNormalizedDist: 0.15
       fullWeightNormalizedDist: 0.6
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: 0
       extraLateralPadding: 0
     - id: Boost Ramp
       prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
-      baseWeight: 1
+      baseWeight: 0.4
       startAtNormalizedDist: 0.1
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
-      extraHeightOffset: -0.5
+      extraGroundPadding: -0.3
       extraLateralPadding: 0
     - id: Boost Pad
       prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
@@ -126,7 +126,7 @@ MonoBehaviour:
       startAtNormalizedDist: 0.05
       fullWeightNormalizedDist: 0.5
       stopAtNormalizedDist: 1
-      extraHeightOffset: 0
+      extraGroundPadding: 0
       extraLateralPadding: 0
     useSmoothing: 1
     smoothingSubdivisionsPerSegment: 6
@@ -198,6 +198,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 0
       scaredIdleBugDirectionChangeInterval: 0.05
@@ -324,6 +328,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 1.5
       scaredMaxOffRoadDistance: 14.12
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 1
       scaredIdleBugMoveSpeed: 1.77
       scaredIdleBugDirectionChangeInterval: 10.38
@@ -450,6 +458,10 @@ MonoBehaviour:
       scaredSpeedBuildupRate: 0
       scaredMaxOffRoadDistance: 0
       scaredPlayerTrackRunSpeed: 14
+      scaredTrackRunAwayFromPlayer: 0.85
+      scaredTrackRunAwayMaxAngle: 26
+      scaredTrackRunHeadingVariance: 10
+      scaredTrackRunHeadingChangeInterval: 0.4
       scaredIdleUseBugMovement: 0
       scaredIdleBugMoveSpeed: 1.25
       scaredIdleBugDirectionChangeInterval: 1

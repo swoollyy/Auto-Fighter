@@ -1415,7 +1415,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   testAlwaysAccelerate: 0
-  baseAcceleration: 4.3
+  baseAcceleration: 5.5
   baseMaxSpeed: 15
   baseBrakingForce: 5
   baseDrag: 1
@@ -1470,7 +1470,7 @@ MonoBehaviour:
   reverseSteerEngageForwardSpeed: 0.2
   baseSteeringDamp: 10
   enableSteerTraction: 1
-  steerTractionReorientRate: 4.51
+  steerTractionReorientRate: 3.18
   steerRollingAccel: 1.48
   minSpeedForSteerTraction: 0.1
   lateralFrictionWhileSteering: 0.76
@@ -1500,15 +1500,15 @@ MonoBehaviour:
   enableLandingBoost: 1
   landingBoostStrength: 0.45
   landingBoostDuration: 0.23
-  landingBoostFalloff: 2.66
+  landingBoostFalloff: 0.89
   enableLandingLateralBleed: 0
   landingLateralBleedPerSecond: 14
   landingLateralBleedDuration: 0.45
   enableLandingSlipStraighten: 1
-  landingSlipStraightenDuration: 0.3
+  landingSlipStraightenDuration: 0.4
   landingSlipCarryFraction: 0
-  landingSlipMaxAlignDegrees: 28
-  landingSlipLateralKeep: 0.75
+  landingSlipMaxAlignDegrees: 13.6
+  landingSlipLateralKeep: 0.65
   enableBadLandingCrash: 1
   badLandingMinAirborneSeconds: 0.2
   badLandingUpAlignDotMin: 0.332
@@ -1534,9 +1534,9 @@ MonoBehaviour:
   requireDriftUnlock: 1
   driftKey: 304
   driftMinSpeed: 7
-  maxDriftSteerMultiplier: 2.2
-  driftSteeringInputBuildupMultiplier: 0.43
-  driftBuildRate: 0.22
+  maxDriftSteerMultiplier: 1.9
+  driftSteeringInputBuildupMultiplier: 0.42
+  driftBuildRate: 0.37
   driftReleaseRate: 3.17
   driftSideForce: 0.47
   driftSideForceWhileAccelerating: 0.4
@@ -1779,7 +1779,7 @@ MonoBehaviour:
   minImpactSpeed: 2.3
   maxImpactSpeed: 14
   minCrashDuration: 0.1
-  maxCrashDuration: 0.3
+  maxCrashDuration: 0.6
   impulsePerUnitSpeed: 1.12
   torquePerUnitSpeed: 18.8
   maxCrashFlingSpeed: 12
@@ -1809,7 +1809,7 @@ MonoBehaviour:
   crashYawTorqueMultiplier: 10.58
   crashRollTorqueMultiplier: 7.47
   crashPitchTorqueMultiplier: 9.17
-  reorientDuration: 0.25
+  reorientDuration: 0.2
   groundedDurationRequired: 0.5
   groundCheckDistance: 0.3
   groundCheckLayers:

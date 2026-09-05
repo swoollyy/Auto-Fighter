@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [System.Serializable]
 public class EnvironmentType
@@ -10,10 +11,18 @@ public class EnvironmentType
     [Min(0f)] public float baseWeight = 1f;
 
     [Header("Placement Tweaks")]
-    public float extraHeightOffset = 0f;
+    [Tooltip("Moves this type's parent this many meters up from the ground hit. Negative sinks it and locks that parent so it cannot fall or be shoved through the mesh.")]
+    [FormerlySerializedAs("extraHeightOffset")]
+    public float extraGroundPadding = 0f;
     public float extraLateralPadding = 0f;
     [Tooltip("If false, this type stays world-upright (useful for trees).")]
     public bool alignToGroundNormal = true;
+
+    [Tooltip("Random spin around up (degrees). 360 = any facing.")]
+    [Range(0f, 360f)] public float randomYawDegrees = 360f;
+
+    [Tooltip("Random extra tilt off the placement up axis (degrees). Keep 0 for trees.")]
+    [Range(0f, 45f)] public float randomTiltDegrees = 0f;
 }
 
 public class TrackEnvironmentSpawner : MonoBehaviour
@@ -78,7 +87,9 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     [SerializeField] private float updateInterval = 0.15f;
     [Tooltip("How far ahead of the player (along the track) environment props are spawned. Raise this to stop trees/rocks popping in.")]
     [SerializeField] private float maxSpawnDistanceAhead = 400f;
+    [Tooltip("How far behind the player we still fill empty roadside slots. Does not despawn anything.")]
     [SerializeField] private float maxSpawnDistanceBehind = 90f;
+    [Tooltip("Only recycle props this far behind the player. Never despawn anything still ahead or in view.")]
     [SerializeField] private float despawnBehindDistance = 50f;
     [Tooltip("Max new instances created in one Update tick. Keeps streaming off the hitch list.")]
     [SerializeField, Min(1)] private int maxSpawnsPerUpdate = 20;
@@ -101,9 +112,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
 
     [Header("Grounding")]
     [SerializeField] private bool autoGroundUsingBounds = true;
-    [SerializeField] private float extraGroundPadding = 0.02f;
-    [Tooltip("Maximum downward snap distance along ground normal. Prevents extreme teleports on bad bounds.")]
-    [SerializeField, Min(0f)] private float maxSnapDownDistance = 2.5f;
+    [SerializeField, Min(0f)] private float maxSnapDownDistance = 80f;
 
     [Header("Physics")]
     [Tooltip("Environment props stay fixed on hills; rigidbodies are forced kinematic with gravity off.")]
@@ -271,13 +280,13 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         if (_totalLength <= 0f || !HasAnyValidType()) return;
 
         int totalSlots = Mathf.Max(1, _maxSlotIndex + 1);
-        int capacity = Mathf.Min(maxActive, totalSlots * LateralsPerSlot);
+        int capacity = Mathf.Min(EffectiveMaxActive(), totalSlots * LateralsPerSlot);
         int want = Mathf.Clamp(targetCount, 1, capacity);
 
         for (int slot = 0; slot < totalSlots && _spawnedByKey.Count < want; slot++)
         {
             TryFillSlot(slot);
-            if (_spawnedByKey.Count >= maxActive)
+            if (_spawnedByKey.Count >= EffectiveMaxActive())
                 break;
         }
 
@@ -307,8 +316,9 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         int slotMin = Mathf.Clamp(Mathf.FloorToInt(windowMin / spacing), 0, _maxSlotIndex);
         int slotMax = Mathf.Clamp(Mathf.CeilToInt(windowMax / spacing), 0, _maxSlotIndex);
 
-        RecycleOutsideWindow(slotMin, slotMax);
+        RecyclePassedBehind(centerDist);
 
+        int cap = EffectiveMaxActive();
         int spawned = 0;
         int laterals = LateralsPerSlot;
         int start = Mathf.Clamp(_streamCursorSlot, slotMin, slotMax);
@@ -321,6 +331,8 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             {
                 for (int sub = 0; sub < laterals && spawned < spawnBudget; sub++)
                 {
+                    if (_spawnedByKey.Count >= cap)
+                        break;
                     if (TrySpawnAtSlot(slot, sub))
                         spawned++;
                 }
@@ -334,17 +346,41 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         return spawned;
     }
 
-    private void RecycleOutsideWindow(int slotMin, int slotMax)
+    private int EffectiveMaxActive()
+    {
+        float keepMeters = maxSpawnDistanceAhead + Mathf.Max(despawnBehindDistance, 40f);
+        int windowSlots = Mathf.CeilToInt(keepMeters / Mathf.Max(0.5f, spacing)) + 2;
+        return Mathf.Max(maxActive, windowSlots * LateralsPerSlot);
+    }
+
+    private void RecyclePassedBehind(float playerDist)
     {
         if (_spawnedByKey.Count == 0)
             return;
+
+        float despawnBefore = playerDist - Mathf.Max(0f, despawnBehindDistance);
+        Camera cam = Camera.main;
+        Plane[] frustum = null;
+        if (cam != null)
+        {
+            float camDist = EstimateDistanceByClosestPoint(cam.transform.position);
+            despawnBefore = Mathf.Min(playerDist, camDist) - Mathf.Max(0f, despawnBehindDistance);
+            frustum = GeometryUtility.CalculateFrustumPlanes(cam);
+        }
 
         _recycleScratch.Clear();
         foreach (var kv in _spawnedByKey)
         {
             UnpackKey(kv.Key, out int slot, out _);
-            if (slot < slotMin || slot > slotMax)
-                _recycleScratch.Add(kv.Key);
+            float dist = slot * spacing;
+            if (dist >= playerDist)
+                continue;
+            if (dist >= despawnBefore)
+                continue;
+            if (frustum != null && SpawnUtils.IsInCameraFrustum(kv.Value, frustum))
+                continue;
+
+            _recycleScratch.Add(kv.Key);
         }
 
         for (int i = 0; i < _recycleScratch.Count; i++)
@@ -356,7 +392,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         int laterals = LateralsPerSlot;
         for (int sub = 0; sub < laterals; sub++)
         {
-            if (_spawnedByKey.Count >= maxActive)
+            if (_spawnedByKey.Count >= EffectiveMaxActive())
                 return;
             TrySpawnAtSlot(slot, sub);
         }
@@ -457,6 +493,19 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     {
         LayerMask castMask = groundMask | groundMaskRaycastExtra;
 
+        if (SpawnUtils.TryRaycastDownFromHigh(xzWorld, castMask, rayOriginClearanceAboveTerrain, raycastDownDistance, out RaycastHit highHit))
+        {
+            groundPoint = highHit.point;
+            groundNormal = highHit.normal.sqrMagnitude > 1e-8f ? highHit.normal.normalized : Vector3.up;
+            if (TryTerrainSurfaceAtXZ(xzWorld.x, xzWorld.z, out Vector3 tPt, out Vector3 tN) &&
+                tPt.y > groundPoint.y + 0.05f)
+            {
+                groundPoint = tPt;
+                groundNormal = tN.sqrMagnitude > 1e-8f ? tN.normalized : Vector3.up;
+            }
+            return true;
+        }
+
         int n = Physics.RaycastNonAlloc(rayOrigin, Vector3.down, _rayHits, maxRayDist, castMask, QueryTriggerInteraction.Ignore);
         if (n > 0)
         {
@@ -502,7 +551,7 @@ public class TrackEnvironmentSpawner : MonoBehaviour
     {
         int key = PackKey(slot, sub);
         if (_spawnedByKey.ContainsKey(key) || _failedKeys.Contains(key)) return false;
-        if (_spawnedByKey.Count >= maxActive) return false;
+        if (_spawnedByKey.Count >= EffectiveMaxActive()) return false;
         if (_totalLength <= 0f) return false;
 
         float dist = slot * spacing;
@@ -566,13 +615,9 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         bool alignToGround = type == null || type.alignToGroundNormal;
         Vector3 up = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
         Vector3 placementUp = alignToGround ? up : Vector3.up;
-        Quaternion rot = AlignRotationToGround(flatForward, placementUp);
-        float yawJitter = (Hash01(slot, sub, 17) - 0.5f) * 50f;
-        rot = Quaternion.Euler(0f, yawJitter, 0f) * rot;
-        float h = baseHeightOffset + (type != null ? type.extraHeightOffset : 0f);
 
-        Vector3 spawnPos = groundPoint + placementUp * h;
-        GameObject go = TakeFromPool(prefab, spawnPos, rot, parent);
+        Vector3 spawnPos = groundPoint;
+        GameObject go = TakeFromPool(prefab, spawnPos, Quaternion.identity, parent);
 
         if (overrideSpawnedLayer)
         {
@@ -580,10 +625,16 @@ public class TrackEnvironmentSpawner : MonoBehaviour
             else go.layer = spawnedEnvironmentLayer;
         }
 
-        if (autoGroundUsingBounds)
-            SnapInstanceToGroundOnPlane(go, groundPoint, placementUp, extraGroundPadding, maxSnapDownDistance);
+        SpawnUtils.RandomizeWorldYaw(go);
+        if (alignToGround && (placementUp - Vector3.up).sqrMagnitude > 1e-6f)
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, placementUp) * go.transform.rotation;
 
-        ConfigureEnvironmentRigidbodies(go);
+        float typePadding = type != null ? type.extraGroundPadding : 0f;
+        go.transform.position = groundPoint + Vector3.up * typePadding;
+        if (typePadding < 0f)
+            SpawnUtils.LockEmbeddedInTerrain(go);
+        else
+            ConfigureEnvironmentRigidbodies(go);
 
         _spawnedByKey[key] = go;
         _prefabByKey[key] = prefab;
@@ -1012,93 +1063,82 @@ public class TrackEnvironmentSpawner : MonoBehaviour
         dst.Add(src[src.Count - 1]);
     }
 
-    // =========================
-    // Ground snap + alignment (slopes)
-    // =========================
-    private static Quaternion AlignRotationToGround(Vector3 worldForwardFlat, Vector3 groundNormal)
-    {
-        Vector3 n = groundNormal.sqrMagnitude > 1e-8f ? groundNormal.normalized : Vector3.up;
-        Vector3 f = Vector3.ProjectOnPlane(worldForwardFlat, n);
-        if (f.sqrMagnitude < 1e-6f)
-            f = Vector3.ProjectOnPlane(Vector3.forward, n);
-        if (f.sqrMagnitude < 1e-6f)
-            f = Vector3.Cross(n, Vector3.right);
-        f.Normalize();
-        return Quaternion.LookRotation(f, n);
-    }
-
-    /// <summary>
-    /// Slide along surface normal so the collider support point sits at <paramref name="pad"/> above the hit.
-    /// Uses Collider.ClosestPoint from below for robust grounding even when prefab pivots are centered.
-    /// </summary>
     private static void SnapInstanceToGroundOnPlane(GameObject go, Vector3 surfacePoint, Vector3 surfaceNormal, float pad, float maxDownDistance)
     {
         if (go == null) return;
 
         Vector3 n = surfaceNormal.sqrMagnitude > 1e-8f ? surfaceNormal.normalized : Vector3.up;
-        float minSigned = float.MaxValue;
-        bool foundSupport = false;
-
-        var cols = go.GetComponentsInChildren<Collider>();
-        for (int i = 0; i < cols.Length; i++)
-        {
-            Collider col = cols[i];
-            if (col == null || !col.enabled) continue;
-
-            // Query from well below along -normal to get a stable "bottom support" point.
-            float belowDist = Mathf.Max(4f, col.bounds.extents.magnitude * 3f);
-            Vector3 queryPoint = surfacePoint - n * belowDist;
-            Vector3 support = col.ClosestPoint(queryPoint);
-            float s = Vector3.Dot(support - surfacePoint, n);
-            if (s < minSigned) minSigned = s;
-            foundSupport = true;
-        }
-
-        // Fallback for props without colliders.
-        if (!foundSupport)
-        {
-            Bounds? bounds = null;
-            var rends = go.GetComponentsInChildren<Renderer>();
-            for (int i = 0; i < rends.Length; i++)
-            {
-                if (rends[i] == null) continue;
-                if (bounds == null) bounds = rends[i].bounds;
-                else
-                {
-                    Bounds b = bounds.Value;
-                    b.Encapsulate(rends[i].bounds);
-                    bounds = b;
-                }
-            }
-
-            if (bounds == null) return;
-            minSigned = Vector3.Dot(bounds.Value.min - surfacePoint, n);
-        }
+        if (!TryGetBottomMostSignedDistance(go, surfacePoint, n, out float minSigned))
+            return;
 
         float correction = pad - minSigned;
         if (Mathf.Abs(correction) <= 0.0001f) return;
 
-        // Downward movement can be exaggerated by broad world AABB on rotated/complex props,
-        // so clamp only the downward correction to a safe distance.
-        if (correction < 0f)
-            correction = Mathf.Max(correction, -Mathf.Abs(maxDownDistance));
+        float cap = Mathf.Abs(maxDownDistance);
+        if (cap > 0.0001f)
+            correction = Mathf.Clamp(correction, -cap, cap);
 
         go.transform.position += n * correction;
+    }
+
+    private static bool TryGetBottomMostSignedDistance(GameObject go, Vector3 surfacePoint, Vector3 n, out float minSigned)
+    {
+        minSigned = float.MaxValue;
+        bool found = false;
+
+        var meshFilters = go.GetComponentsInChildren<MeshFilter>(true);
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter mf = meshFilters[i];
+            if (mf == null || mf.sharedMesh == null) continue;
+            AccumulateLocalBoundsBottom(mf.transform.localToWorldMatrix, mf.sharedMesh.bounds, surfacePoint, n, ref minSigned, ref found);
+        }
+
+        if (!found)
+        {
+            var rends = go.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rends.Length; i++)
+            {
+                Renderer r = rends[i];
+                if (r == null || !r.enabled) continue;
+                if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer)
+                    continue;
+                AccumulateWorldAabbBottom(r.bounds, surfacePoint, n, ref minSigned, ref found);
+            }
+        }
+
+        return found;
+    }
+
+    private static void AccumulateLocalBoundsBottom(
+        Matrix4x4 localToWorld, Bounds localBounds, Vector3 surfacePoint, Vector3 n, ref float minSigned, ref bool found)
+    {
+        Vector3 c = localBounds.center;
+        Vector3 e = localBounds.extents;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 lp = c + new Vector3(
+                (i & 1) == 0 ? -e.x : e.x,
+                (i & 2) == 0 ? -e.y : e.y,
+                (i & 4) == 0 ? -e.z : e.z);
+            float s = Vector3.Dot(localToWorld.MultiplyPoint3x4(lp) - surfacePoint, n);
+            if (s < minSigned) minSigned = s;
+            found = true;
+        }
+    }
+
+    private static void AccumulateWorldAabbBottom(Bounds worldBounds, Vector3 surfacePoint, Vector3 n, ref float minSigned, ref bool found)
+    {
+        Vector3 absN = new Vector3(Mathf.Abs(n.x), Mathf.Abs(n.y), Mathf.Abs(n.z));
+        float s = Vector3.Dot(worldBounds.center - surfacePoint, n) - Vector3.Dot(worldBounds.extents, absN);
+        if (s < minSigned) minSigned = s;
+        found = true;
     }
 
     private void ConfigureEnvironmentRigidbodies(GameObject go)
     {
         if (!forceKinematicRigidbodies || go == null) return;
-
-        Rigidbody[] rbs = go.GetComponentsInChildren<Rigidbody>(true);
-        for (int i = 0; i < rbs.Length; i++)
-        {
-            Rigidbody rb = rbs[i];
-            rb.isKinematic = true;
-            rb.useGravity = false;
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
+        SpawnUtils.ForceKinematicNoGravity(go);
     }
 
     // =========================

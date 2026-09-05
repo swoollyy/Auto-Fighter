@@ -597,8 +597,11 @@ public sealed class CarForcefield : MonoBehaviour
 
     private Rigidbody PrepareObstacleForLaunch(Collider hitCol)
     {
+        if (SpawnUtils.IsEmbeddedLocked(hitCol)) return null;
+
         Transform root = hitCol.attachedRigidbody ? hitCol.attachedRigidbody.transform : hitCol.transform.root;
         if (!root) root = hitCol.transform;
+        if (SpawnUtils.IsEmbeddedLocked(root)) return null;
 
         var cross = root.GetComponentInChildren<CrossTrackObstacle>(true);
         if (cross != null)

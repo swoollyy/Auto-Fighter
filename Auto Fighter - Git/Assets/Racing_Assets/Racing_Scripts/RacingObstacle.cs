@@ -2,7 +2,8 @@ using UnityEngine;
 using DG.Tweening;
 
 /// <summary>
-/// Obstacle type for behaviour and logic. Rock = default static/destructible; Tree = topples on collision; Cross/Shuttle/Bounce = for future or specialised behaviour.
+/// Obstacle type for behaviour and logic. Rock = static/destructible tumble; Tree = topples on collision;
+/// NpcCar = traffic (driven by NPCTrafficCar, no rock spawn rotation).
 /// </summary>
 public enum ObstacleTyping
 {
@@ -11,14 +12,15 @@ public enum ObstacleTyping
     Cross,
     Shuttle,
     Bounce,
-    SideShooter
+    SideShooter,
+    NpcCar
 }
 
 [DisallowMultipleComponent]
 public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 {
     [Header("Obstacle Type")]
-    [Tooltip("Tree: topples over on collision in the direction of impact. Others: use for logic/spawning.")]
+    [Tooltip("Rock: random spawn tumble. Tree: topples on impact. NpcCar: traffic (NPCTrafficCar). Others: specialised movers.")]
     [SerializeField] private ObstacleTyping obstacleType = ObstacleTyping.Rock;
 
     [Header("Obstacle Settings")]
@@ -145,6 +147,7 @@ public class RacingObstacle : MonoBehaviour, IDamageable, ITurretDamageable
 
         var rb = GetComponentInParent<Rigidbody>();
         if (rb == null) return;
+        if (SpawnUtils.IsEmbeddedLocked(rb)) return;
 
         Transform pivot = rb.transform;
 

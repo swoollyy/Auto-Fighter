@@ -17,7 +17,7 @@ RenderSettings:
   m_Fog: 1
   m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.03
+  m_FogDensity: 0.015
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1664,7 +1664,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -1783,7 +1783,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -5691,7 +5691,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -6671,7 +6671,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 1000
+  far clip plane: 90
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -8400,7 +8400,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.05
     fullWeightNormalizedDist: 0.35
     stopAtNormalizedDist: 0.5
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Rock
     prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
@@ -8408,7 +8408,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.002
     stopAtNormalizedDist: 0.8
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Barrier
     prefab: {fileID: 3874382558013832276, guid: b3d9c63f4edc44242a107ccad0185dd0, type: 3}
@@ -8416,7 +8416,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.085
     stopAtNormalizedDist: 0.6
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Tree
     prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
@@ -8424,7 +8424,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Shuttle Track Obstacle
     prefab: {fileID: 3874382558013832276, guid: e3aa57bd188158e42aaccad15940ef1e, type: 3}
@@ -8432,7 +8432,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Boost Ramp
     prefab: {fileID: 8764533053249983857, guid: 6cfb3c094df66fe4a8a8c353dac22e76, type: 3}
@@ -8440,7 +8440,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.3
-    extraHeightOffset: -0.5
+    extraGroundPadding: 0
     extraLateralPadding: 0
   - id: Boost Pad
     prefab: {fileID: 8764533053249983857, guid: 1d5d1f27377d49c49ac716ef8fb39305, type: 3}
@@ -8448,7 +8448,7 @@ MonoBehaviour:
     startAtNormalizedDist: 0.001
     fullWeightNormalizedDist: 0.1
     stopAtNormalizedDist: 0.5
-    extraHeightOffset: 0
+    extraGroundPadding: 0
     extraLateralPadding: 0
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
@@ -8468,9 +8468,8 @@ MonoBehaviour:
   roadLayer:
     serializedVersion: 2
     m_Bits: 16384
-  raycastStartHeight: 12.42
-  raycastDownDistance: 20
-  obstacleHeightOffset: 0.5
+  raycastStartHeight: 50
+  raycastDownDistance: 80
   updateInterval: 0.1
   verboseDebug: 1
 --- !u!114 &796779775
@@ -8736,6 +8735,10 @@ MonoBehaviour:
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
     scaredPlayerTrackRunSpeed: 14
+    scaredTrackRunAwayFromPlayer: 0.85
+    scaredTrackRunAwayMaxAngle: 26
+    scaredTrackRunHeadingVariance: 10
+    scaredTrackRunHeadingChangeInterval: 0.4
     scaredIdleUseBugMovement: 0
     scaredIdleBugMoveSpeed: 0
     scaredIdleBugDirectionChangeInterval: 0.05
@@ -8862,6 +8865,10 @@ MonoBehaviour:
     scaredSpeedBuildupRate: 1.5
     scaredMaxOffRoadDistance: 14.12
     scaredPlayerTrackRunSpeed: 14
+    scaredTrackRunAwayFromPlayer: 0.85
+    scaredTrackRunAwayMaxAngle: 26
+    scaredTrackRunHeadingVariance: 10
+    scaredTrackRunHeadingChangeInterval: 0.4
     scaredIdleUseBugMovement: 1
     scaredIdleBugMoveSpeed: 1.77
     scaredIdleBugDirectionChangeInterval: 5
@@ -8988,6 +8995,10 @@ MonoBehaviour:
     scaredSpeedBuildupRate: 0
     scaredMaxOffRoadDistance: 0
     scaredPlayerTrackRunSpeed: 14
+    scaredTrackRunAwayFromPlayer: 0.85
+    scaredTrackRunAwayMaxAngle: 26
+    scaredTrackRunHeadingVariance: 10
+    scaredTrackRunHeadingChangeInterval: 0.4
     scaredIdleUseBugMovement: 0
     scaredIdleBugMoveSpeed: 1.25
     scaredIdleBugDirectionChangeInterval: 1
@@ -9119,48 +9130,53 @@ MonoBehaviour:
   environmentTypes:
   - id: Tree
     prefab: {fileID: 1017487939514071282, guid: 06918e1f8e9dfb944a50a17a37a0e762, type: 3}
-    baseWeight: 4
-    extraHeightOffset: -0.25
+    baseWeight: 3
+    extraGroundPadding: 0
     extraLateralPadding: 0
     alignToGroundNormal: 0
+    randomYawDegrees: 360
+    randomTiltDegrees: 0
   - id: Big Rock
     prefab: {fileID: 3874382558013832276, guid: d5a77fe2a414fee4aa1555eeea948012, type: 3}
     baseWeight: 2
-    extraHeightOffset: 0
+    extraGroundPadding: -0.2
     extraLateralPadding: 0
     alignToGroundNormal: 1
+    randomYawDegrees: 360
+    randomTiltDegrees: 0
   - id: Rock
     prefab: {fileID: 3874382558013832276, guid: 998d4c1bc8c77f34195d5e8f502b275b, type: 3}
     baseWeight: 7
-    extraHeightOffset: 0
+    extraGroundPadding: -0.2
     extraLateralPadding: 0
     alignToGroundNormal: 1
+    randomYawDegrees: 360
+    randomTiltDegrees: 0
   spawnMode: 1
   useSmoothing: 1
   smoothingSubdivisionsPerSegment: 6
-  spacing: 4
-  maxActive: 2400
+  spacing: 8
+  maxActive: 200
   lateralsPerSide: 3
   minSeparationMeters: 3.2
   offsetFromRoadEdge: 1
-  targetCount: 2400
+  targetCount: 200
   maxAttemptsPerSlot: 4
   fillEmptyGaps: 0
   streamSpawnDuringRun: 1
-  updateInterval: 0.15
-  maxSpawnDistanceAhead: 400
-  maxSpawnDistanceBehind: 100
-  despawnBehindDistance: 220
-  maxSpawnsPerUpdate: 20
-  preloadAheadMeters: 900
+  updateInterval: 0.45
+  maxSpawnDistanceAhead: 160
+  maxSpawnDistanceBehind: 10
+  despawnBehindDistance: 80
+  maxSpawnsPerUpdate: 10
+  preloadAheadMeters: 160
   preloadSpawnsPerFrame: 28
   minDistanceFromRoad: 1
   maxDistanceFromCenterline: 60
-  sideBias: 0.376
+  sideBias: 1
   placementAttempts: 4
   autoGroundUsingBounds: 1
-  extraGroundPadding: 0
-  maxSnapDownDistance: 2.5
+  maxSnapDownDistance: 80
   forceKinematicRigidbodies: 1
   groundMask:
     serializedVersion: 2
@@ -9195,6 +9211,7 @@ MonoBehaviour:
   maskResolution: 2048
   metersPerTexel: 0.35
   debugLogBounds: 1
+  detailDrawDistance: 220
 --- !u!114 &796779783
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9212,12 +9229,12 @@ MonoBehaviour:
   autoDiscoverTerrains: 0
   roadWorldY: 0
   carveBelowRoadMeters: 0.35
-  extraHalfWidthMeters: 1.8
+  extraHalfWidthMeters: 0.7
   blendDistanceMeters: 22
-  seamGuardBandMeters: 1.64
+  seamGuardBandMeters: 1.4
   seamGuardBelowRoadMeters: 0.12
-  noiseAmplitudeMeters: 10
-  noiseWorldScale: 0.02
+  noiseAmplitudeMeters: 18
+  noiseWorldScale: 0.022
   noiseOctaves: 1
   noisePersistence: 0.15
   hillBias: 0.4
@@ -9343,11 +9360,11 @@ MonoBehaviour:
   cameraFollow: {fileID: 661794730}
   enableCrashScreenShake: 1
   enableCrashSlowMo: 1
-  crashShakeDuration: 0.12
+  crashShakeDuration: 0.1
   crashShakeStrength: 0.06
   crashShakeVibrato: 10
   crashShakeRandomness: 90
-  crashSlowMoScale: 0.214
+  crashSlowMoScale: 0.492
   crashSlowMoHold: 0.91
   crashSlowMoEaseOut: 0.96
   crashSlowMoCurve:
@@ -9375,6 +9392,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   enableTestSpawnCar: 1
+  ambientParticlesPrefab: {fileID: 2360176461522459327, guid: 5cfb65631fe4d3442ba12ede6511c9cb, type: 3}
   skillTreeRoot: {fileID: 663395613}
   skillTreeUI: {fileID: 277147485}
   spawnForwardOffset: 0.5
@@ -9535,10 +9553,11 @@ MonoBehaviour:
   boostIntensityAdd: 0.673
   boostEaseOutSpeed: 4
   timeScale: 0.05
-  crashVisualSeverityFloor: 0.9
-  crashIntensityAdd: 3.65
+  crashVisualSeverityFloor: 0.6
+  crashIntensityAdd: 2.38
   crashEaseOutSpeed: 0.58
-  nonFatalBurstSeverity: 2
+  minCrashFxFadeSeconds: 0.55
+  nonFatalBurstSeverity: 1.6
   lethalCrashMultiplier: 1.607
   maxShaderIntensity: 8
   maxShaderNoise: 8
@@ -10284,7 +10303,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -13974,7 +13993,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -18367,7 +18386,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -21316,8 +21335,8 @@ MonoBehaviour:
   edgeGlowMaterial: {fileID: 2100000, guid: b299c8168a390b546a26c82431e266b6, type: 2}
   defaultOuterRadius: 2.7
   defaultSoftness: 0.3
-  intensityStackMultiplier: 1.25
-  maxStackedIntensity: 4
+  intensityStackMultiplier: 1
+  maxStackedIntensity: 0.1
   sizeStackStrength: 0.35
   durationExtendOnStack: 1
   riseFraction: 0.3
@@ -21329,9 +21348,9 @@ MonoBehaviour:
   mashDuration: 0.15
   mashInnerRadius: 0.41
   damageColor: {r: 1, g: 0.2, b: 0.1, a: 1}
-  damageIntensity: 1.5
-  damageDuration: 1.7
-  damageInnerRadius: 0.2
+  damageIntensity: 0
+  damageDuration: 0
+  damageInnerRadius: 0
   healColor: {r: 0.3, g: 1, b: 0.4, a: 1}
   healIntensity: 1
   healDuration: 0.3
@@ -21796,7 +21815,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -23149,7 +23168,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -24544,7 +24563,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 80
+  m_DetailObjectDistance: 220
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000

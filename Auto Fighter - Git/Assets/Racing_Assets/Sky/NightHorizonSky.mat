@@ -25,11 +25,11 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _HorizonBlendWidth: 0.367
-    - _HorizonExponent: 1.62
-    - _HorizonLift: -0.061
+    - _HorizonBlendWidth: 0.373
+    - _HorizonExponent: 0.7
+    - _HorizonLift: -0.249
     m_Colors:
-    - _GroundColor: {r: 0.09433961, g: 0.09433961, b: 0.09433961, a: 1}
-    - _HorizonColor: {r: 0.45237663, g: 0.4174528, b: 0.5, a: 1}
-    - _ZenithColor: {r: 0.23006095, g: 0.059273757, b: 0.33962262, a: 1}
+    - _GroundColor: {r: 0, g: 0, b: 0, a: 1}
+    - _HorizonColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ZenithColor: {r: 0.12419161, g: 0.06732824, b: 0.16037738, a: 1}
   m_BuildTextureStacks: []

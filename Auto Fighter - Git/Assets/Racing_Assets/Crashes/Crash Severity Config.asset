@@ -51,7 +51,7 @@ MonoBehaviour:
   fuelDamageScaleRelativeToHp: 0.25
   perKind:
   - kind: 1
-    severityWeight: 1.2
+    severityWeight: 1
     extraScaleBonus: 0
   - kind: 2
     severityWeight: 1.1

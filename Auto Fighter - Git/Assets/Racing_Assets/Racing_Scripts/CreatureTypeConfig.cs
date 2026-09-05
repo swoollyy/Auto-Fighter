@@ -101,6 +101,18 @@ public class CreatureTypeConfig
     [Tooltip("Along-track sprint when fleeing the player (stays on the asphalt so the player can chase).")]
     [Min(0f)] public float scaredPlayerTrackRunSpeed = 14f;
 
+    [Tooltip("How strongly the critter veers away from the player's side of the road while still running down-track.")]
+    [Range(0f, 1f)] public float scaredTrackRunAwayFromPlayer = 0.85f;
+
+    [Tooltip("Max yaw from track-forward (degrees) when dodging the player. Keeps them running forward.")]
+    [Range(0f, 45f)] public float scaredTrackRunAwayMaxAngle = 26f;
+
+    [Tooltip("Random extra yaw (degrees) so the sprint is not a straight line.")]
+    [Range(0f, 25f)] public float scaredTrackRunHeadingVariance = 10f;
+
+    [Tooltip("How often the random heading variance picks a new angle.")]
+    [Min(0.05f)] public float scaredTrackRunHeadingChangeInterval = 0.4f;
+
     [Header("Scared - Idle Bug Movement (Before Detection)")]
     [Tooltip("If true, scared creatures use the same low-energy 'bug idle' movement until the player is within scaredDetectionRadius.")]
     public bool scaredIdleUseBugMovement = true;
