@@ -2039,7 +2039,7 @@ public class GameManager_Racing : MonoBehaviour
         yield return null;
         cameraFollow?.SnapToTargetImmediate();
 
-        // Cover loading → in-game swap with sealed black, then iris-open onto the track.
+        // Loading → intro TV static bridge: sealed goo cover, then iris opens onto RUN/DAY + CRT static.
         var iris = GooIrisScreenTransition.EnsureExists();
         iris.SnapSealed();
 
@@ -2054,14 +2054,14 @@ public class GameManager_Racing : MonoBehaviour
         _flowState = RunFlowState.InRun;
         SetProgressState(GameProgressState.InRun);
 
-        // DAY/RUN + TV static go up under sealed goo so they persist through the open,
-        // then keep their authored hold + fade after the iris finishes.
+        // Put RUN/DAY + TV static up under sealed goo so they read through the iris open,
+        // then hold + fade after the hole finishes (same handoff as 85c80200).
         RunStartIntroUI intro = runStartIntro;
         if (intro == null)
             intro = FindObjectOfType<RunStartIntroUI>(true);
         bool introShown = intro != null && intro.isActiveAndEnabled && intro.ShowIntroImmediate();
 
-        yield return iris.CoOpen(postLoadingIrisOpenSeconds);
+        yield return iris.CoOpen(postLoadingIrisOpenSeconds, restoreDefaultSort: true);
 
         if (introShown)
             yield return intro.CoHoldAndFadeOut();
