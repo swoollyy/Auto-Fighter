@@ -221,11 +221,43 @@ public class CarController : MonoBehaviour
         return Input.GetKey(boostKey) || Input.GetKey(boostButtonController);
     }
 
-    private bool GetDriftHeld()
+    /// <summary>Raw drift button (Shift / B) with no unlock gate.</summary>
+    private bool GetDriftHeldRaw()
     {
         var reader = RacingInputReader.Instance;
         if (reader != null) return reader.DriftHeld;
         return Input.GetKey(driftKey) || Input.GetKey(driftButtonController);
+    }
+
+    /// <summary>
+    /// Drift input only when DriftUnlock is owned (or requireDriftUnlock is off).
+    /// Live skill check — do not trust a stale <see cref="driftUnlocked"/> cache alone.
+    /// </summary>
+    private bool GetDriftHeld()
+    {
+        if (!IsDriftAbilityUnlocked())
+            return false;
+        return GetDriftHeldRaw();
+    }
+
+    /// <summary>
+    /// Same gate as <see cref="UpdateDriftUnlock"/> but evaluated live so hop / traction-skip
+    /// cannot fire from a stale cache between skill-tree events.
+    /// </summary>
+    private bool IsDriftAbilityUnlocked()
+    {
+        if (!requireDriftUnlock)
+            return true;
+        var mgr = RacingSkillTreeManager.Instance;
+        return mgr != null && mgr.GetLevel(SkillType.DriftUnlock) > 0;
+    }
+
+    /// <summary>True when drift handling should suppress normal steer traction / mount assist.</summary>
+    private bool IsDriftHandlingSuppressingGrip()
+    {
+        if (!IsDriftAbilityUnlocked())
+            return false;
+        return driftButtonHeld || isDrifting || _driftGlideActive;
     }
 
     private float GetSteerRaw()
@@ -407,7 +439,7 @@ public class CarController : MonoBehaviour
     private bool _externalInputLocked = false;
 
     [Header("Drift Unlock")]
-    private bool requireDriftUnlock;
+    private bool requireDriftUnlock = true;
     private bool driftUnlocked;
 
     [Header("Drift (Arcade)")]
@@ -2445,6 +2477,19 @@ public class CarController : MonoBehaviour
         // (that desynced measured vs smoothed and fed curb lips into drive/orient).
         RefreshGroundNormalForDriving(carCollider != null && CheckIfGrounded());
         SmoothDrivingGroundNormal();
+
+        // Physics runs before Update can clear input — kill leftover drift flags when locked
+        // so AssistOntoDrivePlane / traction cannot hop from a stale drift press.
+        if (!IsDriftAbilityUnlocked())
+        {
+            driftButtonHeld = false;
+            isDrifting = false;
+            driftCharge = 0f;
+            _driftGlideActive = false;
+            _driftCurrentSteerSign = 0;
+            _driftSteerFlipPendingTimer = 0f;
+        }
+
         AssistOntoDrivePlane();
         ApplyDrivingOrientation(Time.fixedDeltaTime);
         _airborneForTricks = CanUseAirborneControls();
@@ -3855,7 +3900,12 @@ public class CarController : MonoBehaviour
         ReadTrickStickInputState();
         float rawHorizontal = _rawSteer; // keep the rest of your logic working
         float speed = rb != null ? rb.velocity.magnitude : 0f;
+
+        // Refresh unlock every input frame (skill purchase mid-run / debug max / snapshot restore).
+        UpdateDriftUnlock();
+
         bool prevDriftKeyHeld = driftButtonHeld;
+        // GetDriftHeld() is unlock-gated; raw press alone must not drive hop / traction-skip.
         driftButtonHeld = GetDriftHeld();
 
         // NEW: starting a fresh drift-hold clears the "crash killed charge" gate
@@ -3883,13 +3933,19 @@ public class CarController : MonoBehaviour
 
         if (!driftUnlocked)
         {
-            // Drift hop / steer-traction skip / air nose-follow all key off driftButtonHeld.
-            // Clear it when locked so holding Shift/B cannot change handling without DriftUnlock.
+            // Hard-clear every drift runtime flag. Hop / traction-skip / glide / side-force
+            // all key off these — locked DriftUnlock must leave normal driving unchanged.
             driftButtonHeld = false;
             driftCharge = 0f;
             isDrifting = false;
             _driftCurrentSteerSign = 0;
             _driftSteerFlipPendingTimer = 0f;
+            _driftGlideActive = false;
+            _driftWasActiveLastFrame = false;
+            driftEntrySpeed = 0f;
+            driftClampSpeed = 0f;
+            driftPeakSpeed = 0f;
+            ClearDriftHeldBoostCharge();
         }
         else
         {
@@ -4964,8 +5020,7 @@ public class CarController : MonoBehaviour
         if (airVelocityFollowNose <= 0.001f || airVelocityFollowRate <= 0.001f) return;
 
         bool turningOrDrifting = Mathf.Abs(steeringInput) > 0.05f
-            || isDrifting
-            || driftButtonHeld;
+            || (IsDriftAbilityUnlocked() && (isDrifting || driftButtonHeld));
         if (!turningOrDrifting) return;
 
         Vector3 vel = rb.velocity;
@@ -4981,7 +5036,7 @@ public class CarController : MonoBehaviour
         if (Vector3.Dot(velDir, nose) < -0.15f)
             return;
 
-        float intent = (isDrifting || driftButtonHeld)
+        float intent = (IsDriftAbilityUnlocked() && (isDrifting || driftButtonHeld))
             ? 1f
             : Mathf.Clamp01(Mathf.Abs(steeringInput));
         float blend = _airVelocityFollowBlend01;
@@ -5289,7 +5344,9 @@ public class CarController : MonoBehaviour
     private void ApplySteerRollingTraction()
     {
         if (rb == null || !enableSteerTraction || _currentIceHandling < 0.35f) return;
-        if (driftButtonHeld) return;
+        // Drift hop: skipping steer traction while the drift button is held lets the car
+        // pop over lips. Only skip when DriftUnlock actually owns the ability.
+        if (IsDriftHandlingSuppressingGrip()) return;
         if (_steerTractionBlend <= 0.0001f) return;
 
         Vector3 flatForward = new Vector3(transform.forward.x, 0f, transform.forward.z);
@@ -5562,10 +5619,11 @@ public class CarController : MonoBehaviour
             bool burnFuel = !isOutOfFuel && maxFuel > 0f;
 
             // Accel / coast / brake turn feel share the same steer-traction system (blended, not snapped).
+            // Locked drift must not suppress traction (that skip is the player-facing "drift hop").
             bool canHaveSteerTraction =
                 groundedNow &&
                 enableSteerTraction &&
-                !driftButtonHeld &&
+                !IsDriftHandlingSuppressingGrip() &&
                 !driftPhysicsActive &&
                 (Mathf.Abs(steeringInput) > 0.001f || (!accelerating && !brakingOrReverse));
 
@@ -6554,7 +6612,9 @@ public class CarController : MonoBehaviour
     private void AssistOntoDrivePlane()
     {
         if (rb == null) return;
-        if (isDrifting || _driftGlideActive) return;
+        // Only skip mount assist during real (unlocked) drift — skipping it while locked
+        // lets curb contacts launch the car (hop) from drift-button presses.
+        if (IsDriftAbilityUnlocked() && (isDrifting || _driftGlideActive)) return;
         if (_onBoostSurface && !_onBoostRamp) return;
         // Grass/road lips: leave PhysX alone — remapping here dumped speed and pitched the car.
         if (IsMixedGrassRoadSurface()) return;
@@ -8612,8 +8672,8 @@ public class CarController : MonoBehaviour
             _airborneContinuousTime = 0f;
 
             // Soft-start ground drift if the player was already holding drift through the air.
-            bool holdingAirDrift = isDrifting || _driftGlideActive
-                || (driftButtonHeld && driftCharge > 0.01f);
+            bool holdingAirDrift = IsDriftAbilityUnlocked()
+                && (isDrifting || _driftGlideActive || (driftButtonHeld && driftCharge > 0.01f));
             if (holdingAirDrift && driftLandingFeelBlendSeconds > 0.0001f)
                 _driftGroundFeel01 = 0f;
             else
@@ -8759,6 +8819,8 @@ public class CarController : MonoBehaviour
     {
         if (Mathf.Abs(steeringInput) > LandingStraightenAbortSteer)
             return true;
+        if (!IsDriftAbilityUnlocked())
+            return false;
         if (isDrifting || _driftGlideActive)
             return true;
         if (driftButtonHeld && driftCharge > 0.01f)
@@ -8922,13 +8984,7 @@ public class CarController : MonoBehaviour
 
     private void UpdateDriftUnlock()
     {
-        var mgr = RacingSkillTreeManager.Instance;
-        if (!requireDriftUnlock)
-        {
-            driftUnlocked = true;
-            return;
-        }
-        driftUnlocked = (mgr != null && mgr.GetLevel(SkillType.DriftUnlock) > 0);
+        driftUnlocked = IsDriftAbilityUnlocked();
     }
 
     private void UpdateMashGauge(float speedRating)
