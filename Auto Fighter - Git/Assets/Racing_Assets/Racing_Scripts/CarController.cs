@@ -3883,6 +3883,9 @@ public class CarController : MonoBehaviour
 
         if (!driftUnlocked)
         {
+            // Drift hop / steer-traction skip / air nose-follow all key off driftButtonHeld.
+            // Clear it when locked so holding Shift/B cannot change handling without DriftUnlock.
+            driftButtonHeld = false;
             driftCharge = 0f;
             isDrifting = false;
             _driftCurrentSteerSign = 0;
