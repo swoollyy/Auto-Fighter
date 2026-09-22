@@ -684,12 +684,13 @@ public sealed class GooIrisScreenTransition : MonoBehaviour
         dur = Mathf.Max(0.05f, dur);
 
         PrepareForTransition();
-        // Garage/init: keep goo above the box for the whole hole animation.
-        // Restoring DefaultSort here while dialogue is at DialogueSort draws the box on top of slime.
-        if (ShouldCoverDialogue() || !restoreDefaultSort)
-            SetSortOrder(SortOverDialogue);
-        else
+        // Loading → TV static / normal opens use default sort (original post-loading iris path).
+        // Dialogue reveals call CoOpenRevealingDialogue → CoOpen(restoreDefaultSort: false) and
+        // keep SortOverDialogue so the box stays under goo for the whole hole animation.
+        if (restoreDefaultSort)
             RestoreDefaultSortOrder();
+        else
+            SetSortOrder(SortOverDialogue);
         SetVisible(true);
         SetHole(0f);
         _sealed = true;
